@@ -33,6 +33,17 @@ Capability tokens are signed using [COSE](https://www.rfc-editor.org/rfc/rfc9052
 
 The schema is described in [CDDL](https://datatracker.ietf.org/doc/html/rfc8610) (RFC 8610), the IETF standard for specifying CBOR structures. Interoperability between independent implementations must be proven by shared, language-neutral conformance vectors — golden test cases every implementation's own CI runs — not by documentation alone.
 
+### Ports and adapters
+
+`core` is domain logic; it depends only on contracts, never on the runtime it executes in or the backend that holds its data. Every runtime-specific or vendor-specific concern lives in an adapter at the edge, satisfying one of these ports:
+
+- **Transport** — send, broadcast, connect, receive. Adapters: Node TCP/TLS (a plain-hosted process), a Durable-Object-hibernation WebSocket adapter (`cloudflare-hub`), and a WebRTC DataChannel adapter (`web-console`). Streaming operations carry backpressure at the contract level — cascade's own credit-window design for exec stdio is the precedent — so a WebRTC DataChannel's `bufferedAmount`/`bufferedamountlow` and a TCP socket's `drain` event both have to satisfy the same abstract backpressure contract rather than leaking their own shape into `core`.
+- **Storage** — `get`/`put`/`delete`. Adapters: a `NullStorage` no-op (ephemeral nodes), Durable Object storage (`cloudflare-hub`), a filesystem/SQLite adapter (a plain-hosted deployment).
+- **Identity/crypto** — key generation, signing, verification. Likely one adapter, not three: Node has shipped a spec-compliant `crypto.webcrypto` since v15, so the same WebCrypto-based implementation can plausibly serve Node, browsers, and Cloudflare Workers alike. Worth confirming directly against each runtime rather than assumed.
+- **Clock and observability** — first-class ports, not incidental detail. `core` doesn't call `Date.now()` or log directly, for the same reason it doesn't touch a socket directly: a test harness, a Cloudflare Worker's own trace context, and a plain Node process all want to supply these differently.
+
+The bar for each of these: could a second implementation, built on a completely different vendor's primitives, satisfy the exact same contract with zero changes to the contract or its callers? The transport port in particular gets this validated for real rather than hypothetically — four genuinely different vendor primitives (Node sockets, Durable Object hibernation, WebRTC, and whatever Cascade's own Rust side needs) are all required from the start, not added speculatively later.
+
 ## Repository structure
 
 ```
