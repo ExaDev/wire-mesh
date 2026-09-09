@@ -1,0 +1,40 @@
+; Handshake and the domain registry.
+;
+; A domain is a capability a node advertises at connect time; the usable set
+; for a connection is the intersection of what both sides advertise, taken in
+; the domain's own comparable form so the negotiated set is independent of
+; the order either side listed its domains in. Unknown domains are dropped,
+; never assumed to mean anything.
+;
+; The registry is three-tier, modelled on DNS/reverse-package-name ownership
+; rather than a central integer allocator — the only mechanism that scales to
+; arbitrary third parties adding domains with no collision and no gatekeeper.
+
+protocol-version = uint
+
+domain-id = core-domain-name / namespaced-domain-id / private-use-domain-id
+
+; Spec-owned, append-only — see registry/core-domains.md. A retired entry is
+; marked retired there, never renumbered or reused for something else.
+core-domain-name = "core/management" / "core/exec" / "core/data" / "core/federation"
+
+; "<registrant>/<local-name>", where uniqueness comes from the registrant
+; segment being a DNS name the registrant already owns — the same trick URNs
+; and Java package names use. No wire-mesh authority allocates these.
+namespaced-domain-id = tstr .regexp "[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+/[A-Za-z0-9_.-]+"
+
+; Private-use escape hatch: valid syntax, globally meaningless, must never be
+; advertised across an independently operated mesh boundary.
+private-use-domain-id = tstr .regexp "x-[A-Za-z0-9_.-]+"
+
+; The Handshake is the first frame sent on a connection, immediately after
+; transport-layer authentication and before any other frame. There is no
+; wire-level bound on how many domains may be listed; an implementation may
+; impose its own receive-side cap, but that cap is not part of the wire
+; contract.
+handshake-frame = {
+  type: "handshake",
+  version: protocol-version,
+  domains: [* domain-id],
+  ? params: {* tstr => any},   ; forward-compatible extension bag, e.g. a future max-frame-size or supported COSE algorithm list
+}

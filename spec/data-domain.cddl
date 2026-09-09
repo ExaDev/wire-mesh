@@ -1,0 +1,18 @@
+; core/data — the opaque, per-application data domain. Generalises Cascade's
+; own oplog: each peer's own log is a single-writer, append-only sequence,
+; so two peers' logs never block-conflict, and distributing them between
+; peers is replication. The frame envelope (owning peer, sequence range,
+; length of the entry set) is fixed here; the entry itself is opaque bytes to
+; this schema and to any peer relaying it, so different applications — an
+; agent-comms room message, a Cascade operation-log entry, anything else —
+; can share a mesh without the transport layer needing to understand any of
+; their content. A domain implementing core/data defines its own entry
+; schema separately, in its own application-level spec, not here.
+
+data-have-frame    = { type: "data-have", peer: device-id, head-seq: uint }
+data-request-frame = { type: "data-request", peer: device-id, from-seq: uint }   ; exclusive lower bound
+
+; The i-th entry (zero-based) carries sequence (from-seq + 1 + i); a receiver
+; rejects a data-entries-frame whose from-seq would leave a gap against what
+; it already holds for that peer.
+data-entries-frame = { type: "data-entries", peer: device-id, from-seq: uint, entries: [* bstr] }

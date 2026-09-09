@@ -1,0 +1,34 @@
+; The generic streaming/backpressure pattern — reusable by any capability
+; domain that carries a live byte stream (core/exec's stdio today; a future
+; audio stream, or a different agent-comms transport, tomorrow), so
+; backpressure is a property of the protocol, not something each domain
+; reinvents. A consumer advertises a credit window; the producer must never
+; send past (ack-seq + window), so a slow consumer throttles the producer
+; rather than the node buffering unboundedly.
+
+stream-session = uint   ; opaque, scoped to one connection
+
+stream-data-frame = {
+  type: "stream-data",
+  session: stream-session,
+  seq: uint,          ; per-session monotonic, for ordering and ack
+  channel: tstr,       ; domain-defined tag, e.g. core/exec's "stdin"/"stdout"/"stderr" — each domain owns its own channel vocabulary
+  bytes: bstr,
+}
+
+stream-ack-frame = {
+  type: "stream-ack",
+  session: stream-session,
+  ack-seq: uint,       ; highest contiguous sequence accepted
+  window: uint,         ; credit, in bytes, the consumer will accept past ack-seq
+}
+
+; Sent exactly once, by whichever side owns the stream's lifecycle, on the
+; session's terminal exit. Not credit-gated: it carries no sequence number
+; and is routed to the stream's registered consumer without an ack.
+stream-end-frame = {
+  type: "stream-end",
+  session: stream-session,
+  ? exit-code: int,
+  ? exit-signal: int,
+}
