@@ -38,3 +38,29 @@ handle-claims = {
 ; library rather than hand-rolling a second signing scheme alongside the
 ; token one.
 handle-record = cose-sign1   ; payload = bstr .cbor handle-claims
+
+; Handle ownership without DNS control: a handle-claims record for the same
+; handle MAY instead be published as an ordinary core/data entry, under the
+; conventional scope { kind: "handle-registry" }, and reached by resolving
+; via a federation link rather than DNS — a mesh's own root identity stands
+; in for a domain, and a federated mesh can then resolve any handle the
+; owning mesh has published, with no third party (no domain, no hosting
+; provider) involved at all. This needs no new frame type: it is the same
+; core/data replication (data-domain.cddl) and the same federation sharing
+; (federation.cddl's share-descriptor) already defined, applied to handle
+; records instead of application content — federation already has to resolve
+; and reach a partner mesh's resources somehow, and a handle registry is
+; simply one more resource a federation link can share. The tradeoff this
+; accepts, deliberately: resolvability is bounded to the owning mesh plus
+; whatever it is federated with, not the whole internet unconditionally —
+; DNS remains the only path for genuinely unbounded, internet-wide discovery.
+;
+; A fully decentralised, third-party-free alternative with unbounded (not
+; federation-scoped) reach — e.g. a DHT keyed by a hash of the handle string,
+; mirroring Cascade's own Mainline DHT precedent — was considered and
+; deliberately deferred, not built: nothing else in this protocol needs a
+; DHT, so building one solely for this would be speculative generality
+; against no concrete requirement, and it does not actually solve global
+; uniqueness so much as relocate it to first-come-first-served with no
+; recourse for a losing claim. Revisit only if a real, concrete need for
+; unbounded third-party-free resolution emerges.

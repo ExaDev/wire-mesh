@@ -19,8 +19,10 @@ namespaced-capability = tstr .regexp "[a-z0-9.-]+/[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]
 private-use-capability = tstr .regexp "x-[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+"
 
 ; A hierarchical scope string. "kind" is open on purpose: "node" and "folder"
-; are Cascade's own scopes; "room" and "org" are agent-comms'; a future
-; application mints its own kind rather than needing this schema to change.
+; are Cascade's own scopes; "room" and "org" are agent-comms'; "handle-registry"
+; is discovery.cddl's federation-scoped handle-resolution alternative to DNS;
+; a future application mints its own kind rather than needing this schema to
+; change.
 capability-scope = {
   kind: tstr,
   ? path: tstr,   ; absent means the kind's own whole-scope root
