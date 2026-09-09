@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cddl-validate:
+    name: CDDL Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Regenerate protocol.cddl and confirm it matches the committed file
+        working-directory: spec
+        run: |
+          cat identity.cddl handshake.cddl tokens.cddl transport.cddl discovery.cddl management.cddl streaming.cddl exec.cddl data-domain.cddl federation.cddl frame.cddl > /tmp/protocol.cddl
+          if ! diff -u protocol.cddl /tmp/protocol.cddl; then
+            echo "::error::spec/protocol.cddl is out of date. Edit a source file and regenerate per spec/README.md, never protocol.cddl directly."
+            exit 1
+          fi
+
+      - name: Check for duplicate rule definitions across source files
+        working-directory: spec
+        run: |
+          python3 - <<'PYEOF'
+          import re
+          import sys
+
+          rule_pattern = re.compile(r'^([$a-zA-Z][a-zA-Z0-9_-]*)\s*(=|/=)\s*', re.MULTILINE)
+          files = [
+              "identity.cddl", "handshake.cddl", "tokens.cddl", "transport.cddl",
+              "discovery.cddl", "management.cddl", "streaming.cddl", "exec.cddl",
+              "data-domain.cddl", "federation.cddl", "frame.cddl",
+          ]
+
+          defined = {}
+          for f in files:
+              content = open(f).read()
+              for m in rule_pattern.finditer(content):
+                  defined.setdefault(m.group(1), []).append((f, m.group(2)))
+
+          dupes = {name: locs for name, locs in defined.items() if len([l for l in locs if l[1] == "="]) > 1}
+          if dupes:
+              print("Duplicate rule definitions found (each rule name must be globally unique across source files):")
+              for name, locs in dupes.items():
+                  print(f"  {name}: {locs}")
+              sys.exit(1)
+
+          print(f"OK -- {len(defined)} distinct rule names, no collisions")
+          PYEOF
+
+      - name: Validate against an RFC 8610 CDDL parser
+        working-directory: spec
+        run: npx --yes cddl@0.21.1 validate protocol.cddl
+
+  required-checks:
+    name: Required Checks
+    needs: [cddl-validate]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any required job did not succeed
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "One or more required jobs did not succeed:"
+            echo '${{ toJSON(needs) }}'
+            exit 1
+          fi
