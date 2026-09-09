@@ -15,7 +15,11 @@ Rather than have agent-comms couple to Cascade's specific implementation, or hav
 
 ## Comparison to alternatives
 
-Several existing protocols cover overlapping ground. None combines wire-mesh's specific set of properties — direct P2P topology, public-key identity, capability-token authorisation, and an opaque per-application content domain — in one protocol. 🟢 marks a column where the protocol matches wire-mesh's own design choice, 🟡 a partial match or different trade-off, 🔴 an absent or fundamentally different approach. Hover any emoji for the detail behind the rating.
+Several existing protocols cover overlapping ground. None combines wire-mesh's specific set of properties — direct P2P topology, public-key identity, capability-token authorisation, and an opaque per-application content domain — in one protocol.
+
+### Design comparison
+
+🟢 marks a column where the protocol matches wire-mesh's own design choice, 🟡 a partial match or different trade-off, 🔴 an absent or fundamentally different approach. Hover any emoji for the detail behind the rating.
 
 | Protocol | Topology | Peer identity | Authorisation | Application content | Wire encoding |
 |---|---|---|---|---|---|
@@ -25,6 +29,19 @@ Several existing protocols cover overlapping ground. None combines wire-mesh's s
 | [Syncthing](https://docs.syncthing.net/specs/bep-v1.html) (BEP) | <abbr title="Direct P2P mesh, with relay servers for NAT traversal">🟢</abbr> | <abbr title="SHA-256 of a self-signed certificate">🟢</abbr> | <abbr title="Access is device-list based, not token-scoped">🟡</abbr> | <abbr title="Fixed: file blocks and index metadata for folder sync">🔴</abbr> | <abbr title="Protobuf; not canonical across languages or library versions">🟡</abbr> |
 | [Matrix](https://spec.matrix.org/) | <abbr title="Federated client-server and server-server; not peer-to-peer">🔴</abbr> | <abbr title="Homeserver-issued user ID; no peer key">🔴</abbr> | <abbr title="Room-level power levels and access-control lists, not bearer capability tokens">🟡</abbr> | <abbr title="Fixed: room events under a defined event-type schema">🔴</abbr> | <abbr title="JSON, with a canonical-JSON scheme used specifically for event signing and federation">🟡</abbr> |
 | [ActivityPub](https://www.w3.org/TR/activitypub/) | <abbr title="Federated server-to-server, one-to-many broadcast">🔴</abbr> | <abbr title="Server-hosted actor URI; no peer key">🔴</abbr> | <abbr title="None; visibility is addressing-based (public, followers, etc), not capability tokens">🔴</abbr> | <abbr title="Fixed: JSON-LD activity vocabulary">🔴</abbr> | <abbr title="JSON-LD; no canonical signing scheme built into the base spec">🔴</abbr> |
+
+### Feature presence
+
+Independent of *how* a protocol implements something, does it have the mechanism at all? 🟢 = present, 🟡 = present via a different layer or only partially, 🔴 = absent. These track the remaining bullets from [What the protocol specifies](#what-the-protocol-specifies) not already covered by the design comparison above.
+
+| Protocol | Handshake / capability negotiation | Relay / NAT traversal | Domain & capability registry | Handle discovery | Federation |
+|---|---|---|---|---|---|
+| **wire-mesh** | <abbr title="Explicit capability-domain negotiation; the usable set for a connection is the intersection of what both sides advertise">🟢</abbr> | <abbr title="A relay carries traffic as an opaque, unreadable byte pipe when peers cannot connect directly">🟢</abbr> | <abbr title="A registry so unrelated applications' own capability domains and verbs don't collide">🟢</abbr> | <abbr title="DNS-anchored resolution to a self-certifying record, mirroring WebFinger">🟢</abbr> | <abbr title="Selective, explicit cross-mesh sharing, distinct from ordinary intra-mesh relay">🟢</abbr> |
+| [libp2p](https://libp2p.io/) | <abbr title="multistream-select negotiates supported protocols per connection, but as protocol selection, not a capability-domain intersection">🟡</abbr> | <abbr title="Circuit relay v2 and hole punching">🟢</abbr> | <abbr title="Protocol IDs are free-form strings; no formal collision-avoiding registry">🔴</abbr> | <abbr title="DHT/peer-routing discovery exists, but no DNS-anchored self-certifying handle scheme">🔴</abbr> | <abbr title="One flat overlay network; no concept of federation between independent meshes">🔴</abbr> |
+| [Secure Scuttlebutt](https://scuttlebutt.nz/) | <abbr title="No negotiation; a connection is direct feed replication">🔴</abbr> | <abbr title="No relay primitive; pubs provide store-and-forward replication, not a transport relay">🔴</abbr> | <abbr title="None">🔴</abbr> | <abbr title="Invite codes and pub identifiers, not DNS-anchored resolution">🔴</abbr> | <abbr title="None">🔴</abbr> |
+| [Syncthing](https://docs.syncthing.net/specs/bep-v1.html) (BEP) | <abbr title="Protocol-version negotiation only, not a capability-domain intersection">🔴</abbr> | <abbr title="Dedicated relay servers for NAT traversal">🟢</abbr> | <abbr title="None">🔴</abbr> | <abbr title="Device IDs plus discovery servers, not DNS-anchored resolution">🔴</abbr> | <abbr title="None">🔴</abbr> |
+| [Matrix](https://spec.matrix.org/) | <abbr title="None">🔴</abbr> | <abbr title="Not peer-to-peer; homeservers are expected to be directly reachable">🔴</abbr> | <abbr title="None">🔴</abbr> | <abbr title="DNS-based homeserver discovery (.well-known/SRV) resolves to a server, not a self-certifying signed record">🟡</abbr> | <abbr title="Federation between homeservers is the primary topology itself, not a distinct selective layer on top of direct peering">🟡</abbr> |
+| [ActivityPub](https://www.w3.org/TR/activitypub/) | <abbr title="None">🔴</abbr> | <abbr title="Not peer-to-peer; 'relay' actors rebroadcast activities between servers, not a transport relay">🔴</abbr> | <abbr title="None">🔴</abbr> | <abbr title="WebFinger handle discovery is standard in Fediverse deployments (e.g. Mastodon), but not part of the ActivityPub spec itself">🟡</abbr> | <abbr title="Unconditional inbox delivery to every known follower, not selective cross-mesh sharing">🔴</abbr> |
 
 ## Architecture
 
