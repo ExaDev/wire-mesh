@@ -23,9 +23,10 @@ jobs:
       - name: Regenerate protocol.cddl and confirm it matches the committed file
         working-directory: spec
         run: |
-          cat identity.cddl handshake.cddl tokens.cddl transport.cddl discovery.cddl management.cddl streaming.cddl exec.cddl data-domain.cddl federation.cddl frame.cddl > /tmp/protocol.cddl
-          if ! diff -u protocol.cddl /tmp/protocol.cddl; then
-            echo "::error::spec/protocol.cddl is out of date. Edit a source file and regenerate per spec/README.md, never protocol.cddl directly."
+          cp protocol.cddl /tmp/protocol-committed.cddl
+          ./generate.sh
+          if ! diff -u /tmp/protocol-committed.cddl protocol.cddl; then
+            echo "::error::spec/protocol.cddl is out of date. Run spec/generate.sh and commit the result -- never edit protocol.cddl directly."
             exit 1
           fi
 
@@ -33,15 +34,12 @@ jobs:
         working-directory: spec
         run: |
           python3 - <<'PYEOF'
+          import glob
           import re
           import sys
 
           rule_pattern = re.compile(r'^([$a-zA-Z][a-zA-Z0-9_-]*)\s*(=|/=)\s*', re.MULTILINE)
-          files = [
-              "identity.cddl", "handshake.cddl", "tokens.cddl", "transport.cddl",
-              "discovery.cddl", "management.cddl", "streaming.cddl", "exec.cddl",
-              "data-domain.cddl", "federation.cddl", "frame.cddl",
-          ]
+          files = sorted(f for f in glob.glob("*.cddl") if f != "protocol.cddl")
 
           defined = {}
           for f in files:
@@ -51,12 +49,12 @@ jobs:
 
           dupes = {name: locs for name, locs in defined.items() if len([l for l in locs if l[1] == "="]) > 1}
           if dupes:
-              print("Duplicate rule definitions found (each rule name must be globally unique across source files):")
+              print(f"Duplicate rule definitions found across {files} (each rule name must be globally unique across source files):")
               for name, locs in dupes.items():
                   print(f"  {name}: {locs}")
               sys.exit(1)
 
-          print(f"OK -- {len(defined)} distinct rule names, no collisions")
+          print(f"OK -- {len(files)} source files, {len(defined)} distinct rule names, no collisions")
           PYEOF
 
       - name: Validate against an RFC 8610 CDDL parser
