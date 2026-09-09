@@ -175,6 +175,46 @@ relay-offer-frame   = { type: "relay-offer", addresses: [* tstr] }
 relay-connect-frame = { type: "relay-connect", target-device: device-id }
 relay-data-frame    = { type: "relay-data", payload: bstr }
 relay-inbound-frame = { type: "relay-inbound", source-device: device-id }
+; Handle discovery — resolving an arbitrary, human-readable handle you have
+; never interacted with to a device-id, the way WebFinger resolves an
+; actor URI. This is deliberately DNS-anchored rather than a protocol-native
+; naming ledger: global uniqueness, spoofing resistance, and revocation for
+; an internet-wide namespace are already-solved problems in DNS, and a
+; from-scratch naming system would mean re-solving a harder version of the
+; same problem DNS already handles. This is why WebFinger, ActivityPub, and
+; Matrix all independently converged on the same DNS-anchored shape for
+; exactly this category of problem.
+;
+; A handle is "<local-part>@<domain>". It resolves out of band (this is never
+; sent as a Frame over an existing mesh connection — resolution is how you
+; get an address to connect to in the first place) via:
+;
+;   GET https://<domain>/.well-known/wire-mesh/<local-part>
+;
+; returning the CBOR encoding of a handle-record. The record is
+; self-certifying — signed by the same key it claims to belong to, the same
+; pattern Cascade's own announce/DHT candidate records use — specifically so
+; it stays safe to serve and cache through an untrusted intermediary (a CDN,
+; a cache, an intermediate DNS resolver) rather than requiring the resolver
+; to trust the HTTPS transport alone. A resolver MUST verify
+; device-id == sha256(identity-key.public-key) and MUST check `expires`
+; before trusting a resolved record.
+
+handle-claims = {
+  handle: tstr,                  ; "local-part@domain", matching what was requested
+  device-id: device-id,
+  identity-key: identity-key,     ; verifier checks sha256(identity-key.public-key) == device-id
+  ? candidates: [* wire-candidate],   ; optional connection hints, reusing transport.cddl's candidate shape
+  ? mailbox: device-id,               ; optional: a relay/hub device holding core/data entries on this handle's behalf while it is offline — the same replication mechanism data-domain.cddl describes for fan-out, not a separate delivery system
+  issued: uint,     ; Unix ms
+  expires: uint,    ; Unix ms — records are refreshed periodically, mirroring a DNS TTL; a resolver must not trust an expired record
+}
+
+; Reuses the same COSE_Sign1 envelope as capability-token, for the same
+; reason: every implementation can verify it with an off-the-shelf COSE
+; library rather than hand-rolling a second signing scheme alongside the
+; token one.
+handle-record = cose-sign1   ; payload = bstr .cbor handle-claims
 ; The management domain — a verb command set dispatched by scope and
 ; capability token, gated by per-command authorisation and audited.
 ; `$manage-command-params` is a socket, not a closed union: a capability
@@ -266,6 +306,17 @@ proc-kill   = { verb: "proc.kill", session: stream-session }
 ; their content. A domain implementing core/data defines its own entry
 ; schema separately, in its own application-level spec, not here.
 
+; `peer` names whose log is being asked about; it is deliberately independent
+; of which connection the frame travels over. A peer that has already
+; replicated another device's log may answer data-have/data-request for that
+; device on its own behalf — this is fan-out: a follower reaches an audience
+; of any size by asking whichever already-replicating peer it can reach, not
+; by holding a direct link to the original author. No wire change is needed
+; for this; it follows from `peer` already being a plain reference rather
+; than an implicit "you" per connection. A relay/mailbox device (see
+; discovery.cddl's `mailbox` field) answering on behalf of a currently-offline
+; peer is the same mechanism, not a separate one: it is simply a replicator
+; that is reachable when the original author is not.
 data-have-frame    = { type: "data-have", peer: device-id, head-seq: uint }
 data-request-frame = { type: "data-request", peer: device-id, from-seq: uint }   ; exclusive lower bound
 

@@ -9,6 +9,17 @@
 ; their content. A domain implementing core/data defines its own entry
 ; schema separately, in its own application-level spec, not here.
 
+; `peer` names whose log is being asked about; it is deliberately independent
+; of which connection the frame travels over. A peer that has already
+; replicated another device's log may answer data-have/data-request for that
+; device on its own behalf — this is fan-out: a follower reaches an audience
+; of any size by asking whichever already-replicating peer it can reach, not
+; by holding a direct link to the original author. No wire change is needed
+; for this; it follows from `peer` already being a plain reference rather
+; than an implicit "you" per connection. A relay/mailbox device (see
+; discovery.cddl's `mailbox` field) answering on behalf of a currently-offline
+; peer is the same mechanism, not a separate one: it is simply a replicator
+; that is reachable when the original author is not.
 data-have-frame    = { type: "data-have", peer: device-id, head-seq: uint }
 data-request-frame = { type: "data-request", peer: device-id, from-seq: uint }   ; exclusive lower bound
 
