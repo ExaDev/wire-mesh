@@ -23,6 +23,7 @@ Rather than have agent-comms couple to Cascade's specific implementation, or hav
 - **Relay and NAT traversal.** When two peers cannot connect directly, a relay carries their traffic as an opaque, unreadable byte pipe. The relay never holds the keys to decrypt what it forwards.
 - **An opaque, per-application data domain.** The protocol carries structured content for the domains it defines natively (identity, handshake, tokens, relay). It leaves application-specific payloads — a chat message, a file block, an operation-log entry — as opaque bytes to any peer that does not need to interpret them. Different applications can therefore share one mesh without understanding each other's content.
 - **A domain and capability registry**, so unrelated applications extending the protocol with their own capability domains or verbs do not collide on the same identifier.
+- **Handle discovery.** A DNS-anchored resolution convention, mirroring WebFinger, for reaching an arbitrary handle you have never interacted with — resolving to a self-certifying record signed by the same key it claims, safe to serve through an untrusted intermediary. The same record's optional mailbox hint unifies discovery with offline delivery: fan-out and delivery to a currently-offline peer both fall out of any peer being able to answer for another device's data-domain log, not a separate mechanism.
 - **Federation** between independent meshes, with selective, explicit cross-mesh sharing, distinct from ordinary intra-mesh relay.
 
 ### Encoding
