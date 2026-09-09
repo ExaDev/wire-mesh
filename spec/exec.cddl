@@ -1,0 +1,19 @@
+; core/exec — process and PTY control, instantiating the generic streaming
+; pattern from streaming.cddl. Control verbs travel as manage-command, never
+; as dedicated frame kinds; only stdio gets dedicated stream frames — this
+; split matches Cascade's own exec design exactly. The scope a write/resize/
+; kill/signal is authorised over is the scope its session was spawned under,
+; resolved from the receiving node's own state, not the scope carried on the
+; wire — a caller cannot drive a session outside its own grant by lying in a
+; request's scope field. That check is a verifier obligation, not something
+; this schema can enforce structurally.
+
+$manage-command-params /= pty-spawn / pty-write / pty-resize / pty-kill / proc-spawn / proc-signal / proc-kill
+
+pty-spawn   = { verb: "pty.spawn", ? shell: tstr, argv: [* tstr], ? cwd: tstr, env: {* tstr => tstr}, cols: uint, rows: uint }
+pty-write   = { verb: "pty.write", session: stream-session, bytes: bstr }
+pty-resize  = { verb: "pty.resize", session: stream-session, cols: uint, rows: uint }
+pty-kill    = { verb: "pty.kill", session: stream-session, signal: int }
+proc-spawn  = { verb: "proc.spawn", argv: [* tstr], ? cwd: tstr, env: {* tstr => tstr} }
+proc-signal = { verb: "proc.signal", session: stream-session, signal: int }
+proc-kill   = { verb: "proc.kill", session: stream-session }

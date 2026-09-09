@@ -1,0 +1,39 @@
+; Transport frames — domain-independent; every peer speaks these regardless
+; of the negotiated capability set, since they carry the connection itself
+; rather than any one domain's content. Field layouts transcribed directly
+; from Cascade's own BepMessage/Candidate/CandidateKind types, re-expressed
+; in CDDL rather than XDR.
+;
+; Cascade's own `content` domain (BEP block exchange: ClusterConfig, Index,
+; IndexUpdate, Request, Response) is deliberately out of scope here — it has
+; no analogue in agent-comms and doesn't fit any of wire-mesh's generic
+; patterns. It remains Cascade's own extension, pluggable into the
+; $frame-variant socket (see frame.cddl) from Cascade's own schema file,
+; never part of the core protocol.
+
+ping-frame  = { type: "ping" }
+close-frame = { type: "close", ? reason: tstr }
+
+peer-advert = {
+  device: device-id,
+  addresses: [* tstr],      ; "host:port" strings
+  snapshot-seconds: int,     ; Unix-seconds snapshot time
+}
+gossip-frame = { type: "gossip", peers: [* peer-advert] }
+
+candidate-kind = "host" / "server-reflexive" / "relayed"
+wire-candidate = { address: tstr, kind: candidate-kind, priority: uint }   ; address = "ip:port"
+candidates-frame = { type: "candidates", candidates: [* wire-candidate] }
+
+sync-punch-frame = { type: "sync-punch", nonce: uint, deadline-unix-ms: uint }
+observed-address-frame = { type: "observed-address", address: tstr }
+
+; Relay: when two peers cannot connect directly, a relay carries their
+; traffic as an opaque, unreadable byte pipe. The relay never holds the keys
+; to decrypt what it forwards — relay-data-frame's payload is ciphertext
+; established one layer above the transport, not something this frame
+; interprets.
+relay-offer-frame   = { type: "relay-offer", addresses: [* tstr] }
+relay-connect-frame = { type: "relay-connect", target-device: device-id }
+relay-data-frame    = { type: "relay-data", payload: bstr }
+relay-inbound-frame = { type: "relay-inbound", source-device: device-id }

@@ -1,0 +1,379 @@
+; Identity — a node's identity is the hash of its own public key, never the
+; certificate that carries it. Hashing the certificate DER (which embeds a
+; serial number and a validity window that change on every reissue, even with
+; an identical key) was a bug found independently in both Cascade and
+; agent-comms; this rule exists to make the correct derivation the only one
+; representable.
+
+identity-key = {
+  alg: int,          ; COSE algorithm identifier (RFC 9053), e.g. -7 ES256, -8 EdDSA
+  public-key: bstr,   ; raw public-key bytes in alg's own canonical encoding
+}
+
+device-id = bstr .size 32   ; SHA-256(identity-key.public-key) — never sha256(certificate DER)
+
+peer-identity = {
+  device-id: device-id,
+  identity-key: identity-key,
+  ? certificate: bstr,   ; optional X.509 DER, present only if the transport binding uses TLS; device-id is always derived from identity-key, regardless of whether a certificate is present
+}
+; Handshake and the domain registry.
+;
+; A domain is a capability a node advertises at connect time; the usable set
+; for a connection is the intersection of what both sides advertise, taken in
+; the domain's own comparable form so the negotiated set is independent of
+; the order either side listed its domains in. Unknown domains are dropped,
+; never assumed to mean anything.
+;
+; The registry is three-tier, modelled on DNS/reverse-package-name ownership
+; rather than a central integer allocator — the only mechanism that scales to
+; arbitrary third parties adding domains with no collision and no gatekeeper.
+
+protocol-version = uint
+
+domain-id = core-domain-name / namespaced-domain-id / private-use-domain-id
+
+; Spec-owned, append-only — see registry/core-domains.md. A retired entry is
+; marked retired there, never renumbered or reused for something else.
+core-domain-name = "core/management" / "core/exec" / "core/data" / "core/federation"
+
+; "<registrant>/<local-name>", where uniqueness comes from the registrant
+; segment being a DNS name the registrant already owns — the same trick URNs
+; and Java package names use. No wire-mesh authority allocates these.
+namespaced-domain-id = tstr .regexp "[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+/[A-Za-z0-9_.-]+"
+
+; Private-use escape hatch: valid syntax, globally meaningless, must never be
+; advertised across an independently operated mesh boundary.
+private-use-domain-id = tstr .regexp "x-[A-Za-z0-9_.-]+"
+
+; The Handshake is the first frame sent on a connection, immediately after
+; transport-layer authentication and before any other frame. There is no
+; wire-level bound on how many domains may be listed; an implementation may
+; impose its own receive-side cap, but that cap is not part of the wire
+; contract.
+handshake-frame = {
+  type: "handshake",
+  version: protocol-version,
+  domains: [* domain-id],
+  ? params: {* tstr => any},   ; forward-compatible extension bag, e.g. a future max-frame-size or supported COSE algorithm list
+}
+; Capability verbs, scopes, and signed capability tokens.
+;
+; Authority is a verb over a scope, carried between nodes as a token signed by
+; the issuing node's own key. A bearer presents a token; the verifier checks
+; the signature, expiry, and revocation before authorising the carried grant.
+; Delegation forms a chain where each hop can only narrow authority, never
+; widen it, and a token's expiry is clamped to its parent's — that narrowing
+; rule is a verifier obligation, not something CDDL itself can enforce.
+
+capability-verb = core-capability / namespaced-capability / private-use-capability
+
+; Bare "subsystem:action", spec-owned registry — see registry/core-capabilities.md.
+core-capability = tstr .regexp "[a-z][a-z0-9-]*:[a-z][a-z0-9-]*"
+
+; "<registrant>/<local-name>:<action>", same registrant-owned namespace as
+; namespaced-domain-id.
+namespaced-capability = tstr .regexp "[a-z0-9.-]+/[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+"
+
+private-use-capability = tstr .regexp "x-[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+"
+
+; A hierarchical scope string. "kind" is open on purpose: "node" and "folder"
+; are Cascade's own scopes; "room" and "org" are agent-comms'; a future
+; application mints its own kind rather than needing this schema to change.
+capability-scope = {
+  kind: tstr,
+  ? path: tstr,   ; absent means the kind's own whole-scope root
+}
+
+cose-header-alg = 1   ; RFC 9052 common header label: algorithm
+cose-header-kid = 4   ; RFC 9052 common header label: key identifier
+
+cose-header-label = int / tstr
+
+cose-token-headers = {
+  ? cose-header-alg => int,
+  ? cose-header-kid => bstr,   ; issuer device-id, a fast lookup hint before full verification, not itself trusted
+  * cose-header-label => any,
+}
+
+; The literal COSE_Sign1 array (RFC 9052 §4.2) rather than a bespoke named
+; structure, so every implementation can verify and sign using an off-the-
+; shelf COSE library instead of hand-rolling the Sig_structure construction.
+cose-sign1 = [
+  protected: bstr,             ; bstr .cbor cose-token-headers
+  unprotected: cose-token-headers,
+  payload: bstr / nil,          ; bstr .cbor token-claims, present (not nil) for a capability token
+  signature: bstr,
+]
+
+capability-token = cose-sign1
+
+; The signed payload. issuer-key travels inside the signed content, not as a
+; sibling of the COSE envelope, specifically so the token is self-certifying:
+; a verifier checks that sha256(issuer-key.public-key) equals the claimed
+; issuer device-id, and that the signature verifies against that same
+; embedded key — no shared secret or prior contact with the issuer is needed
+; to verify a token, only the token itself.
+token-claims = {
+  token-id: bstr,
+  issuer: device-id,
+  issuer-key: identity-key,
+  bearer: device-id,
+  capability: capability-verb,
+  scope: capability-scope,
+  expires: uint,               ; Unix ms
+  ? not-before: uint,
+  ? parent: bstr,               ; bstr .cbor capability-token — a fully self-contained, nested COSE_Sign1 of the parent token; the recursive delegation chain
+  * tstr => any,                ; forward-compatible extension claims
+}
+
+; Signing convention (a verifier obligation, not expressible as a CDDL
+; constraint): `signature` is computed per RFC 9052 §4.4's Sig_structure,
+; the array ["Signature1", protected, external_aad, payload], where
+; external_aad is the empty bstr and payload is the canonical DAG-CBOR
+; encoding of token-claims. Canonical encoding is a codec-level guarantee
+; this schema cannot itself enforce — every implementation's CBOR codec must
+; produce the DAG-CBOR canonical form for token-claims specifically, or
+; signatures will not verify across implementations even when both are
+; individually correct.
+; Transport frames — domain-independent; every peer speaks these regardless
+; of the negotiated capability set, since they carry the connection itself
+; rather than any one domain's content. Field layouts transcribed directly
+; from Cascade's own BepMessage/Candidate/CandidateKind types, re-expressed
+; in CDDL rather than XDR.
+;
+; Cascade's own `content` domain (BEP block exchange: ClusterConfig, Index,
+; IndexUpdate, Request, Response) is deliberately out of scope here — it has
+; no analogue in agent-comms and doesn't fit any of wire-mesh's generic
+; patterns. It remains Cascade's own extension, pluggable into the
+; $frame-variant socket (see frame.cddl) from Cascade's own schema file,
+; never part of the core protocol.
+
+ping-frame  = { type: "ping" }
+close-frame = { type: "close", ? reason: tstr }
+
+peer-advert = {
+  device: device-id,
+  addresses: [* tstr],      ; "host:port" strings
+  snapshot-seconds: int,     ; Unix-seconds snapshot time
+}
+gossip-frame = { type: "gossip", peers: [* peer-advert] }
+
+candidate-kind = "host" / "server-reflexive" / "relayed"
+wire-candidate = { address: tstr, kind: candidate-kind, priority: uint }   ; address = "ip:port"
+candidates-frame = { type: "candidates", candidates: [* wire-candidate] }
+
+sync-punch-frame = { type: "sync-punch", nonce: uint, deadline-unix-ms: uint }
+observed-address-frame = { type: "observed-address", address: tstr }
+
+; Relay: when two peers cannot connect directly, a relay carries their
+; traffic as an opaque, unreadable byte pipe. The relay never holds the keys
+; to decrypt what it forwards — relay-data-frame's payload is ciphertext
+; established one layer above the transport, not something this frame
+; interprets.
+relay-offer-frame   = { type: "relay-offer", addresses: [* tstr] }
+relay-connect-frame = { type: "relay-connect", target-device: device-id }
+relay-data-frame    = { type: "relay-data", payload: bstr }
+relay-inbound-frame = { type: "relay-inbound", source-device: device-id }
+; The management domain — a verb command set dispatched by scope and
+; capability token, gated by per-command authorisation and audited.
+; `$manage-command-params` is a socket, not a closed union: a capability
+; domain that needs its own management verbs (core/exec's pty.*/proc.*
+; commands, or any future domain) extends it from its own schema file rather
+; than editing this one.
+
+manage-command = { verb: capability-verb, params: $manage-command-params }
+$manage-command-params = {* tstr => any}
+
+manage-request-frame = {
+  type: "manage-request",
+  request-id: uint,
+  command: manage-command,
+  scope: capability-scope,
+  ? token: capability-token,
+}
+
+manage-ok    = { result: "ok", * tstr => any }
+manage-error = { result: "error", code: tstr, ? message: tstr }
+manage-response-frame = { type: "manage-response", request-id: uint, outcome: manage-ok / manage-error }
+
+; Revocation — new, not present in Cascade's frozen set. Gossiped revocation
+; entries let a peer check a token against a shared revocation view without
+; a synchronous lookup against the issuer for every use of the token.
+revocation-entry = { token-id: bstr, revoked-at: uint }
+revocation-announce-frame = { type: "revocation-announce", entries: [* revocation-entry] }
+; The generic streaming/backpressure pattern — reusable by any capability
+; domain that carries a live byte stream (core/exec's stdio today; a future
+; audio stream, or a different agent-comms transport, tomorrow), so
+; backpressure is a property of the protocol, not something each domain
+; reinvents. A consumer advertises a credit window; the producer must never
+; send past (ack-seq + window), so a slow consumer throttles the producer
+; rather than the node buffering unboundedly.
+
+stream-session = uint   ; opaque, scoped to one connection
+
+stream-data-frame = {
+  type: "stream-data",
+  session: stream-session,
+  seq: uint,          ; per-session monotonic, for ordering and ack
+  channel: tstr,       ; domain-defined tag, e.g. core/exec's "stdin"/"stdout"/"stderr" — each domain owns its own channel vocabulary
+  bytes: bstr,
+}
+
+stream-ack-frame = {
+  type: "stream-ack",
+  session: stream-session,
+  ack-seq: uint,       ; highest contiguous sequence accepted
+  window: uint,         ; credit, in bytes, the consumer will accept past ack-seq
+}
+
+; Sent exactly once, by whichever side owns the stream's lifecycle, on the
+; session's terminal exit. Not credit-gated: it carries no sequence number
+; and is routed to the stream's registered consumer without an ack.
+stream-end-frame = {
+  type: "stream-end",
+  session: stream-session,
+  ? exit-code: int,
+  ? exit-signal: int,
+}
+; core/exec — process and PTY control, instantiating the generic streaming
+; pattern from streaming.cddl. Control verbs travel as manage-command, never
+; as dedicated frame kinds; only stdio gets dedicated stream frames — this
+; split matches Cascade's own exec design exactly. The scope a write/resize/
+; kill/signal is authorised over is the scope its session was spawned under,
+; resolved from the receiving node's own state, not the scope carried on the
+; wire — a caller cannot drive a session outside its own grant by lying in a
+; request's scope field. That check is a verifier obligation, not something
+; this schema can enforce structurally.
+
+$manage-command-params /= pty-spawn / pty-write / pty-resize / pty-kill / proc-spawn / proc-signal / proc-kill
+
+pty-spawn   = { verb: "pty.spawn", ? shell: tstr, argv: [* tstr], ? cwd: tstr, env: {* tstr => tstr}, cols: uint, rows: uint }
+pty-write   = { verb: "pty.write", session: stream-session, bytes: bstr }
+pty-resize  = { verb: "pty.resize", session: stream-session, cols: uint, rows: uint }
+pty-kill    = { verb: "pty.kill", session: stream-session, signal: int }
+proc-spawn  = { verb: "proc.spawn", argv: [* tstr], ? cwd: tstr, env: {* tstr => tstr} }
+proc-signal = { verb: "proc.signal", session: stream-session, signal: int }
+proc-kill   = { verb: "proc.kill", session: stream-session }
+; core/data — the opaque, per-application data domain. Generalises Cascade's
+; own oplog: each peer's own log is a single-writer, append-only sequence,
+; so two peers' logs never block-conflict, and distributing them between
+; peers is replication. The frame envelope (owning peer, sequence range,
+; length of the entry set) is fixed here; the entry itself is opaque bytes to
+; this schema and to any peer relaying it, so different applications — an
+; agent-comms room message, a Cascade operation-log entry, anything else —
+; can share a mesh without the transport layer needing to understand any of
+; their content. A domain implementing core/data defines its own entry
+; schema separately, in its own application-level spec, not here.
+
+data-have-frame    = { type: "data-have", peer: device-id, head-seq: uint }
+data-request-frame = { type: "data-request", peer: device-id, from-seq: uint }   ; exclusive lower bound
+
+; The i-th entry (zero-based) carries sequence (from-seq + 1 + i); a receiver
+; rejects a data-entries-frame whose from-seq would leave a gap against what
+; it already holds for that peer.
+data-entries-frame = { type: "data-entries", peer: device-id, from-seq: uint, entries: [* bstr] }
+; core/federation — selective, explicit sharing between independently
+; operated meshes, distinct from ordinary intra-mesh relay. No Cascade
+; precedent exists for this; it is designed as its own capability domain
+; rather than a separate connection type, so it reuses Handshake negotiation,
+; the Frame choice, and capability-scope instead of inventing a parallel
+; mechanism. Generalises agent-comms' own existing fed_handshake/fed_room_*
+; messages past one specific application.
+;
+; Two designated gateway devices, one per mesh, negotiate core/federation at
+; Handshake like any other domain, then speak these frames on that
+; connection.
+
+mesh-id = tstr   ; a human-chosen or hash-derived identifier for an independently-operated mesh; opaque, not required to be device-id-shaped
+
+federation-link-request-frame = {
+  type: "federation-link-request",
+  local-mesh: mesh-id,
+  local-name: tstr,
+  offered-shares: [* share-descriptor],
+}
+
+federation-link-accept-frame = {
+  type: "federation-link-accept",
+  remote-mesh: mesh-id,
+  remote-name: tstr,
+  accepted-shares: [* share-descriptor],
+}
+
+federation-link-reject-frame = { type: "federation-link-reject", reason: tstr }
+
+; What's shared: reuses capability-scope so "a room path" and "a folder path"
+; are the same generic concept federation already needs elsewhere in this
+; schema.
+share-descriptor = {
+  domain: domain-id,
+  resource: capability-scope,
+  direction: "inbound" / "outbound" / "bidirectional",
+}
+
+; Renegotiate shares after the initial link — add or remove a room later
+; without tearing down the whole federation link.
+federation-share-frame   = { type: "federation-share", share: share-descriptor }
+federation-unshare-frame = { type: "federation-unshare", share: share-descriptor }
+
+; Once a share is accepted, content belonging to that shared resource is
+; forwarded across the link wrapped in this envelope — deliberately
+; content-aware and resource-scoped, unlike relay-data-frame's opaque byte
+; pipe. That is the actual distinction between federation and ordinary
+; intra-mesh relay: relay-data-frame is payload-blind NAT-traversal plumbing;
+; federation-envelope-frame is deliberate, selective, resource-scoped
+; cross-mesh sharing. origin-device is carried explicitly because the link's
+; own peer identity is the gateway device, not the device inside the remote
+; mesh that originated the content.
+federation-envelope-frame = {
+  type: "federation-envelope",
+  origin-mesh: mesh-id,
+  origin-device: device-id,
+  resource: capability-scope,
+  inner: bstr,   ; .cbor frame — a full inner Frame value, CBOR-encoded and embedded
+}
+; The top-level Frame choice. This is the schema functioning as its own type
+; registry: a frame's kind is expressed by CDDL's own tagged-union mechanism,
+; not a separate external [type][body] byte header the way XDR-based
+; protocols (Cascade's own v1 included) require.
+;
+; Frame *kinds* stay centrally curated — a closed union, seeded once by the
+; core files above — rather than open the way domains and capability verbs
+; are. A new frame *shape* is a materially bigger interop commitment than a
+; new domain string or a new opaque verb: every implementation's decoder has
+; to know the shape to do anything with it at all, where an unknown domain or
+; verb can simply be advertised, ignored, or rejected without needing to be
+; understood. $frame-variant remains a socket, though, so a real extension —
+; Cascade's own excluded core/content domain, or any future third-party
+; domain that genuinely needs a new frame shape — can still plug in from its
+; own schema file, without editing any of the files above.
+
+$frame-variant /= handshake-frame
+$frame-variant /= ping-frame
+$frame-variant /= close-frame
+$frame-variant /= gossip-frame
+$frame-variant /= candidates-frame
+$frame-variant /= sync-punch-frame
+$frame-variant /= observed-address-frame
+$frame-variant /= relay-offer-frame
+$frame-variant /= relay-connect-frame
+$frame-variant /= relay-data-frame
+$frame-variant /= relay-inbound-frame
+$frame-variant /= manage-request-frame
+$frame-variant /= manage-response-frame
+$frame-variant /= revocation-announce-frame
+$frame-variant /= stream-data-frame
+$frame-variant /= stream-ack-frame
+$frame-variant /= stream-end-frame
+$frame-variant /= data-have-frame
+$frame-variant /= data-request-frame
+$frame-variant /= data-entries-frame
+$frame-variant /= federation-link-request-frame
+$frame-variant /= federation-link-accept-frame
+$frame-variant /= federation-link-reject-frame
+$frame-variant /= federation-share-frame
+$frame-variant /= federation-unshare-frame
+$frame-variant /= federation-envelope-frame
+
+frame = $frame-variant

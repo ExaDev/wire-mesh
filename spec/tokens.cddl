@@ -1,0 +1,79 @@
+; Capability verbs, scopes, and signed capability tokens.
+;
+; Authority is a verb over a scope, carried between nodes as a token signed by
+; the issuing node's own key. A bearer presents a token; the verifier checks
+; the signature, expiry, and revocation before authorising the carried grant.
+; Delegation forms a chain where each hop can only narrow authority, never
+; widen it, and a token's expiry is clamped to its parent's — that narrowing
+; rule is a verifier obligation, not something CDDL itself can enforce.
+
+capability-verb = core-capability / namespaced-capability / private-use-capability
+
+; Bare "subsystem:action", spec-owned registry — see registry/core-capabilities.md.
+core-capability = tstr .regexp "[a-z][a-z0-9-]*:[a-z][a-z0-9-]*"
+
+; "<registrant>/<local-name>:<action>", same registrant-owned namespace as
+; namespaced-domain-id.
+namespaced-capability = tstr .regexp "[a-z0-9.-]+/[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+"
+
+private-use-capability = tstr .regexp "x-[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+"
+
+; A hierarchical scope string. "kind" is open on purpose: "node" and "folder"
+; are Cascade's own scopes; "room" and "org" are agent-comms'; a future
+; application mints its own kind rather than needing this schema to change.
+capability-scope = {
+  kind: tstr,
+  ? path: tstr,   ; absent means the kind's own whole-scope root
+}
+
+cose-header-alg = 1   ; RFC 9052 common header label: algorithm
+cose-header-kid = 4   ; RFC 9052 common header label: key identifier
+
+cose-header-label = int / tstr
+
+cose-token-headers = {
+  ? cose-header-alg => int,
+  ? cose-header-kid => bstr,   ; issuer device-id, a fast lookup hint before full verification, not itself trusted
+  * cose-header-label => any,
+}
+
+; The literal COSE_Sign1 array (RFC 9052 §4.2) rather than a bespoke named
+; structure, so every implementation can verify and sign using an off-the-
+; shelf COSE library instead of hand-rolling the Sig_structure construction.
+cose-sign1 = [
+  protected: bstr,             ; bstr .cbor cose-token-headers
+  unprotected: cose-token-headers,
+  payload: bstr / nil,          ; bstr .cbor token-claims, present (not nil) for a capability token
+  signature: bstr,
+]
+
+capability-token = cose-sign1
+
+; The signed payload. issuer-key travels inside the signed content, not as a
+; sibling of the COSE envelope, specifically so the token is self-certifying:
+; a verifier checks that sha256(issuer-key.public-key) equals the claimed
+; issuer device-id, and that the signature verifies against that same
+; embedded key — no shared secret or prior contact with the issuer is needed
+; to verify a token, only the token itself.
+token-claims = {
+  token-id: bstr,
+  issuer: device-id,
+  issuer-key: identity-key,
+  bearer: device-id,
+  capability: capability-verb,
+  scope: capability-scope,
+  expires: uint,               ; Unix ms
+  ? not-before: uint,
+  ? parent: bstr,               ; bstr .cbor capability-token — a fully self-contained, nested COSE_Sign1 of the parent token; the recursive delegation chain
+  * tstr => any,                ; forward-compatible extension claims
+}
+
+; Signing convention (a verifier obligation, not expressible as a CDDL
+; constraint): `signature` is computed per RFC 9052 §4.4's Sig_structure,
+; the array ["Signature1", protected, external_aad, payload], where
+; external_aad is the empty bstr and payload is the canonical DAG-CBOR
+; encoding of token-claims. Canonical encoding is a codec-level guarantee
+; this schema cannot itself enforce — every implementation's CBOR codec must
+; produce the DAG-CBOR canonical form for token-claims specifically, or
+; signatures will not verify across implementations even when both are
+; individually correct.

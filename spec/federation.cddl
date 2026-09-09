@@ -1,0 +1,60 @@
+; core/federation — selective, explicit sharing between independently
+; operated meshes, distinct from ordinary intra-mesh relay. No Cascade
+; precedent exists for this; it is designed as its own capability domain
+; rather than a separate connection type, so it reuses Handshake negotiation,
+; the Frame choice, and capability-scope instead of inventing a parallel
+; mechanism. Generalises agent-comms' own existing fed_handshake/fed_room_*
+; messages past one specific application.
+;
+; Two designated gateway devices, one per mesh, negotiate core/federation at
+; Handshake like any other domain, then speak these frames on that
+; connection.
+
+mesh-id = tstr   ; a human-chosen or hash-derived identifier for an independently-operated mesh; opaque, not required to be device-id-shaped
+
+federation-link-request-frame = {
+  type: "federation-link-request",
+  local-mesh: mesh-id,
+  local-name: tstr,
+  offered-shares: [* share-descriptor],
+}
+
+federation-link-accept-frame = {
+  type: "federation-link-accept",
+  remote-mesh: mesh-id,
+  remote-name: tstr,
+  accepted-shares: [* share-descriptor],
+}
+
+federation-link-reject-frame = { type: "federation-link-reject", reason: tstr }
+
+; What's shared: reuses capability-scope so "a room path" and "a folder path"
+; are the same generic concept federation already needs elsewhere in this
+; schema.
+share-descriptor = {
+  domain: domain-id,
+  resource: capability-scope,
+  direction: "inbound" / "outbound" / "bidirectional",
+}
+
+; Renegotiate shares after the initial link — add or remove a room later
+; without tearing down the whole federation link.
+federation-share-frame   = { type: "federation-share", share: share-descriptor }
+federation-unshare-frame = { type: "federation-unshare", share: share-descriptor }
+
+; Once a share is accepted, content belonging to that shared resource is
+; forwarded across the link wrapped in this envelope — deliberately
+; content-aware and resource-scoped, unlike relay-data-frame's opaque byte
+; pipe. That is the actual distinction between federation and ordinary
+; intra-mesh relay: relay-data-frame is payload-blind NAT-traversal plumbing;
+; federation-envelope-frame is deliberate, selective, resource-scoped
+; cross-mesh sharing. origin-device is carried explicitly because the link's
+; own peer identity is the gateway device, not the device inside the remote
+; mesh that originated the content.
+federation-envelope-frame = {
+  type: "federation-envelope",
+  origin-mesh: mesh-id,
+  origin-device: device-id,
+  resource: capability-scope,
+  inner: bstr,   ; .cbor frame — a full inner Frame value, CBOR-encoded and embedded
+}

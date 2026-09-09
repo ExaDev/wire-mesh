@@ -1,0 +1,44 @@
+; The top-level Frame choice. This is the schema functioning as its own type
+; registry: a frame's kind is expressed by CDDL's own tagged-union mechanism,
+; not a separate external [type][body] byte header the way XDR-based
+; protocols (Cascade's own v1 included) require.
+;
+; Frame *kinds* stay centrally curated — a closed union, seeded once by the
+; core files above — rather than open the way domains and capability verbs
+; are. A new frame *shape* is a materially bigger interop commitment than a
+; new domain string or a new opaque verb: every implementation's decoder has
+; to know the shape to do anything with it at all, where an unknown domain or
+; verb can simply be advertised, ignored, or rejected without needing to be
+; understood. $frame-variant remains a socket, though, so a real extension —
+; Cascade's own excluded core/content domain, or any future third-party
+; domain that genuinely needs a new frame shape — can still plug in from its
+; own schema file, without editing any of the files above.
+
+$frame-variant /= handshake-frame
+$frame-variant /= ping-frame
+$frame-variant /= close-frame
+$frame-variant /= gossip-frame
+$frame-variant /= candidates-frame
+$frame-variant /= sync-punch-frame
+$frame-variant /= observed-address-frame
+$frame-variant /= relay-offer-frame
+$frame-variant /= relay-connect-frame
+$frame-variant /= relay-data-frame
+$frame-variant /= relay-inbound-frame
+$frame-variant /= manage-request-frame
+$frame-variant /= manage-response-frame
+$frame-variant /= revocation-announce-frame
+$frame-variant /= stream-data-frame
+$frame-variant /= stream-ack-frame
+$frame-variant /= stream-end-frame
+$frame-variant /= data-have-frame
+$frame-variant /= data-request-frame
+$frame-variant /= data-entries-frame
+$frame-variant /= federation-link-request-frame
+$frame-variant /= federation-link-accept-frame
+$frame-variant /= federation-link-reject-frame
+$frame-variant /= federation-share-frame
+$frame-variant /= federation-unshare-frame
+$frame-variant /= federation-envelope-frame
+
+frame = $frame-variant

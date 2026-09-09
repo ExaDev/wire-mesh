@@ -1,0 +1,27 @@
+; The management domain — a verb command set dispatched by scope and
+; capability token, gated by per-command authorisation and audited.
+; `$manage-command-params` is a socket, not a closed union: a capability
+; domain that needs its own management verbs (core/exec's pty.*/proc.*
+; commands, or any future domain) extends it from its own schema file rather
+; than editing this one.
+
+manage-command = { verb: capability-verb, params: $manage-command-params }
+$manage-command-params = {* tstr => any}
+
+manage-request-frame = {
+  type: "manage-request",
+  request-id: uint,
+  command: manage-command,
+  scope: capability-scope,
+  ? token: capability-token,
+}
+
+manage-ok    = { result: "ok", * tstr => any }
+manage-error = { result: "error", code: tstr, ? message: tstr }
+manage-response-frame = { type: "manage-response", request-id: uint, outcome: manage-ok / manage-error }
+
+; Revocation — new, not present in Cascade's frozen set. Gossiped revocation
+; entries let a peer check a token against a shared revocation view without
+; a synchronous lookup against the issuer for every use of the token.
+revocation-entry = { token-id: bstr, revoked-at: uint }
+revocation-announce-frame = { type: "revocation-announce", entries: [* revocation-entry] }
