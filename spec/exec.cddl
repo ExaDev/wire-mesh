@@ -8,7 +8,7 @@
 ; request's scope field. That check is a verifier obligation, not something
 ; this schema can enforce structurally.
 
-$manage-command-params /= pty-spawn / pty-write / pty-resize / pty-kill / proc-spawn / proc-signal / proc-kill
+$manage-command-params /= pty-spawn / pty-write / pty-resize / pty-kill / proc-spawn / proc-signal / proc-kill / exec-list
 
 pty-spawn   = { verb: "pty.spawn", ? shell: tstr, argv: [* tstr], ? cwd: tstr, env: {* tstr => tstr}, cols: uint, rows: uint }
 pty-write   = { verb: "pty.write", session: stream-session, bytes: bstr }
@@ -17,3 +17,14 @@ pty-kill    = { verb: "pty.kill", session: stream-session, signal: int }
 proc-spawn  = { verb: "proc.spawn", argv: [* tstr], ? cwd: tstr, env: {* tstr => tstr} }
 proc-signal = { verb: "proc.signal", session: stream-session, signal: int }
 proc-kill   = { verb: "proc.kill", session: stream-session }
+
+; Session enumeration — a first-class part of the exec capability, not an
+; afterthought: a node tracks its own live sessions and can list them for an
+; authorised peer, scoped the same way any other exec verb is. (A synthetic
+; /proc-style presentation of running sessions is optional sugar on top of
+; this; enumeration itself is not.)
+exec-list = { verb: "exec.list" }
+exec-session-info = { session: stream-session, kind: "pty" / "proc", ? argv: [* tstr], ? cwd: tstr }
+; A manage-response-frame answering exec.list carries manage-ok extended with
+; `sessions: [* exec-session-info]`, using manage-ok's own open {* tstr => any}
+; tail rather than a dedicated result type.
