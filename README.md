@@ -33,9 +33,35 @@ Capability tokens are signed using [COSE](https://www.rfc-editor.org/rfc/rfc9052
 
 The schema is described in [CDDL](https://datatracker.ietf.org/doc/html/rfc8610) (RFC 8610), the IETF standard for specifying CBOR structures. Interoperability between independent implementations must be proven by shared, language-neutral conformance vectors — golden test cases every implementation's own CI runs — not by documentation alone.
 
+## Repository structure
+
+```
+spec/                     — the CDDL schema and prose specification, language-neutral
+conformance/              — golden test vectors every implementation's CI must round-trip
+rust/                     — the Rust implementation, published to crates.io
+ts/
+  packages/
+    core/                 — the TypeScript implementation, published to npm
+    cloudflare-hub/       — a reference Cloudflare Worker deployment of a public hub node
+```
+
+`spec/` and `conformance/` are the actual contract. `rust/` and `ts/packages/core` are two implementations of it, not two different things — neither is privileged over the other, and a future implementation in any other language is exactly as welcome. Tasks are orchestrated across the two languages by a thin root `justfile` that dispatches into each subtree's own native tooling (`cargo` for `rust/`, `turbo` for `ts/`) rather than a shared build system — there's no cross-language build graph complex enough yet to need one.
+
 ## Implementations
 
-None yet. The two known future implementers are Cascade (Rust) and agent-comms (TypeScript). A companion project, [cddl.js](https://github.com/ExaDev/cddl.js), exists to give the TypeScript side schema-driven code generation, since no such tool currently exists for CDDL.
+None yet — `rust/` and `ts/packages/core` don't exist as code, only as the structure above. Once they do:
+
+- **[Cascade](https://github.com/Mearman/cascade)** refactors its own hand-written protocol code onto `rust/` as an ordinary Cargo dependency, rather than maintaining a parallel implementation.
+- **[agent-comms](https://github.com/ExaDev/agent-comms)** refactors its own wire-protocol and transport code onto `ts/packages/core` as an ordinary pnpm dependency, the same way.
+- **[cddl.js](https://github.com/ExaDev/cddl.js)** gives `ts/packages/core` schema-driven Zod generation from `spec/protocol.cddl`, since no CDDL-to-TypeScript tool currently exists.
+
+### The Cloudflare hub
+
+`ts/packages/cloudflare-hub` is a reference deployment of a public, always-on mesh node — a coordinator-of-coordinators that other peers dial into for company- or community-wide reach beyond a single local mesh. It depends on `ts/packages/core` as an ordinary consumer, exactly as agent-comms and Cascade do. It lives in this repository for now, during early co-development with the spec, but is deliberately structured as its own package rather than folded into the core library — the spec itself must stay adoptable by anyone with no interest in ExaDev's specific deployment, and that boundary is what makes moving the hub to its own repository later a packaging change, not an architectural one.
+
+### Versioning
+
+Two different things need their own versioning discipline, and neither substitutes for the other: the **wire protocol version**, negotiated at the handshake so mixed-version deployments degrade gracefully, and each **package's own semver**, since a package's public API can break independently of the wire format staying compatible. A protocol-version bump doesn't require a major package bump, and vice versa.
 
 ## Contributing
 
