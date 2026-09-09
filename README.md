@@ -2,7 +2,7 @@
 
 An application-neutral peer-mesh wire protocol. Any tool that speaks it — a file-sync client, an agent communication bus, a terminal broker — can be a first-class peer in the same mesh as any other tool. No single implementation is the canonical runtime. The protocol is the contract; no codebase is.
 
-> **Status: design phase.** Nothing here is implemented yet. This repository records the settled architectural decisions, so implementation is transcription against an agreed contract, not ad hoc invention per language.
+> **Status: schema written, no implementations yet.** [`spec/protocol.cddl`](spec/protocol.cddl) is a real, RFC 8610-valid schema, validated against a CDDL parser — not just prose. Nothing consumes it yet: `rust/` and `ts/packages/*` don't exist as code, only as the repository structure below.
 
 ## Why this exists
 
@@ -61,7 +61,7 @@ ts/
 
 ## Implementations
 
-None yet — `rust/` and `ts/packages/core` don't exist as code, only as the structure above. Once they do:
+None yet. The schema exists (`spec/protocol.cddl`); `rust/` and `ts/packages/core` don't exist as code, only as the structure above. Once they do:
 
 - **[Cascade](https://github.com/Mearman/cascade)** refactors its own hand-written protocol code onto `rust/` as an ordinary Cargo dependency, rather than maintaining a parallel implementation.
 - **[agent-comms](https://github.com/ExaDev/agent-comms)** refactors its own wire-protocol and transport code onto `ts/packages/core` as an ordinary pnpm dependency, the same way.
