@@ -11,3 +11,8 @@ Source files are discovered automatically, not hand-listed — adding a new `*.c
 Two sockets (`$frame-variant`, `$manage-command-params`) are the deliberate extension seams a later file — or a downstream project's own schema, such as Cascade's own excluded `core/content` domain — plugs into without editing the core files. Ordinary rule names must stay globally unique across every file — no tool catches a collision before the concatenated file is parsed, so each file's rules share a prefix matching its own filename; CI checks this on every push.
 
 `registry/` holds the append-only core domain and capability name lists referenced from `handshake.cddl` and `tokens.cddl`.
+
+## Validated against two independent RFC 8610 implementations
+
+CI runs `protocol.cddl` through the [`cddl`](https://www.npmjs.com/package/cddl) npm package. It has also been checked directly against the [`cddl`](https://crates.io/crates/cddl) Rust crate (`cargo install cddl`, then `cddl compile-cddl --cddl protocol.cddl`), which reported it fully conformant with no issues. The two disagreed once during authoring — the npm parser rejected bare integer map keys and an inline type-choice used directly as a map key, both valid per RFC 8610's grammar — which is why `tokens.cddl`'s COSE header labels are named rules (`cose-header-alg`, `cose-header-kid`) and `cose-header-label` rather than inline literals; the fix for the stricter parser turned out to already satisfy the Rust crate too, so nothing needed reconciling once both were checked.
+
