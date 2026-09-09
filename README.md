@@ -13,6 +13,19 @@ Two independent projects converged on the same shape of problem: peers identifie
 
 Rather than have agent-comms couple to Cascade's specific implementation, or have the two projects maintain parallel, incompatible protocols for the same problem, wire-mesh is the neutral third artefact both refactor onto as equal peers. Any future application is free to implement it independently.
 
+## Comparison to alternatives
+
+Several existing protocols cover overlapping ground. None combines wire-mesh's specific set of properties — direct P2P topology, public-key identity, capability-token authorisation, and an opaque per-application content domain — in one protocol.
+
+| Protocol | Topology | Peer identity | Authorisation | Application content | Wire encoding |
+|---|---|---|---|---|---|
+| **wire-mesh** | Direct P2P mesh, with relay for NAT traversal and optional cross-mesh federation | Hash of a self-signed public key | Signed, revocable, delegatable capability tokens; delegation can only narrow authority | Opaque per-application payload; only identity, handshake, tokens and relay are protocol-native | CBOR/DAG-CBOR, signed via COSE, schema in CDDL |
+| [libp2p](https://libp2p.io/) | Direct P2P mesh, with circuit relay and hole punching for NAT traversal | Multihash of a public key | Not built in; left to the application or its own protocols | Defined per protocol via multistream-select and application-registered protocol IDs | Protocol-specific; commonly Protobuf |
+| [Secure Scuttlebutt](https://scuttlebutt.nz/) | P2P gossip replication of append-only logs; no relay primitive | Ed25519 public key | None; a feed's own author key is its sole authority | Fixed: an append-only log of an identity's own signed messages | JSON, hashed for signing |
+| [Syncthing](https://docs.syncthing.net/specs/bep-v1.html) (BEP) | Direct P2P mesh, with relay servers for NAT traversal | SHA-256 of a self-signed certificate | None; access is device-list based, not token-scoped | Fixed: file blocks and index metadata for folder sync | Protobuf |
+| [Matrix](https://spec.matrix.org/) | Federated client-server and server-server; not peer-to-peer | Homeserver-issued user ID; no peer key | Room-level power levels and access-control lists, not bearer capability tokens | Fixed: room events under a defined event-type schema | JSON |
+| [ActivityPub](https://www.w3.org/TR/activitypub/) | Federated server-to-server, one-to-many broadcast | Server-hosted actor URI; no peer key | None; visibility is addressing-based (public/followers/etc), not capability tokens | Fixed: JSON-LD activity vocabulary | JSON-LD |
+
 ## Architecture
 
 ### What the protocol specifies
