@@ -43,6 +43,7 @@ ts/
   packages/
     core/                 — the TypeScript implementation, published to npm
     cloudflare-hub/       — a reference Cloudflare Worker deployment of a public hub node
+    web-console/          — a browser client (directory, room browser, join-from-browser) for any node
 ```
 
 `spec/` and `conformance/` are the actual contract. `rust/` and `ts/packages/core` are two implementations of it, not two different things — neither is privileged over the other, and a future implementation in any other language is exactly as welcome. Tasks are orchestrated across the two languages by a thin root `justfile` that dispatches into each subtree's own native tooling (`cargo` for `rust/`, `turbo` for `ts/`) rather than a shared build system — there's no cross-language build graph complex enough yet to need one.
@@ -55,9 +56,11 @@ None yet — `rust/` and `ts/packages/core` don't exist as code, only as the str
 - **[agent-comms](https://github.com/ExaDev/agent-comms)** refactors its own wire-protocol and transport code onto `ts/packages/core` as an ordinary pnpm dependency, the same way.
 - **[cddl.js](https://github.com/ExaDev/cddl.js)** gives `ts/packages/core` schema-driven Zod generation from `spec/protocol.cddl`, since no CDDL-to-TypeScript tool currently exists.
 
-### The Cloudflare hub
+### The Cloudflare hub is a node, not a PWA — and the PWA is its own package
 
-`ts/packages/cloudflare-hub` is a reference deployment of a public, always-on mesh node — a coordinator-of-coordinators that other peers dial into for company- or community-wide reach beyond a single local mesh. It depends on `ts/packages/core` as an ordinary consumer, exactly as agent-comms and Cascade do. It lives in this repository for now, during early co-development with the spec, but is deliberately structured as its own package rather than folded into the core library — the spec itself must stay adoptable by anyone with no interest in ExaDev's specific deployment, and that boundary is what makes moving the hub to its own repository later a packaging change, not an architectural one.
+`ts/packages/cloudflare-hub` is a reference deployment of a public, always-on mesh **node** — a coordinator-of-coordinators that other peers dial into for company- or community-wide reach beyond a single local mesh. It depends on `ts/packages/core` as an ordinary consumer, exactly as agent-comms and Cascade do. It lives in this repository for now, during early co-development with the spec, but is deliberately structured as its own package rather than folded into the core library — the spec itself must stay adoptable by anyone with no interest in ExaDev's specific deployment, and that boundary is what makes moving the hub to its own repository later a packaging change, not an architectural one.
+
+The web console a human actually opens in a browser — `ts/packages/web-console` — is a different thing, kept separate for the same reason: it is a *client* of a node, not a node itself. It may be served as static assets from the same origin as `cloudflare-hub` for deployment convenience, but it is not folded into it, and it is not tied to Cloudflare at all — it can equally connect to a purely local, laptop-hosted coordinator. This is also distinct from a third scenario this naming invites confusion with: an ordinary browser tab acting as its own genuine leaf peer (its own identity, its own `core`-implemented `MeshTransport`, entirely on an end user's device). That's not a package in this repository at all — it's just another consumer of `core`, built by whoever wants a browser-embedded node, the same as agent-comms or Cascade.
 
 ### Versioning
 
