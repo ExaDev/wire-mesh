@@ -8,7 +8,7 @@
 //! prior contact with the issuer is needed, only the token itself — and
 //! delegation can only narrow authority, never widen it.
 
-use wire_mesh_wire::tokens::{CoseSign1, TokenClaims};
+use wire_mesh_wire::tokens::{CapabilityVerb, CoseSign1, TokenClaims};
 
 use crate::domain::cose::sig_structure;
 use crate::domain::revocation::RevocationView;
@@ -54,6 +54,9 @@ pub enum TokenRejection {
     NotNarrowed(&'static str),
     /// The chain revisits a token-id: a delegation cycle.
     ChainCycle,
+    /// A link's claims fail their own grammar: the capability verb
+    /// matches no tier, or the scope is malformed.
+    InvalidClaims(String),
     /// The chain exceeds [`MAX_CHAIN_DEPTH`].
     ChainTooDeep,
 }
@@ -98,6 +101,9 @@ impl core::fmt::Display for TokenRejection {
             ),
             TokenRejection::NotNarrowed(what) => write!(f, "delegation widened authority: {what}"),
             TokenRejection::ChainCycle => write!(f, "delegation chain revisits a token-id (cycle)"),
+            TokenRejection::InvalidClaims(what) => {
+                write!(f, "claims violate the token grammar: {what}")
+            }
             TokenRejection::ChainTooDeep => {
                 write!(f, "delegation chain deeper than {MAX_CHAIN_DEPTH}")
             }
@@ -189,6 +195,18 @@ pub async fn verify_capability_token(
             return TokenVerdict::Invalid(TokenRejection::ChainCycle);
         }
         seen.push(claims.token_id.clone());
+
+        // Every link's claims must satisfy their own grammar: a signed
+        // token whose verb matches no capability tier or whose scope is
+        // malformed is invalid at verification time, not only where a
+        // frame gate happens to check (Frame::validate covers
+        // manage-requests; the verifier must not depend on that).
+        if let Err(e) = CapabilityVerb::validate(&claims.capability.0) {
+            return TokenVerdict::Invalid(TokenRejection::InvalidClaims(e.to_string()));
+        }
+        if let Err(e) = claims.scope.validate() {
+            return TokenVerdict::Invalid(TokenRejection::InvalidClaims(e.to_string()));
+        }
 
         let Some(payload) = current.payload.clone() else {
             return TokenVerdict::Invalid(TokenRejection::Malformed(
@@ -496,6 +514,36 @@ mod tests {
         assert!(matches!(
             verdict,
             TokenVerdict::Invalid(TokenRejection::NotYetValid { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn malformed_verb_or_scope_in_signed_claims_is_rejected_at_verification() {
+        let issuer = NodeIdentity::generate_ed25519();
+        let mut view = RevocationView::new();
+        let _ = &mut view;
+
+        // Grammatically malformed verb: signed by a real issuer, so the
+        // signature and self-certification checks pass — the grammar check
+        // is what rejects it.
+        let mut claims = claims_for(&issuer, DeviceId([0xBB; 32]));
+        claims.capability = CapabilityVerb("NOT-A-VERB".to_owned());
+        let token = mint(&issuer, &claims).await;
+        assert!(matches!(
+            verify(&issuer, &RevocationView::new(), &token).await,
+            TokenVerdict::Invalid(TokenRejection::InvalidClaims(_))
+        ));
+
+        // Empty-kind scope: same story, different field.
+        let mut claims = claims_for(&issuer, DeviceId([0xBB; 32]));
+        claims.scope = CapabilityScope {
+            kind: String::new(),
+            path: None,
+        };
+        let token = mint(&issuer, &claims).await;
+        assert!(matches!(
+            verify(&issuer, &RevocationView::new(), &token).await,
+            TokenVerdict::Invalid(TokenRejection::InvalidClaims(_))
         ));
     }
 
