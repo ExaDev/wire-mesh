@@ -23,5 +23,30 @@ manage-response-frame = { type: "manage-response", request-id: uint, outcome: ma
 ; Revocation — new, not present in Cascade's frozen set. Gossiped revocation
 ; entries let a peer check a token against a shared revocation view without
 ; a synchronous lookup against the issuer for every use of the token.
-revocation-entry = { token-id: bstr, revoked-at: uint }
+;
+; Self-certifying, the same COSE_Sign1 pattern as capability-token and
+; handle-record, deliberately: a bare, unsigned {token-id, revoked-at} pair
+; would let any peer falsely announce any other peer's valid token as
+; revoked with no attribution at all, a real denial-of-service vector this
+; closes rather than merely documents. issuer-key travels inside the signed
+; payload for the same reason it does in token-claims — self-certifying, no
+; prior contact with the issuer needed to verify the claim, only the claim
+; itself.
+;
+; A verifier MUST check revocation-claims.issuer against the *token's own*
+; issuer field, not merely that some signature verifies — only a token's
+; own issuer may revoke it. A verifier walking a token's parent chain (see
+; tokens.cddl's `parent` field) MUST check every ancestor's own token-id
+; against the revocation view, not only the leaf token's: revoking one
+; ancestor thereby revokes every token delegated beneath it, without
+; needing to individually re-revoke each descendant. Both are verifier
+; obligations, not something CDDL itself can enforce, the same way
+; delegation's narrowing rule is.
+revocation-claims = {
+  token-id: bstr,
+  issuer: device-id,
+  issuer-key: identity-key,   ; verifier checks sha256(issuer-key.public-key) == issuer
+  revoked-at: uint,
+}
+revocation-entry = cose-sign1   ; payload = bstr .cbor revocation-claims
 revocation-announce-frame = { type: "revocation-announce", entries: [* revocation-entry] }
