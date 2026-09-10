@@ -228,6 +228,60 @@ const frameVectors: Vector[] = [
       message: "token does not authorise this path",
     },
   }),
+  vector("manage_request_v1_webrtc_offer", {
+    type: "manage-request",
+    "request-id": 3,
+    command: {
+      verb: "webrtc:signal",
+      params: {
+        verb: "webrtc.offer",
+        "negotiation-id": 1,
+        sdp: "v=0\r\no=- 46117317 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n",
+      },
+    },
+    scope: { kind: "node" },
+    token: rootToken,
+  }),
+  vector("manage_request_v1_webrtc_answer", {
+    type: "manage-request",
+    "request-id": 4,
+    command: {
+      verb: "webrtc:signal",
+      params: {
+        verb: "webrtc.answer",
+        "negotiation-id": 1,
+        sdp: "v=0\r\no=- 55221190 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n",
+      },
+    },
+    scope: { kind: "node" },
+  }),
+  vector("manage_request_v1_webrtc_ice_candidate", {
+    type: "manage-request",
+    "request-id": 5,
+    command: {
+      verb: "webrtc:signal",
+      params: {
+        verb: "webrtc.ice-candidate",
+        "negotiation-id": 1,
+        candidate: {
+          candidate: "candidate:1 1 UDP 2130706431 203.0.113.5 54400 typ host",
+          "sdp-mid": "0",
+          "sdp-m-line-index": 0,
+          "username-fragment": "abcd",
+        },
+      },
+    },
+    scope: { kind: "node" },
+  }),
+  vector("manage_request_v1_webrtc_ice_candidate_end_of_candidates", {
+    type: "manage-request",
+    "request-id": 6,
+    command: {
+      verb: "webrtc:signal",
+      params: { verb: "webrtc.ice-candidate", "negotiation-id": 1 },
+    },
+    scope: { kind: "node" },
+  }),
   vector("revocation_announce_v1_two_entries", {
     type: "revocation-announce",
     // Each entry is its own cose-sign1 (same shape as capability-token), so a revocation carries the same self-certifying attribution as the token it revokes: a verifier checks revocation-claims.issuer against the token's own issuer field, not merely that some signature verifies -- only a token's own issuer may revoke it.
@@ -323,6 +377,6 @@ write(
 
 write(
   "frames.v1.json",
-  "Frame conformance vectors for protocol version 1, covering every $frame-variant in spec/frame.cddl except handshake-frame (see handshake.v1.json). manage-response-frame gets two vectors, one per branch of its manage-ok / manage-error outcome union.",
+  "Frame conformance vectors for protocol version 1, covering every $frame-variant in spec/frame.cddl except handshake-frame (see handshake.v1.json). manage-response-frame gets two vectors, one per branch of its manage-ok / manage-error outcome union. The four core/webrtc vectors (offer, answer, ice-candidate, end-of-candidates) exercise manage-request-frame's params socket with new content, not a new frame kind; the offer vector is also the first in this file to exercise manage-request-frame's optional token field.",
   frameVectors,
 );

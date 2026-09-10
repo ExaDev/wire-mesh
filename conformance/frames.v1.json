@@ -1,6 +1,6 @@
 {
   "protocol_version": 1,
-  "description": "Frame conformance vectors for protocol version 1, covering every $frame-variant in spec/frame.cddl except handshake-frame (see handshake.v1.json). manage-response-frame gets two vectors, one per branch of its manage-ok / manage-error outcome union.",
+  "description": "Frame conformance vectors for protocol version 1, covering every $frame-variant in spec/frame.cddl except handshake-frame (see handshake.v1.json). manage-response-frame gets two vectors, one per branch of its manage-ok / manage-error outcome union. The four core/webrtc vectors (offer, answer, ice-candidate, end-of-candidates) exercise manage-request-frame's params socket with new content, not a new frame kind; the offer vector is also the first in this file to exercise manage-request-frame's optional token field.",
   "vectors": [
     {
       "name": "ping_v1",
@@ -180,6 +180,98 @@
         }
       },
       "wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a364636f64656c73636f70652d64656e69656466726573756c74656572726f72676d6573736167657822746f6b656e20646f6573206e6f7420617574686f72697365207468697320706174686a726571756573742d696402"
+    },
+    {
+      "name": "manage_request_v1_webrtc_offer",
+      "message": {
+        "type": "manage-request",
+        "request-id": 3,
+        "command": {
+          "verb": "webrtc:signal",
+          "params": {
+            "verb": "webrtc.offer",
+            "negotiation-id": 1,
+            "sdp": "v=0\r\no=- 46117317 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n"
+          }
+        },
+        "scope": {
+          "kind": "node"
+        },
+        "token": [
+          {
+            "hex": "a2613126613458201111111111111111111111111111111111111111111111111111111111111111"
+          },
+          {},
+          {
+            "hex": "a76573636f7065a2646b696e6466666f6c6465726470617468652f776f726b6662656172657258202222222222222222222222222222222222222222222222222222222222222222666973737565725820111111111111111111111111111111111111111111111111111111111111111167657870697265731b000001b8dac5b40068746f6b656e2d696450010101010101010101010101010101016a6361706162696c69747968657865633a7074796a6973737565722d6b6579a263616c67266a7075626c69632d6b6579584104aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          {
+            "hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+          }
+        ]
+      },
+      "wire_hex": "a564747970656e6d616e6167652d726571756573746573636f7065a1646b696e64646e6f646565746f6b656e845828a2613126613458201111111111111111111111111111111111111111111111111111111111111111a059010fa76573636f7065a2646b696e6466666f6c6465726470617468652f776f726b6662656172657258202222222222222222222222222222222222222222222222222222222222222222666973737565725820111111111111111111111111111111111111111111111111111111111111111167657870697265731b000001b8dac5b40068746f6b656e2d696450010101010101010101010101010101016a6361706162696c69747968657865633a7074796a6973737565722d6b6579a263616c67266a7075626c69632d6b6579584104aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff67636f6d6d616e64a264766572626d7765627274633a7369676e616c66706172616d73a3637364707832763d300d0a6f3d2d203436313137333137203220494e20495034203132372e302e302e310d0a733d2d0d0a743d3020300d0a64766572626c7765627274632e6f666665726e6e65676f74696174696f6e2d6964016a726571756573742d696403"
+    },
+    {
+      "name": "manage_request_v1_webrtc_answer",
+      "message": {
+        "type": "manage-request",
+        "request-id": 4,
+        "command": {
+          "verb": "webrtc:signal",
+          "params": {
+            "verb": "webrtc.answer",
+            "negotiation-id": 1,
+            "sdp": "v=0\r\no=- 55221190 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n"
+          }
+        },
+        "scope": {
+          "kind": "node"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e64646e6f646567636f6d6d616e64a264766572626d7765627274633a7369676e616c66706172616d73a3637364707832763d300d0a6f3d2d203535323231313930203220494e20495034203132372e302e302e310d0a733d2d0d0a743d3020300d0a64766572626d7765627274632e616e737765726e6e65676f74696174696f6e2d6964016a726571756573742d696404"
+    },
+    {
+      "name": "manage_request_v1_webrtc_ice_candidate",
+      "message": {
+        "type": "manage-request",
+        "request-id": 5,
+        "command": {
+          "verb": "webrtc:signal",
+          "params": {
+            "verb": "webrtc.ice-candidate",
+            "negotiation-id": 1,
+            "candidate": {
+              "candidate": "candidate:1 1 UDP 2130706431 203.0.113.5 54400 typ host",
+              "sdp-mid": "0",
+              "sdp-m-line-index": 0,
+              "username-fragment": "abcd"
+            }
+          }
+        },
+        "scope": {
+          "kind": "node"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e64646e6f646567636f6d6d616e64a264766572626d7765627274633a7369676e616c66706172616d73a36476657262747765627274632e6963652d63616e6469646174656963616e646964617465a4677364702d6d696461306963616e646964617465783763616e6469646174653a312031205544502032313330373036343331203230332e302e3131332e352035343430302074797020686f7374707364702d6d2d6c696e652d696e6465780071757365726e616d652d667261676d656e7464616263646e6e65676f74696174696f6e2d6964016a726571756573742d696405"
+    },
+    {
+      "name": "manage_request_v1_webrtc_ice_candidate_end_of_candidates",
+      "message": {
+        "type": "manage-request",
+        "request-id": 6,
+        "command": {
+          "verb": "webrtc:signal",
+          "params": {
+            "verb": "webrtc.ice-candidate",
+            "negotiation-id": 1
+          }
+        },
+        "scope": {
+          "kind": "node"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e64646e6f646567636f6d6d616e64a264766572626d7765627274633a7369676e616c66706172616d73a26476657262747765627274632e6963652d63616e6469646174656e6e65676f74696174696f6e2d6964016a726571756573742d696406"
     },
     {
       "name": "revocation_announce_v1_two_entries",
