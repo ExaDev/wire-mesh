@@ -418,6 +418,287 @@ describe("verifyCapabilityToken", () => {
 
     expect(verdict).toEqual({ ok: false, reason: "parent_invalid" });
   });
+
+  // -- Delegation must narrow scope and capability, not just expiry --
+
+  interface DelegatedSeed {
+    tokenId: Uint8Array<ArrayBuffer>;
+    bearer: DeviceId;
+    scope: CapabilityScope;
+    capability?: string;
+    expires: number;
+    parent: CapabilityToken;
+  }
+
+  /** Signs a child token as `identity` with an explicit parent token embedded -- the parent's own claims are recoverable by the verifier's own recursion, so they are not restated here. */
+  async function signDelegated(
+    identity: IdentityPort,
+    seed: DelegatedSeed,
+  ): Promise<CapabilityToken> {
+    const claims: TokenClaims = {
+      "token-id": seed.tokenId,
+      issuer: identity.deviceId,
+      "issuer-key": identity.identityKey,
+      bearer: seed.bearer,
+      capability: seed.capability ?? "exec:pty",
+      scope: seed.scope,
+      expires: seed.expires,
+      parent: encodeBuf(seed.parent),
+    };
+    const payload = encodeBuf(claims);
+    const protectedHeader = encodeBuf({});
+    const toBeSigned = encodeBuf([
+      "Signature1",
+      protectedHeader,
+      new Uint8Array(0),
+      payload,
+    ]);
+    const signature = await identity.sign(toBeSigned);
+    return [protectedHeader, {}, payload, signature];
+  }
+
+  /** A root /work-folder token plus a helper to delegate under it, signed by the root's bearer (bearerIdentity), keeping the common expiry/scope consistent across the narrowing tests. */
+  async function delegateUnderWorkRoot(
+    childScope: Readonly<CapabilityScope>,
+    childCapability?: string,
+  ): Promise<CapabilityToken> {
+    const root = await signToken(issuer, {
+      tokenId: nextTokenId(),
+      bearer: bearerDeviceId,
+      scope: { kind: "folder", path: "/work" },
+      expires: now + 2 * HOUR_MS,
+    });
+    const delegate = await generateEs256Identity();
+    return signDelegated(bearerIdentity, {
+      tokenId: nextTokenId(),
+      bearer: delegate.deviceId,
+      scope: childScope,
+      ...(childCapability !== undefined ? { capability: childCapability } : {}),
+      expires: now + HOUR_MS,
+      parent: root,
+    });
+  }
+
+  it("accepts a delegated token with the same scope as its parent", async () => {
+    const delegated = await delegateUnderWorkRoot({
+      kind: "folder",
+      path: "/work",
+    });
+
+    const verdict = await verifyCapabilityToken(delegated, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict.ok).toBe(true);
+  });
+
+  it("accepts a delegated token whose path descends from the parent's", async () => {
+    const delegated = await delegateUnderWorkRoot({
+      kind: "folder",
+      path: "/work/subdir/deeper",
+    });
+
+    const verdict = await verifyCapabilityToken(delegated, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict.ok).toBe(true);
+  });
+
+  it("rejects a delegated token whose scope kind differs from the parent's", async () => {
+    // kind:"org" is a different kind of authority, not a narrower one -- even though its path textually starts with /work
+    const delegated = await delegateUnderWorkRoot({
+      kind: "org",
+      path: "/work",
+    });
+
+    const verdict = await verifyCapabilityToken(delegated, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: "delegation_exceeds_parent",
+    });
+  });
+
+  it("rejects a delegated token whose path is a sibling, not a descendant", async () => {
+    const delegated = await delegateUnderWorkRoot({
+      kind: "folder",
+      path: "/home/private",
+    });
+
+    const verdict = await verifyCapabilityToken(delegated, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: "delegation_exceeds_parent",
+    });
+  });
+
+  it("rejects a delegated token whose path merely prefixes the parent's without a segment boundary", async () => {
+    // "/workbook" starts with "/work" as a string but is a different path, not a descendant
+    const delegated = await delegateUnderWorkRoot({
+      kind: "folder",
+      path: "/workbook",
+    });
+
+    const verdict = await verifyCapabilityToken(delegated, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: "delegation_exceeds_parent",
+    });
+  });
+
+  it("rejects a delegated token with no path under a path-narrowed parent", async () => {
+    // Absent path means the kind's whole-scope root, which is wider than the parent's /work
+    const delegated = await delegateUnderWorkRoot({ kind: "folder" });
+
+    const verdict = await verifyCapabilityToken(delegated, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: "delegation_exceeds_parent",
+    });
+  });
+
+  it("rejects a delegated token whose capability verb differs from the parent's", async () => {
+    const delegated = await delegateUnderWorkRoot(
+      { kind: "folder", path: "/work" },
+      "exec:proc",
+    );
+
+    const verdict = await verifyCapabilityToken(delegated, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: "delegation_exceeds_parent",
+    });
+  });
+
+  it("applies expectedBearer to the leaf only, never to ancestors in the chain", async () => {
+    // The parent's bearer is the child's issuer (bearerIdentity), NOT the leaf's presenter: a leaf presented by its own delegate must verify even though the ancestor's bearer differs.
+    const root = await signToken(issuer, {
+      tokenId: nextTokenId(),
+      bearer: bearerDeviceId,
+      scope: { kind: "folder", path: "/work" },
+      expires: now + 2 * HOUR_MS,
+    });
+    const delegate = await generateEs256Identity();
+    const delegated = await signDelegated(bearerIdentity, {
+      tokenId: nextTokenId(),
+      bearer: delegate.deviceId,
+      scope: { kind: "folder", path: "/work" },
+      expires: now + HOUR_MS,
+      parent: root,
+    });
+
+    const verdict = await verifyCapabilityToken(delegated, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+      expectedBearer: delegate.deviceId,
+    });
+
+    expect(verdict.ok).toBe(true);
+  });
+
+  // -- Hostile input must produce verdicts, not throws --
+
+  it("returns malformed for a payload whose bytes are not CBOR at all", async () => {
+    // A wrapped CBOR break byte: decodes to a bstr rather than token-claims, so this exercises schema rejection of a decodable-but-wrong payload
+    const garbage = encodeBuf(buf(Buffer.from("ff", "hex")));
+    const hostile: CapabilityToken = [
+      encodeBuf({}),
+      {},
+      garbage,
+      new Uint8Array(P256_SIGNATURE_BYTE_LENGTH),
+    ];
+
+    const verdict = await verifyCapabilityToken(hostile, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: "malformed" });
+  });
+
+  it("returns malformed for a payload whose CBOR map keys are not canonically ordered", async () => {
+    // CDE requires canonical (length-first) map-key ordering; cbor2's cdeDecodeOptions rejects this encoding
+    const reversedKeys = buf(Buffer.from("a2627a7a01616102", "hex"));
+    const hostile: CapabilityToken = [
+      encodeBuf({}),
+      {},
+      reversedKeys,
+      new Uint8Array(P256_SIGNATURE_BYTE_LENGTH),
+    ];
+
+    const verdict = await verifyCapabilityToken(hostile, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: "malformed" });
+  });
+
+  it("returns parent_invalid for a parent whose bytes are not CBOR", async () => {
+    // Raw, unwrapped 0xff (a top-level CBOR BREAK -- decode throws): wrapped via encode() it would become a well-formed bstr and exercise schema rejection instead of the decode-throw path this test exists for
+    const garbageParent = buf(new Uint8Array([LOW_BYTE_MASK]));
+    // Signed with real claims but a garbage parent field, so the token itself is otherwise well-formed and the failure is isolated to parent decoding
+    const claims: TokenClaims = {
+      "token-id": nextTokenId(),
+      issuer: bearerDeviceId,
+      "issuer-key": bearerIdentity.identityKey,
+      bearer: (await generateEs256Identity()).deviceId,
+      capability: "exec:pty",
+      scope: { kind: "folder", path: "/work" },
+      expires: now + HOUR_MS,
+      parent: garbageParent,
+    };
+    const payload = encodeBuf(claims);
+    const protectedHeader = encodeBuf({});
+    const toBeSigned = encodeBuf([
+      "Signature1",
+      protectedHeader,
+      new Uint8Array(0),
+      payload,
+    ]);
+    const signature = await bearerIdentity.sign(toBeSigned);
+    const hostile: CapabilityToken = [protectedHeader, {}, payload, signature];
+
+    const verdict = await verifyCapabilityToken(hostile, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: "parent_invalid" });
+  });
 });
 
 describe("verifyRevocationEntry", () => {
