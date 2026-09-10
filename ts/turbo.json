@@ -1,0 +1,24 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+
+  // Root-level tasks fan out topologically into each package's own same-named task (each package defines these itself, matching conformance/'s underscore-prefixed convention so a package's own public script calling `turbo run _build` doesn't recurse into itself).
+  "tasks": {
+    "_build": {
+      "dependsOn": ["^_build"],
+      "outputs": ["dist/**"]
+    },
+    "_test": {
+      "dependsOn": ["_build", "^_build"]
+    },
+    "_typecheck": {
+      "dependsOn": ["_build", "^_build"]
+    },
+    "_lint": {
+      "dependsOn": ["_build", "^_build"],
+      "outputs": [".eslintcache"]
+    },
+    "_conformance-check": {
+      "dependsOn": ["_build", "^_build"]
+    }
+  }
+}

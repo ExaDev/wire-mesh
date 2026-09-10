@@ -1,0 +1,16 @@
+{
+  "name": "wire-mesh-ts",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "build": "turbo run _build",
+    "test": "turbo run _test",
+    "typecheck": "turbo run _typecheck",
+    "lint": "turbo run _lint",
+    "conformance-check": "turbo run _conformance-check"
+  },
+  "devDependencies": {
+    "turbo": "2.10.12"
+  }
+}
