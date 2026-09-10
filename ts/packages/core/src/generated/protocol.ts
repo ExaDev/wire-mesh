@@ -23,7 +23,7 @@ export const handleClaimsSchema = z.lazy(() => z.object({
   "device-id": z.lazy(() => deviceIdSchema),
   "identity-key": z.lazy(() => identityKeySchema),
   "candidates": z.array(z.lazy(() => wireCandidateSchema)).optional(),
-  "mailbox": z.lazy(() => deviceIdSchema).optional(),
+  "mailboxes": z.array(z.lazy(() => deviceIdSchema)).optional(),
   "issued": z.number().int().nonnegative(),
   "expires": z.number().int().nonnegative(),
 }));
@@ -84,44 +84,7 @@ export const execSessionInfoSchema = z.lazy(() => z.object({
   "argv": z.array(z.string()).optional(),
   "cwd": z.string().optional(),
 }));
-export const meshIdSchema = z.lazy(() => z.string());
-export const federationLinkRequestFrameSchema = z.lazy(() => z.object({
-  "type": z.literal("federation-link-request"),
-  "local-mesh": z.lazy(() => meshIdSchema),
-  "local-name": z.string(),
-  "offered-shares": z.array(z.lazy(() => shareDescriptorSchema)),
-}));
-export const federationLinkAcceptFrameSchema = z.lazy(() => z.object({
-  "type": z.literal("federation-link-accept"),
-  "remote-mesh": z.lazy(() => meshIdSchema),
-  "remote-name": z.string(),
-  "accepted-shares": z.array(z.lazy(() => shareDescriptorSchema)),
-}));
-export const federationLinkRejectFrameSchema = z.lazy(() => z.object({
-  "type": z.literal("federation-link-reject"),
-  "reason": z.string(),
-}));
-export const shareDescriptorSchema = z.lazy(() => z.object({
-  "domain": z.lazy(() => domainIdSchema),
-  "resource": z.lazy(() => capabilityScopeSchema),
-  "direction": z.union([z.literal("inbound"), z.literal("outbound"), z.literal("bidirectional")]),
-}));
-export const federationShareFrameSchema = z.lazy(() => z.object({
-  "type": z.literal("federation-share"),
-  "share": z.lazy(() => shareDescriptorSchema),
-}));
-export const federationUnshareFrameSchema = z.lazy(() => z.object({
-  "type": z.literal("federation-unshare"),
-  "share": z.lazy(() => shareDescriptorSchema),
-}));
-export const federationEnvelopeFrameSchema = z.lazy(() => z.object({
-  "type": z.literal("federation-envelope"),
-  "origin-mesh": z.lazy(() => meshIdSchema),
-  "origin-device": z.lazy(() => deviceIdSchema),
-  "resource": z.lazy(() => capabilityScopeSchema),
-  "inner": z.instanceof(Uint8Array),
-}));
-export const frameVariantSchema = z.lazy(() => z.union([z.lazy(() => handshakeFrameSchema), z.lazy(() => pingFrameSchema), z.lazy(() => closeFrameSchema), z.lazy(() => gossipFrameSchema), z.lazy(() => candidatesFrameSchema), z.lazy(() => syncPunchFrameSchema), z.lazy(() => observedAddressFrameSchema), z.lazy(() => relayOfferFrameSchema), z.lazy(() => relayConnectFrameSchema), z.lazy(() => relayDataFrameSchema), z.lazy(() => relayInboundFrameSchema), z.lazy(() => manageRequestFrameSchema), z.lazy(() => manageResponseFrameSchema), z.lazy(() => revocationAnnounceFrameSchema), z.lazy(() => streamDataFrameSchema), z.lazy(() => streamAckFrameSchema), z.lazy(() => streamEndFrameSchema), z.lazy(() => dataHaveFrameSchema), z.lazy(() => dataRequestFrameSchema), z.lazy(() => dataEntriesFrameSchema), z.lazy(() => federationLinkRequestFrameSchema), z.lazy(() => federationLinkAcceptFrameSchema), z.lazy(() => federationLinkRejectFrameSchema), z.lazy(() => federationShareFrameSchema), z.lazy(() => federationUnshareFrameSchema), z.lazy(() => federationEnvelopeFrameSchema)]));
+export const frameVariantSchema = z.lazy(() => z.union([z.lazy(() => handshakeFrameSchema), z.lazy(() => pingFrameSchema), z.lazy(() => closeFrameSchema), z.lazy(() => gossipFrameSchema), z.lazy(() => candidatesFrameSchema), z.lazy(() => syncPunchFrameSchema), z.lazy(() => observedAddressFrameSchema), z.lazy(() => relayOfferFrameSchema), z.lazy(() => relayConnectFrameSchema), z.lazy(() => relayDataFrameSchema), z.lazy(() => relayInboundFrameSchema), z.lazy(() => coordinatorFrameSchema), z.lazy(() => manageRequestFrameSchema), z.lazy(() => manageResponseFrameSchema), z.lazy(() => revocationAnnounceFrameSchema), z.lazy(() => streamDataFrameSchema), z.lazy(() => streamAckFrameSchema), z.lazy(() => streamEndFrameSchema), z.lazy(() => dataHaveFrameSchema), z.lazy(() => dataRequestFrameSchema), z.lazy(() => dataEntriesFrameSchema)]));
 export const frameSchema = z.lazy(() => z.lazy(() => frameVariantSchema));
 export const protocolVersionSchema = z.lazy(() => z.number().int().nonnegative());
 export const domainIdSchema = z.lazy(() => z.union([z.lazy(() => coreDomainNameSchema), z.lazy(() => namespacedDomainIdSchema), z.lazy(() => privateUseDomainIdSchema)]));
@@ -170,10 +133,13 @@ export const manageResponseFrameSchema = z.lazy(() => z.object({
   "request-id": z.number().int().nonnegative(),
   "outcome": z.union([z.lazy(() => manageOkSchema), z.lazy(() => manageErrorSchema)]),
 }));
-export const revocationEntrySchema = z.lazy(() => z.object({
+export const revocationClaimsSchema = z.lazy(() => z.object({
   "token-id": z.instanceof(Uint8Array),
+  "issuer": z.lazy(() => deviceIdSchema),
+  "issuer-key": z.lazy(() => identityKeySchema),
   "revoked-at": z.number().int().nonnegative(),
 }));
+export const revocationEntrySchema = z.lazy(() => z.lazy(() => coseSign1Schema));
 export const revocationAnnounceFrameSchema = z.lazy(() => z.object({
   "type": z.literal("revocation-announce"),
   "entries": z.array(z.lazy(() => revocationEntrySchema)),
@@ -277,6 +243,12 @@ export const relayInboundFrameSchema = z.lazy(() => z.object({
   "type": z.literal("relay-inbound"),
   "source-device": z.lazy(() => deviceIdSchema),
 }));
+export const coordinatorFrameSchema = z.lazy(() => z.object({
+  "type": z.literal("coordinator"),
+  "term": z.number().int().nonnegative(),
+  "coordinator": z.lazy(() => deviceIdSchema),
+  "capacity-hint": z.number().int().nonnegative().optional(),
+}));
 
 export type DataHaveFrame = z.infer<typeof dataHaveFrameSchema>;
 export type DataRequestFrame = z.infer<typeof dataRequestFrameSchema>;
@@ -293,14 +265,6 @@ export type ProcSignal = z.infer<typeof procSignalSchema>;
 export type ProcKill = z.infer<typeof procKillSchema>;
 export type ExecList = z.infer<typeof execListSchema>;
 export type ExecSessionInfo = z.infer<typeof execSessionInfoSchema>;
-export type MeshId = z.infer<typeof meshIdSchema>;
-export type FederationLinkRequestFrame = z.infer<typeof federationLinkRequestFrameSchema>;
-export type FederationLinkAcceptFrame = z.infer<typeof federationLinkAcceptFrameSchema>;
-export type FederationLinkRejectFrame = z.infer<typeof federationLinkRejectFrameSchema>;
-export type ShareDescriptor = z.infer<typeof shareDescriptorSchema>;
-export type FederationShareFrame = z.infer<typeof federationShareFrameSchema>;
-export type FederationUnshareFrame = z.infer<typeof federationUnshareFrameSchema>;
-export type FederationEnvelopeFrame = z.infer<typeof federationEnvelopeFrameSchema>;
 export type FrameVariant = z.infer<typeof frameVariantSchema>;
 export type Frame = z.infer<typeof frameSchema>;
 export type ProtocolVersion = z.infer<typeof protocolVersionSchema>;
@@ -317,6 +281,7 @@ export type ManageRequestFrame = z.infer<typeof manageRequestFrameSchema>;
 export type ManageOk = z.infer<typeof manageOkSchema>;
 export type ManageError = z.infer<typeof manageErrorSchema>;
 export type ManageResponseFrame = z.infer<typeof manageResponseFrameSchema>;
+export type RevocationClaims = z.infer<typeof revocationClaimsSchema>;
 export type RevocationEntry = z.infer<typeof revocationEntrySchema>;
 export type RevocationAnnounceFrame = z.infer<typeof revocationAnnounceFrameSchema>;
 export type StreamSession = z.infer<typeof streamSessionSchema>;
@@ -348,3 +313,4 @@ export type RelayOfferFrame = z.infer<typeof relayOfferFrameSchema>;
 export type RelayConnectFrame = z.infer<typeof relayConnectFrameSchema>;
 export type RelayDataFrame = z.infer<typeof relayDataFrameSchema>;
 export type RelayInboundFrame = z.infer<typeof relayInboundFrameSchema>;
+export type CoordinatorFrame = z.infer<typeof coordinatorFrameSchema>;
