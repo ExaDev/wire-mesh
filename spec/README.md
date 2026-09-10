@@ -12,6 +12,8 @@ Two sockets (`$frame-variant`, `$manage-command-params`) are the deliberate exte
 
 `registry/` holds the append-only core domain and capability name lists referenced from `handshake.cddl` and `tokens.cddl`.
 
+A schema alone never proves interop, only shared vectors do -- see `../conformance/` for the golden test vectors every implementation's CI round-trips against, one per structure defined here.
+
 ## Validated against two independent RFC 8610 implementations
 
 CI runs `protocol.cddl` through the [`cddl`](https://www.npmjs.com/package/cddl) npm package. It has also been checked directly against the [`cddl`](https://crates.io/crates/cddl) Rust crate (`cargo install cddl`, then `cddl compile-cddl --cddl protocol.cddl`), which reported it fully conformant with no issues. The two disagreed once during authoring — the npm parser rejected bare integer map keys and an inline type-choice used directly as a map key, both valid per RFC 8610's grammar — which is why `tokens.cddl`'s COSE header labels are named rules (`cose-header-alg`, `cose-header-kid`) and `cose-header-label` rather than inline literals; the fix for the stricter parser turned out to already satisfy the Rust crate too, so nothing needed reconciling once both were checked.
