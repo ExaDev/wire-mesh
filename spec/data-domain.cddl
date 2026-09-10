@@ -8,6 +8,19 @@
 ; can share a mesh without the transport layer needing to understand any of
 ; their content. A domain implementing core/data defines its own entry
 ; schema separately, in its own application-level spec, not here.
+;
+; Durability is opportunistic by design, not guaranteed by the protocol: a
+; peer's own log lives on exactly that one device until some other peer
+; independently chooses to replicate it via data-have/data-request below --
+; there is no mandated minimum replication factor, and there shouldn't be
+; one baked into the wire shape, since how much redundancy is worth the
+; cost is an application/deployment policy question, not a protocol one. A
+; peer that wants durability for its own data doesn't need a new mechanism
+; for it: proactively pushing its own log to its own discovery.cddl
+; mailboxes (already redundant, already devices it trusts to stay current)
+; is the same fan-out this file already defines, just initiated by the
+; owner instead of waited on passively -- a recommended usage pattern of an
+; existing mechanism, not a new one.
 
 ; `peer` names whose log is being asked about; it is deliberately independent
 ; of which connection the frame travels over. A peer that has already
@@ -17,7 +30,7 @@
 ; by holding a direct link to the original author. No wire change is needed
 ; for this; it follows from `peer` already being a plain reference rather
 ; than an implicit "you" per connection. A relay/mailbox device (see
-; discovery.cddl's `mailbox` field) answering on behalf of a currently-offline
+; discovery.cddl's `mailboxes` field) answering on behalf of a currently-offline
 ; peer is the same mechanism, not a separate one: it is simply a replicator
 ; that is reachable when the original author is not.
 data-have-frame    = { type: "data-have", peer: device-id, head-seq: uint }
