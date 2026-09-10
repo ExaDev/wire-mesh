@@ -16,6 +16,9 @@ domain-id = core-domain-name / namespaced-domain-id / private-use-domain-id
 
 ; Spec-owned, append-only — see registry/core-domains.md. A retired entry is
 ; marked retired there, never renumbered or reused for something else.
+; "core/federation" is retired: no frames are defined for it (see
+; federation.cddl) and a peer must never advertise or negotiate it; the
+; string itself stays reserved rather than becoming available for reuse.
 core-domain-name = "core/management" / "core/exec" / "core/data" / "core/federation"
 
 ; "<registrant>/<local-name>", where uniqueness comes from the registrant
