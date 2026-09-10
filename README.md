@@ -104,6 +104,18 @@ The web console a human actually opens in a browser — `ts/packages/web-console
 
 Two different things need their own versioning discipline, and neither substitutes for the other: the **wire protocol version**, negotiated at the handshake so mixed-version deployments degrade gracefully, and each **package's own semver**, since a package's public API can break independently of the wire format staying compatible. A protocol-version bump doesn't require a major package bump, and vice versa.
 
+## Potential future applications
+
+Two examples of what the design above already supports without further protocol changes — not committed, not built, no issue or package reserved for either yet, unlike the three real consumers in [Implementations](#implementations).
+
+**A Tailscale-style mesh VPN.** The transport frames already cover the coordination layer a peer-to-peer VPN needs: peer discovery (`gossip-frame`/`peer-advert`), NAT traversal (`candidates-frame`, `sync-punch-frame`, `observed-address-frame`), and relay fallback when a direct connection fails (`relay-offer-frame`/`relay-connect-frame`/`relay-data-frame`) — structurally the same job Tailscale's control plane and DERP relays do around WireGuard. This would be a coordination layer *for* WireGuard (or an equivalent), not a replacement for it: wire-mesh specifies no tunnel-encryption layer of its own, and WireGuard's own cryptography is exactly the part worth leaving alone rather than reinventing. What a wire-mesh-based coordination layer could do better than Tailscale specifically:
+
+- No single vendor's coordination server — any node can be a coordinator, coordinator handoff is already part of the design, and federation between independently-operated meshes is a first-class capability domain rather than an enterprise-tier afterthought (Tailscale's control plane is Tailscale's own hosted service; Headscale is a reverse-engineered clone, not a first-class alternative).
+- Capability tokens are delegable and narrowing rather than a flat, centrally-evaluated ACL file, and are self-certifying — a bearer can verify one offline with no callback to the issuer, where Tailscale's ACLs require reaching the control plane.
+- The same mesh session (same identity, same tokens, same peer discovery) could carry this domain alongside file transfer or messaging at once, rather than needing an unrelated coordination system and trust domain per use case the way networking (Tailscale), file sync (Syncthing), and messaging (Slack) are three separate tools today.
+
+**File transfer.** `core/data`'s have/request/entries frames (`data-have-frame`/`data-request-frame`/`data-entries-frame`) are already a have/request/send chunk-exchange pattern, generalised directly from Cascade's own BEP-derived block exchange. A file-transfer application would define its own chunk/file-metadata schema inside the domain's already-opaque entry payload — the same way an agent-comms room message or a Cascade operation-log entry would, per [What the protocol specifies](#what-the-protocol-specifies).
+
 ## Contributing
 
 This is early enough that the most useful contribution is scrutiny of the design decisions above, before anything is built against them. Open an issue.
