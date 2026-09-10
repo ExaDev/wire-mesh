@@ -5,6 +5,7 @@ import {
   type CapabilityToken,
   type DeviceId,
   type Frame,
+  type GossipFrame,
   type HandshakeFrame,
   type ManageCommand,
   type ManageError,
@@ -18,10 +19,14 @@ import {
   SUPPORTED_PROTOCOL_VERSION,
   negotiate,
 } from "@exadev/wire-mesh-core/domain/handshake";
+import type { Clock } from "@exadev/wire-mesh-core/ports/clock";
+import type { IdentityPort } from "@exadev/wire-mesh-core/ports/identity";
 import type {
   Connection,
   Transport,
 } from "@exadev/wire-mesh-core/ports/transport";
+
+const MS_PER_SECOND = 1000;
 
 /** How long to wait for the node's handshake before calling it unanswered. A relay-only node never sends one; that is a state to display, not an error. */
 export const HANDSHAKE_TIMEOUT_MS = 3_000;
@@ -102,6 +107,8 @@ function localHandshake(domains: readonly string[]): HandshakeFrame {
 
 export function createMeshSession(
   transport: Readonly<Transport>,
+  identity: Readonly<IdentityPort>,
+  clock: Readonly<Clock> = { now: () => Date.now() },
   reconnect: ReconnectPolicy | null = null,
 ): MeshSession {
   let connection: Connection | null = null;
@@ -327,6 +334,20 @@ export function createMeshSession(
     state = { status: "connected", address, handshake };
     frameLog.push({ direction: "sent", frame: localHandshakeSent });
     await connection.send(localHandshakeSent);
+    emit();
+    // Self-advertisement: empty addresses is correct, not a stopgap -- relay-hub's registry looks peers up by device-id from gossip, never by address, so an honest advert with no reachable address is all a browser client (which cannot accept inbound connections) can ever offer.
+    const selfAdvert: GossipFrame = {
+      type: "gossip",
+      peers: [
+        {
+          device: identity.deviceId,
+          addresses: [],
+          "snapshot-seconds": Math.floor(clock.now() / MS_PER_SECOND),
+        },
+      ],
+    };
+    frameLog.push({ direction: "sent", frame: selfAdvert });
+    await connection.send(selfAdvert);
     emit();
     handshakeTimer = setTimeout(() => {
       handshakeTimer = null;

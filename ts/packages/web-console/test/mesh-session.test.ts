@@ -3,11 +3,14 @@ import type {
   CapabilityScope,
   CapabilityToken,
   Frame,
+  GossipFrame,
   HandshakeFrame,
   ManageCommand,
   ManageRequestFrame,
   ManageResponseFrame,
 } from "@exadev/wire-mesh-core/generated/protocol";
+import type { Clock } from "@exadev/wire-mesh-core/ports/clock";
+import type { IdentityPort } from "@exadev/wire-mesh-core/ports/identity";
 import type {
   Connection,
   Listener,
@@ -24,22 +27,34 @@ import { deviceIdFromFillHex } from "./hex.js";
 const deviceA = deviceIdFromFillHex("11");
 const deviceB = deviceIdFromFillHex("22");
 
-// Event-stream positions: connect() emits connecting + connected, then one event per pushed frame, timeout, or failure.
-const EVENTS_THROUGH_REMOTE_HANDSHAKE = 3;
-const EVENTS_THROUGH_TIMEOUT = 3;
-const EVENTS_THROUGH_THREE_GOSSIPS = 5;
-const EVENTS_THROUGH_PING_ROUND_TRIP = 4;
-const EVENTS_THROUGH_FAILURE = 3;
+const testIdentityDeviceId = deviceIdFromFillHex("ee");
+const testIdentity: IdentityPort = {
+  deviceId: testIdentityDeviceId,
+  identityKey: { alg: -7, "public-key": new Uint8Array() },
+  sign: async () => Promise.resolve(new Uint8Array()),
+  verify: async () => Promise.resolve(true),
+  deriveDeviceId: async () => Promise.resolve(testIdentityDeviceId),
+};
+const MS_PER_SECOND = 1000;
+const TEST_CLOCK_NOW_MS = 1_700_000_000_000;
+const testClock: Clock = { now: () => TEST_CLOCK_NOW_MS };
+
+// Event-stream positions: connect() emits connecting + connected, then a self-advert-sent tick, then one event per pushed frame, timeout, or failure.
+const EVENTS_THROUGH_REMOTE_HANDSHAKE = 4;
+const EVENTS_THROUGH_TIMEOUT = 4;
+const EVENTS_THROUGH_THREE_GOSSIPS = 6;
+const EVENTS_THROUGH_PING_ROUND_TRIP = 5;
+const EVENTS_THROUGH_FAILURE = 4;
 const SNAPSHOT_FIRST = 100;
 const SNAPSHOT_SECOND = 200;
 const SNAPSHOT_UPDATED = 300;
 
-// Reconnect-flow event-stream positions: each reconnect round emits connecting + connected(pending), then either a further reconnecting (retrying) or closed (attempts exhausted) event.
+// Reconnect-flow event-stream positions: each reconnect round emits connecting + connected(pending) + self-advert-sent, then either a further reconnecting (retrying) or closed (attempts exhausted) event.
 const RECONNECT_DELAY_MS = 100;
 const RECONNECT_MAX_ATTEMPTS = 2;
-const EVENTS_THROUGH_FIRST_RECONNECT = 3;
-const EVENTS_PER_RECONNECT_ROUND = 3;
-const EVENTS_THROUGH_STALE_TIMER_REGRESSION = 6;
+const EVENTS_THROUGH_FIRST_RECONNECT = 4;
+const EVENTS_PER_RECONNECT_ROUND = 4;
+const EVENTS_THROUGH_STALE_TIMER_REGRESSION = 8;
 
 /** An in-memory Connection the test drives: pushes arrive on the receive iteration, sends are recorded. */
 class FakeConnection {
@@ -173,8 +188,8 @@ function gossipFor(
 describe("createMeshSession", () => {
   it("connects, sends the local handshake, and negotiates against the node's answer", async () => {
     const { transport, connection } = fakeTransport();
-    const session = createMeshSession(transport);
-    // Events: connecting, connected(handshake sent/pending), connected/negotiated
+    const session = createMeshSession(transport, testIdentity, testClock);
+    // Events: connecting, connected(handshake sent/pending), self-advert sent, connected/negotiated
     const eventsDone = nthEvent(session, EVENTS_THROUGH_REMOTE_HANDSHAKE);
     await session.connect("ws://node", ["core/management", "core/data"]);
 
@@ -202,9 +217,33 @@ describe("createMeshSession", () => {
     await session.close();
   });
 
+  it("sends a self-advertisement gossip frame right after the handshake", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    // Events: connecting, connected(handshake sent/pending), self-advert sent
+    const eventsDone = nthEvent(session, EVENTS_THROUGH_REMOTE_HANDSHAKE - 1);
+    await session.connect("ws://node", ["core/data"]);
+    await eventsDone;
+
+    expect(connection.sent[0]?.type).toBe("handshake");
+    const selfAdvert = connection.sent[1] as GossipFrame;
+    expect(selfAdvert).toEqual({
+      type: "gossip",
+      peers: [
+        {
+          device: testIdentityDeviceId,
+          addresses: [],
+          "snapshot-seconds": Math.floor(TEST_CLOCK_NOW_MS / MS_PER_SECOND),
+        },
+      ],
+    } satisfies GossipFrame);
+    expect(selfAdvert.peers[0]?.device).toEqual(testIdentity.deviceId);
+    await session.close();
+  });
+
   it("excludes the retired core/federation domain even when both sides offer it", async () => {
     const { transport, connection } = fakeTransport();
-    const session = createMeshSession(transport);
+    const session = createMeshSession(transport, testIdentity, testClock);
     // Events: connecting, connected, connected/rejected
     const eventsDone = nthEvent(session, EVENTS_THROUGH_REMOTE_HANDSHAKE);
     await session.connect("ws://node", ["core/federation"]);
@@ -224,7 +263,7 @@ describe("createMeshSession", () => {
     vi.useFakeTimers();
     try {
       const { transport } = fakeTransport();
-      const session = createMeshSession(transport);
+      const session = createMeshSession(transport, testIdentity, testClock);
       await session.connect("ws://node", ["core/data"]);
       await vi.advanceTimersByTimeAsync(HANDSHAKE_TIMEOUT_MS);
       // Events so far: connecting, connected -- then the timeout emits unanswered
@@ -240,7 +279,7 @@ describe("createMeshSession", () => {
 
   it("assembles the peer directory from gossip, latest advert per device winning", async () => {
     const { transport, connection } = fakeTransport();
-    const session = createMeshSession(transport);
+    const session = createMeshSession(transport, testIdentity, testClock);
     await session.connect("ws://node", ["core/data"]);
     connection.push(gossipFor(deviceA, SNAPSHOT_FIRST));
     connection.push(gossipFor(deviceB, SNAPSHOT_SECOND));
@@ -264,7 +303,7 @@ describe("createMeshSession", () => {
 
   it("records sent and received frames in the frame log in order", async () => {
     const { transport, connection } = fakeTransport();
-    const session = createMeshSession(transport);
+    const session = createMeshSession(transport, testIdentity, testClock);
     await session.connect("ws://node", ["core/data"]);
     await session.sendPing();
     connection.push({ type: "ping" });
@@ -275,6 +314,7 @@ describe("createMeshSession", () => {
     expect(event.frameLog.map((entry) => entry.direction)).toEqual([
       "sent",
       "sent",
+      "sent",
       "received",
     ]);
     await session.close();
@@ -282,7 +322,7 @@ describe("createMeshSession", () => {
 
   it("closes with the node's reason when the receive iteration rejects", async () => {
     const { transport, connection } = fakeTransport();
-    const session = createMeshSession(transport);
+    const session = createMeshSession(transport, testIdentity, testClock);
     await session.connect("ws://node", ["core/data"]);
     connection.fail(new Error("node closed abruptly"));
     // Events: connecting, connected, closed
@@ -295,7 +335,7 @@ describe("createMeshSession", () => {
 
   it("refuses a second connect on the same session", async () => {
     const { transport } = fakeTransport();
-    const session = createMeshSession(transport);
+    const session = createMeshSession(transport, testIdentity, testClock);
     await session.connect("ws://node", ["core/data"]);
     await expect(session.connect("ws://node", ["core/data"])).rejects.toThrow(
       "connects once",
@@ -305,7 +345,7 @@ describe("createMeshSession", () => {
 
   it("refuses a ping while not connected", async () => {
     const { transport } = fakeTransport();
-    const session = createMeshSession(transport);
+    const session = createMeshSession(transport, testIdentity, testClock);
     await expect(session.sendPing()).rejects.toThrow("not connected");
   });
 });
@@ -313,7 +353,7 @@ describe("createMeshSession", () => {
 describe("reconnect policy", () => {
   it("never reconnects when no policy is given, matching today's default behavior", async () => {
     const { transport, connection } = fakeTransport();
-    const session = createMeshSession(transport);
+    const session = createMeshSession(transport, testIdentity, testClock);
     await session.connect("ws://node", ["core/data"]);
     const eventsDone = nthEvent(session, EVENTS_THROUGH_FAILURE);
     connection.fail(new Error("dropped"));
@@ -328,7 +368,7 @@ describe("reconnect policy", () => {
     vi.useFakeTimers();
     try {
       const { transport, connection } = fakeTransport();
-      const session = createMeshSession(transport, {
+      const session = createMeshSession(transport, testIdentity, testClock, {
         maxAttempts: RECONNECT_MAX_ATTEMPTS,
         delayMs: () => RECONNECT_DELAY_MS,
       });
@@ -369,7 +409,7 @@ describe("reconnect policy", () => {
     vi.useFakeTimers();
     try {
       const { transport, connections } = multiConnectionTransport();
-      const session = createMeshSession(transport, {
+      const session = createMeshSession(transport, testIdentity, testClock, {
         maxAttempts: 1,
         delayMs: () => 0,
       });
@@ -413,7 +453,7 @@ describe("capability tokens and manage-request plumbing", () => {
 
   it("attaches the current token to every manage-request it sends", async () => {
     const { transport, connection } = fakeTransport();
-    const session = createMeshSession(transport);
+    const session = createMeshSession(transport, testIdentity, testClock);
     await session.connect("ws://node", ["core/management"]);
     session.setToken(testToken);
     const pending = session.sendManageRequest(testCommand, testScope);
@@ -429,7 +469,7 @@ describe("capability tokens and manage-request plumbing", () => {
 
   it("does not attach a token to a manage-request when none has been set", async () => {
     const { transport, connection } = fakeTransport();
-    const session = createMeshSession(transport);
+    const session = createMeshSession(transport, testIdentity, testClock);
     await session.connect("ws://node", ["core/management"]);
     const pending = session.sendManageRequest(testCommand, testScope);
     await Promise.resolve();
@@ -441,7 +481,7 @@ describe("capability tokens and manage-request plumbing", () => {
 
   it("resolves sendManageRequest only with the outcome of the matching manage-response", async () => {
     const { transport, connection } = fakeTransport();
-    const session = createMeshSession(transport);
+    const session = createMeshSession(transport, testIdentity, testClock);
     await session.connect("ws://node", ["core/management"]);
     const pending = session.sendManageRequest(testCommand, testScope);
     await Promise.resolve();
@@ -467,7 +507,7 @@ describe("capability tokens and manage-request plumbing", () => {
 
   it("rejects a pending sendManageRequest when the session is closed before a response arrives", async () => {
     const { transport } = fakeTransport();
-    const session = createMeshSession(transport);
+    const session = createMeshSession(transport, testIdentity, testClock);
     await session.connect("ws://node", ["core/management"]);
     const pending = session.sendManageRequest(testCommand, testScope);
     await session.close();
@@ -478,7 +518,7 @@ describe("capability tokens and manage-request plumbing", () => {
 
   it("rejects a pending sendManageRequest when the connection disconnects before a response arrives", async () => {
     const { transport, connection } = fakeTransport();
-    const session = createMeshSession(transport);
+    const session = createMeshSession(transport, testIdentity, testClock);
     await session.connect("ws://node", ["core/management"]);
     const pending = session.sendManageRequest(testCommand, testScope);
     connection.fail(new Error("dropped"));
@@ -489,7 +529,7 @@ describe("capability tokens and manage-request plumbing", () => {
 
   it("surfaces an incoming manage-request on incomingManageRequests, and sends the response frame from respond()", async () => {
     const { transport, connection } = fakeTransport();
-    const session = createMeshSession(transport);
+    const session = createMeshSession(transport, testIdentity, testClock);
     await session.connect("ws://node", ["core/management"]);
 
     const incomingDone = (async (): Promise<IncomingManageRequest> => {
