@@ -1,9 +1,16 @@
 // DOM-free connection session: everything the console does once "Connect" is clicked, kept free of browser APIs so it is unit-testable against a fake Transport. Owns the client side of the handshake exchange (send ours, negotiate against theirs, with an explicit unanswered state rather than hanging forever -- a relay-only node like the hub legitimately never answers a handshake), the peer directory assembled from received gossip frames, and the frame feed the UI renders.
 
 import {
+  type CapabilityScope,
+  type CapabilityToken,
   type DeviceId,
   type Frame,
   type HandshakeFrame,
+  type ManageCommand,
+  type ManageError,
+  type ManageOk,
+  type ManageRequestFrame,
+  type ManageResponseFrame,
   type PeerAdvert,
   type ProtocolVersion,
 } from "@exadev/wire-mesh-core/generated/protocol";
@@ -33,6 +40,18 @@ export interface ReconnectPolicy {
   delayMs: (attempt: number) => number;
 }
 
+/** The union `manage-response-frame.outcome` actually carries -- no dedicated generated type name exists for it. */
+export type ManageOutcome = ManageOk | ManageError;
+
+/** One `manage-request` this session received from its peer, surfaced for the caller to act on and answer. */
+export interface IncomingManageRequest {
+  requestId: number;
+  command: ManageCommand;
+  scope: CapabilityScope;
+  token?: CapabilityToken;
+  respond: (outcome: ManageOutcome) => Promise<void>;
+}
+
 export type HandshakeStatus =
   | { status: "pending" }
   | { status: "negotiated"; version: ProtocolVersion; sharedDomains: string[] }
@@ -59,8 +78,17 @@ export interface FrameLogEntry {
 
 export interface MeshSession {
   readonly events: AsyncIterable<SessionEvent>;
+  /** Every `manage-request` received from the peer, in arrival order. */
+  readonly incomingManageRequests: AsyncIterable<IncomingManageRequest>;
   connect: (address: string, localDomains: readonly string[]) => Promise<void>;
   sendPing: () => Promise<void>;
+  /** Attaches this token to every `manage-request` sent from now on. */
+  setToken: (token: CapabilityToken) => void;
+  /** Sends a manage-request and resolves with the matching manage-response's outcome, correlated by request-id. */
+  sendManageRequest: (
+    command: ManageCommand,
+    scope: Readonly<CapabilityScope>,
+  ) => Promise<ManageOutcome>;
   close: () => Promise<void>;
 }
 
@@ -87,6 +115,17 @@ export function createMeshSession(
   let handshakeTimer: ReturnType<typeof setTimeout> | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let attempt = 0;
+  let currentToken: CapabilityToken | null = null;
+  let nextRequestId = 0;
+  const pendingManageRequests = new Map<
+    number,
+    {
+      resolve: (outcome: ManageOutcome) => void;
+      reject: (error: Error) => void;
+    }
+  >();
+  const incomingWaiters: ((request: IncomingManageRequest) => void)[] = [];
+  const incomingBacklog: IncomingManageRequest[] = [];
 
   function snapshot(): SessionEvent {
     return {
@@ -106,6 +145,30 @@ export function createMeshSession(
     }
   }
 
+  function emitIncomingManageRequest(request: IncomingManageRequest): void {
+    const waiter = incomingWaiters.shift();
+    if (waiter) {
+      waiter(request);
+    } else {
+      incomingBacklog.push(request);
+    }
+  }
+
+  function buildManageRequest(
+    command: ManageCommand,
+    scope: Readonly<CapabilityScope>,
+  ): ManageRequestFrame {
+    const requestId = nextRequestId;
+    nextRequestId += 1;
+    return {
+      type: "manage-request",
+      "request-id": requestId,
+      command,
+      scope,
+      ...(currentToken !== null ? { token: currentToken } : {}),
+    };
+  }
+
   function applyFrame(frame: Frame): void {
     frameLog.push({ direction: "received", frame });
     if (frame.type === "handshake") {
@@ -118,6 +181,35 @@ export function createMeshSession(
           advert,
         });
       }
+    } else if (frame.type === "manage-response") {
+      const requestId = frame["request-id"];
+      const pending = pendingManageRequests.get(requestId);
+      if (pending !== undefined) {
+        pendingManageRequests.delete(requestId);
+        pending.resolve(frame.outcome);
+      }
+    } else if (frame.type === "manage-request") {
+      const requestId = frame["request-id"];
+      const incoming: IncomingManageRequest = {
+        requestId,
+        command: frame.command,
+        scope: frame.scope,
+        ...(frame.token !== undefined ? { token: frame.token } : {}),
+        respond: async (outcome: ManageOutcome): Promise<void> => {
+          if (connection === null) {
+            throw new Error("not connected");
+          }
+          const response: ManageResponseFrame = {
+            type: "manage-response",
+            "request-id": requestId,
+            outcome,
+          };
+          frameLog.push({ direction: "sent", frame: response });
+          await connection.send(response);
+          emit();
+        },
+      };
+      emitIncomingManageRequest(incoming);
     }
   }
 
@@ -268,6 +360,23 @@ export function createMeshSession(
         };
       },
     },
+    incomingManageRequests: {
+      [Symbol.asyncIterator]() {
+        return {
+          next: async (): Promise<IteratorResult<IncomingManageRequest>> =>
+            new Promise((resolve) => {
+              const backlogRequest = incomingBacklog.shift();
+              if (backlogRequest) {
+                resolve({ value: backlogRequest, done: false });
+              } else {
+                incomingWaiters.push((request) => {
+                  resolve({ value: request, done: false });
+                });
+              }
+            }),
+        };
+      },
+    },
     async connect(address, localDomains): Promise<void> {
       if (connection !== null) {
         throw new Error(
@@ -285,6 +394,25 @@ export function createMeshSession(
       frameLog.push({ direction: "sent", frame: ping });
       await connection.send(ping);
       emit();
+    },
+    setToken(token: CapabilityToken): void {
+      currentToken = token;
+    },
+    async sendManageRequest(
+      command: ManageCommand,
+      scope: Readonly<CapabilityScope>,
+    ): Promise<ManageOutcome> {
+      if (connection === null || state.status !== "connected") {
+        throw new Error("not connected");
+      }
+      const frame = buildManageRequest(command, scope);
+      const outcome = new Promise<ManageOutcome>((resolve, reject) => {
+        pendingManageRequests.set(frame["request-id"], { resolve, reject });
+      });
+      frameLog.push({ direction: "sent", frame });
+      await connection.send(frame);
+      emit();
+      return outcome;
     },
     async close(): Promise<void> {
       feedCancelled = true;
