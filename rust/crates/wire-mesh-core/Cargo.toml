@@ -1,0 +1,25 @@
+[package]
+name = "wire-mesh-core"
+description = "Domain logic, ports, and adapters for the wire-mesh protocol: the direct mirror of the TypeScript core minus its generated wire layer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "../README.md"
+
+[dependencies]
+wire-mesh-wire = { path = "../wire-mesh-wire" }
+async-trait = { workspace = true }
+futures-core = { workspace = true }
+tokio = { workspace = true }
+sha2 = { workspace = true }
+ed25519-dalek = { workspace = true }
+p256 = { workspace = true }
+rand = { workspace = true }
+
+[dev-dependencies]
+tokio-stream = "0.1"
+
+[lints]
+workspace = true
