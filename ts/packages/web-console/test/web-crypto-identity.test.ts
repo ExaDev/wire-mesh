@@ -1,10 +1,14 @@
+import "fake-indexeddb/auto";
 import { createHash, webcrypto } from "node:crypto";
+import { encode, cdeEncodeOptions } from "cbor2";
 import { describe, expect, it } from "vitest";
 import {
+  createPersistedWebCryptoIdentity,
   createWebCryptoIdentity,
   deriveDeviceId,
   verifyWithPublicKey,
 } from "../src/adapters/web-crypto-identity.js";
+import { createIndexedDbStorage } from "../src/adapters/indexeddb-storage.js";
 import {
   createNodeIdentity,
   verifyWithPublicKey as verifyWithNodeIdentity,
@@ -113,5 +117,61 @@ describe("createWebCryptoIdentity", () => {
     await expect(
       verifyWithPublicKey(es512Key, message, signature),
     ).rejects.toThrow("unsupported identity-key alg -36");
+  });
+});
+
+describe("createPersistedWebCryptoIdentity", () => {
+  it("generates and persists a fresh identity on first use, and it signs/verifies correctly", async () => {
+    const storage = await createIndexedDbStorage({
+      dbName: crypto.randomUUID(),
+    });
+    const identity = await createPersistedWebCryptoIdentity(storage);
+    const message = someMessage();
+    const signature = await identity.sign(message);
+
+    expect(
+      await identity.verify(identity.identityKey, message, signature),
+    ).toBe(true);
+    const expectedDeviceId = await deriveDeviceId(
+      identity.identityKey["public-key"],
+    );
+    expect(bytesEqual(identity.deviceId, expectedDeviceId)).toBe(true);
+  });
+
+  it("returns the same device-id on a second call against the same storage, simulating a reload", async () => {
+    const storage = await createIndexedDbStorage({
+      dbName: crypto.randomUUID(),
+    });
+    const first = await createPersistedWebCryptoIdentity(storage);
+    const second = await createPersistedWebCryptoIdentity(storage);
+
+    expect(bytesEqual(first.deviceId, second.deviceId)).toBe(true);
+    expect(
+      bytesEqual(
+        first.identityKey["public-key"],
+        second.identityKey["public-key"],
+      ),
+    ).toBe(true);
+
+    // And the reloaded identity's private key genuinely still signs for the same public key.
+    const message = someMessage();
+    const signature = await second.sign(message);
+    expect(await first.verify(second.identityKey, message, signature)).toBe(
+      true,
+    );
+  });
+
+  it("rejects rather than silently regenerating when the stored envelope is corrupted", async () => {
+    const storage = await createIndexedDbStorage({
+      dbName: crypto.randomUUID(),
+    });
+    await storage.set(
+      "web-console/identity/es256",
+      new Uint8Array(encode({ garbage: true }, cdeEncodeOptions)),
+    );
+
+    await expect(createPersistedWebCryptoIdentity(storage)).rejects.toThrow(
+      "stored identity envelope is malformed",
+    );
   });
 });
