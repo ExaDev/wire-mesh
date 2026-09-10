@@ -8,8 +8,8 @@ export interface IndexedDbStorageOptions {
 
 const DEFAULT_DB_NAME = "wire-mesh-web-console";
 const STORE_NAME = "kv";
-// The highest Unicode code point: appending it to a prefix gives an upper bound that is greater than every string sharing that prefix but less than any string that continues past it, letting IDBKeyRange.bound express a prefix scan as a real range query.
-const PREFIX_UPPER_BOUND_SUFFIX = "\u{10FFFF}";
+// U+FFFF, the highest single-UTF-16-code-unit value. IndexedDB compares string keys by raw UTF-16 code unit, not Unicode code point, so the bound must itself be a single code unit greater than every code unit a key could contain -- \u{10FFFF} (the highest code POINT) is a surrogate PAIR whose lead unit is 0xDBFF, which is numerically less than plain BMP characters in U+E000-U+FFFF (private-use area, specials, U+FFFD, U+FFFF itself); using it as the suffix would wrongly exclude any key containing one of those characters from a prefix scan.
+const PREFIX_UPPER_BOUND_SUFFIX = "\uFFFF";
 
 interface StoredRecord {
   key: string;
