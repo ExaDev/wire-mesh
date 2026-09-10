@@ -1,0 +1,43 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/wire-mesh-wire",
+    "crates/wire-mesh-core",
+    "crates/wire-mesh-conformance",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ExaDev/wire-mesh"
+
+[workspace.dependencies]
+# Pinned exactly, not a caret range: the 2.x line changed the Encode/Decode trait shapes and CborLen surface relative to the widely documented 0.2x series, and the hand-written impls here are written against 2.2.2's shapes.
+minicbor = { version = "=2.2.2", features = ["alloc"] }
+async-trait = "0.1"
+futures-core = "0.3"
+tokio = { version = "1", features = [
+    "net",
+    "io-util",
+    "rt",
+    "rt-multi-thread",
+    "macros",
+    "sync",
+    "time",
+] }
+sha2 = "0.10"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+p256 = { version = "0.13", features = ["ecdsa"] }
+rand = "0.8"
+serde_json = "1"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+
+[profile.release]
+lto = "thin"

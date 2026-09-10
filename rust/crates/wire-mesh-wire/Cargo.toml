@@ -1,0 +1,17 @@
+[package]
+name = "wire-mesh-wire"
+description = "Wire types and canonical CBOR codec for the wire-mesh protocol (spec/*.cddl), hand-written against RFC 8949 4.2 core deterministic encoding"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "../README.md"
+
+[dependencies]
+minicbor = { workspace = true }
+
+[dev-dependencies]
+
+[lints]
+workspace = true
