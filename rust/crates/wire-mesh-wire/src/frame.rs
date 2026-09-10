@@ -194,11 +194,10 @@ impl Decode<'_, ()> for Frame {
 
 pub(crate) fn frame_from(d: &mut Decoder<'_>) -> Result<Frame, DecodeError> {
     let start = d.position();
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut kind: Option<String> = None;
     let mut type_seen = false;
-    for _ in 0..n {
-        let key = strict::text_key(d)?;
+    while let Some(key) = map.next_key(d)? {
         if key == "type" {
             if type_seen {
                 return Err(DecodeError::DuplicateKey);

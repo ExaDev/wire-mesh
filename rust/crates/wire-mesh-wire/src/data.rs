@@ -45,14 +45,14 @@ impl Decode<'_, ()> for DataHaveFrame {
 }
 
 pub(crate) fn data_have_from(d: &mut Decoder<'_>) -> Result<DataHaveFrame, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut peer: Option<DeviceId> = None;
     let mut head_seq: Option<u64> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
+    while let Some(key) = map.next_key(d)? {
+        match key {
             "type" => strict::literal(d, DataHaveFrame::TYPE)?,
-            "peer" => peer = Some(device_id_from(d)?),
-            "head-seq" => head_seq = Some(strict::uint_value(d)?),
+            "peer" => strict::set_once(&mut peer, device_id_from(d)?)?,
+            "head-seq" => strict::set_once(&mut head_seq, strict::uint_value(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
@@ -96,14 +96,14 @@ impl Decode<'_, ()> for DataRequestFrame {
 }
 
 pub(crate) fn data_request_from(d: &mut Decoder<'_>) -> Result<DataRequestFrame, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut peer: Option<DeviceId> = None;
     let mut from_seq: Option<u64> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
+    while let Some(key) = map.next_key(d)? {
+        match key {
             "type" => strict::literal(d, DataRequestFrame::TYPE)?,
-            "peer" => peer = Some(device_id_from(d)?),
-            "from-seq" => from_seq = Some(strict::uint_value(d)?),
+            "peer" => strict::set_once(&mut peer, device_id_from(d)?)?,
+            "from-seq" => strict::set_once(&mut from_seq, strict::uint_value(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
@@ -156,15 +156,15 @@ impl Decode<'_, ()> for DataEntriesFrame {
 }
 
 pub(crate) fn data_entries_from(d: &mut Decoder<'_>) -> Result<DataEntriesFrame, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut peer: Option<DeviceId> = None;
     let mut from_seq: Option<u64> = None;
     let mut entries: Option<Vec<Vec<u8>>> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
+    while let Some(key) = map.next_key(d)? {
+        match key {
             "type" => strict::literal(d, DataEntriesFrame::TYPE)?,
-            "peer" => peer = Some(device_id_from(d)?),
-            "from-seq" => from_seq = Some(strict::uint_value(d)?),
+            "peer" => strict::set_once(&mut peer, device_id_from(d)?)?,
+            "from-seq" => strict::set_once(&mut from_seq, strict::uint_value(d)?)?,
             "entries" => {
                 let count = strict::definite_array(d)?;
                 let mut list = Vec::new();

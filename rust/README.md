@@ -22,7 +22,7 @@ crates/
 Every wire type implements `minicbor` `Encode`/`Decode` by hand (minicbor is pinned to exactly 2.2.2; the 2.x trait shapes differ from the widely documented 0.2x series) with two invariants:
 
 - **CDE by construction** (RFC 8949 4.2 core deterministic encoding, the rules DAG-CBOR builds on): map keys are written in encoded-length-first-then-bytewise order, integer heads are minimal-length, lengths are always definite. Closed-key structs hard-code the order (pinned by the conformance vectors); open maps go through `CanonicalMap`; mixed typed-plus-tail maps through `CdeMapBuilder`, because an extension key can sort anywhere among the typed fields.
-- **Strict decode**: unknown keys, wrong arity, indefinite lengths, floats, tags, duplicate keys, non-32-byte device-ids, bad enum literals, and trailing bytes are all rejected — non-canonical input cannot decode only to re-encode differently.
+- **Strict decode**: unknown keys, wrong arity, indefinite lengths, floats, tags, duplicate keys, unsorted keys, non-minimal integer/string/array/map heads, non-32-byte device-ids, bad enum literals, and trailing bytes are all rejected — matching what cbor2's `cdeDecodeOptions` enforces on the TypeScript side, so both implementations accept exactly the same byte strings and any input that decodes also re-encodes to identical bytes.
 
 ## Running
 
