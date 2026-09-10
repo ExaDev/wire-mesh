@@ -1,0 +1,12 @@
+{
+  "name": "@exadev/wire-mesh-conformance",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "node generate.mjs",
+    "verify": "node verify.mjs"
+  },
+  "dependencies": {
+    "cbor2": "^2.3.0"
+  }
+}
