@@ -105,9 +105,51 @@ jobs:
         working-directory: conformance
         run: pnpm turbo run _test
 
+  ts-core-verify:
+    name: ts/packages/core Verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: ts/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .tool-versions
+          cache: pnpm
+          cache-dependency-path: ts/pnpm-lock.yaml
+
+      - name: Install ts/ workspace
+        working-directory: ts
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        working-directory: ts
+        run: pnpm turbo run _lint
+
+      - name: Typecheck and build every package, verifying dual ESM/CJS + types with attw
+        working-directory: ts
+        run: pnpm turbo run _typecheck
+
+      - name: Confirm generate.ts's output matches the committed generated schema
+        working-directory: ts/packages/core
+        run: |
+          cp src/generated/protocol.ts /tmp/protocol-committed.ts
+          pnpm turbo run _generate
+          if ! diff -u /tmp/protocol-committed.ts src/generated/protocol.ts; then
+            echo "::error::ts/packages/core/src/generated/protocol.ts is out of date. Run 'pnpm run generate' in ts/packages/core and commit the result -- never edit the generated file directly."
+            exit 1
+          fi
+
+      - name: Test, including the conformance-check round-tripping conformance/'s golden vectors through the generated schemas
+        working-directory: ts
+        run: pnpm turbo run _test
+
   required-checks:
     name: Required Checks
-    needs: [cddl-validate, conformance-verify]
+    needs: [cddl-validate, conformance-verify, ts-core-verify]
     if: always()
     runs-on: ubuntu-latest
     steps:
