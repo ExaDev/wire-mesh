@@ -23,6 +23,11 @@ use wire_mesh_wire::{decode_frame, encode_frame, Frame};
 
 use crate::ports::{Connection, CoreError, ListenGuard, OnConnection, Transport};
 
+/// How many consecutive `accept()` failures a listener tolerates before
+/// stopping, and how long it pauses between them (bounded backoff instead
+/// of a hot spin on persistent errors such as EMFILE).
+const ACCEPT_ERROR_LIMIT: u32 = 32;
+const ACCEPT_ERROR_BACKOFF: std::time::Duration = std::time::Duration::from_millis(100);
 /// This adapter's receive-side frame-size cap: 16 MiB. The wire contract
 /// sets no bound; a deployment wanting a different cap swaps adapters or
 /// layers its own policy.
@@ -74,11 +79,25 @@ impl Transport for TcpTransport {
             .local_addr()
             .map_err(|e| CoreError::Transport(format!("local_addr failed: {e}")))?;
         let task = tokio::spawn(async move {
+            let mut consecutive_errors = 0u32;
             loop {
                 let (stream, _peer) = match listener.accept().await {
                     Ok(accepted) => accepted,
-                    Err(_) => continue,
+                    // A persistent accept failure (e.g. EMFILE under fd
+                    // exhaustion) would otherwise hot-spin, so back off
+                    // briefly and give up after a sustained run of them —
+                    // fail-closed rather than burning a core forever.
+                    Err(e) => {
+                        consecutive_errors += 1;
+                        if consecutive_errors >= ACCEPT_ERROR_LIMIT {
+                            eprintln!("tcp accept failed {consecutive_errors} times in a row ({e}); listener stopping");
+                            return;
+                        }
+                        tokio::time::sleep(ACCEPT_ERROR_BACKOFF).await;
+                        continue;
+                    }
                 };
+                consecutive_errors = 0;
                 on_connection(Box::new(TcpConnection::new(stream)));
             }
         });
@@ -139,7 +158,15 @@ impl TcpConnection {
                 }
                 let frame = match decode_frame(&buf) {
                     Ok(frame) => frame,
-                    Err(_) => break,
+                    // A peer sending an undecodable body has violated the
+                    // connection's framing: end the stream fail-closed,
+                    // with the reason surfaced on stderr rather than
+                    // vanishing silently (the receive iteration simply
+                    // ends, same as a peer disconnect).
+                    Err(e) => {
+                        eprintln!("tcp connection dropped after undecodable frame body: {e}");
+                        break;
+                    }
                 };
                 if inbound_tx.send(frame).await.is_err() {
                     break;
@@ -237,8 +264,8 @@ impl TcpListenGuard {
 }
 
 impl ListenGuard for TcpListenGuard {
-    fn local_addr(&self) -> Option<SocketAddr> {
-        Some(self.local)
+    fn address(&self) -> String {
+        self.local.to_string()
     }
 }
 
@@ -268,10 +295,11 @@ mod tests {
             )
             .await
             .expect("listen");
-        let port = guard
-            .local_addr()
-            .expect("tcp reports its bound address")
-            .port();
+        let bound = guard
+            .address()
+            .parse::<SocketAddr>()
+            .expect("tcp reports a parseable host:port address");
+        let port = bound.port();
 
         let mut client = transport
             .connect(&format!("127.0.0.1:{port}"))
