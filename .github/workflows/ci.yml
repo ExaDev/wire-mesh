@@ -143,6 +143,15 @@ jobs:
             exit 1
           fi
 
+      - name: Confirm the committed dist/ matches a fresh build
+        working-directory: ts/packages/core
+        run: |
+          pnpm turbo run _build
+          if ! git diff --exit-code -- dist; then
+            echo "::error::ts/packages/core/dist is out of date. Run 'pnpm build' in ts/packages/core and commit the result -- dist is committed deliberately (see the package README) and must never be hand-edited or left stale."
+            exit 1
+          fi
+
       - name: Test, including the conformance-check round-tripping conformance/'s golden vectors through the generated schemas
         working-directory: ts
         run: pnpm turbo run _test
