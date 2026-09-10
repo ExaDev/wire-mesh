@@ -46,9 +46,25 @@
         font-family: ui-monospace, monospace;
         font-size: 0.85rem;
       }
-      #frame-log {
+      .frame-log {
         max-height: 24rem;
         overflow-y: auto;
+      }
+      .connection {
+        margin-top: 1.5rem;
+        padding: 1rem;
+        border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+        border-radius: 0.5rem;
+      }
+      .connection-header {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .connection-address {
+        flex: 1;
+        font-weight: 600;
       }
     </style>
   </head>
@@ -64,8 +80,6 @@
           required
         />
         <button type="submit" id="connect-button">Connect</button>
-        <button type="button" id="ping-button" disabled>Send ping</button>
-        <button type="button" id="close-button" disabled>Disconnect</button>
       </header>
       <p class="mono">
         Domains offered:
@@ -74,26 +88,36 @@
         <label><input type="checkbox" name="domain" value="core/data" checked /> core/data</label>
       </p>
     </form>
-    <p class="status" id="connection-status">idle</p>
-    <section>
-      <h2>Peer directory</h2>
-      <p id="directory-empty">No gossip received yet.</p>
-      <table id="directory-table" hidden>
-        <thead>
-          <tr><th>device</th><th>addresses</th><th>snapshot (unix s)</th></tr>
-        </thead>
-        <tbody id="directory-body"></tbody>
-      </table>
-    </section>
-    <section>
-      <h2>Frame log</h2>
-      <table>
-        <thead>
-          <tr><th>direction</th><th>frame</th></tr>
-        </thead>
-        <tbody id="frame-log"></tbody>
-      </table>
-    </section>
+    <div id="connections"></div>
+    <template id="connection-template">
+      <section class="connection">
+        <header class="connection-header">
+          <span class="connection-address mono"></span>
+          <button type="button" class="ping-button" disabled>Send ping</button>
+          <button type="button" class="close-button">Disconnect</button>
+        </header>
+        <p class="status connection-status">idle</p>
+        <section>
+          <h2>Peer directory</h2>
+          <p class="directory-empty">No gossip received yet.</p>
+          <table class="directory-table" hidden>
+            <thead>
+              <tr><th>device</th><th>addresses</th><th>snapshot (unix s)</th></tr>
+            </thead>
+            <tbody class="directory-body"></tbody>
+          </table>
+        </section>
+        <section>
+          <h2>Frame log</h2>
+          <table class="frame-log-table">
+            <thead>
+              <tr><th>direction</th><th>frame</th></tr>
+            </thead>
+            <tbody class="frame-log"></tbody>
+          </table>
+        </section>
+      </section>
+    </template>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

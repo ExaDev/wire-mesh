@@ -1,5 +1,7 @@
-// The console's DOM wiring: one MeshSession per connection attempt, rendering each SessionEvent into the connection status line, the peer directory table, and the frame log. Kept thin on purpose -- everything with behaviour lives in mesh-session.ts so it can be tested without a browser.
+// The console's DOM wiring: one MeshSession per open connection, rendering each session's SessionEvent into its own status line, peer directory table, and frame log. Kept thin on purpose -- everything with behaviour lives in mesh-session.ts so it can be tested without a browser.
 
+import { createIndexedDbStorage } from "./adapters/indexeddb-storage.js";
+import { createPersistedWebCryptoIdentity } from "./adapters/web-crypto-identity.js";
 import { createBrowserTransport } from "./adapters/websocket-transport.js";
 import { createMeshSession } from "./mesh-session.js";
 import type { SessionEvent } from "./mesh-session.js";
@@ -16,16 +18,32 @@ function requireElement<E extends HTMLElement>(
   return element;
 }
 
+/** Same self-verifying lookup as requireElement, scoped to a subtree rather than the whole document -- for querying inside one connection's own cloned template instance. */
+function requireChild<E extends HTMLElement>(
+  root: ParentNode,
+  selector: string,
+  kind: new () => E,
+): E {
+  const element = root.querySelector(selector);
+  if (!(element instanceof kind)) {
+    throw new Error(`missing element matching ${selector}`);
+  }
+  return element;
+}
+
 const form = requireElement("connect-form", HTMLFormElement);
 const addressInput = requireElement("node-address", HTMLInputElement);
-const connectButton = requireElement("connect-button", HTMLButtonElement);
-const pingButton = requireElement("ping-button", HTMLButtonElement);
-const closeButton = requireElement("close-button", HTMLButtonElement);
-const statusLine = requireElement("connection-status", HTMLParagraphElement);
-const directoryEmpty = requireElement("directory-empty", HTMLParagraphElement);
-const directoryTable = requireElement("directory-table", HTMLTableElement);
-const directoryBody = requireElement("directory-body", HTMLTableSectionElement);
-const frameLogBody = requireElement("frame-log", HTMLTableSectionElement);
+const connectionsContainer = requireElement("connections", HTMLDivElement);
+const connectionTemplate = requireElement(
+  "connection-template",
+  HTMLTemplateElement,
+);
+
+// One shared identity and clock across every connection this console makes: the device-id must stay stable regardless of how many nodes it talks to, only the per-connection session state differs.
+const identity = await createPersistedWebCryptoIdentity(
+  await createIndexedDbStorage(),
+);
+const clock = { now: () => Date.now() };
 
 const HEX_RADIX = 16;
 
@@ -54,26 +72,74 @@ function describeHandshake(event: SessionEvent): string {
   return "";
 }
 
-function render(event: SessionEvent): void {
+interface ConnectionPanel {
+  root: HTMLElement;
+  statusLine: HTMLParagraphElement;
+  directoryEmpty: HTMLParagraphElement;
+  directoryTable: HTMLTableElement;
+  directoryBody: HTMLTableSectionElement;
+  frameLogBody: HTMLTableSectionElement;
+  pingButton: HTMLButtonElement;
+  closeButton: HTMLButtonElement;
+}
+
+function createConnectionPanel(address: string): ConnectionPanel {
+  const fragment = connectionTemplate.content.cloneNode(true);
+  if (!(fragment instanceof DocumentFragment)) {
+    throw new Error("connection template did not clone to a DocumentFragment");
+  }
+  const root = requireChild(fragment, ".connection", HTMLElement);
+  requireChild(fragment, ".connection-address", HTMLSpanElement).textContent =
+    address;
+  const panel: ConnectionPanel = {
+    root,
+    statusLine: requireChild(
+      fragment,
+      ".connection-status",
+      HTMLParagraphElement,
+    ),
+    directoryEmpty: requireChild(
+      fragment,
+      ".directory-empty",
+      HTMLParagraphElement,
+    ),
+    directoryTable: requireChild(
+      fragment,
+      ".directory-table",
+      HTMLTableElement,
+    ),
+    directoryBody: requireChild(
+      fragment,
+      ".directory-body",
+      HTMLTableSectionElement,
+    ),
+    frameLogBody: requireChild(fragment, ".frame-log", HTMLTableSectionElement),
+    pingButton: requireChild(fragment, ".ping-button", HTMLButtonElement),
+    closeButton: requireChild(fragment, ".close-button", HTMLButtonElement),
+  };
+  connectionsContainer.append(fragment);
+  return panel;
+}
+
+function render(panel: ConnectionPanel, event: SessionEvent): void {
   const { state } = event;
-  statusLine.textContent =
-    state.status === "idle"
-      ? "idle"
-      : state.status === "connecting"
-        ? `connecting to ${state.address}…`
-        : state.status === "connected"
-          ? `connected to ${state.address}${describeHandshake(event)}`
-          : `closed (${state.reason})`;
+  panel.statusLine.textContent =
+    state.status === "connecting"
+      ? "connecting…"
+      : state.status === "connected"
+        ? `connected${describeHandshake(event)}`
+        : state.status === "reconnecting"
+          ? `reconnecting (attempt ${String(state.attempt)}, ${state.reason})…`
+          : state.status === "closed"
+            ? `closed (${state.reason})`
+            : "idle";
 
-  const connected = state.status === "connected";
-  pingButton.disabled = !connected;
-  closeButton.disabled = !connected;
-  connectButton.disabled = connected || state.status === "connecting";
-  addressInput.disabled = connected || state.status === "connecting";
+  panel.pingButton.disabled = state.status !== "connected";
+  // The close button is never disabled: a panel in any state (including a dead, closed one) must always be dismissable, since nothing else removes it from the page.
 
-  directoryEmpty.hidden = event.directory.length > 0;
-  directoryTable.hidden = event.directory.length === 0;
-  directoryBody.replaceChildren(
+  panel.directoryEmpty.hidden = event.directory.length > 0;
+  panel.directoryTable.hidden = event.directory.length === 0;
+  panel.directoryBody.replaceChildren(
     ...event.directory.map((entry) => {
       const row = document.createElement("tr");
       const deviceCell = document.createElement("td");
@@ -87,7 +153,7 @@ function render(event: SessionEvent): void {
     }),
   );
 
-  frameLogBody.replaceChildren(
+  panel.frameLogBody.replaceChildren(
     ...event.frameLog.map((entry) => {
       const row = document.createElement("tr");
       const directionCell = document.createElement("td");
@@ -104,49 +170,47 @@ function render(event: SessionEvent): void {
       return row;
     }),
   );
-  const frameLogTable = frameLogBody.parentElement;
+  const frameLogTable = panel.frameLogBody.parentElement;
   if (frameLogTable !== null) {
     frameLogTable.scrollTop = frameLogTable.scrollHeight;
   }
 }
 
-let session: ReturnType<typeof createMeshSession> | null = null;
+const sessions = new Map<string, ReturnType<typeof createMeshSession>>();
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
-  if (session !== null) {
+  const address = addressInput.value;
+  // Re-submitting an address that already has a live entry is a no-op, mirroring the previous single-session guard's exact refusal to start a second connect attempt over an active one. An entry is removed either by its own panel's close button, or automatically when its connect attempt fails (the same "clear it back out so the address can be retried" behaviour the original single-session code applied by nulling its module-level session) -- so resubmitting the same address after a failure starts a fresh attempt, but resubmitting while still connecting/connected/reconnecting is a no-op rather than a silent replacement.
+  if (sessions.has(address)) {
     return;
   }
   const domains = [
     ...form.querySelectorAll<HTMLInputElement>("input[name='domain']:checked"),
   ].map((checkbox) => checkbox.value);
-  session = createMeshSession(createBrowserTransport());
+
+  const panel = createConnectionPanel(address);
+  const session = createMeshSession(createBrowserTransport(), identity, clock);
+  sessions.set(address, session);
+
+  panel.pingButton.addEventListener("click", () => {
+    void session.sendPing().catch((error: unknown) => {
+      panel.statusLine.textContent = `send failed: ${error instanceof Error ? error.message : String(error)}`;
+    });
+  });
+  panel.closeButton.addEventListener("click", () => {
+    void session.close();
+    sessions.delete(address);
+    panel.root.remove();
+  });
+
   void (async () => {
     for await (const sessionEvent of session.events) {
-      render(sessionEvent);
+      render(panel, sessionEvent);
     }
   })();
-  void session.connect(addressInput.value, domains).catch((error: unknown) => {
-    statusLine.textContent = `connect failed: ${error instanceof Error ? error.message : String(error)}`;
-    session = null;
+  void session.connect(address, domains).catch((error: unknown) => {
+    panel.statusLine.textContent = `connect failed: ${error instanceof Error ? error.message : String(error)}`;
+    sessions.delete(address);
   });
-});
-
-pingButton.addEventListener("click", () => {
-  if (session !== null) {
-    void session.sendPing().catch((error: unknown) => {
-      statusLine.textContent = `send failed: ${error instanceof Error ? error.message : String(error)}`;
-    });
-  }
-});
-
-closeButton.addEventListener("click", () => {
-  if (session !== null) {
-    void session.close();
-    session = null;
-    connectButton.disabled = false;
-    addressInput.disabled = false;
-    pingButton.disabled = true;
-    closeButton.disabled = true;
-  }
 });
