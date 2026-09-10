@@ -405,9 +405,9 @@ impl ExecList {
 /// `exec-session-info = { session, kind: "pty" / "proc", ? argv, ? cwd }`.
 ///
 /// Not a frame: manage-ok's answer to exec.list rides the open tail of
-/// `manage-ok` as an array of these. CDE key order: `kind` (5), `argv`
-/// (5), `cwd` (4), `session` (8) — `cwd` first, then `kind`, then `argv`
-/// bytewise, then `session`.
+/// `manage-ok` as an array of these. CDE key order: `cwd` (4 encoded key
+/// bytes) sorts first; `argv` and `kind` each encode to 5 bytes and tie-break
+/// bytewise (`argv` < `kind`); `session` (8) sorts last.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecSessionInfo {
     pub session: StreamSession,
@@ -439,15 +439,15 @@ impl Encode<()> for ExecSessionInfo {
     ) -> Result<(), minicbor::encode::Error<W::Error>> {
         let len = 2 + usize::from(self.argv.is_some()) + usize::from(self.cwd.is_some());
         e.map(len as u64)?;
-        // CDE key order: the three 5-byte keys bytewise ("argv" < "cwd" < "kind"), then the 9-byte "session".
+        // CDE key order: "cwd" (4 encoded bytes), then "argv" and "kind" (5 bytes each, "argv" < "kind" bytewise), then "session" (8).
+        if let Some(cwd) = &self.cwd {
+            e.str("cwd")?.str(cwd)?;
+        }
         if let Some(argv) = &self.argv {
             e.str("argv")?.array(argv.len() as u64)?;
             for arg in argv {
                 e.str(arg)?;
             }
-        }
-        if let Some(cwd) = &self.cwd {
-            e.str("cwd")?.str(cwd)?;
         }
         e.str("kind")?.str(self.kind.as_str())?;
         e.str("session")?.u64(self.session.0)?;
@@ -608,5 +608,26 @@ mod tests {
             .position(|w| w == b"session")
             .expect("session");
         assert!(argv_at < kind_at && kind_at < session_at);
+    }
+
+    #[test]
+    fn exec_session_info_round_trip_with_both_argv_and_cwd() {
+        let info = ExecSessionInfo {
+            session: StreamSession(9),
+            kind: ExecSessionKind::Proc,
+            argv: Some(vec!["sh".to_owned(), "-c".to_owned()]),
+            cwd: Some("/work".to_owned()),
+        };
+        let bytes = minicbor::to_vec(&info).expect("encode");
+        let back: ExecSessionInfo = minicbor::decode(&bytes).expect("decode");
+        assert_eq!(back, info);
+        let cwd_at = bytes.windows(3).position(|w| w == b"cwd").expect("cwd");
+        let argv_at = bytes.windows(4).position(|w| w == b"argv").expect("argv");
+        let kind_at = bytes.windows(4).position(|w| w == b"kind").expect("kind");
+        let session_at = bytes
+            .windows(7)
+            .position(|w| w == b"session")
+            .expect("session");
+        assert!(cwd_at < argv_at && argv_at < kind_at && kind_at < session_at);
     }
 }
