@@ -1,0 +1,56 @@
+{
+  "name": "wire-mesh-node",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "bin": {
+    "wire-mesh-node": "./dist/server.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "turbo run _build",
+    "_build": "tsdown",
+    "start": "node dist/server.mjs",
+    "test": "turbo run _test",
+    "_test": "vitest run",
+    "typecheck": "turbo run _typecheck",
+    "_typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "lint": "turbo run _lint",
+    "_lint": "eslint . --fix --cache --max-warnings 0"
+  },
+  "dependencies": {
+    "@exadev/wire-mesh-core": "workspace:*",
+    "cbor2": "2.3.0",
+    "ws": "8.21.3"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
+    "@exadev/eslint-config": "2.10.6",
+    "@types/node": "26.4.1",
+    "@types/ws": "8.18.1",
+    "eslint": "10.10.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-prettier": "5.5.6",
+    "globals": "17.12.0",
+    "jiti": "2.7.0",
+    "prettier": "3.9.6",
+    "tsdown": "0.23.0",
+    "turbo": "2.10.12",
+    "typescript": "6.0.3",
+    "vitest": "5.0.0"
+  },
+  "exports": {
+    "./adapters/node-websocket-transport": {
+      "import": "./dist/adapters/node-websocket-transport.mjs",
+      "require": "./dist/adapters/node-websocket-transport.cjs"
+    },
+    "./server": {
+      "import": "./dist/server.mjs",
+      "require": "./dist/server.cjs"
+    },
+    "./package.json": "./package.json"
+  }
+}
