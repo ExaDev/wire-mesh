@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "cbor2": "2.3.0",
-    "cddl.js": "github:ExaDev/cddl.js#main",
+    "cddl.js": "1.0.0",
     "zod": "4.5.4"
   },
   "devDependencies": {
