@@ -2,7 +2,7 @@
 
 An application-neutral peer-mesh wire protocol. Any tool that speaks it — a file-sync client, an agent communication bus, a terminal broker — can be a first-class peer in the same mesh as any other tool. No single implementation is the canonical runtime. The protocol is the contract; no codebase is.
 
-> **Status: schema written, no implementations yet.** [`spec/protocol.cddl`](spec/protocol.cddl) is a real, RFC 8610-valid schema, validated against a CDDL parser — not just prose. Nothing consumes it yet: `rust/` and `ts/packages/*` don't exist as code, only as the repository structure below.
+> **Status: schema written, one implementation underway.** [`spec/protocol.cddl`](spec/protocol.cddl) is a real, RFC 8610-valid schema, validated against a CDDL parser — not just prose. `ts/packages/core` consumes it, with schema-driven Zod generation and handshake/capability-token domain logic; `rust/` and the remaining `ts/packages/*` don't exist as code yet, only as the repository structure below.
 
 ## Why this exists
 
@@ -90,9 +90,9 @@ ts/
 
 ## Implementations
 
-None yet. The schema exists (`spec/protocol.cddl`), and so does `conformance/`'s golden test vector suite; `rust/` and `ts/packages/core` don't exist as code, only as the structure above. Once they do:
+`ts/packages/core` exists: a ports/adapters implementation (Transport, Storage, Identity/crypto, and Clock as first-class ports) consuming Zod schemas generated from `spec/protocol.cddl` by [cddl.js](https://github.com/ExaDev/cddl.js), with real domain logic for handshake negotiation and capability-token verification (including the delegation-chain narrowing rules `tokens.cddl` documents); its `conformance-check` round-trips every vector in `conformance/`'s golden suite through the generated schemas. `rust/` doesn't exist as code yet, only as the structure above.
 
-- **[Cascade](https://github.com/Mearman/cascade)** refactors its own hand-written protocol code onto `rust/` as an ordinary Cargo dependency, rather than maintaining a parallel implementation.
+- **[Cascade](https://github.com/Mearman/cascade)** refactors its own hand-written protocol code onto `rust/` as an ordinary Cargo dependency, rather than maintaining a parallel implementation, once `rust/` exists.
 - **[agent-comms](https://github.com/ExaDev/agent-comms)** refactors its own wire-protocol and transport code onto `ts/packages/core` as an ordinary pnpm dependency, the same way.
 - **[cddl.js](https://github.com/ExaDev/cddl.js)** gives `ts/packages/core` schema-driven Zod generation from `spec/protocol.cddl`, since no CDDL-to-TypeScript tool currently exists.
 
