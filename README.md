@@ -66,7 +66,7 @@ The schema is described in [CDDL](https://datatracker.ietf.org/doc/html/rfc8610)
 
 `core` is domain logic; it depends only on contracts, never on the runtime it executes in or the backend that holds its data. Every runtime-specific or vendor-specific concern lives in an adapter at the edge, satisfying one of these ports:
 
-- **Transport** — send, broadcast, connect, receive. Adapters: Node TCP/TLS (a plain-hosted process), a Durable-Object-hibernation WebSocket adapter (`cloudflare-hub`), and a WebRTC DataChannel adapter (`web-console`). Streaming operations carry backpressure at the contract level — cascade's own credit-window design for exec stdio is the precedent — so a WebRTC DataChannel's `bufferedAmount`/`bufferedamountlow` and a TCP socket's `drain` event both have to satisfy the same abstract backpressure contract rather than leaking their own shape into `core`.
+- **Transport** — send, broadcast, connect, receive. Adapters: Node TCP/TLS (a plain-hosted process), a WebSocket adapter over a Durable Object (`cloudflare-hub`), and a browser-native WebSocket adapter (`web-console`). Streaming operations carry backpressure at the contract level — cascade's own credit-window design for exec stdio is the precedent — so each adapter's own signal (a TCP socket's `drain` event, a WebSocket's `bufferedAmount`) has to satisfy the same abstract backpressure contract rather than leaking its own shape into `core`.
 - **Storage** — `get`/`put`/`delete`. Adapters: a `NullStorage` no-op (ephemeral nodes), Durable Object storage (`cloudflare-hub`), a filesystem/SQLite adapter (a plain-hosted deployment).
 - **Identity/crypto** — key generation, signing, verification. Likely one adapter, not three: Node has shipped a spec-compliant `crypto.webcrypto` since v15, so the same WebCrypto-based implementation can plausibly serve Node, browsers, and Cloudflare Workers alike. Worth confirming directly against each runtime rather than assumed.
 - **Clock and observability** — first-class ports, not incidental detail. `core` doesn't call `Date.now()` or log directly, for the same reason it doesn't touch a socket directly: a test harness, a Cloudflare Worker's own trace context, and a plain Node process all want to supply these differently.
@@ -83,7 +83,7 @@ ts/
   packages/
     core/                 — the TypeScript implementation, published to npm
     cloudflare-hub/       — a reference Cloudflare Worker deployment of a public hub node
-    web-console/          — a browser client (directory, room browser, join-from-browser) for any node
+    web-console/          — a browser client for any node, showing the gossip-derived peer directory and frame log (room browser and join-from-browser are deferred)
 ```
 
 `spec/` and `conformance/` are the actual contract. `rust/` and `ts/packages/core` are two implementations of it, not two different things — neither is privileged over the other, and a future implementation in any other language is exactly as welcome. Tasks are orchestrated across the two languages by a thin root `justfile` that dispatches into each subtree's own native tooling (`cargo` for `rust/`, `turbo` for `ts/`) rather than a shared build system — there's no cross-language build graph complex enough yet to need one.
