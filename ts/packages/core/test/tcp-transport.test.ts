@@ -3,9 +3,6 @@ import { describe, expect, it } from "vitest";
 import { createTcpTransport } from "../src/adapters/tcp-transport.js";
 
 const LENGTH_PREFIX_BYTES = 4;
-// A fixed address rather than port 0: the Transport port's listen takes the caller's address and never reports the bound one, so an OS-assigned port would be undiscoverable through the public surface this test deliberately exercises.
-const TEST_LISTEN_ADDRESS = "127.0.0.1:44833";
-const TEST_LISTEN_PORT = Number(TEST_LISTEN_ADDRESS.split(":")[1]);
 
 /** Connects a raw socket (deliberately NOT the transport's own Connection -- the point is to write hostile bytes a well-behaved peer would never produce) and writes one length-prefixed body. */
 async function writeRawBody(port: number, body: Uint8Array): Promise<void> {
@@ -31,36 +28,32 @@ describe("createTcpTransport", () => {
     const receivedError = new Promise<unknown>((resolve) => {
       resolveError = resolve;
     });
-    const stopListening = await transport.listen(
-      TEST_LISTEN_ADDRESS,
-      (connection) => {
-        void (async () => {
-          const frames: unknown[] = [];
-          for await (const frame of connection.receive()) {
-            frames.push(frame);
-          }
-          return frames;
-        })().then(
-          () => {
-            // A non-Error marker: the assertion below distinguishes a genuine rejection from clean completion
-            resolveError("COMPLETED");
-          },
-          (error: unknown) => {
-            resolveError(error);
-          },
-        );
-      },
-    );
+    // Port 0: the OS assigns a free port and the listener reports it back, so concurrent CI runs can never collide on a fixed one
+    const listener = await transport.listen("127.0.0.1:0", (connection) => {
+      void (async () => {
+        const frames: unknown[] = [];
+        for await (const frame of connection.receive()) {
+          frames.push(frame);
+        }
+        return frames;
+      })().then(
+        () => {
+          // A non-Error marker: the assertion below distinguishes a genuine rejection from clean completion
+          resolveError("COMPLETED");
+        },
+        (error: unknown) => {
+          resolveError(error);
+        },
+      );
+    });
 
     // A lone top-level CBOR BREAK byte: decode() throws on it inside the socket data handler -- previously an uncaughtException that killed the process
-    await writeRawBody(
-      TEST_LISTEN_PORT,
-      Uint8Array.from(Buffer.from("ff", "hex")),
-    );
+    const assignedPort = Number(listener.address.split(":")[1]);
+    await writeRawBody(assignedPort, Uint8Array.from(Buffer.from("ff", "hex")));
 
     const error = await receivedError;
     expect(error).toBeInstanceOf(Error);
 
-    await stopListening();
+    await listener.close();
   });
 });
