@@ -1,7 +1,7 @@
 import { connect as netConnect, createServer, type Socket } from "node:net";
 import { cdeDecodeOptions, cdeEncodeOptions, decode, encode } from "cbor2";
 import { frameSchema, type Frame } from "../generated/protocol.js";
-import type { Connection, Transport } from "../ports/transport.js";
+import type { Connection, Listener, Transport } from "../ports/transport.js";
 
 const LENGTH_PREFIX_BYTES = 4;
 
@@ -150,7 +150,7 @@ export function createTcpTransport(): Transport {
         socket.once("error", reject);
       });
     },
-    async listen(address, onConnection) {
+    async listen(address, onConnection): Promise<Listener> {
       const { host, port } = parseAddress(address);
       return new Promise((resolve, reject) => {
         const server = createServer((socket) => {
@@ -158,14 +158,22 @@ export function createTcpTransport(): Transport {
         });
         server.once("error", reject);
         server.listen(port, host, () => {
-          resolve(
-            async () =>
+          const bound = server.address();
+          if (bound === null || typeof bound === "string") {
+            // A TCP server's bound address is always an AddressInfo object; null only if the server were not listening, which cannot hold inside this listening callback
+            reject(new Error("listener did not report a bound address"));
+            return;
+          }
+          const listener: Listener = {
+            close: async () =>
               new Promise((resolveClose) => {
                 server.close(() => {
                   resolveClose();
                 });
               }),
-          );
+            address: `${bound.address}:${String(bound.port)}`,
+          };
+          resolve(listener);
         });
       });
     },
