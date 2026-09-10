@@ -88,7 +88,7 @@ ts/
 
 ## Implementations
 
-None yet. The schema exists (`spec/protocol.cddl`); `rust/` and `ts/packages/core` don't exist as code, only as the structure above. Once they do:
+None yet. The schema exists (`spec/protocol.cddl`), and so does `conformance/`'s golden test vector suite; `rust/` and `ts/packages/core` don't exist as code, only as the structure above. Once they do:
 
 - **[Cascade](https://github.com/Mearman/cascade)** refactors its own hand-written protocol code onto `rust/` as an ordinary Cargo dependency, rather than maintaining a parallel implementation.
 - **[agent-comms](https://github.com/ExaDev/agent-comms)** refactors its own wire-protocol and transport code onto `ts/packages/core` as an ordinary pnpm dependency, the same way.
