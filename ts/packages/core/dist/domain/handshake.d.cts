@@ -1,4 +1,4 @@
-import { D as HandshakeFrame, K as ProtocolVersion, y as DomainId } from "../protocol-BuKLld33.cjs";
+import { D as HandshakeFrame, q as ProtocolVersion, y as DomainId } from "../protocol-DX0RGNQS.cjs";
 //#region src/domain/handshake.d.ts
 /** The highest protocol version this build of core understands. */
 export declare const SUPPORTED_PROTOCOL_VERSION: ProtocolVersion;

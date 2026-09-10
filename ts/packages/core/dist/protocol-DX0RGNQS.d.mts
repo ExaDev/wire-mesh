@@ -71,7 +71,24 @@ declare const manageCommandParamsSchema: z.ZodLazy<z.ZodUnion<readonly [z.ZodUni
   session: z.ZodLazy<z.ZodLazy<z.ZodNumber>>;
 }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
   verb: z.ZodLiteral<"exec.list">;
-}, z.core.$strip>>>]>, z.ZodObject<{}, z.core.$catchall<z.ZodUnknown>>]>>;
+}, z.core.$strip>>>]>, z.ZodObject<{}, z.core.$catchall<z.ZodUnknown>>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
+  verb: z.ZodLiteral<"webrtc.offer">;
+  "negotiation-id": z.ZodNumber;
+  sdp: z.ZodString;
+}, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+  verb: z.ZodLiteral<"webrtc.answer">;
+  "negotiation-id": z.ZodNumber;
+  sdp: z.ZodString;
+}, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+  verb: z.ZodLiteral<"webrtc.ice-candidate">;
+  "negotiation-id": z.ZodNumber;
+  candidate: z.ZodOptional<z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    candidate: z.ZodString;
+    "sdp-mid": z.ZodOptional<z.ZodString>;
+    "sdp-m-line-index": z.ZodOptional<z.ZodNumber>;
+    "username-fragment": z.ZodOptional<z.ZodString>;
+  }, z.core.$strip>>>>;
+}, z.core.$strip>>>]>]>>;
 declare const ptySpawnSchema: z.ZodLazy<z.ZodObject<{
   verb: z.ZodLiteral<"pty.spawn">;
   shell: z.ZodOptional<z.ZodString>;
@@ -124,7 +141,7 @@ declare const execSessionInfoSchema: z.ZodLazy<z.ZodObject<{
 declare const frameVariantSchema: z.ZodLazy<z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
   type: z.ZodLiteral<"handshake">;
   version: z.ZodLazy<z.ZodLazy<z.ZodNumber>>;
-  domains: z.ZodArray<z.ZodLazy<z.ZodLazy<z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodUnion<readonly [z.ZodLiteral<"core/management">, z.ZodLiteral<"core/exec">, z.ZodLiteral<"core/data">, z.ZodLiteral<"core/federation">]>>>, z.ZodLazy<z.ZodLazy<z.ZodString>>, z.ZodLazy<z.ZodLazy<z.ZodString>>]>>>>;
+  domains: z.ZodArray<z.ZodLazy<z.ZodLazy<z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodUnion<readonly [z.ZodLiteral<"core/management">, z.ZodLiteral<"core/exec">, z.ZodLiteral<"core/data">, z.ZodLiteral<"core/federation">, z.ZodLiteral<"core/webrtc">]>>>, z.ZodLazy<z.ZodLazy<z.ZodString>>, z.ZodLazy<z.ZodLazy<z.ZodString>>]>>>>;
   params: z.ZodOptional<z.ZodObject<{}, z.core.$catchall<z.ZodUnknown>>>;
 }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
   type: z.ZodLiteral<"ping">;
@@ -209,7 +226,24 @@ declare const frameVariantSchema: z.ZodLazy<z.ZodUnion<readonly [z.ZodLazy<z.Zod
       session: z.ZodLazy<z.ZodLazy<z.ZodNumber>>;
     }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"exec.list">;
-    }, z.core.$strip>>>]>, z.ZodObject<{}, z.core.$catchall<z.ZodUnknown>>]>>>;
+    }, z.core.$strip>>>]>, z.ZodObject<{}, z.core.$catchall<z.ZodUnknown>>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
+      verb: z.ZodLiteral<"webrtc.offer">;
+      "negotiation-id": z.ZodNumber;
+      sdp: z.ZodString;
+    }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+      verb: z.ZodLiteral<"webrtc.answer">;
+      "negotiation-id": z.ZodNumber;
+      sdp: z.ZodString;
+    }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+      verb: z.ZodLiteral<"webrtc.ice-candidate">;
+      "negotiation-id": z.ZodNumber;
+      candidate: z.ZodOptional<z.ZodLazy<z.ZodLazy<z.ZodObject<{
+        candidate: z.ZodString;
+        "sdp-mid": z.ZodOptional<z.ZodString>;
+        "sdp-m-line-index": z.ZodOptional<z.ZodNumber>;
+        "username-fragment": z.ZodOptional<z.ZodString>;
+      }, z.core.$strip>>>>;
+    }, z.core.$strip>>>]>]>>>;
   }, z.core.$strip>>>;
   scope: z.ZodLazy<z.ZodLazy<z.ZodObject<{
     kind: z.ZodString;
@@ -268,7 +302,7 @@ declare const frameVariantSchema: z.ZodLazy<z.ZodUnion<readonly [z.ZodLazy<z.Zod
 declare const frameSchema: z.ZodLazy<z.ZodLazy<z.ZodLazy<z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
   type: z.ZodLiteral<"handshake">;
   version: z.ZodLazy<z.ZodLazy<z.ZodNumber>>;
-  domains: z.ZodArray<z.ZodLazy<z.ZodLazy<z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodUnion<readonly [z.ZodLiteral<"core/management">, z.ZodLiteral<"core/exec">, z.ZodLiteral<"core/data">, z.ZodLiteral<"core/federation">]>>>, z.ZodLazy<z.ZodLazy<z.ZodString>>, z.ZodLazy<z.ZodLazy<z.ZodString>>]>>>>;
+  domains: z.ZodArray<z.ZodLazy<z.ZodLazy<z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodUnion<readonly [z.ZodLiteral<"core/management">, z.ZodLiteral<"core/exec">, z.ZodLiteral<"core/data">, z.ZodLiteral<"core/federation">, z.ZodLiteral<"core/webrtc">]>>>, z.ZodLazy<z.ZodLazy<z.ZodString>>, z.ZodLazy<z.ZodLazy<z.ZodString>>]>>>>;
   params: z.ZodOptional<z.ZodObject<{}, z.core.$catchall<z.ZodUnknown>>>;
 }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
   type: z.ZodLiteral<"ping">;
@@ -353,7 +387,24 @@ declare const frameSchema: z.ZodLazy<z.ZodLazy<z.ZodLazy<z.ZodUnion<readonly [z.
       session: z.ZodLazy<z.ZodLazy<z.ZodNumber>>;
     }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"exec.list">;
-    }, z.core.$strip>>>]>, z.ZodObject<{}, z.core.$catchall<z.ZodUnknown>>]>>>;
+    }, z.core.$strip>>>]>, z.ZodObject<{}, z.core.$catchall<z.ZodUnknown>>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
+      verb: z.ZodLiteral<"webrtc.offer">;
+      "negotiation-id": z.ZodNumber;
+      sdp: z.ZodString;
+    }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+      verb: z.ZodLiteral<"webrtc.answer">;
+      "negotiation-id": z.ZodNumber;
+      sdp: z.ZodString;
+    }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+      verb: z.ZodLiteral<"webrtc.ice-candidate">;
+      "negotiation-id": z.ZodNumber;
+      candidate: z.ZodOptional<z.ZodLazy<z.ZodLazy<z.ZodObject<{
+        candidate: z.ZodString;
+        "sdp-mid": z.ZodOptional<z.ZodString>;
+        "sdp-m-line-index": z.ZodOptional<z.ZodNumber>;
+        "username-fragment": z.ZodOptional<z.ZodString>;
+      }, z.core.$strip>>>>;
+    }, z.core.$strip>>>]>]>>>;
   }, z.core.$strip>>>;
   scope: z.ZodLazy<z.ZodLazy<z.ZodObject<{
     kind: z.ZodString;
@@ -410,14 +461,14 @@ declare const frameSchema: z.ZodLazy<z.ZodLazy<z.ZodLazy<z.ZodUnion<readonly [z.
   entries: z.ZodArray<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>;
 }, z.core.$strip>>>]>>>>;
 declare const protocolVersionSchema: z.ZodLazy<z.ZodNumber>;
-declare const domainIdSchema: z.ZodLazy<z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodUnion<readonly [z.ZodLiteral<"core/management">, z.ZodLiteral<"core/exec">, z.ZodLiteral<"core/data">, z.ZodLiteral<"core/federation">]>>>, z.ZodLazy<z.ZodLazy<z.ZodString>>, z.ZodLazy<z.ZodLazy<z.ZodString>>]>>;
-declare const coreDomainNameSchema: z.ZodLazy<z.ZodUnion<readonly [z.ZodLiteral<"core/management">, z.ZodLiteral<"core/exec">, z.ZodLiteral<"core/data">, z.ZodLiteral<"core/federation">]>>;
+declare const domainIdSchema: z.ZodLazy<z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodUnion<readonly [z.ZodLiteral<"core/management">, z.ZodLiteral<"core/exec">, z.ZodLiteral<"core/data">, z.ZodLiteral<"core/federation">, z.ZodLiteral<"core/webrtc">]>>>, z.ZodLazy<z.ZodLazy<z.ZodString>>, z.ZodLazy<z.ZodLazy<z.ZodString>>]>>;
+declare const coreDomainNameSchema: z.ZodLazy<z.ZodUnion<readonly [z.ZodLiteral<"core/management">, z.ZodLiteral<"core/exec">, z.ZodLiteral<"core/data">, z.ZodLiteral<"core/federation">, z.ZodLiteral<"core/webrtc">]>>;
 declare const namespacedDomainIdSchema: z.ZodLazy<z.ZodString>;
 declare const privateUseDomainIdSchema: z.ZodLazy<z.ZodString>;
 declare const handshakeFrameSchema: z.ZodLazy<z.ZodObject<{
   type: z.ZodLiteral<"handshake">;
   version: z.ZodLazy<z.ZodLazy<z.ZodNumber>>;
-  domains: z.ZodArray<z.ZodLazy<z.ZodLazy<z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodUnion<readonly [z.ZodLiteral<"core/management">, z.ZodLiteral<"core/exec">, z.ZodLiteral<"core/data">, z.ZodLiteral<"core/federation">]>>>, z.ZodLazy<z.ZodLazy<z.ZodString>>, z.ZodLazy<z.ZodLazy<z.ZodString>>]>>>>;
+  domains: z.ZodArray<z.ZodLazy<z.ZodLazy<z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodUnion<readonly [z.ZodLiteral<"core/management">, z.ZodLiteral<"core/exec">, z.ZodLiteral<"core/data">, z.ZodLiteral<"core/federation">, z.ZodLiteral<"core/webrtc">]>>>, z.ZodLazy<z.ZodLazy<z.ZodString>>, z.ZodLazy<z.ZodLazy<z.ZodString>>]>>>>;
   params: z.ZodOptional<z.ZodObject<{}, z.core.$catchall<z.ZodUnknown>>>;
 }, z.core.$strip>>;
 declare const identityKeySchema: z.ZodLazy<z.ZodObject<{
@@ -470,7 +521,24 @@ declare const manageCommandSchema: z.ZodLazy<z.ZodObject<{
     session: z.ZodLazy<z.ZodLazy<z.ZodNumber>>;
   }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
     verb: z.ZodLiteral<"exec.list">;
-  }, z.core.$strip>>>]>, z.ZodObject<{}, z.core.$catchall<z.ZodUnknown>>]>>>;
+  }, z.core.$strip>>>]>, z.ZodObject<{}, z.core.$catchall<z.ZodUnknown>>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    verb: z.ZodLiteral<"webrtc.offer">;
+    "negotiation-id": z.ZodNumber;
+    sdp: z.ZodString;
+  }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    verb: z.ZodLiteral<"webrtc.answer">;
+    "negotiation-id": z.ZodNumber;
+    sdp: z.ZodString;
+  }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    verb: z.ZodLiteral<"webrtc.ice-candidate">;
+    "negotiation-id": z.ZodNumber;
+    candidate: z.ZodOptional<z.ZodLazy<z.ZodLazy<z.ZodObject<{
+      candidate: z.ZodString;
+      "sdp-mid": z.ZodOptional<z.ZodString>;
+      "sdp-m-line-index": z.ZodOptional<z.ZodNumber>;
+      "username-fragment": z.ZodOptional<z.ZodString>;
+    }, z.core.$strip>>>>;
+  }, z.core.$strip>>>]>]>>>;
 }, z.core.$strip>>;
 declare const manageRequestFrameSchema: z.ZodLazy<z.ZodObject<{
   type: z.ZodLiteral<"manage-request">;
@@ -512,7 +580,24 @@ declare const manageRequestFrameSchema: z.ZodLazy<z.ZodObject<{
       session: z.ZodLazy<z.ZodLazy<z.ZodNumber>>;
     }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"exec.list">;
-    }, z.core.$strip>>>]>, z.ZodObject<{}, z.core.$catchall<z.ZodUnknown>>]>>>;
+    }, z.core.$strip>>>]>, z.ZodObject<{}, z.core.$catchall<z.ZodUnknown>>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
+      verb: z.ZodLiteral<"webrtc.offer">;
+      "negotiation-id": z.ZodNumber;
+      sdp: z.ZodString;
+    }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+      verb: z.ZodLiteral<"webrtc.answer">;
+      "negotiation-id": z.ZodNumber;
+      sdp: z.ZodString;
+    }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+      verb: z.ZodLiteral<"webrtc.ice-candidate">;
+      "negotiation-id": z.ZodNumber;
+      candidate: z.ZodOptional<z.ZodLazy<z.ZodLazy<z.ZodObject<{
+        candidate: z.ZodString;
+        "sdp-mid": z.ZodOptional<z.ZodString>;
+        "sdp-m-line-index": z.ZodOptional<z.ZodNumber>;
+        "username-fragment": z.ZodOptional<z.ZodString>;
+      }, z.core.$strip>>>>;
+    }, z.core.$strip>>>]>]>>>;
   }, z.core.$strip>>>;
   scope: z.ZodLazy<z.ZodLazy<z.ZodObject<{
     kind: z.ZodString;
@@ -687,6 +772,32 @@ declare const coordinatorFrameSchema: z.ZodLazy<z.ZodObject<{
   coordinator: z.ZodLazy<z.ZodLazy<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>>;
   "capacity-hint": z.ZodOptional<z.ZodNumber>;
 }, z.core.$strip>>;
+declare const webrtcOfferSchema: z.ZodLazy<z.ZodObject<{
+  verb: z.ZodLiteral<"webrtc.offer">;
+  "negotiation-id": z.ZodNumber;
+  sdp: z.ZodString;
+}, z.core.$strip>>;
+declare const webrtcAnswerSchema: z.ZodLazy<z.ZodObject<{
+  verb: z.ZodLiteral<"webrtc.answer">;
+  "negotiation-id": z.ZodNumber;
+  sdp: z.ZodString;
+}, z.core.$strip>>;
+declare const webrtcIceCandidateSchema: z.ZodLazy<z.ZodObject<{
+  verb: z.ZodLiteral<"webrtc.ice-candidate">;
+  "negotiation-id": z.ZodNumber;
+  candidate: z.ZodOptional<z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    candidate: z.ZodString;
+    "sdp-mid": z.ZodOptional<z.ZodString>;
+    "sdp-m-line-index": z.ZodOptional<z.ZodNumber>;
+    "username-fragment": z.ZodOptional<z.ZodString>;
+  }, z.core.$strip>>>>;
+}, z.core.$strip>>;
+declare const iceCandidateInitSchema: z.ZodLazy<z.ZodObject<{
+  candidate: z.ZodString;
+  "sdp-mid": z.ZodOptional<z.ZodString>;
+  "sdp-m-line-index": z.ZodOptional<z.ZodNumber>;
+  "username-fragment": z.ZodOptional<z.ZodString>;
+}, z.core.$strip>>;
 type DataHaveFrame = z.infer<typeof dataHaveFrameSchema>;
 type DataRequestFrame = z.infer<typeof dataRequestFrameSchema>;
 type DataEntriesFrame = z.infer<typeof dataEntriesFrameSchema>;
@@ -751,5 +862,9 @@ type RelayConnectFrame = z.infer<typeof relayConnectFrameSchema>;
 type RelayDataFrame = z.infer<typeof relayDataFrameSchema>;
 type RelayInboundFrame = z.infer<typeof relayInboundFrameSchema>;
 type CoordinatorFrame = z.infer<typeof coordinatorFrameSchema>;
+type WebrtcOffer = z.infer<typeof webrtcOfferSchema>;
+type WebrtcAnswer = z.infer<typeof webrtcAnswerSchema>;
+type WebrtcIceCandidate = z.infer<typeof webrtcIceCandidateSchema>;
+type IceCandidateInit = z.infer<typeof iceCandidateInitSchema>;
 //#endregion
-export { RelayInboundFrame as $, procKillSchema as $t, ManageCommandParams as A, execListSchema as At, PingFrame as B, manageCommandSchema as Bt, FrameVariant as C, coseSign1Schema as Ct, HandshakeFrame as D, dataRequestFrameSchema as Dt, HandleRecord as E, dataHaveFrameSchema as Et, NamespacedCapability as F, handleClaimsSchema as Ft, ProcSpawn as G, namespacedCapabilitySchema as Gt, PrivateUseDomainId as H, manageOkSchema as Ht, NamespacedDomainId as I, handleRecordSchema as It, PtyResize as J, peerAdvertSchema as Jt, ProtocolVersion as K, namespacedDomainIdSchema as Kt, ObservedAddressFrame as L, handshakeFrameSchema as Lt, ManageOk as M, frameSchema as Mt, ManageRequestFrame as N, frameVariantSchema as Nt, IdentityKey as O, deviceIdSchema as Ot, ManageResponseFrame as P, gossipFrameSchema as Pt, RelayDataFrame as Q, privateUseDomainIdSchema as Qt, PeerAdvert as R, identityKeySchema as Rt, Frame as S, coseHeaderLabelSchema as St, HandleClaims as T, dataEntriesFrameSchema as Tt, ProcKill as U, manageRequestFrameSchema as Ut, PrivateUseCapability as V, manageErrorSchema as Vt, ProcSignal as W, manageResponseFrameSchema as Wt, PtyWrite as X, pingFrameSchema as Xt, PtySpawn as Y, peerIdentitySchema as Yt, RelayConnectFrame as Z, privateUseCapabilitySchema as Zt, DataRequestFrame as _, streamSessionSchema as _n, coordinatorFrameSchema as _t, CapabilityVerb as a, ptySpawnSchema as an, StreamDataFrame as at, ExecList as b, wireCandidateSchema as bn, coseHeaderAlgSchema as bt, CoreCapability as c, relayDataFrameSchema as cn, SyncPunchFrame as ct, CoseHeaderKid as d, revocationAnnounceFrameSchema as dn, candidateKindSchema as dt, procSignalSchema as en, RelayOfferFrame as et, CoseHeaderLabel as f, revocationClaimsSchema as fn, candidatesFrameSchema as ft, DataHaveFrame as g, streamEndFrameSchema as gn, closeFrameSchema as gt, DataEntriesFrame as h, streamDataFrameSchema as hn, capabilityVerbSchema as ht, CapabilityToken as i, ptyResizeSchema as in, StreamAckFrame as it, ManageError as j, execSessionInfoSchema as jt, ManageCommand as k, domainIdSchema as kt, CoreDomainName as l, relayInboundFrameSchema as ln, TokenClaims as lt, CoseTokenHeaders as m, streamAckFrameSchema as mn, capabilityTokenSchema as mt, CandidatesFrame as n, protocolVersionSchema as nn, RevocationClaims as nt, CloseFrame as o, ptyWriteSchema as on, StreamEndFrame as ot, CoseSign1 as p, revocationEntrySchema as pn, capabilityScopeSchema as pt, PtyKill as q, observedAddressFrameSchema as qt, CapabilityScope as r, ptyKillSchema as rn, RevocationEntry as rt, CoordinatorFrame as s, relayConnectFrameSchema as sn, StreamSession as st, CandidateKind as t, procSpawnSchema as tn, RevocationAnnounceFrame as tt, CoseHeaderAlg as u, relayOfferFrameSchema as un, WireCandidate as ut, DeviceId as v, syncPunchFrameSchema as vn, coreCapabilitySchema as vt, GossipFrame as w, coseTokenHeadersSchema as wt, ExecSessionInfo as x, coseHeaderKidSchema as xt, DomainId as y, tokenClaimsSchema as yn, coreDomainNameSchema as yt, PeerIdentity as z, manageCommandParamsSchema as zt };
+export { RelayDataFrame as $, peerAdvertSchema as $t, ManageCommand as A, dataHaveFrameSchema as At, PeerIdentity as B, handleRecordSchema as Bt, FrameVariant as C, syncPunchFrameSchema as Cn, coreDomainNameSchema as Ct, HandshakeFrame as D, webrtcOfferSchema as Dn, coseSign1Schema as Dt, HandleRecord as E, webrtcIceCandidateSchema as En, coseHeaderLabelSchema as Et, ManageResponseFrame as F, execSessionInfoSchema as Ft, ProcSignal as G, manageCommandSchema as Gt, PrivateUseCapability as H, iceCandidateInitSchema as Ht, NamespacedCapability as I, frameSchema as It, PtyKill as J, manageRequestFrameSchema as Jt, ProcSpawn as K, manageErrorSchema as Kt, NamespacedDomainId as L, frameVariantSchema as Lt, ManageError as M, deviceIdSchema as Mt, ManageOk as N, domainIdSchema as Nt, IceCandidateInit as O, wireCandidateSchema as On, coseTokenHeadersSchema as Ot, ManageRequestFrame as P, execListSchema as Pt, RelayConnectFrame as Q, observedAddressFrameSchema as Qt, ObservedAddressFrame as R, gossipFrameSchema as Rt, Frame as S, streamSessionSchema as Sn, coreCapabilitySchema as St, HandleClaims as T, webrtcAnswerSchema as Tn, coseHeaderKidSchema as Tt, PrivateUseDomainId as U, identityKeySchema as Ut, PingFrame as V, handshakeFrameSchema as Vt, ProcKill as W, manageCommandParamsSchema as Wt, PtySpawn as X, namespacedCapabilitySchema as Xt, PtyResize as Y, manageResponseFrameSchema as Yt, PtyWrite as Z, namespacedDomainIdSchema as Zt, DataRequestFrame as _, revocationClaimsSchema as _n, capabilityScopeSchema as _t, CapabilityVerb as a, procSignalSchema as an, StreamAckFrame as at, ExecList as b, streamDataFrameSchema as bn, closeFrameSchema as bt, CoreCapability as c, ptyKillSchema as cn, StreamSession as ct, CoseHeaderKid as d, ptyWriteSchema as dn, WebrtcAnswer as dt, peerIdentitySchema as en, RelayInboundFrame as et, CoseHeaderLabel as f, relayConnectFrameSchema as fn, WebrtcIceCandidate as ft, DataHaveFrame as g, revocationAnnounceFrameSchema as gn, candidatesFrameSchema as gt, DataEntriesFrame as h, relayOfferFrameSchema as hn, candidateKindSchema as ht, CapabilityToken as i, procKillSchema as in, RevocationEntry as it, ManageCommandParams as j, dataRequestFrameSchema as jt, IdentityKey as k, dataEntriesFrameSchema as kt, CoreDomainName as l, ptyResizeSchema as ln, SyncPunchFrame as lt, CoseTokenHeaders as m, relayInboundFrameSchema as mn, WireCandidate as mt, CandidatesFrame as n, privateUseCapabilitySchema as nn, RevocationAnnounceFrame as nt, CloseFrame as o, procSpawnSchema as on, StreamDataFrame as ot, CoseSign1 as p, relayDataFrameSchema as pn, WebrtcOffer as pt, ProtocolVersion as q, manageOkSchema as qt, CapabilityScope as r, privateUseDomainIdSchema as rn, RevocationClaims as rt, CoordinatorFrame as s, protocolVersionSchema as sn, StreamEndFrame as st, CandidateKind as t, pingFrameSchema as tn, RelayOfferFrame as tt, CoseHeaderAlg as u, ptySpawnSchema as un, TokenClaims as ut, DeviceId as v, revocationEntrySchema as vn, capabilityTokenSchema as vt, GossipFrame as w, tokenClaimsSchema as wn, coseHeaderAlgSchema as wt, ExecSessionInfo as x, streamEndFrameSchema as xn, coordinatorFrameSchema as xt, DomainId as y, streamAckFrameSchema as yn, capabilityVerbSchema as yt, PeerAdvert as z, handleClaimsSchema as zt };

@@ -26,16 +26,24 @@ const handleClaimsSchema = z.lazy(() => z.object({
 	"expires": z.number().int().nonnegative()
 }));
 const handleRecordSchema = z.lazy(() => z.lazy(() => coseSign1Schema));
-const manageCommandParamsSchema = z.lazy(() => z.union([z.union([
-	z.lazy(() => ptySpawnSchema),
-	z.lazy(() => ptyWriteSchema),
-	z.lazy(() => ptyResizeSchema),
-	z.lazy(() => ptyKillSchema),
-	z.lazy(() => procSpawnSchema),
-	z.lazy(() => procSignalSchema),
-	z.lazy(() => procKillSchema),
-	z.lazy(() => execListSchema)
-]), z.object({}).catchall(z.unknown())]));
+const manageCommandParamsSchema = z.lazy(() => z.union([
+	z.union([
+		z.lazy(() => ptySpawnSchema),
+		z.lazy(() => ptyWriteSchema),
+		z.lazy(() => ptyResizeSchema),
+		z.lazy(() => ptyKillSchema),
+		z.lazy(() => procSpawnSchema),
+		z.lazy(() => procSignalSchema),
+		z.lazy(() => procKillSchema),
+		z.lazy(() => execListSchema)
+	]),
+	z.object({}).catchall(z.unknown()),
+	z.union([
+		z.lazy(() => webrtcOfferSchema),
+		z.lazy(() => webrtcAnswerSchema),
+		z.lazy(() => webrtcIceCandidateSchema)
+	])
+]));
 const ptySpawnSchema = z.lazy(() => z.object({
 	"verb": z.literal("pty.spawn"),
 	"shell": z.string().optional(),
@@ -117,7 +125,8 @@ const coreDomainNameSchema = z.lazy(() => z.union([
 	z.literal("core/management"),
 	z.literal("core/exec"),
 	z.literal("core/data"),
-	z.literal("core/federation")
+	z.literal("core/federation"),
+	z.literal("core/webrtc")
 ]));
 const namespacedDomainIdSchema = z.lazy(() => z.string().regex(/* @__PURE__ */ new RegExp("[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+/[A-Za-z0-9_.-]+")));
 const privateUseDomainIdSchema = z.lazy(() => z.string().regex(/* @__PURE__ */ new RegExp("x-[A-Za-z0-9_.-]+")));
@@ -286,5 +295,26 @@ const coordinatorFrameSchema = z.lazy(() => z.object({
 	"coordinator": z.lazy(() => deviceIdSchema),
 	"capacity-hint": z.number().int().nonnegative().optional()
 }));
+const webrtcOfferSchema = z.lazy(() => z.object({
+	"verb": z.literal("webrtc.offer"),
+	"negotiation-id": z.number().int().nonnegative(),
+	"sdp": z.string()
+}));
+const webrtcAnswerSchema = z.lazy(() => z.object({
+	"verb": z.literal("webrtc.answer"),
+	"negotiation-id": z.number().int().nonnegative(),
+	"sdp": z.string()
+}));
+const webrtcIceCandidateSchema = z.lazy(() => z.object({
+	"verb": z.literal("webrtc.ice-candidate"),
+	"negotiation-id": z.number().int().nonnegative(),
+	"candidate": z.lazy(() => iceCandidateInitSchema).optional()
+}));
+const iceCandidateInitSchema = z.lazy(() => z.object({
+	"candidate": z.string(),
+	"sdp-mid": z.string().optional(),
+	"sdp-m-line-index": z.number().int().nonnegative().optional(),
+	"username-fragment": z.string().optional()
+}));
 //#endregion
-export { candidateKindSchema, candidatesFrameSchema, capabilityScopeSchema, capabilityTokenSchema, capabilityVerbSchema, closeFrameSchema, coordinatorFrameSchema, coreCapabilitySchema, coreDomainNameSchema, coseHeaderAlgSchema, coseHeaderKidSchema, coseHeaderLabelSchema, coseSign1Schema, coseTokenHeadersSchema, dataEntriesFrameSchema, dataHaveFrameSchema, dataRequestFrameSchema, deviceIdSchema, domainIdSchema, execListSchema, execSessionInfoSchema, frameSchema, frameVariantSchema, gossipFrameSchema, handleClaimsSchema, handleRecordSchema, handshakeFrameSchema, identityKeySchema, manageCommandParamsSchema, manageCommandSchema, manageErrorSchema, manageOkSchema, manageRequestFrameSchema, manageResponseFrameSchema, namespacedCapabilitySchema, namespacedDomainIdSchema, observedAddressFrameSchema, peerAdvertSchema, peerIdentitySchema, pingFrameSchema, privateUseCapabilitySchema, privateUseDomainIdSchema, procKillSchema, procSignalSchema, procSpawnSchema, protocolVersionSchema, ptyKillSchema, ptyResizeSchema, ptySpawnSchema, ptyWriteSchema, relayConnectFrameSchema, relayDataFrameSchema, relayInboundFrameSchema, relayOfferFrameSchema, revocationAnnounceFrameSchema, revocationClaimsSchema, revocationEntrySchema, streamAckFrameSchema, streamDataFrameSchema, streamEndFrameSchema, streamSessionSchema, syncPunchFrameSchema, tokenClaimsSchema, wireCandidateSchema };
+export { candidateKindSchema, candidatesFrameSchema, capabilityScopeSchema, capabilityTokenSchema, capabilityVerbSchema, closeFrameSchema, coordinatorFrameSchema, coreCapabilitySchema, coreDomainNameSchema, coseHeaderAlgSchema, coseHeaderKidSchema, coseHeaderLabelSchema, coseSign1Schema, coseTokenHeadersSchema, dataEntriesFrameSchema, dataHaveFrameSchema, dataRequestFrameSchema, deviceIdSchema, domainIdSchema, execListSchema, execSessionInfoSchema, frameSchema, frameVariantSchema, gossipFrameSchema, handleClaimsSchema, handleRecordSchema, handshakeFrameSchema, iceCandidateInitSchema, identityKeySchema, manageCommandParamsSchema, manageCommandSchema, manageErrorSchema, manageOkSchema, manageRequestFrameSchema, manageResponseFrameSchema, namespacedCapabilitySchema, namespacedDomainIdSchema, observedAddressFrameSchema, peerAdvertSchema, peerIdentitySchema, pingFrameSchema, privateUseCapabilitySchema, privateUseDomainIdSchema, procKillSchema, procSignalSchema, procSpawnSchema, protocolVersionSchema, ptyKillSchema, ptyResizeSchema, ptySpawnSchema, ptyWriteSchema, relayConnectFrameSchema, relayDataFrameSchema, relayInboundFrameSchema, relayOfferFrameSchema, revocationAnnounceFrameSchema, revocationClaimsSchema, revocationEntrySchema, streamAckFrameSchema, streamDataFrameSchema, streamEndFrameSchema, streamSessionSchema, syncPunchFrameSchema, tokenClaimsSchema, webrtcAnswerSchema, webrtcIceCandidateSchema, webrtcOfferSchema, wireCandidateSchema };

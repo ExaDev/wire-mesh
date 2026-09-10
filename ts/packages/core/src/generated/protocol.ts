@@ -30,7 +30,7 @@ export const handleClaimsSchema = z.lazy(() => z.object({
 export const handleRecordSchema = z.lazy(() => z.lazy(() => coseSign1Schema));
 export const manageCommandParamsSchema = z.lazy(() => z.union([z.union([z.lazy(() => ptySpawnSchema), z.lazy(() => ptyWriteSchema), z.lazy(() => ptyResizeSchema), z.lazy(() => ptyKillSchema), z.lazy(() => procSpawnSchema), z.lazy(() => procSignalSchema), z.lazy(() => procKillSchema), z.lazy(() => execListSchema)]), z.object({
 
-}).catchall(z.unknown())]));
+}).catchall(z.unknown()), z.union([z.lazy(() => webrtcOfferSchema), z.lazy(() => webrtcAnswerSchema), z.lazy(() => webrtcIceCandidateSchema)])]));
 export const ptySpawnSchema = z.lazy(() => z.object({
   "verb": z.literal("pty.spawn"),
   "shell": z.string().optional(),
@@ -88,7 +88,7 @@ export const frameVariantSchema = z.lazy(() => z.union([z.lazy(() => handshakeFr
 export const frameSchema = z.lazy(() => z.lazy(() => frameVariantSchema));
 export const protocolVersionSchema = z.lazy(() => z.number().int().nonnegative());
 export const domainIdSchema = z.lazy(() => z.union([z.lazy(() => coreDomainNameSchema), z.lazy(() => namespacedDomainIdSchema), z.lazy(() => privateUseDomainIdSchema)]));
-export const coreDomainNameSchema = z.lazy(() => z.union([z.literal("core/management"), z.literal("core/exec"), z.literal("core/data"), z.literal("core/federation")]));
+export const coreDomainNameSchema = z.lazy(() => z.union([z.literal("core/management"), z.literal("core/exec"), z.literal("core/data"), z.literal("core/federation"), z.literal("core/webrtc")]));
 export const namespacedDomainIdSchema = z.lazy(() => z.string().regex(new RegExp("[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+/[A-Za-z0-9_.-]+")));
 export const privateUseDomainIdSchema = z.lazy(() => z.string().regex(new RegExp("x-[A-Za-z0-9_.-]+")));
 export const handshakeFrameSchema = z.lazy(() => z.object({
@@ -249,6 +249,27 @@ export const coordinatorFrameSchema = z.lazy(() => z.object({
   "coordinator": z.lazy(() => deviceIdSchema),
   "capacity-hint": z.number().int().nonnegative().optional(),
 }));
+export const webrtcOfferSchema = z.lazy(() => z.object({
+  "verb": z.literal("webrtc.offer"),
+  "negotiation-id": z.number().int().nonnegative(),
+  "sdp": z.string(),
+}));
+export const webrtcAnswerSchema = z.lazy(() => z.object({
+  "verb": z.literal("webrtc.answer"),
+  "negotiation-id": z.number().int().nonnegative(),
+  "sdp": z.string(),
+}));
+export const webrtcIceCandidateSchema = z.lazy(() => z.object({
+  "verb": z.literal("webrtc.ice-candidate"),
+  "negotiation-id": z.number().int().nonnegative(),
+  "candidate": z.lazy(() => iceCandidateInitSchema).optional(),
+}));
+export const iceCandidateInitSchema = z.lazy(() => z.object({
+  "candidate": z.string(),
+  "sdp-mid": z.string().optional(),
+  "sdp-m-line-index": z.number().int().nonnegative().optional(),
+  "username-fragment": z.string().optional(),
+}));
 
 export type DataHaveFrame = z.infer<typeof dataHaveFrameSchema>;
 export type DataRequestFrame = z.infer<typeof dataRequestFrameSchema>;
@@ -314,3 +335,7 @@ export type RelayConnectFrame = z.infer<typeof relayConnectFrameSchema>;
 export type RelayDataFrame = z.infer<typeof relayDataFrameSchema>;
 export type RelayInboundFrame = z.infer<typeof relayInboundFrameSchema>;
 export type CoordinatorFrame = z.infer<typeof coordinatorFrameSchema>;
+export type WebrtcOffer = z.infer<typeof webrtcOfferSchema>;
+export type WebrtcAnswer = z.infer<typeof webrtcAnswerSchema>;
+export type WebrtcIceCandidate = z.infer<typeof webrtcIceCandidateSchema>;
+export type IceCandidateInit = z.infer<typeof iceCandidateInitSchema>;

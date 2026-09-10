@@ -27,16 +27,24 @@ const handleClaimsSchema = zod.z.lazy(() => zod.z.object({
 	"expires": zod.z.number().int().nonnegative()
 }));
 const handleRecordSchema = zod.z.lazy(() => zod.z.lazy(() => coseSign1Schema));
-const manageCommandParamsSchema = zod.z.lazy(() => zod.z.union([zod.z.union([
-	zod.z.lazy(() => ptySpawnSchema),
-	zod.z.lazy(() => ptyWriteSchema),
-	zod.z.lazy(() => ptyResizeSchema),
-	zod.z.lazy(() => ptyKillSchema),
-	zod.z.lazy(() => procSpawnSchema),
-	zod.z.lazy(() => procSignalSchema),
-	zod.z.lazy(() => procKillSchema),
-	zod.z.lazy(() => execListSchema)
-]), zod.z.object({}).catchall(zod.z.unknown())]));
+const manageCommandParamsSchema = zod.z.lazy(() => zod.z.union([
+	zod.z.union([
+		zod.z.lazy(() => ptySpawnSchema),
+		zod.z.lazy(() => ptyWriteSchema),
+		zod.z.lazy(() => ptyResizeSchema),
+		zod.z.lazy(() => ptyKillSchema),
+		zod.z.lazy(() => procSpawnSchema),
+		zod.z.lazy(() => procSignalSchema),
+		zod.z.lazy(() => procKillSchema),
+		zod.z.lazy(() => execListSchema)
+	]),
+	zod.z.object({}).catchall(zod.z.unknown()),
+	zod.z.union([
+		zod.z.lazy(() => webrtcOfferSchema),
+		zod.z.lazy(() => webrtcAnswerSchema),
+		zod.z.lazy(() => webrtcIceCandidateSchema)
+	])
+]));
 const ptySpawnSchema = zod.z.lazy(() => zod.z.object({
 	"verb": zod.z.literal("pty.spawn"),
 	"shell": zod.z.string().optional(),
@@ -118,7 +126,8 @@ const coreDomainNameSchema = zod.z.lazy(() => zod.z.union([
 	zod.z.literal("core/management"),
 	zod.z.literal("core/exec"),
 	zod.z.literal("core/data"),
-	zod.z.literal("core/federation")
+	zod.z.literal("core/federation"),
+	zod.z.literal("core/webrtc")
 ]));
 const namespacedDomainIdSchema = zod.z.lazy(() => zod.z.string().regex(/* @__PURE__ */ new RegExp("[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+/[A-Za-z0-9_.-]+")));
 const privateUseDomainIdSchema = zod.z.lazy(() => zod.z.string().regex(/* @__PURE__ */ new RegExp("x-[A-Za-z0-9_.-]+")));
@@ -287,6 +296,27 @@ const coordinatorFrameSchema = zod.z.lazy(() => zod.z.object({
 	"coordinator": zod.z.lazy(() => deviceIdSchema),
 	"capacity-hint": zod.z.number().int().nonnegative().optional()
 }));
+const webrtcOfferSchema = zod.z.lazy(() => zod.z.object({
+	"verb": zod.z.literal("webrtc.offer"),
+	"negotiation-id": zod.z.number().int().nonnegative(),
+	"sdp": zod.z.string()
+}));
+const webrtcAnswerSchema = zod.z.lazy(() => zod.z.object({
+	"verb": zod.z.literal("webrtc.answer"),
+	"negotiation-id": zod.z.number().int().nonnegative(),
+	"sdp": zod.z.string()
+}));
+const webrtcIceCandidateSchema = zod.z.lazy(() => zod.z.object({
+	"verb": zod.z.literal("webrtc.ice-candidate"),
+	"negotiation-id": zod.z.number().int().nonnegative(),
+	"candidate": zod.z.lazy(() => iceCandidateInitSchema).optional()
+}));
+const iceCandidateInitSchema = zod.z.lazy(() => zod.z.object({
+	"candidate": zod.z.string(),
+	"sdp-mid": zod.z.string().optional(),
+	"sdp-m-line-index": zod.z.number().int().nonnegative().optional(),
+	"username-fragment": zod.z.string().optional()
+}));
 //#endregion
 exports.candidateKindSchema = candidateKindSchema;
 exports.candidatesFrameSchema = candidatesFrameSchema;
@@ -315,6 +345,7 @@ exports.gossipFrameSchema = gossipFrameSchema;
 exports.handleClaimsSchema = handleClaimsSchema;
 exports.handleRecordSchema = handleRecordSchema;
 exports.handshakeFrameSchema = handshakeFrameSchema;
+exports.iceCandidateInitSchema = iceCandidateInitSchema;
 exports.identityKeySchema = identityKeySchema;
 exports.manageCommandParamsSchema = manageCommandParamsSchema;
 exports.manageCommandSchema = manageCommandSchema;
@@ -351,4 +382,7 @@ exports.streamEndFrameSchema = streamEndFrameSchema;
 exports.streamSessionSchema = streamSessionSchema;
 exports.syncPunchFrameSchema = syncPunchFrameSchema;
 exports.tokenClaimsSchema = tokenClaimsSchema;
+exports.webrtcAnswerSchema = webrtcAnswerSchema;
+exports.webrtcIceCandidateSchema = webrtcIceCandidateSchema;
+exports.webrtcOfferSchema = webrtcOfferSchema;
 exports.wireCandidateSchema = wireCandidateSchema;
