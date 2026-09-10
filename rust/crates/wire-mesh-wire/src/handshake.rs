@@ -221,12 +221,11 @@ pub(crate) fn handshake_from(d: &mut Decoder<'_>) -> Result<HandshakeFrame, Deco
                 domains = Some(list);
             }
             "params" => {
-                let count = strict::definite_map(d)?;
+                let mut inner = strict::MapDecoder::new(d)?;
                 let mut map = CanonicalMap::new();
-                for _ in 0..count {
-                    let key = strict::text_key(d)?.to_owned();
+                while let Some(key) = inner.next_key(d)? {
                     let value = CborValue::decode_strict(d)?;
-                    map.insert(key, value)?;
+                    map.insert(key.to_owned(), value)?;
                 }
                 params = Some(map);
             }
@@ -379,5 +378,19 @@ mod tests {
         bytes[0] = 0xa2;
         // {"type": "handshake", "version": 1} — domains missing.
         assert!(minicbor::decode::<HandshakeFrame>(&bytes).is_err());
+    }
+
+    #[test]
+    fn handshake_rejects_unsorted_params_keys() {
+        // {"type": "handshake", "params": {"b": 1, "a": 2}, "domains": [], "version": 1}
+        let bytes: Vec<u8> = [
+            0xa4, 0x64, b't', b'y', b'p', b'e', 0x69, b'h', b'a', b'n', b'd', b's', b'h', b'a',
+            b'k', b'e', 0x66, b'p', b'a', b'r', b'a', b'm', b's', 0xa2, 0x61, b'b', 0x01, 0x61,
+            b'a', 0x02, 0x67, b'd', b'o', b'm', b'a', b'i', b'n', b's', 0x80, 0x67, b'v', b'e',
+            b'r', b's', b'i', b'o', b'n', 0x01,
+        ]
+        .to_vec();
+        let mut d = Decoder::new(&bytes);
+        assert_eq!(handshake_from(&mut d), Err(DecodeError::UnsortedMapKeys));
     }
 }
