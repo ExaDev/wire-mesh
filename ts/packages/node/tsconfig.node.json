@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true
+  },
+  "include": ["tsdown.config.ts", "eslint.config.ts", "test/**/*.ts"]
+}

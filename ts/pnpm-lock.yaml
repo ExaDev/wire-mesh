@@ -113,6 +113,61 @@ importers:
         specifier: 5.0.0
         version: 5.0.0(@types/node@26.4.1)(vite@8.2.2(@types/node@26.4.1)(jiti@2.7.0))
 
+  packages/node:
+    dependencies:
+      '@exadev/wire-mesh-core':
+        specifier: workspace:*
+        version: link:../core
+      cbor2:
+        specifier: 2.3.0
+        version: 2.3.0
+      ws:
+        specifier: 8.21.3
+        version: 8.21.3
+    devDependencies:
+      '@arethetypeswrong/cli':
+        specifier: 0.18.5
+        version: 0.18.5
+      '@exadev/eslint-config':
+        specifier: 2.10.6
+        version: 2.10.6(eslint@10.10.0(jiti@2.7.0))(typescript-eslint@8.69.0(eslint@10.10.0(jiti@2.7.0))(typescript@6.0.3))(typescript@6.0.3)
+      '@types/node':
+        specifier: 26.4.1
+        version: 26.4.1
+      '@types/ws':
+        specifier: 8.18.1
+        version: 8.18.1
+      eslint:
+        specifier: 10.10.0
+        version: 10.10.0(jiti@2.7.0)
+      eslint-config-prettier:
+        specifier: 10.1.8
+        version: 10.1.8(eslint@10.10.0(jiti@2.7.0))
+      eslint-plugin-prettier:
+        specifier: 5.5.6
+        version: 5.5.6(eslint-config-prettier@10.1.8(eslint@10.10.0(jiti@2.7.0)))(eslint@10.10.0(jiti@2.7.0))(prettier@3.9.6)
+      globals:
+        specifier: 17.12.0
+        version: 17.12.0
+      jiti:
+        specifier: 2.7.0
+        version: 2.7.0
+      prettier:
+        specifier: 3.9.6
+        version: 3.9.6
+      tsdown:
+        specifier: 0.23.0
+        version: 0.23.0(@arethetypeswrong/core@0.18.5)(typescript@6.0.3)
+      turbo:
+        specifier: 2.10.12
+        version: 2.10.12
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@26.4.1)(vite@8.2.2(@types/node@26.4.1)(jiti@2.7.0))
+
   packages/web-console:
     dependencies:
       '@exadev/wire-mesh-core':
@@ -791,6 +846,9 @@ packages:
 
   '@types/node@26.4.1':
     resolution: {integrity: sha512-k97ENvZWtvA6yqz5/FS6a7duDgOPEeOQOc2iKS/nY6mX6qJUKtLnWzQS+Xj6tXweyj6ZcTAK2Qecetnvi9nCLA==}
+
+  '@types/ws@8.18.1':
+    resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
 
   '@typescript-eslint/eslint-plugin@8.69.0':
     resolution: {integrity: sha512-t5jQTKPIgVW1PE6dR6H6Qz5gm8zjMlX5/2gRaOGd9eO6V7J+tQc6iWKukEe7dY8u9HyYasQ0yfF0/FSSTEO2gA==}
@@ -1965,6 +2023,18 @@ packages:
       utf-8-validate:
         optional: true
 
+  ws@8.21.3:
+    resolution: {integrity: sha512-201TZ/kPWxoPr/OKWjquZR1SWKXcvxdH+e1xrx89b3YbmzLMFCLfnaG1HFIgWzJOEWZ7MvpK++odZufgYR50Rw==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+
   y18n@5.0.8:
     resolution: {integrity: sha512-0pfFzegeDWJHJIAmTLRP2DwHjdF5s7jo9tuztdQxAhINCdvS+3nGINqPd00AphqJR/0LhANUS6/+7SCb98YOfA==}
     engines: {node: '>=10'}
@@ -2426,6 +2496,10 @@ snapshots:
   '@types/node@26.4.1':
     dependencies:
       undici-types: 8.3.0
+
+  '@types/ws@8.18.1':
+    dependencies:
+      '@types/node': 26.4.1
 
   '@typescript-eslint/eslint-plugin@8.69.0(@typescript-eslint/parser@8.69.0(eslint@10.10.0(jiti@2.7.0))(typescript@6.0.3))(eslint@10.10.0(jiti@2.7.0))(typescript@6.0.3)':
     dependencies:
@@ -3452,6 +3526,8 @@ snapshots:
       strip-ansi: 6.0.1
 
   ws@8.18.0: {}
+
+  ws@8.21.3: {}
 
   y18n@5.0.8: {}
 
