@@ -71,6 +71,7 @@ export function createMeshSession(transport: Readonly<Transport>): MeshSession {
   const directory = new Map<string, DirectoryEntry>();
   const frameLog: FrameLogEntry[] = [];
   let feedCancelled = false;
+  let handshakeTimer: ReturnType<typeof setTimeout> | null = null;
   const eventWaiters: ((event: SessionEvent) => void)[] = [];
   const eventBacklog: SessionEvent[] = [];
 
@@ -124,6 +125,10 @@ export function createMeshSession(transport: Readonly<Transport>): MeshSession {
   function applyRemoteHandshake(remote: HandshakeFrame): void {
     if (handshake.status !== "pending") {
       return;
+    }
+    if (handshakeTimer !== null) {
+      clearTimeout(handshakeTimer);
+      handshakeTimer = null;
     }
     const result = negotiate(localHandshakeSent, remote);
     handshake = result.ok
@@ -180,6 +185,10 @@ export function createMeshSession(transport: Readonly<Transport>): MeshSession {
           "a session connects once; create a new one to reconnect",
         );
       }
+      if (handshakeTimer !== null) {
+        clearTimeout(handshakeTimer);
+        handshakeTimer = null;
+      }
       state = { status: "connecting", address };
       emit();
       connection = await transport.connect(address);
@@ -189,7 +198,8 @@ export function createMeshSession(transport: Readonly<Transport>): MeshSession {
       frameLog.push({ direction: "sent", frame: localHandshakeSent });
       await connection.send(localHandshakeSent);
       emit();
-      setTimeout(() => {
+      handshakeTimer = setTimeout(() => {
+        handshakeTimer = null;
         if (handshake.status === "pending") {
           handshake = { status: "unanswered" };
           if (state.status === "connected") {
