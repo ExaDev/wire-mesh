@@ -27,6 +27,13 @@ const SNAPSHOT_FIRST = 100;
 const SNAPSHOT_SECOND = 200;
 const SNAPSHOT_UPDATED = 300;
 
+// Reconnect-flow event-stream positions: each reconnect round emits connecting + connected(pending), then either a further reconnecting (retrying) or closed (attempts exhausted) event.
+const RECONNECT_DELAY_MS = 100;
+const RECONNECT_MAX_ATTEMPTS = 2;
+const EVENTS_THROUGH_FIRST_RECONNECT = 3;
+const EVENTS_PER_RECONNECT_ROUND = 3;
+const EVENTS_THROUGH_STALE_TIMER_REGRESSION = 6;
+
 /** An in-memory Connection the test drives: pushes arrive on the receive iteration, sends are recorded. */
 class FakeConnection {
   sent: Frame[] = [];
@@ -107,6 +114,27 @@ function fakeTransport(): { transport: Transport; connection: FakeConnection } {
       Promise.reject(new Error("client-only transport")),
   };
   return { transport, connection };
+}
+
+/** A transport that hands out a fresh FakeConnection on every connect() call, so one attempt's failure doesn't leak into the next -- unlike fakeTransport()'s single shared connection, which stays broken forever once failed. */
+function multiConnectionTransport(): {
+  transport: Transport;
+  connections: FakeConnection[];
+} {
+  const connections: FakeConnection[] = [];
+  const transport: Transport = {
+    connect: async (address: string): Promise<Connection> => {
+      if (address !== "ws://node") {
+        return Promise.reject(new Error(`connect to ${address} failed`));
+      }
+      const next = new FakeConnection();
+      connections.push(next);
+      return Promise.resolve(next.connection);
+    },
+    listen: async (): Promise<Listener> =>
+      Promise.reject(new Error("client-only transport")),
+  };
+  return { transport, connections };
 }
 
 /** Resolves after the session has emitted at least `count` events, returning the latest. */
@@ -272,5 +300,90 @@ describe("createMeshSession", () => {
     const { transport } = fakeTransport();
     const session = createMeshSession(transport);
     await expect(session.sendPing()).rejects.toThrow("not connected");
+  });
+});
+
+describe("reconnect policy", () => {
+  it("never reconnects when no policy is given, matching today's default behavior", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport);
+    await session.connect("ws://node", ["core/data"]);
+    const eventsDone = nthEvent(session, EVENTS_THROUGH_FAILURE);
+    connection.fail(new Error("dropped"));
+    const event = (await eventsDone) as {
+      state: { status: string; reason: string };
+    };
+    expect(event.state.status).toBe("closed");
+    expect(event.state.reason).toBe("dropped");
+  });
+
+  it("retries with backoff through correctly-numbered attempts, then gives up once max attempts are exhausted", async () => {
+    vi.useFakeTimers();
+    try {
+      const { transport, connection } = fakeTransport();
+      const session = createMeshSession(transport, {
+        maxAttempts: RECONNECT_MAX_ATTEMPTS,
+        delayMs: () => RECONNECT_DELAY_MS,
+      });
+      await session.connect("ws://node", ["core/data"]);
+      connection.fail(new Error("dropped"));
+
+      // Events: connecting, connected(pending), reconnecting(attempt 1).
+      const firstReconnect = (await nthEvent(
+        session,
+        EVENTS_THROUGH_FIRST_RECONNECT,
+      )) as { state: { status: string; attempt?: number } };
+      expect(firstReconnect.state.status).toBe("reconnecting");
+      expect(firstReconnect.state.attempt).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(RECONNECT_DELAY_MS);
+      // Events: connecting, connected(pending) -- the still-broken connection fails again immediately, giving reconnecting(attempt 2).
+      const secondReconnect = (await nthEvent(
+        session,
+        EVENTS_PER_RECONNECT_ROUND,
+      )) as { state: { status: string; attempt?: number } };
+      expect(secondReconnect.state.status).toBe("reconnecting");
+      expect(secondReconnect.state.attempt).toBe(2);
+
+      await vi.advanceTimersByTimeAsync(RECONNECT_DELAY_MS);
+      // Events: connecting, connected(pending) -- the final attempt also fails, and with attempts exhausted this falls through to closed.
+      const finalOutcome = (await nthEvent(
+        session,
+        EVENTS_PER_RECONNECT_ROUND,
+      )) as { state: { status: string; reason: string } };
+      expect(finalOutcome.state.status).toBe("closed");
+      expect(finalOutcome.state.reason).toBe("dropped");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears the handshake timeout on reconnect, so a stale timer from the previous attempt cannot corrupt the new one", async () => {
+    vi.useFakeTimers();
+    try {
+      const { transport, connections } = multiConnectionTransport();
+      const session = createMeshSession(transport, {
+        maxAttempts: 1,
+        delayMs: () => 0,
+      });
+      const eventsDone = nthEvent(
+        session,
+        EVENTS_THROUGH_STALE_TIMER_REGRESSION,
+      );
+      await session.connect("ws://node", ["core/data"]);
+      await vi.advanceTimersByTimeAsync(HANDSHAKE_TIMEOUT_MS - 1);
+      connections[0]?.fail(new Error("dropped"));
+      // Reaches the ORIGINAL attempt's own handshake-timeout instant. The reconnect (0ms backoff) completes first against a fresh connection, resetting the handshake to pending for the new attempt; an uncleared stale timer would then fire at this very instant and clobber it.
+      await vi.advanceTimersByTimeAsync(1);
+      await session.sendPing();
+      const event = (await eventsDone) as {
+        state: { status: string; handshake?: { status: string } };
+      };
+      expect(event.state.status).toBe("connected");
+      expect(event.state.handshake?.status).toBe("pending");
+      await session.close();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
