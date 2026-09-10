@@ -6,7 +6,14 @@ export interface HexBytes {
   hex: string;
 }
 
-export type JsonWire = null | boolean | number | string | HexBytes | JsonWire[] | { [key: string]: JsonWire };
+export type JsonWire =
+  | null
+  | boolean
+  | number
+  | string
+  | HexBytes
+  | JsonWire[]
+  | { [key: string]: JsonWire };
 
 export interface Vector {
   name: string;
@@ -25,7 +32,8 @@ export function hex(value: string): HexBytes {
 }
 
 function isHexBytes(value: unknown): value is HexBytes {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    return false;
   if (!("hex" in value)) return false;
   if (Object.keys(value).length !== 1) return false;
   return typeof value.hex === "string";
@@ -74,14 +82,26 @@ export function fromWire(value: unknown): JsonWire {
     for (const [k, v] of Object.entries(value)) out[k] = fromWire(v);
     return out;
   }
-  if (value === null || typeof value === "boolean" || typeof value === "number" || typeof value === "string") {
+  if (
+    value === null ||
+    typeof value === "boolean" ||
+    typeof value === "number" ||
+    typeof value === "string"
+  ) {
     return value;
   }
-  throw new Error(`fromWire: unsupported decoded value of type ${typeof value}`);
+  throw new Error(
+    `fromWire: unsupported decoded value of type ${typeof value}`,
+  );
 }
 
 function isJsonWire(value: unknown): value is JsonWire {
-  if (value === null || typeof value === "boolean" || typeof value === "number" || typeof value === "string") {
+  if (
+    value === null ||
+    typeof value === "boolean" ||
+    typeof value === "number" ||
+    typeof value === "string"
+  ) {
     return true;
   }
   if (Array.isArray(value)) return value.every(isJsonWire);
@@ -91,8 +111,13 @@ function isJsonWire(value: unknown): value is JsonWire {
 
 function isVector(value: unknown): value is Vector {
   if (typeof value !== "object" || value === null) return false;
-  if (!("name" in value) || !("message" in value) || !("wire_hex" in value)) return false;
-  return typeof value.name === "string" && isJsonWire(value.message) && typeof value.wire_hex === "string";
+  if (!("name" in value) || !("message" in value) || !("wire_hex" in value))
+    return false;
+  return (
+    typeof value.name === "string" &&
+    isJsonWire(value.message) &&
+    typeof value.wire_hex === "string"
+  );
 }
 
 export function isVectorFile(value: unknown): value is VectorFile {
