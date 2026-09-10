@@ -39,6 +39,7 @@ pub mod strict;
 pub mod tokens;
 pub mod transport;
 pub mod value;
+pub mod webrtc;
 
 pub use error::{DecodeError, EncodeError};
 pub use frame::{Frame, ValidationError};
