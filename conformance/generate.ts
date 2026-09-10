@@ -1,16 +1,16 @@
 // Produces conformance/{handshake,tokens,frames}.v1.json from the vector definitions below. Each vector's `wire_hex` is derived mechanically by canonically CBOR-encoding `message` via cbor2's CDE (CBOR Common Deterministic Encoding) mode -- the same RFC 8949 4.2 core deterministic rules DAG-CBOR builds on -- never hand-typed. Signature and public-key bytes throughout are clearly-synthetic filler, not real cryptographic material: this file freezes the wire-exact envelope shape (map key ordering, field presence, array structure, nesting), not a working signature, the same scope Cascade's own frozen frames/handshake/tokens vectors commit to for structural fields with no real crypto behind them.
 //
-// Run `npm run generate` after changing anything below, then `npm run verify` (or just this script's own built-in verification pass at the end) to confirm every vector round-trips.
+// Run `pnpm generate` after changing anything below, then `pnpm test` to confirm every vector round-trips.
 
 import { writeFileSync } from "node:fs";
 import { encode, cdeEncodeOptions } from "cbor2";
-import { hex, toWire } from "./codec.mjs";
+import { hex, toWire, type JsonWire, type Vector } from "@exadev/wire-mesh-conformance";
 
-function wireHex(message) {
+function wireHex(message: JsonWire): string {
   return Buffer.from(encode(toWire(message), cdeEncodeOptions)).toString("hex");
 }
 
-function vector(name, message) {
+function vector(name: string, message: JsonWire): Vector {
   return { name, message, wire_hex: wireHex(message) };
 }
 
@@ -31,7 +31,7 @@ const signatureFiller = hex("ff".repeat(64)); // synthetic ES256/EdDSA-shaped si
 // handshake.v1.json
 // -----------------------------------------------------------------------
 
-const handshakeVectors = [
+const handshakeVectors: Vector[] = [
   vector("handshake_v1_management_exec_federation", {
     type: "handshake",
     version: 1,
@@ -49,7 +49,7 @@ const handshakeVectors = [
 // tokens.v1.json
 // -----------------------------------------------------------------------
 
-const rootTokenClaims = {
+const rootTokenClaims: JsonWire = {
   "token-id": hex("01".repeat(16)),
   issuer: deviceA,
   "issuer-key": { alg: -7, "public-key": publicKeyEs256A },
@@ -59,18 +59,17 @@ const rootTokenClaims = {
   expires: 1893456000000,
 };
 
-const rootToken = [
-  hex(wireHex({ 1: -7, 4: deviceA })), // protected header, {alg: -7, kid: deviceA} -- see note below on int-keyed map JSON
+// The protected header below is the one place this file needs a genuinely int-keyed CBOR map (cose-token-headers' cose-header-alg/-kid labels), which JSON can't represent directly as `{1: -7, 4: ...}` -- object keys are always strings in JSON. It is computed directly rather than round-tripped through the hex-marker convention, since it's never itself a top-level `message` value being compared; CDE's canonical map-key comparison is on the encoded key bytes, not the JS type, so a plain object with numeric-looking string keys still produces the correct integer-keyed CBOR map.
+const rootToken: JsonWire = [
+  hex(wireHex({ 1: -7, 4: deviceA })),
   {},
   hex(wireHex(rootTokenClaims)),
   signatureFiller,
 ];
 
-// The protected header above is the one place this file needs a genuinely int-keyed CBOR map (cose-token-headers' cose-header-alg/-kid labels), which JSON can't represent directly as `{1: -7, 4: ...}` -- object keys are always strings in JSON. `wireHex` is given a plain JS object with numeric keys here purely to drive cbor2's encoder (cbor2 uses `Reflect.ownKeys` order, and JS coerces integer-like keys to strings internally regardless, but CDE's canonical map-key comparison is on the *encoded* key bytes, not the JS type, so `{1: -7, 4: ...}` still produces the correct integer-keyed CBOR map). This one nested map is therefore computed directly rather than round-tripped through the hex-marker convention, since it's never itself a top-level `message` value being compared.
-
 const rootTokenVector = vector("capability_token_v1_root_grant", rootToken);
 
-const delegatedTokenClaims = {
+const delegatedTokenClaims: JsonWire = {
   "token-id": hex("02".repeat(16)),
   issuer: deviceB,
   "issuer-key": { alg: -7, "public-key": publicKeyEs256B },
@@ -81,7 +80,7 @@ const delegatedTokenClaims = {
   parent: hex(rootTokenVector.wire_hex),
 };
 
-const delegatedToken = [
+const delegatedToken: JsonWire = [
   hex(wireHex({ 1: -7, 4: deviceB })),
   {},
   hex(wireHex(delegatedTokenClaims)),
@@ -90,7 +89,7 @@ const delegatedToken = [
 
 const delegatedTokenVector = vector("capability_token_v1_delegated_narrowed_scope", delegatedToken);
 
-const handleClaims = {
+const handleClaims: JsonWire = {
   handle: "alice@example.com",
   "device-id": deviceD,
   "identity-key": { alg: -8, "public-key": publicKeyEd25519D },
@@ -106,15 +105,15 @@ const handleRecordVector = vector("handle_record_v1_dns_anchored", [
   signatureFiller,
 ]);
 
-const tokenVectors = [rootTokenVector, delegatedTokenVector, handleRecordVector];
+const tokenVectors: Vector[] = [rootTokenVector, delegatedTokenVector, handleRecordVector];
 
 // -----------------------------------------------------------------------
 // frames.v1.json -- every $frame-variant in spec/frame.cddl except handshake-frame, which lives in handshake.v1.json above.
 // -----------------------------------------------------------------------
 
-const innerPingFrame = { type: "ping" };
+const innerPingFrame: JsonWire = { type: "ping" };
 
-const frameVectors = [
+const frameVectors: Vector[] = [
   vector("ping_v1", { type: "ping" }),
   vector("close_v1_with_reason", { type: "close", reason: "shutting down" }),
   vector("gossip_v1_two_peers", {
@@ -225,7 +224,7 @@ const frameVectors = [
 // Write files
 // -----------------------------------------------------------------------
 
-function write(filename, description, vectors) {
+function write(filename: string, description: string, vectors: Vector[]): void {
   const content = { protocol_version: 1, description, vectors };
   writeFileSync(new URL(filename, import.meta.url), JSON.stringify(content, null, 2) + "\n");
   console.log(`wrote ${filename} (${vectors.length} vectors)`);

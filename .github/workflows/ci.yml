@@ -67,29 +67,37 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: pnpm/action-setup@v6
+
       - uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '26'
+          cache: pnpm
+          cache-dependency-path: conformance/pnpm-lock.yaml
 
       - name: Install conformance package
         working-directory: conformance
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
-      - name: Confirm generate.mjs's output matches the committed vector files
+      - name: Typecheck and build codec.ts, verifying its dual ESM/CJS + types with attw
+        working-directory: conformance
+        run: pnpm run typecheck
+
+      - name: Confirm generate.ts's output matches the committed vector files
         working-directory: conformance
         run: |
           cp handshake.v1.json /tmp/handshake-committed.json
           cp tokens.v1.json /tmp/tokens-committed.json
           cp frames.v1.json /tmp/frames-committed.json
-          npm run generate
+          pnpm run generate
           if ! diff -u /tmp/handshake-committed.json handshake.v1.json || ! diff -u /tmp/tokens-committed.json tokens.v1.json || ! diff -u /tmp/frames-committed.json frames.v1.json; then
-            echo "::error::conformance/*.v1.json is out of date. Run 'npm run generate' in conformance/ and commit the result -- never edit the vector files directly."
+            echo "::error::conformance/*.v1.json is out of date. Run 'pnpm run generate' in conformance/ and commit the result -- never edit the vector files directly."
             exit 1
           fi
 
       - name: Verify every vector round-trips through cbor2
         working-directory: conformance
-        run: npm run verify
+        run: pnpm test
 
   required-checks:
     name: Required Checks
