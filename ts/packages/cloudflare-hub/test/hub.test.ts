@@ -1,16 +1,23 @@
 import { describe, expect, it } from "vitest";
+import { decode } from "cbor2";
 import type {
   DeviceId,
   Frame,
 } from "@exadev/wire-mesh-core/generated/protocol";
 import type { Connection } from "@exadev/wire-mesh-core/ports/transport";
 import { createRelayHub } from "../src/hub.js";
+import {
+  messageFromFrame,
+  wrapWebSocket,
+} from "../src/adapters/websocket-transport.js";
 import { bytesFromHex, deviceIdFromFillHex } from "./hex.js";
+import { FakeWebSocket } from "./fake-web-socket.js";
 
 const deviceA = deviceIdFromFillHex("11");
 const deviceB = deviceIdFromFillHex("22");
 const relayPayload = bytesFromHex("deadbeef");
 const orphanPayload = bytesFromHex("aa");
+const CBOR_BREAK_BYTE = 0xff; // the CBOR break byte on its own: undecodable, the hostile-input case
 
 /** One macrotask turn, letting the hub drain frames already queued on its connections. */
 async function tick(): Promise<void> {
@@ -98,6 +105,62 @@ function gossipFor(device: DeviceId): Frame {
       },
     ],
   };
+}
+
+/** A Connection whose receive() stream delivers pushed frames until rejectNow(), then rejects -- the mid-stream hostile-input failure the real adapter produces for undecodable bytes. */
+class RejectingAfterFramesConnection {
+  inbound: Frame[] = [];
+  sent: Frame[] = [];
+  private rejection: Error | null = null;
+  private readonly wakeWaiters: (() => void)[] = [];
+
+  get connection(): Readonly<Connection> {
+    return {
+      send: async (frame: Frame): Promise<void> => {
+        this.sent.push(frame);
+        return Promise.resolve();
+      },
+      receive: () => this.stream(),
+      close: async (): Promise<void> => Promise.resolve(),
+    };
+  }
+
+  push(frame: Frame): void {
+    this.inbound.push(frame);
+    for (const wake of this.wakeWaiters.splice(0)) wake();
+  }
+
+  rejectNow(): void {
+    this.rejection = new Error("simulated undecodable bytes");
+    for (const wake of this.wakeWaiters.splice(0)) wake();
+  }
+
+  private stream(): AsyncIterable<Frame> {
+    return {
+      [Symbol.asyncIterator]: () => ({
+        next: async (): Promise<IteratorResult<Frame>> => this.nextFrame(),
+      }),
+    };
+  }
+
+  private async nextFrame(): Promise<IteratorResult<Frame>> {
+    return this.step();
+  }
+
+  private async step(): Promise<IteratorResult<Frame>> {
+    for (;;) {
+      const next = this.inbound.shift();
+      if (next !== undefined) {
+        return { value: next, done: false };
+      }
+      if (this.rejection !== null) {
+        throw this.rejection;
+      }
+      await new Promise<void>((resolve) => {
+        this.wakeWaiters.push(resolve);
+      });
+    }
+  }
 }
 
 describe("createRelayHub", () => {
@@ -235,5 +298,185 @@ describe("createRelayHub", () => {
     expect(old.sent).toEqual([]);
     await Promise.all([old.end(), fresh.end(), dialer.end()]);
     await Promise.all(handling);
+  });
+
+  it("a rejecting receive iteration is treated as disconnect: state is cleaned up and later relay-connects to the device are ignored", async () => {
+    const hub = createRelayHub();
+    const b = new FakeConnection();
+    const a = new RejectingAfterFramesConnection();
+    const bHandling = hub.handleConnection(b.connection);
+    b.push(gossipFor(deviceB));
+
+    const aHandling = hub.handleConnection(a.connection);
+    a.push(gossipFor(deviceA));
+    a.push({ type: "relay-connect", "target-device": deviceB });
+    await tick();
+
+    // b's connection paired and was notified before a's stream rejected mid-flight
+    expect(b.sent).toEqual([
+      { type: "relay-inbound", "source-device": deviceA },
+    ]);
+
+    a.rejectNow();
+    await aHandling;
+
+    // a's registration is gone even though its stream ended by rejection, not clean closure: a third party dialing a is now ignored
+    const c = new FakeConnection();
+    const cHandling = hub.handleConnection(c.connection);
+    c.push(gossipFor(deviceB));
+    await tick();
+    c.push({ type: "relay-connect", "target-device": deviceA });
+    await tick();
+    expect(a.sent).toEqual([]);
+    await c.end();
+    await cHandling;
+    await b.end();
+    await bHandling;
+  });
+
+  it("a second relay-connect from the same initiator tears the old pairing down in both directions", async () => {
+    const hub = createRelayHub();
+    const a = new FakeConnection();
+    const b = new FakeConnection();
+    const c = new FakeConnection();
+    const handling = [
+      hub.handleConnection(a.connection),
+      hub.handleConnection(b.connection),
+      hub.handleConnection(c.connection),
+    ];
+
+    const deviceC = deviceIdFromFillHex("44");
+    a.push(gossipFor(deviceA));
+    b.push(gossipFor(deviceB));
+    c.push(gossipFor(deviceC));
+    await tick();
+
+    a.push({ type: "relay-connect", "target-device": deviceB });
+    await tick();
+    a.push({ type: "relay-connect", "target-device": deviceC });
+    await tick();
+
+    // c was notified of the new pairing; the stale partner b was not told anything, but its side of the old pairing is gone
+    expect(c.sent).toEqual([
+      { type: "relay-inbound", "source-device": deviceA },
+    ]);
+
+    // b's relay-data must NOT reach a anymore -- the pipe a holds is now with c
+    b.push({ type: "relay-data", payload: relayPayload });
+    await tick();
+    expect(a.sent).toEqual([]);
+
+    // while c's relay-data does reach a, and a's reaches c
+    c.push({ type: "relay-data", payload: relayPayload });
+    a.push({ type: "relay-data", payload: relayPayload });
+    await tick();
+    expect(a.sent).toEqual([{ type: "relay-data", payload: relayPayload }]);
+    expect(c.sent).toEqual([
+      { type: "relay-inbound", "source-device": deviceA },
+      { type: "relay-data", payload: relayPayload },
+    ]);
+
+    await Promise.all([a.end(), b.end(), c.end()]);
+    await Promise.all(handling);
+  });
+});
+
+describe("createRelayHub over the real wrapWebSocket adapter", () => {
+  function arrayBuffer(bytes: Uint8Array): ArrayBuffer {
+    return bytes.buffer.slice(
+      bytes.byteOffset,
+      bytes.byteOffset + bytes.byteLength,
+    ) as ArrayBuffer;
+  }
+
+  function decodeSent(ws: FakeWebSocket): unknown[] {
+    return ws.sent.map((buffer) => decode(new Uint8Array(buffer)));
+  }
+
+  it("gossip, relay-connect and relay-data flow end to end through real WebSocket message encoding", async () => {
+    const hub = createRelayHub();
+    const wsA = new FakeWebSocket();
+    const wsB = new FakeWebSocket();
+    const a = wrapWebSocket(wsA as unknown as WebSocket);
+    const b = wrapWebSocket(wsB as unknown as WebSocket);
+    const handling = [hub.handleConnection(a), hub.handleConnection(b)];
+
+    wsA.emitMessage(arrayBuffer(messageFromFrame(gossipFor(deviceA))));
+    wsB.emitMessage(arrayBuffer(messageFromFrame(gossipFor(deviceB))));
+    await tick();
+    wsA.emitMessage(
+      arrayBuffer(
+        messageFromFrame({ type: "relay-connect", "target-device": deviceB }),
+      ),
+    );
+    await tick();
+
+    expect(decodeSent(wsB)).toEqual([
+      { type: "relay-inbound", "source-device": deviceA },
+    ]);
+
+    wsA.emitMessage(
+      arrayBuffer(
+        messageFromFrame({ type: "relay-data", payload: relayPayload }),
+      ),
+    );
+    wsB.emitMessage(
+      arrayBuffer(
+        messageFromFrame({ type: "relay-data", payload: relayPayload }),
+      ),
+    );
+    await tick();
+
+    expect(decodeSent(wsB)).toEqual([
+      { type: "relay-inbound", "source-device": deviceA },
+      { type: "relay-data", payload: relayPayload },
+    ]);
+    expect(decodeSent(wsA)).toEqual([
+      { type: "relay-data", payload: relayPayload },
+    ]);
+
+    await Promise.all([a.close(), b.close()]);
+    await Promise.all(handling);
+  });
+
+  it("undecodable bytes from one client close only that connection: the hub and the other peer keep working", async () => {
+    const hub = createRelayHub();
+    const wsA = new FakeWebSocket();
+    const b = new FakeConnection();
+    const a = wrapWebSocket(wsA as unknown as WebSocket);
+    const aHandling = hub.handleConnection(a);
+    const bHandling = hub.handleConnection(b.connection);
+
+    wsA.emitMessage(arrayBuffer(messageFromFrame(gossipFor(deviceA))));
+    b.push(gossipFor(deviceB));
+    await tick();
+
+    // hostile bytes on a's socket: its receive iteration rejects, the hub treats it as disconnect, nothing throws
+    wsA.emitMessage(arrayBuffer(Uint8Array.from([CBOR_BREAK_BYTE])));
+    await tick();
+    await aHandling;
+
+    expect(wsA.closed).toBe(true);
+
+    // b can still be dialed by a fresh peer
+    const wsC = new FakeWebSocket();
+    const c = wrapWebSocket(wsC as unknown as WebSocket);
+    const cHandling = hub.handleConnection(c);
+    wsC.emitMessage(arrayBuffer(messageFromFrame(gossipFor(deviceA))));
+    await tick();
+    wsC.emitMessage(
+      arrayBuffer(
+        messageFromFrame({ type: "relay-connect", "target-device": deviceB }),
+      ),
+    );
+    await tick();
+    expect(b.sent).toEqual([
+      { type: "relay-inbound", "source-device": deviceA },
+    ]);
+
+    await c.close();
+    await cHandling;
+    await b.end();
+    await bHandling;
   });
 });
