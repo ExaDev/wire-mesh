@@ -32,8 +32,29 @@ observed-address-frame = { type: "observed-address", address: tstr }
 ; traffic as an opaque, unreadable byte pipe. The relay never holds the keys
 ; to decrypt what it forwards — relay-data-frame's payload is ciphertext
 ; established one layer above the transport, not something this frame
-; interprets.
+; interprets. Who is allowed to use a given relay as a service is
+; deliberately not part of this shape: relay-connect-frame carries no
+; capability-token field, so an operator that wants to gate relay access
+; (rather than run an open relay) enforces it the same way any other
+; behaviour is gated in this schema — an ordinary core/management verb
+; checked before honouring subsequent relay frames on that connection, not a
+; constraint this frame's own fields express.
 relay-offer-frame   = { type: "relay-offer", addresses: [* tstr] }
 relay-connect-frame = { type: "relay-connect", target-device: device-id }
 relay-data-frame    = { type: "relay-data", payload: bstr }
 relay-inbound-frame = { type: "relay-inbound", source-device: device-id }
+
+; Coordinator election — a lightweight, gossiped claim to the introduction/
+; rendezvous role among whichever peers are presently reachable (there is no
+; membership list to scope this to: "the mesh" is the live connected
+; component of the transport graph, nothing more, so this frame is simply
+; gossiped the same way peer-advert already is, and reaches exactly the
+; peers that are reachable). `term` is a monotonically increasing epoch a
+; peer raises when claiming the role; a higher term always supersedes a
+; lower one, and two simultaneous claims at equal terms are broken by lowest
+; device-id — a verifier/receiver obligation, not something CDDL itself can
+; enforce, the same way capability-token delegation's narrowing rule is.
+; This gives the rendezvous role the same crash-recovery property a
+; port-race coordinator already has (any live peer can take over) without
+; relying on OS-level port contention to do the electing.
+coordinator-frame = { type: "coordinator", term: uint, coordinator: device-id, ? capacity-hint: uint }
