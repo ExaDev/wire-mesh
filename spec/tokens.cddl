@@ -19,10 +19,17 @@ namespaced-capability = tstr .regexp "[a-z0-9.-]+/[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]
 private-use-capability = tstr .regexp "x-[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+"
 
 ; A hierarchical scope string. "kind" is open on purpose: "node" and "folder"
-; are Cascade's own scopes; "room" and "org" are agent-comms'; "handle-registry"
-; is discovery.cddl's federation-scoped handle-resolution alternative to DNS;
-; a future application mints its own kind rather than needing this schema to
-; change.
+; are Cascade's own scopes; "room" and "org" are agent-comms'; "group" is a
+; person's, team's, or organisation's own set of owned devices — ownership is
+; not a separate wire concept, it is capability-token delegation targeting
+; this one more scope kind, the same mechanism as every other grant. What
+; would colloquially be called "a mesh" is not a distinct kind either: it is
+; simply the largest, root-level "group" a set of devices happens to share —
+; there is no wire-level membership list or identifier for it (see README's
+; discussion of why mesh membership is an emergent property of live
+; connectivity, not an asserted one). "handle-registry" is discovery.cddl's
+; token-gated handle-resolution alternative to DNS. A future application
+; mints its own kind rather than needing this schema to change.
 capability-scope = {
   kind: tstr,
   ? path: tstr,   ; absent means the kind's own whole-scope root
@@ -66,7 +73,7 @@ token-claims = {
   scope: capability-scope,
   expires: uint,               ; Unix ms
   ? not-before: uint,
-  ? parent: bstr,               ; bstr .cbor capability-token — a fully self-contained, nested COSE_Sign1 of the parent token; the recursive delegation chain
+  ? parent: bstr,               ; bstr .cbor capability-token — a fully self-contained, nested COSE_Sign1 of the parent token; the recursive delegation chain. A verifier walking this chain MUST also check every ancestor's own token-id against the revocation view (management.cddl's revocation-entry) -- revoking one ancestor revokes everything delegated beneath it, not just a leaf's own token-id.
   * tstr => any,                ; forward-compatible extension claims
 }
 
