@@ -4,7 +4,12 @@
 
 import { writeFileSync } from "node:fs";
 import { encode, cdeEncodeOptions } from "cbor2";
-import { hex, toWire, type JsonWire, type Vector } from "@exadev/wire-mesh-conformance";
+import {
+  hex,
+  toWire,
+  type JsonWire,
+  type Vector,
+} from "@exadev/wire-mesh-conformance";
 
 function wireHex(message: JsonWire): string {
   return Buffer.from(encode(toWire(message), cdeEncodeOptions)).toString("hex");
@@ -14,18 +19,35 @@ function vector(name: string, message: JsonWire): Vector {
   return { name, message, wire_hex: wireHex(message) };
 }
 
+// -- Byte lengths named for what they actually are, not left as bare literals --
+
+const SHA256_BYTE_LENGTH = 32; // device-id = SHA-256(identity-key.public-key)
+const P256_COORDINATE_BYTE_LENGTH = 32; // uncompressed SEC1 point: 0x04 || X || Y, X and Y each this length
+const ED25519_PUBLIC_KEY_BYTE_LENGTH = 32;
+const SIGNATURE_BYTE_LENGTH = 64; // raw ES256/EdDSA signature length
+const TOKEN_ID_BYTE_LENGTH = 16; // opaque token-id, arbitrarily sized like a UUID
+const EXAMPLE_RELAY_PAYLOAD_BYTE_LENGTH = 24; // arbitrary example ciphertext length for relay-data-frame
+
 // -- Shared synthetic identities, reused across files for a coherent story --
 
-const deviceA = hex("11".repeat(32)); // issuer / coordinator
-const deviceB = hex("22".repeat(32)); // bearer of the root token / delegator
-const deviceC = hex("33".repeat(32)); // bearer of the delegated token
-const deviceD = hex("44".repeat(32)); // handle-record subject
+const deviceA = hex("11".repeat(SHA256_BYTE_LENGTH)); // issuer / coordinator
+const deviceB = hex("22".repeat(SHA256_BYTE_LENGTH)); // bearer of the root token / delegator
+const deviceC = hex("33".repeat(SHA256_BYTE_LENGTH)); // bearer of the delegated token
+const deviceD = hex("44".repeat(SHA256_BYTE_LENGTH)); // handle-record subject
 
-const publicKeyEs256A = hex("04" + "aa".repeat(32) + "bb".repeat(32)); // uncompressed P-256 point, synthetic
-const publicKeyEs256B = hex("04" + "cc".repeat(32) + "dd".repeat(32));
-const publicKeyEd25519D = hex("ee".repeat(32));
+const publicKeyEs256A = hex(
+  "04" +
+    "aa".repeat(P256_COORDINATE_BYTE_LENGTH) +
+    "bb".repeat(P256_COORDINATE_BYTE_LENGTH),
+); // uncompressed P-256 point, synthetic
+const publicKeyEs256B = hex(
+  "04" +
+    "cc".repeat(P256_COORDINATE_BYTE_LENGTH) +
+    "dd".repeat(P256_COORDINATE_BYTE_LENGTH),
+);
+const publicKeyEd25519D = hex("ee".repeat(ED25519_PUBLIC_KEY_BYTE_LENGTH));
 
-const signatureFiller = hex("ff".repeat(64)); // synthetic ES256/EdDSA-shaped signature
+const signatureFiller = hex("ff".repeat(SIGNATURE_BYTE_LENGTH)); // synthetic ES256/EdDSA-shaped signature
 
 // -----------------------------------------------------------------------
 // handshake.v1.json
@@ -50,7 +72,7 @@ const handshakeVectors: Vector[] = [
 // -----------------------------------------------------------------------
 
 const rootTokenClaims: JsonWire = {
-  "token-id": hex("01".repeat(16)),
+  "token-id": hex("01".repeat(TOKEN_ID_BYTE_LENGTH)),
   issuer: deviceA,
   "issuer-key": { alg: -7, "public-key": publicKeyEs256A },
   bearer: deviceB,
@@ -70,7 +92,7 @@ const rootToken: JsonWire = [
 const rootTokenVector = vector("capability_token_v1_root_grant", rootToken);
 
 const delegatedTokenClaims: JsonWire = {
-  "token-id": hex("02".repeat(16)),
+  "token-id": hex("02".repeat(TOKEN_ID_BYTE_LENGTH)),
   issuer: deviceB,
   "issuer-key": { alg: -7, "public-key": publicKeyEs256B },
   bearer: deviceC,
@@ -87,7 +109,10 @@ const delegatedToken: JsonWire = [
   signatureFiller,
 ];
 
-const delegatedTokenVector = vector("capability_token_v1_delegated_narrowed_scope", delegatedToken);
+const delegatedTokenVector = vector(
+  "capability_token_v1_delegated_narrowed_scope",
+  delegatedToken,
+);
 
 const handleClaims: JsonWire = {
   handle: "alice@example.com",
@@ -105,7 +130,11 @@ const handleRecordVector = vector("handle_record_v1_dns_anchored", [
   signatureFiller,
 ]);
 
-const tokenVectors: Vector[] = [rootTokenVector, delegatedTokenVector, handleRecordVector];
+const tokenVectors: Vector[] = [
+  rootTokenVector,
+  delegatedTokenVector,
+  handleRecordVector,
+];
 
 // -----------------------------------------------------------------------
 // frames.v1.json -- every $frame-variant in spec/frame.cddl except handshake-frame, which lives in handshake.v1.json above.
@@ -119,8 +148,16 @@ const frameVectors: Vector[] = [
   vector("gossip_v1_two_peers", {
     type: "gossip",
     peers: [
-      { device: deviceA, addresses: ["203.0.113.5:4433"], "snapshot-seconds": 1861833600 },
-      { device: deviceB, addresses: ["203.0.113.9:4433", "198.51.100.2:4433"], "snapshot-seconds": 1861833601 },
+      {
+        device: deviceA,
+        addresses: ["203.0.113.5:4433"],
+        "snapshot-seconds": 1861833600,
+      },
+      {
+        device: deviceB,
+        addresses: ["203.0.113.9:4433", "198.51.100.2:4433"],
+        "snapshot-seconds": 1861833601,
+      },
     ],
   }),
   vector("candidates_v1_host_and_relayed", {
@@ -130,12 +167,31 @@ const frameVectors: Vector[] = [
       { address: "198.51.100.2:7000", kind: "relayed", priority: 10 },
     ],
   }),
-  vector("sync_punch_v1", { type: "sync-punch", nonce: 42, "deadline-unix-ms": 1861833605000 }),
-  vector("observed_address_v1", { type: "observed-address", address: "203.0.113.5:51820" }),
-  vector("relay_offer_v1", { type: "relay-offer", addresses: ["198.51.100.2:7000"] }),
-  vector("relay_connect_v1", { type: "relay-connect", "target-device": deviceC }),
-  vector("relay_data_v1", { type: "relay-data", payload: hex("de".repeat(24)) }),
-  vector("relay_inbound_v1", { type: "relay-inbound", "source-device": deviceB }),
+  vector("sync_punch_v1", {
+    type: "sync-punch",
+    nonce: 42,
+    "deadline-unix-ms": 1861833605000,
+  }),
+  vector("observed_address_v1", {
+    type: "observed-address",
+    address: "203.0.113.5:51820",
+  }),
+  vector("relay_offer_v1", {
+    type: "relay-offer",
+    addresses: ["198.51.100.2:7000"],
+  }),
+  vector("relay_connect_v1", {
+    type: "relay-connect",
+    "target-device": deviceC,
+  }),
+  vector("relay_data_v1", {
+    type: "relay-data",
+    payload: hex("de".repeat(EXAMPLE_RELAY_PAYLOAD_BYTE_LENGTH)),
+  }),
+  vector("relay_inbound_v1", {
+    type: "relay-inbound",
+    "source-device": deviceB,
+  }),
   vector("manage_request_v1_pty_spawn", {
     type: "manage-request",
     "request-id": 1,
@@ -161,13 +217,23 @@ const frameVectors: Vector[] = [
   vector("manage_response_v1_error", {
     type: "manage-response",
     "request-id": 2,
-    outcome: { result: "error", code: "scope-denied", message: "token does not authorise this path" },
+    outcome: {
+      result: "error",
+      code: "scope-denied",
+      message: "token does not authorise this path",
+    },
   }),
   vector("revocation_announce_v1_two_entries", {
     type: "revocation-announce",
     entries: [
-      { "token-id": hex("01".repeat(16)), "revoked-at": 1861833700000 },
-      { "token-id": hex("02".repeat(16)), "revoked-at": 1861833701000 },
+      {
+        "token-id": hex("01".repeat(TOKEN_ID_BYTE_LENGTH)),
+        "revoked-at": 1861833700000,
+      },
+      {
+        "token-id": hex("02".repeat(TOKEN_ID_BYTE_LENGTH)),
+        "revoked-at": 1861833701000,
+      },
     ],
   }),
   vector("stream_data_v1_stdout_chunk", {
@@ -177,10 +243,23 @@ const frameVectors: Vector[] = [
     channel: "stdout",
     bytes: hex("68656c6c6f0a"), // "hello\n"
   }),
-  vector("stream_ack_v1", { type: "stream-ack", session: 7, "ack-seq": 3, window: 65536 }),
-  vector("stream_end_v1_exit_code", { type: "stream-end", session: 7, "exit-code": 0 }),
+  vector("stream_ack_v1", {
+    type: "stream-ack",
+    session: 7,
+    "ack-seq": 3,
+    window: 65536,
+  }),
+  vector("stream_end_v1_exit_code", {
+    type: "stream-end",
+    session: 7,
+    "exit-code": 0,
+  }),
   vector("data_have_v1", { type: "data-have", peer: deviceA, "head-seq": 128 }),
-  vector("data_request_v1", { type: "data-request", peer: deviceA, "from-seq": 100 }),
+  vector("data_request_v1", {
+    type: "data-request",
+    peer: deviceA,
+    "from-seq": 100,
+  }),
   vector("data_entries_v1_two_entries", {
     type: "data-entries",
     peer: deviceA,
@@ -191,13 +270,25 @@ const frameVectors: Vector[] = [
     type: "federation-link-request",
     "local-mesh": "exadev-internal",
     "local-name": "exadev",
-    "offered-shares": [{ domain: "core/data", resource: { kind: "room", path: "general" }, direction: "outbound" }],
+    "offered-shares": [
+      {
+        domain: "core/data",
+        resource: { kind: "room", path: "general" },
+        direction: "outbound",
+      },
+    ],
   }),
   vector("federation_link_accept_v1", {
     type: "federation-link-accept",
     "remote-mesh": "example-partner",
     "remote-name": "partner",
-    "accepted-shares": [{ domain: "core/data", resource: { kind: "room", path: "general" }, direction: "outbound" }],
+    "accepted-shares": [
+      {
+        domain: "core/data",
+        resource: { kind: "room", path: "general" },
+        direction: "outbound",
+      },
+    ],
   }),
   vector("federation_link_reject_v1", {
     type: "federation-link-reject",
@@ -205,11 +296,19 @@ const frameVectors: Vector[] = [
   }),
   vector("federation_share_v1", {
     type: "federation-share",
-    share: { domain: "core/data", resource: { kind: "room", path: "incidents" }, direction: "bidirectional" },
+    share: {
+      domain: "core/data",
+      resource: { kind: "room", path: "incidents" },
+      direction: "bidirectional",
+    },
   }),
   vector("federation_unshare_v1", {
     type: "federation-unshare",
-    share: { domain: "core/data", resource: { kind: "room", path: "incidents" }, direction: "bidirectional" },
+    share: {
+      domain: "core/data",
+      resource: { kind: "room", path: "incidents" },
+      direction: "bidirectional",
+    },
   }),
   vector("federation_envelope_v1_wrapping_a_ping", {
     type: "federation-envelope",
@@ -224,10 +323,17 @@ const frameVectors: Vector[] = [
 // Write files
 // -----------------------------------------------------------------------
 
-function write(filename: string, description: string, vectors: Vector[]): void {
+function write(
+  filename: string,
+  description: string,
+  vectors: readonly Vector[],
+): void {
   const content = { protocol_version: 1, description, vectors };
-  writeFileSync(new URL(filename, import.meta.url), JSON.stringify(content, null, 2) + "\n");
-  console.log(`wrote ${filename} (${vectors.length} vectors)`);
+  writeFileSync(
+    new URL(filename, import.meta.url),
+    JSON.stringify(content, null, 2) + "\n",
+  );
+  console.log(`wrote ${filename} (${String(vectors.length)} vectors)`);
 }
 
 write(

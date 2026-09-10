@@ -79,9 +79,13 @@ jobs:
         working-directory: conformance
         run: pnpm install --frozen-lockfile
 
+      - name: Lint
+        working-directory: conformance
+        run: pnpm turbo run _lint
+
       - name: Typecheck and build codec.ts, verifying its dual ESM/CJS + types with attw
         working-directory: conformance
-        run: pnpm run typecheck
+        run: pnpm turbo run _typecheck
 
       - name: Confirm generate.ts's output matches the committed vector files
         working-directory: conformance
@@ -89,7 +93,7 @@ jobs:
           cp handshake.v1.json /tmp/handshake-committed.json
           cp tokens.v1.json /tmp/tokens-committed.json
           cp frames.v1.json /tmp/frames-committed.json
-          pnpm run generate
+          pnpm turbo run _generate
           if ! diff -u /tmp/handshake-committed.json handshake.v1.json || ! diff -u /tmp/tokens-committed.json tokens.v1.json || ! diff -u /tmp/frames-committed.json frames.v1.json; then
             echo "::error::conformance/*.v1.json is out of date. Run 'pnpm run generate' in conformance/ and commit the result -- never edit the vector files directly."
             exit 1
@@ -97,7 +101,7 @@ jobs:
 
       - name: Verify every vector round-trips through cbor2
         working-directory: conformance
-        run: pnpm test
+        run: pnpm turbo run _test
 
   required-checks:
     name: Required Checks

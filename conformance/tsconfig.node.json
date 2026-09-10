@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["generate.ts", "verify.test.ts", "tsdown.config.ts", "eslint.config.ts"]
+}
