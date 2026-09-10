@@ -4,7 +4,7 @@ import { createIndexedDbStorage } from "./adapters/indexeddb-storage.js";
 import { createPersistedWebCryptoIdentity } from "./adapters/web-crypto-identity.js";
 import { createBrowserTransport } from "./adapters/websocket-transport.js";
 import { createMeshSession } from "./mesh-session.js";
-import type { SessionEvent } from "./mesh-session.js";
+import type { ReconnectPolicy, SessionEvent } from "./mesh-session.js";
 
 // Passing the constructor rather than asserting: T appears in both the parameter and return, and the instanceof check makes the lookup self-verifying at runtime.
 function requireElement<E extends HTMLElement>(
@@ -44,6 +44,20 @@ const identity = await createPersistedWebCryptoIdentity(
   await createIndexedDbStorage(),
 );
 const clock = { now: () => Date.now() };
+
+// Exponential backoff, capped at 30s, giving up after 5 attempts -- reasonable defaults for a browser console reconnecting to a relay that may just be restarting, without retrying forever against one that is genuinely gone.
+const RECONNECT_MAX_ATTEMPTS = 5;
+const RECONNECT_BASE_DELAY_MS = 1000;
+const RECONNECT_MAX_DELAY_MS = 30_000;
+const RECONNECT_BACKOFF_BASE = 2;
+const reconnectPolicy: ReconnectPolicy = {
+  maxAttempts: RECONNECT_MAX_ATTEMPTS,
+  delayMs: (attempt) =>
+    Math.min(
+      RECONNECT_BASE_DELAY_MS * RECONNECT_BACKOFF_BASE ** (attempt - 1),
+      RECONNECT_MAX_DELAY_MS,
+    ),
+};
 
 const HEX_RADIX = 16;
 
@@ -190,7 +204,12 @@ form.addEventListener("submit", (event) => {
   ].map((checkbox) => checkbox.value);
 
   const panel = createConnectionPanel(address);
-  const session = createMeshSession(createBrowserTransport(), identity, clock);
+  const session = createMeshSession(
+    createBrowserTransport(),
+    identity,
+    clock,
+    reconnectPolicy,
+  );
   sessions.set(address, session);
 
   panel.pingButton.addEventListener("click", () => {
