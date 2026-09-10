@@ -40,12 +40,12 @@ pub type OnConnection = std::sync::Arc<dyn Fn(Box<dyn Connection>) + Send + Sync
 
 /// Keeps a listener alive; dropping it stops listening.
 pub trait ListenGuard: Send {
-    /// The address actually bound, for stream transports that can report
-    /// it (useful when listening on port 0). Adapters whose address is not
-    /// a socket address return `None`.
-    fn local_addr(&self) -> Option<std::net::SocketAddr> {
-        None
-    }
+    /// The address actually listening on, in the adapter's own address
+    /// syntax — mirroring the TypeScript port's `Listener.address: string`.
+    /// A caller may listen on port 0 and needs the OS-assigned address
+    /// handed back; socket-shaped accessors stay on the adapter's own
+    /// guard type, not on this provider-neutral port.
+    fn address(&self) -> String;
 }
 
 /// The transport port.
