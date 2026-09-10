@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createWebCryptoIdentity,
   deriveDeviceId,
+  verifyWithPublicKey,
 } from "../src/adapters/web-crypto-identity.js";
 import {
   createNodeIdentity,
@@ -11,6 +12,7 @@ import {
 import { bytesFromHex } from "./hex.js";
 
 const ES256 = -7;
+const ES512 = -36; // a real COSE algorithm this adapter deliberately does not implement
 const SHA256_BYTE_LENGTH = 32;
 const UNCOMPRESSED_P256_POINT_BYTE_LENGTH = 65; // 0x04 || X || Y
 
@@ -99,5 +101,18 @@ describe("createWebCryptoIdentity", () => {
     const derived = await deriveDeviceId(raw);
     const expected = createHash("sha256").update(raw).digest();
     expect(bytesEqual(derived, expected)).toBe(true);
+  });
+
+  it("throws loudly on an identity-key algorithm it does not implement, rather than mis-verifying", async () => {
+    const identity = await createWebCryptoIdentity();
+    const message = someMessage();
+    const signature = await identity.sign(message);
+    const es512Key = {
+      ...identity.identityKey,
+      alg: ES512,
+    };
+    await expect(
+      verifyWithPublicKey(es512Key, message, signature),
+    ).rejects.toThrow("unsupported identity-key alg -36");
   });
 });
