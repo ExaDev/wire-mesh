@@ -94,6 +94,17 @@ export function createRelayHub(): RelayHub {
         // The initiator never gossiped its own advert, so relay-inbound would carry no source-device; ignore until it identifies itself.
         return;
       }
+      // A new relay-connect re-pairs: any pairing either side already belongs to is torn down in BOTH directions first, so a stale partner's mapping cannot survive to mis-attribute its relay-data onto the new pipe.
+      const staleAsInitiator = pairingsByInitiator.get(connection);
+      if (staleAsInitiator) {
+        pairingsByInitiator.delete(connection);
+        pairingsByTarget.delete(staleAsInitiator.target);
+      }
+      const staleTarget = pairingsByTarget.get(registration.connection);
+      if (staleTarget) {
+        pairingsByTarget.delete(registration.connection);
+        pairingsByInitiator.delete(staleTarget.initiator);
+      }
       await registration.connection.send({
         type: "relay-inbound",
         "source-device": initiatorDevice,
@@ -129,6 +140,8 @@ export function createRelayHub(): RelayHub {
         for await (const frame of connection.receive()) {
           await handleFrame(connection, frame);
         }
+      } catch {
+        // A rejecting receive iteration is the connection-level failure signal (the adapter already closed the socket for undecodable bytes or a non-binary message), and a failed peer.send inside handleFrame means that peer's connection died mid-forward -- both are disconnects, not errors to surface, and the entry point voids its caller anyway. Cleanup below runs identically to a clean end.
       } finally {
         forgetConnection(connection);
       }
