@@ -49,8 +49,16 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   return true;
 }
 
-/** True when childPath is parentPath or a descendant of it, compared on "/"-segment boundaries: "/work/sub" narrows "/work", but "/workbook" does NOT narrow "/work" despite the string prefix, because "book" continues the same segment. */
+/** True when the path contains a "." or ".." segment. Purely lexical prefix comparison would let "/work/../org" pass under "/work" -- a path that normalises outside the parent -- so any relative segment fails the narrowing comparison wholesale: fail-closed rather than reimplementing path normalisation, consistent with how empty, case-different, and non-boundary-prefixed paths already behave. */
+function hasRelativeSegment(path: string): boolean {
+  return path.split("/").some((segment) => segment === "." || segment === "..");
+}
+
+/** True when childPath is parentPath or a descendant of it, compared on "/"-segment boundaries: "/work/sub" narrows "/work", but "/workbook" does NOT narrow "/work" despite the string prefix, because "book" continues the same segment. Paths containing "." or ".." segments never narrow anything (see hasRelativeSegment). */
 function pathNarrows(childPath: string, parentPath: string): boolean {
+  if (hasRelativeSegment(childPath) || hasRelativeSegment(parentPath)) {
+    return false;
+  }
   if (childPath === parentPath) return true;
   if (!childPath.startsWith(parentPath)) return false;
   if (parentPath.endsWith("/")) return true;
@@ -211,7 +219,12 @@ export async function verifyRevocationEntry(
     return { ok: false, reason: "malformed" };
   }
 
-  const decodedClaims: unknown = decode(payload, cdeDecodeOptions);
+  let decodedClaims: unknown;
+  try {
+    decodedClaims = decode(payload, cdeDecodeOptions);
+  } catch {
+    return { ok: false, reason: "malformed" };
+  }
   const claimsResult = revocationClaimsSchema.safeParse(decodedClaims);
   if (!claimsResult.success) {
     return { ok: false, reason: "malformed" };
