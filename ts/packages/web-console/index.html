@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>wire-mesh console</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 1rem;
+      }
+      header {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      input[type="url"] {
+        flex: 1;
+        min-width: 16rem;
+      }
+      section {
+        margin-top: 1rem;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 0.25rem 0.5rem;
+        border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+        font-family: ui-monospace, monospace;
+        font-size: 0.85rem;
+        overflow-wrap: anywhere;
+      }
+      .status {
+        font-weight: 600;
+      }
+      .mono {
+        font-family: ui-monospace, monospace;
+        font-size: 0.85rem;
+      }
+      #frame-log {
+        max-height: 24rem;
+        overflow-y: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>wire-mesh console</h1>
+    <form id="connect-form">
+      <header>
+        <label for="node-address">Node</label>
+        <input
+          id="node-address"
+          type="url"
+          value="ws://localhost:8787"
+          required
+        />
+        <button type="submit" id="connect-button">Connect</button>
+        <button type="button" id="ping-button" disabled>Send ping</button>
+        <button type="button" id="close-button" disabled>Disconnect</button>
+      </header>
+      <p class="mono">
+        Domains offered:
+        <label><input type="checkbox" name="domain" value="core/management" checked /> core/management</label>
+        <label><input type="checkbox" name="domain" value="core/exec" /> core/exec</label>
+        <label><input type="checkbox" name="domain" value="core/data" checked /> core/data</label>
+      </p>
+    </form>
+    <p class="status" id="connection-status">idle</p>
+    <section>
+      <h2>Peer directory</h2>
+      <p id="directory-empty">No gossip received yet.</p>
+      <table id="directory-table" hidden>
+        <thead>
+          <tr><th>device</th><th>addresses</th><th>snapshot (unix s)</th></tr>
+        </thead>
+        <tbody id="directory-body"></tbody>
+      </table>
+    </section>
+    <section>
+      <h2>Frame log</h2>
+      <table>
+        <thead>
+          <tr><th>direction</th><th>frame</th></tr>
+        </thead>
+        <tbody id="frame-log"></tbody>
+      </table>
+    </section>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
