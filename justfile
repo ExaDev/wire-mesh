@@ -34,6 +34,7 @@ spec:
 # through cbor2. Once rust/ and ts/ exist, each implementation's own
 # conformance-check additionally runs against these same vector files.
 conformance:
+    cd conformance && npm install
     cd conformance && npm run generate
     cd conformance && npm run verify
     @if [ -d rust ]; then cd rust && cargo run --bin conformance-check; else echo "rust/ does not exist yet"; fi
