@@ -50,13 +50,13 @@ impl Decode<'_, ()> for ManageCommand {
 }
 
 pub(crate) fn manage_command_from(d: &mut Decoder<'_>) -> Result<ManageCommand, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut verb: Option<String> = None;
     let mut params: Option<ManageParams> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
-            "verb" => verb = Some(strict::text_value(d)?),
-            "params" => params = Some(manage_params_from(d)?),
+    while let Some(key) = map.next_key(d)? {
+        match key {
+            "verb" => strict::set_once(&mut verb, strict::text_value(d)?)?,
+            "params" => strict::set_once(&mut params, manage_params_from(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
@@ -145,10 +145,9 @@ pub(crate) fn manage_params_from(d: &mut Decoder<'_>) -> Result<ManageParams, De
     // `env` both do). Two passes over the same definite map: find the
     // `verb` literal, rewind, decode through the matching typed arm.
     let start = d.position();
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut verb: Option<String> = None;
-    for _ in 0..n {
-        let key = strict::text_key(d)?;
+    while let Some(key) = map.next_key(d)? {
         if key == "verb" {
             if verb.is_some() {
                 return Err(DecodeError::DuplicateKey);
@@ -224,18 +223,18 @@ impl Decode<'_, ()> for ManageRequestFrame {
 }
 
 pub(crate) fn manage_request_from(d: &mut Decoder<'_>) -> Result<ManageRequestFrame, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut request_id: Option<u64> = None;
     let mut command: Option<ManageCommand> = None;
     let mut scope: Option<CapabilityScope> = None;
     let mut token: Option<CoseSign1> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
+    while let Some(key) = map.next_key(d)? {
+        match key {
             "type" => strict::literal(d, ManageRequestFrame::TYPE)?,
-            "request-id" => request_id = Some(strict::uint_value(d)?),
-            "command" => command = Some(manage_command_from(d)?),
-            "scope" => scope = Some(scope_from(d)?),
-            "token" => token = Some(crate::tokens::cose_sign1_from(d)?),
+            "request-id" => strict::set_once(&mut request_id, strict::uint_value(d)?)?,
+            "command" => strict::set_once(&mut command, manage_command_from(d)?)?,
+            "scope" => strict::set_once(&mut scope, scope_from(d)?)?,
+            "token" => strict::set_once(&mut token, crate::tokens::cose_sign1_from(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
@@ -314,17 +313,17 @@ impl Decode<'_, ()> for ManageOutcome {
 }
 
 pub(crate) fn manage_outcome_from(d: &mut Decoder<'_>) -> Result<ManageOutcome, DecodeError> {
-    let n = strict::definite_map(d)?;
+    // `code` and `message` are typed fields of manage-error but ordinary
+    // tail extensions of manage-ok (`manage-ok = { result: "ok", * tstr =>
+    // any }` admits any key, with any value), so they decode through the
+    // open tail here and are pulled out as typed fields only when `result`
+    // says "error" -- whose CDDL rule has no open tail at all.
+    let mut map = strict::MapDecoder::new(d)?;
     let mut result: Option<String> = None;
-    let mut code: Option<String> = None;
-    let mut message: Option<String> = None;
     let mut extra = CanonicalMap::new();
-    for _ in 0..n {
-        let key = strict::text_key(d)?;
+    while let Some(key) = map.next_key(d)? {
         match key {
-            "result" => result = Some(strict::text_value(d)?),
-            "code" => code = Some(strict::text_value(d)?),
-            "message" => message = Some(strict::text_value(d)?),
+            "result" => strict::set_once(&mut result, strict::text_value(d)?)?,
             other => {
                 let value = CborValue::decode_strict(d)?;
                 extra.insert(other.to_owned(), value)?;
@@ -332,18 +331,31 @@ pub(crate) fn manage_outcome_from(d: &mut Decoder<'_>) -> Result<ManageOutcome, 
         }
     }
     match result.as_deref() {
-        Some("ok") => {
-            if code.is_some() || message.is_some() {
-                return Err(DecodeError::Constraint(
-                    "code/message are manage-error fields, not manage-ok's open tail",
-                ));
+        Some("ok") => Ok(ManageOutcome::Ok(ManageOk { extra })),
+        Some("error") => {
+            let code = match extra.remove(&"code".to_owned()) {
+                Some(CborValue::Text(code)) => code,
+                Some(_) => {
+                    return Err(DecodeError::Constraint(
+                        "manage-error code must be a text string",
+                    ))
+                }
+                None => return Err(DecodeError::MissingField("code")),
+            };
+            let message = match extra.remove(&"message".to_owned()) {
+                Some(CborValue::Text(message)) => Some(message),
+                Some(_) => {
+                    return Err(DecodeError::Constraint(
+                        "manage-error message must be a text string",
+                    ))
+                }
+                None => None,
+            };
+            if let Some((unknown, _)) = extra.iter().next() {
+                return Err(DecodeError::UnknownKey(unknown.clone()));
             }
-            Ok(ManageOutcome::Ok(ManageOk { extra }))
+            Ok(ManageOutcome::Error(ManageError { code, message }))
         }
-        Some("error") => Ok(ManageOutcome::Error(ManageError {
-            code: code.ok_or(DecodeError::MissingField("code"))?,
-            message,
-        })),
         Some(other) => Err(DecodeError::BadLiteral {
             expected: "ok | error",
             found: other.to_owned(),
@@ -387,14 +399,14 @@ impl Decode<'_, ()> for ManageResponseFrame {
 pub(crate) fn manage_response_from(
     d: &mut Decoder<'_>,
 ) -> Result<ManageResponseFrame, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut request_id: Option<u64> = None;
     let mut outcome: Option<ManageOutcome> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
+    while let Some(key) = map.next_key(d)? {
+        match key {
             "type" => strict::literal(d, ManageResponseFrame::TYPE)?,
-            "request-id" => request_id = Some(strict::uint_value(d)?),
-            "outcome" => outcome = Some(manage_outcome_from(d)?),
+            "request-id" => strict::set_once(&mut request_id, strict::uint_value(d)?)?,
+            "outcome" => strict::set_once(&mut outcome, manage_outcome_from(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
@@ -462,17 +474,19 @@ impl Decode<'_, ()> for RevocationClaims {
 }
 
 pub(crate) fn revocation_claims_from(d: &mut Decoder<'_>) -> Result<RevocationClaims, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut token_id: Option<Vec<u8>> = None;
     let mut issuer: Option<DeviceId> = None;
     let mut issuer_key: Option<IdentityKey> = None;
     let mut revoked_at: Option<u64> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
-            "token-id" => token_id = Some(strict::bytes_value(d)?),
-            "issuer" => issuer = Some(device_id_from(d)?),
-            "issuer-key" => issuer_key = Some(crate::identity::identity_key_from(d)?),
-            "revoked-at" => revoked_at = Some(strict::uint_value(d)?),
+    while let Some(key) = map.next_key(d)? {
+        match key {
+            "token-id" => strict::set_once(&mut token_id, strict::bytes_value(d)?)?,
+            "issuer" => strict::set_once(&mut issuer, device_id_from(d)?)?,
+            "issuer-key" => {
+                strict::set_once(&mut issuer_key, crate::identity::identity_key_from(d)?)?
+            }
+            "revoked-at" => strict::set_once(&mut revoked_at, strict::uint_value(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
@@ -535,10 +549,10 @@ impl Decode<'_, ()> for RevocationAnnounceFrame {
 pub(crate) fn revocation_announce_from(
     d: &mut Decoder<'_>,
 ) -> Result<RevocationAnnounceFrame, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut entries: Option<Vec<RevocationEntry>> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
+    while let Some(key) = map.next_key(d)? {
+        match key {
             "type" => strict::literal(d, RevocationAnnounceFrame::TYPE)?,
             "entries" => {
                 let count = strict::definite_array(d)?;
@@ -559,6 +573,54 @@ pub(crate) fn revocation_announce_from(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn manage_ok_accepts_code_and_message_as_ordinary_tail_extensions() {
+        // manage-ok's `* tstr => any` admits code/message with any value;
+        // they are manage-error's typed fields, not ok's.
+        let mut bytes = vec![0xa2, 0x64];
+        bytes.extend_from_slice(b"code");
+        bytes.push(0x63);
+        bytes.extend_from_slice(b"x-y");
+        bytes.push(0x66);
+        bytes.extend_from_slice(b"result");
+        bytes.push(0x62);
+        bytes.extend_from_slice(b"ok");
+        let mut d = Decoder::new(&bytes);
+        let outcome = manage_outcome_from(&mut d).expect("ok outcome with code tail");
+        let ManageOutcome::Ok(ok) = &outcome else {
+            panic!("expected ok, got {outcome:?}");
+        };
+        assert_eq!(
+            ok.extra.get(&"code".to_owned()),
+            Some(&CborValue::Text("x-y".to_owned()))
+        );
+        // Re-encoding writes the tail back through the CDE builder,
+        // byte-identically.
+        assert_eq!(&minicbor::to_vec(&outcome).unwrap()[..], &bytes[..]);
+    }
+
+    #[test]
+    fn manage_error_rejects_unknown_tail_keys() {
+        // manage-error has no open tail: with code present, an unrelated
+        // key is unknown rather than an accepted extension.
+        let mut bytes = vec![0xa3, 0x64];
+        bytes.extend_from_slice(b"code");
+        bytes.push(0x61);
+        bytes.push(b'x');
+        bytes.push(0x65);
+        bytes.extend_from_slice(b"extra");
+        bytes.push(0x01);
+        bytes.push(0x66);
+        bytes.extend_from_slice(b"result");
+        bytes.push(0x65);
+        bytes.extend_from_slice(b"error");
+        let mut d = Decoder::new(&bytes);
+        assert_eq!(
+            manage_outcome_from(&mut d),
+            Err(DecodeError::UnknownKey("extra".to_owned()))
+        );
+    }
 
     fn encode<T>(value: &T) -> T
     where
