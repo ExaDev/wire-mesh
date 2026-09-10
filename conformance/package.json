@@ -1,12 +1,33 @@
 {
   "name": "@exadev/wire-mesh-conformance",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.33.0",
   "scripts": {
-    "generate": "node generate.mjs",
-    "verify": "node verify.mjs"
+    "build": "tsdown",
+    "generate": "pnpm build && node generate.ts",
+    "test": "pnpm build && vitest run",
+    "typecheck": "pnpm build && tsc --noEmit"
   },
   "dependencies": {
-    "cbor2": "^2.3.0"
+    "cbor2": "2.3.0"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
+    "@types/node": "26.4.1",
+    "tsdown": "0.23.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.0"
+  },
+  "main": "./dist/codec.cjs",
+  "module": "./dist/codec.mjs",
+  "types": "./dist/codec.d.cts",
+  "exports": {
+    ".": {
+      "import": "./dist/codec.mjs",
+      "require": "./dist/codec.cjs"
+    },
+    "./package.json": "./package.json"
   }
 }
