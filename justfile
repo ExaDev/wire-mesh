@@ -30,12 +30,14 @@ spec:
     cd spec && ./generate.sh
     cd spec && npx --yes cddl@0.21.1 validate protocol.cddl
 
-# Regenerate conformance/'s golden vectors and verify every one round-trips
-# through cbor2. Once rust/ and ts/ exist, each implementation's own
-# conformance-check additionally runs against these same vector files.
+# Regenerate conformance/'s golden vectors, typecheck, and verify every
+# vector round-trips through cbor2. Once rust/ and ts/ exist, each
+# implementation's own conformance-check additionally runs against these
+# same vector files.
 conformance:
-    cd conformance && npm install
-    cd conformance && npm run generate
-    cd conformance && npm run verify
+    cd conformance && pnpm install
+    cd conformance && pnpm run generate
+    cd conformance && pnpm test
+    cd conformance && pnpm run typecheck
     @if [ -d rust ]; then cd rust && cargo run --bin conformance-check; else echo "rust/ does not exist yet"; fi
     @if [ -d ts ]; then cd ts && pnpm conformance-check; else echo "ts/ does not exist yet"; fi
