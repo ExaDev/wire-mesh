@@ -1,60 +1,48 @@
-; core/federation — selective, explicit sharing between independently
-; operated meshes, distinct from ordinary intra-mesh relay. No Cascade
-; precedent exists for this; it is designed as its own capability domain
-; rather than a separate connection type, so it reuses Handshake negotiation,
-; the Frame choice, and capability-scope instead of inventing a parallel
-; mechanism. Generalises agent-comms' own existing fed_handshake/fed_room_*
-; messages past one specific application.
+; core/federation — retired as a distinct frame domain. This file
+; deliberately defines no rules; it exists so the design reasoning behind
+; the removal is discoverable exactly where a reader would look for the
+; mechanism that used to live here. `core-domain-name` in handshake.cddl
+; still reserves the "core/federation" string (append-only, never renumbered
+; or reused, per registry/core-domains.md's own convention) but no frames
+; are defined for it; a peer must never advertise or negotiate it.
 ;
-; Two designated gateway devices, one per mesh, negotiate core/federation at
-; Handshake like any other domain, then speak these frames on that
-; connection.
-
-mesh-id = tstr   ; a human-chosen or hash-derived identifier for an independently-operated mesh; opaque, not required to be device-id-shaped
-
-federation-link-request-frame = {
-  type: "federation-link-request",
-  local-mesh: mesh-id,
-  local-name: tstr,
-  offered-shares: [* share-descriptor],
-}
-
-federation-link-accept-frame = {
-  type: "federation-link-accept",
-  remote-mesh: mesh-id,
-  remote-name: tstr,
-  accepted-shares: [* share-descriptor],
-}
-
-federation-link-reject-frame = { type: "federation-link-reject", reason: tstr }
-
-; What's shared: reuses capability-scope so "a room path" and "a folder path"
-; are the same generic concept federation already needs elsewhere in this
-; schema.
-share-descriptor = {
-  domain: domain-id,
-  resource: capability-scope,
-  direction: "inbound" / "outbound" / "bidirectional",
-}
-
-; Renegotiate shares after the initial link — add or remove a room later
-; without tearing down the whole federation link.
-federation-share-frame   = { type: "federation-share", share: share-descriptor }
-federation-unshare-frame = { type: "federation-unshare", share: share-descriptor }
-
-; Once a share is accepted, content belonging to that shared resource is
-; forwarded across the link wrapped in this envelope — deliberately
-; content-aware and resource-scoped, unlike relay-data-frame's opaque byte
-; pipe. That is the actual distinction between federation and ordinary
-; intra-mesh relay: relay-data-frame is payload-blind NAT-traversal plumbing;
-; federation-envelope-frame is deliberate, selective, resource-scoped
-; cross-mesh sharing. origin-device is carried explicitly because the link's
-; own peer identity is the gateway device, not the device inside the remote
-; mesh that originated the content.
-federation-envelope-frame = {
-  type: "federation-envelope",
-  origin-mesh: mesh-id,
-  origin-device: device-id,
-  resource: capability-scope,
-  inner: bstr,   ; .cbor frame — a full inner Frame value, CBOR-encoded and embedded
-}
+; The original design modelled cross-mesh sharing as its own bilateral link
+; protocol: two designated gateway devices, one per mesh, negotiated a
+; mesh-scoped `federation-link-request`/`accept`, declared coarse
+; `share-descriptor`s (domain + resource + direction), and forwarded content
+; in a dedicated `federation-envelope-frame`. On review this conflated two
+; problems that were already solved separately, elsewhere in this schema,
+; and didn't need a third mechanism bolted on top:
+;
+; - Reachability — how do two principals with no prior relationship even
+;   find and connect to each other — is discovery.cddl's job (DNS-anchored
+;   handle resolution, an out-of-band-delivered handle-record, or local
+;   broadcast discovery), not a job for a link-negotiation frame.
+; - Authorisation — what a given bearer is allowed to do or see once
+;   connected — is tokens.cddl's job (capability tokens, signed,
+;   delegatable, narrowing-only, revocable). A federation-link-accept and a
+;   share-descriptor added no security property a signed capability token,
+;   scoped to the resource in question and handed to a bearer outside the
+;   issuer's own group, didn't already provide on its own: the token's own
+;   signature *is* the explicit, auditable, bilateral act of agreement that
+;   the link-negotiation frames were redundantly trying to represent again.
+;
+; What is lost by removing the dedicated frames, named rather than left
+; implicit: the coarse, wire-visible "here is what's declared to cross this
+; boundary" allowlist a share-descriptor gave you for free, ahead of and
+; independent from per-bearer token verification. Without it, "what's
+; allowed to cross" is answered purely by which tokens exist and verify —
+; correct, but no longer inspectable as a standing, pre-declared fact on the
+; wire. That trade was made deliberately: mesh-id and the gateway-device
+; role it implied were themselves the more artificial restriction (ordinary
+; capability-scope, per tokens.cddl, already expresses "a node", "a group",
+; or what would colloquially be called "a mesh" as the same kind of thing;
+; scoping the sharing mechanism to whole meshes only was never load-bearing
+; for any property federation existed to provide).
+;
+; Cross-scope sharing today: a resource owner mints a capability token
+; scoped to whatever `core/*` resource (or, per discovery.cddl, a
+; `handle-registry` entry) it wants to expose, and hands it to a bearer
+; outside its own group by whatever channel already gets a token to a
+; bearer — the same mechanism used for every other capability grant in this
+; schema, nothing federation-specific about it.
