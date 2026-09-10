@@ -7,5 +7,6 @@ Append-only. A bare `subsystem:action` capability verb is spec-owned and matched
 | `pin:write` | `folder` | `core/management` | active |
 | `exec:pty` | `folder` | `core/exec` | active |
 | `exec:proc` | `folder` | `core/exec` | active |
+| `webrtc:signal` | `node` | `core/webrtc` | active |
 
 Third parties do not add entries here — see `namespaced-capability` in `tokens.cddl` for the registrant-owned namespace anyone else uses instead.
