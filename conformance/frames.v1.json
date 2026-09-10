@@ -122,6 +122,18 @@
       "wire_hex": "a264747970656d72656c61792d696e626f756e646d736f757263652d64657669636558202222222222222222222222222222222222222222222222222222222222222222"
     },
     {
+      "name": "coordinator_v1_with_capacity_hint",
+      "message": {
+        "type": "coordinator",
+        "term": 3,
+        "coordinator": {
+          "hex": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "capacity-hint": 64
+      },
+      "wire_hex": "a4647465726d0364747970656b636f6f7264696e61746f726b636f6f7264696e61746f72582011111111111111111111111111111111111111111111111111111111111111116d63617061636974792d68696e741840"
+    },
+    {
       "name": "manage_request_v1_pty_spawn",
       "message": {
         "type": "manage-request",
@@ -174,21 +186,33 @@
       "message": {
         "type": "revocation-announce",
         "entries": [
-          {
-            "token-id": {
-              "hex": "01010101010101010101010101010101"
+          [
+            {
+              "hex": "a2613126613458201111111111111111111111111111111111111111111111111111111111111111"
             },
-            "revoked-at": 1861833700000
-          },
-          {
-            "token-id": {
-              "hex": "02020202020202020202020202020202"
+            {},
+            {
+              "hex": "a4666973737565725820111111111111111111111111111111111111111111111111111111111111111168746f6b656e2d696450010101010101010101010101010101016a6973737565722d6b6579a263616c67266a7075626c69632d6b6579584104aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb6a7265766f6b65642d61741b000001b17defb2a0"
             },
-            "revoked-at": 1861833701000
-          }
+            {
+              "hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            }
+          ],
+          [
+            {
+              "hex": "a2613126613458202222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {},
+            {
+              "hex": "a4666973737565725820222222222222222222222222222222222222222222222222222222222222222268746f6b656e2d696450020202020202020202020202020202026a6973737565722d6b6579a263616c67266a7075626c69632d6b6579584104ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd6a7265766f6b65642d61741b000001b17defb688"
+            },
+            {
+              "hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            }
+          ]
         ]
       },
-      "wire_hex": "a26474797065737265766f636174696f6e2d616e6e6f756e636567656e747269657382a268746f6b656e2d696450010101010101010101010101010101016a7265766f6b65642d61741b000001b17defb2a0a268746f6b656e2d696450020202020202020202020202020202026a7265766f6b65642d61741b000001b17defb688"
+      "wire_hex": "a26474797065737265766f636174696f6e2d616e6e6f756e636567656e747269657382845828a2613126613458201111111111111111111111111111111111111111111111111111111111111111a058b7a4666973737565725820111111111111111111111111111111111111111111111111111111111111111168746f6b656e2d696450010101010101010101010101010101016a6973737565722d6b6579a263616c67266a7075626c69632d6b6579584104aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb6a7265766f6b65642d61741b000001b17defb2a05840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff845828a2613126613458202222222222222222222222222222222222222222222222222222222222222222a058b7a4666973737565725820222222222222222222222222222222222222222222222222222222222222222268746f6b656e2d696450020202020202020202020202020202026a6973737565722d6b6579a263616c67266a7075626c69632d6b6579584104ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd6a7265766f6b65642d61741b000001b17defb6885840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
     },
     {
       "name": "stream_data_v1_stdout_chunk",
@@ -262,100 +286,6 @@
         ]
       },
       "wire_hex": "a464706565725820111111111111111111111111111111111111111111111111111111111111111164747970656c646174612d656e747269657367656e74726965738243aabbcc44ddeeff006866726f6d2d7365711864"
-    },
-    {
-      "name": "federation_link_request_v1",
-      "message": {
-        "type": "federation-link-request",
-        "local-mesh": "exadev-internal",
-        "local-name": "exadev",
-        "offered-shares": [
-          {
-            "domain": "core/data",
-            "resource": {
-              "kind": "room",
-              "path": "general"
-            },
-            "direction": "outbound"
-          }
-        ]
-      },
-      "wire_hex": "a464747970657766656465726174696f6e2d6c696e6b2d726571756573746a6c6f63616c2d6d6573686f6578616465762d696e7465726e616c6a6c6f63616c2d6e616d65666578616465766e6f6666657265642d73686172657381a366646f6d61696e69636f72652f64617461687265736f75726365a2646b696e6464726f6f6d64706174686767656e6572616c69646972656374696f6e686f7574626f756e64"
-    },
-    {
-      "name": "federation_link_accept_v1",
-      "message": {
-        "type": "federation-link-accept",
-        "remote-mesh": "example-partner",
-        "remote-name": "partner",
-        "accepted-shares": [
-          {
-            "domain": "core/data",
-            "resource": {
-              "kind": "room",
-              "path": "general"
-            },
-            "direction": "outbound"
-          }
-        ]
-      },
-      "wire_hex": "a464747970657666656465726174696f6e2d6c696e6b2d6163636570746b72656d6f74652d6d6573686f6578616d706c652d706172746e65726b72656d6f74652d6e616d6567706172746e65726f61636365707465642d73686172657381a366646f6d61696e69636f72652f64617461687265736f75726365a2646b696e6464726f6f6d64706174686767656e6572616c69646972656374696f6e686f7574626f756e64"
-    },
-    {
-      "name": "federation_link_reject_v1",
-      "message": {
-        "type": "federation-link-reject",
-        "reason": "no shared domains accepted"
-      },
-      "wire_hex": "a264747970657666656465726174696f6e2d6c696e6b2d72656a65637466726561736f6e781a6e6f2073686172656420646f6d61696e73206163636570746564"
-    },
-    {
-      "name": "federation_share_v1",
-      "message": {
-        "type": "federation-share",
-        "share": {
-          "domain": "core/data",
-          "resource": {
-            "kind": "room",
-            "path": "incidents"
-          },
-          "direction": "bidirectional"
-        }
-      },
-      "wire_hex": "a264747970657066656465726174696f6e2d7368617265657368617265a366646f6d61696e69636f72652f64617461687265736f75726365a2646b696e6464726f6f6d647061746869696e636964656e747369646972656374696f6e6d6269646972656374696f6e616c"
-    },
-    {
-      "name": "federation_unshare_v1",
-      "message": {
-        "type": "federation-unshare",
-        "share": {
-          "domain": "core/data",
-          "resource": {
-            "kind": "room",
-            "path": "incidents"
-          },
-          "direction": "bidirectional"
-        }
-      },
-      "wire_hex": "a264747970657266656465726174696f6e2d756e7368617265657368617265a366646f6d61696e69636f72652f64617461687265736f75726365a2646b696e6464726f6f6d647061746869696e636964656e747369646972656374696f6e6d6269646972656374696f6e616c"
-    },
-    {
-      "name": "federation_envelope_v1_wrapping_a_ping",
-      "message": {
-        "type": "federation-envelope",
-        "origin-mesh": "example-partner",
-        "origin-device": {
-          "hex": "3333333333333333333333333333333333333333333333333333333333333333"
-        },
-        "resource": {
-          "kind": "room",
-          "path": "general"
-        },
-        "inner": {
-          "hex": "a164747970656470696e67"
-        }
-      },
-      "wire_hex": "a564747970657366656465726174696f6e2d656e76656c6f706565696e6e65724ba164747970656470696e67687265736f75726365a2646b696e6464726f6f6d64706174686767656e6572616c6b6f726967696e2d6d6573686f6578616d706c652d706172746e65726d6f726967696e2d64657669636558203333333333333333333333333333333333333333333333333333333333333333"
     }
   ]
 }

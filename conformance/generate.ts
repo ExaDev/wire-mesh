@@ -54,10 +54,10 @@ const signatureFiller = hex("ff".repeat(SIGNATURE_BYTE_LENGTH)); // synthetic ES
 // -----------------------------------------------------------------------
 
 const handshakeVectors: Vector[] = [
-  vector("handshake_v1_management_exec_federation", {
+  vector("handshake_v1_management_exec_data", {
     type: "handshake",
     version: 1,
-    domains: ["core/management", "core/exec", "core/federation"],
+    domains: ["core/management", "core/exec", "core/data"],
   }),
   vector("handshake_v1_with_forward_compatible_params", {
     type: "handshake",
@@ -119,6 +119,7 @@ const handleClaims: JsonWire = {
   "device-id": deviceD,
   "identity-key": { alg: -8, "public-key": publicKeyEd25519D },
   candidates: [{ address: "203.0.113.5:4433", kind: "host", priority: 100 }],
+  mailboxes: [deviceA, deviceB],
   issued: 1861833600000,
   expires: 1861920000000,
 };
@@ -139,8 +140,6 @@ const tokenVectors: Vector[] = [
 // -----------------------------------------------------------------------
 // frames.v1.json -- every $frame-variant in spec/frame.cddl except handshake-frame, which lives in handshake.v1.json above.
 // -----------------------------------------------------------------------
-
-const innerPingFrame: JsonWire = { type: "ping" };
 
 const frameVectors: Vector[] = [
   vector("ping_v1", { type: "ping" }),
@@ -192,6 +191,12 @@ const frameVectors: Vector[] = [
     type: "relay-inbound",
     "source-device": deviceB,
   }),
+  vector("coordinator_v1_with_capacity_hint", {
+    type: "coordinator",
+    term: 3,
+    coordinator: deviceA,
+    "capacity-hint": 64,
+  }),
   vector("manage_request_v1_pty_spawn", {
     type: "manage-request",
     "request-id": 1,
@@ -225,15 +230,34 @@ const frameVectors: Vector[] = [
   }),
   vector("revocation_announce_v1_two_entries", {
     type: "revocation-announce",
+    // Each entry is its own cose-sign1 (same shape as capability-token), so a revocation carries the same self-certifying attribution as the token it revokes: a verifier checks revocation-claims.issuer against the token's own issuer field, not merely that some signature verifies -- only a token's own issuer may revoke it.
     entries: [
-      {
-        "token-id": hex("01".repeat(TOKEN_ID_BYTE_LENGTH)),
-        "revoked-at": 1861833700000,
-      },
-      {
-        "token-id": hex("02".repeat(TOKEN_ID_BYTE_LENGTH)),
-        "revoked-at": 1861833701000,
-      },
+      [
+        hex(wireHex({ 1: -7, 4: deviceA })),
+        {},
+        hex(
+          wireHex({
+            "token-id": hex("01".repeat(TOKEN_ID_BYTE_LENGTH)),
+            issuer: deviceA,
+            "issuer-key": { alg: -7, "public-key": publicKeyEs256A },
+            "revoked-at": 1861833700000,
+          }),
+        ),
+        signatureFiller,
+      ],
+      [
+        hex(wireHex({ 1: -7, 4: deviceB })),
+        {},
+        hex(
+          wireHex({
+            "token-id": hex("02".repeat(TOKEN_ID_BYTE_LENGTH)),
+            issuer: deviceB,
+            "issuer-key": { alg: -7, "public-key": publicKeyEs256B },
+            "revoked-at": 1861833701000,
+          }),
+        ),
+        signatureFiller,
+      ],
     ],
   }),
   vector("stream_data_v1_stdout_chunk", {
@@ -265,57 +289,6 @@ const frameVectors: Vector[] = [
     peer: deviceA,
     "from-seq": 100,
     entries: [hex("aabbcc"), hex("ddeeff00")],
-  }),
-  vector("federation_link_request_v1", {
-    type: "federation-link-request",
-    "local-mesh": "exadev-internal",
-    "local-name": "exadev",
-    "offered-shares": [
-      {
-        domain: "core/data",
-        resource: { kind: "room", path: "general" },
-        direction: "outbound",
-      },
-    ],
-  }),
-  vector("federation_link_accept_v1", {
-    type: "federation-link-accept",
-    "remote-mesh": "example-partner",
-    "remote-name": "partner",
-    "accepted-shares": [
-      {
-        domain: "core/data",
-        resource: { kind: "room", path: "general" },
-        direction: "outbound",
-      },
-    ],
-  }),
-  vector("federation_link_reject_v1", {
-    type: "federation-link-reject",
-    reason: "no shared domains accepted",
-  }),
-  vector("federation_share_v1", {
-    type: "federation-share",
-    share: {
-      domain: "core/data",
-      resource: { kind: "room", path: "incidents" },
-      direction: "bidirectional",
-    },
-  }),
-  vector("federation_unshare_v1", {
-    type: "federation-unshare",
-    share: {
-      domain: "core/data",
-      resource: { kind: "room", path: "incidents" },
-      direction: "bidirectional",
-    },
-  }),
-  vector("federation_envelope_v1_wrapping_a_ping", {
-    type: "federation-envelope",
-    "origin-mesh": "example-partner",
-    "origin-device": deviceC,
-    resource: { kind: "room", path: "general" },
-    inner: hex(wireHex(innerPingFrame)),
   }),
 ];
 
