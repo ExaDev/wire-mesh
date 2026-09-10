@@ -565,6 +565,77 @@ describe("verifyCapabilityToken", () => {
     });
   });
 
+  it("rejects a delegated token whose path uses a .. segment to escape the parent's", async () => {
+    // Purely lexical prefix comparison would accept "/work/../org" under "/work"; a path that normalises outside the parent is a widening, so any "." or ".." segment fails the narrowing comparison
+    const delegated = await delegateUnderWorkRoot({
+      kind: "folder",
+      path: "/work/../org",
+    });
+
+    const verdict = await verifyCapabilityToken(delegated, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: "delegation_exceeds_parent",
+    });
+  });
+
+  it("rejects a delegated token with a nested .. segment even when it stays inside the parent", async () => {
+    // "/work/a/../b" normalises to "/work/b" which would narrow, but relative segments are rejected wholesale: fail-closed rather than reimplementing path normalisation
+    const delegated = await delegateUnderWorkRoot({
+      kind: "folder",
+      path: "/work/a/../b",
+    });
+
+    const verdict = await verifyCapabilityToken(delegated, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: "delegation_exceeds_parent",
+    });
+  });
+
+  it("accepts a delegated token whose child path carries a trailing slash under the parent", async () => {
+    const delegated = await delegateUnderWorkRoot({
+      kind: "folder",
+      path: "/work/",
+    });
+
+    const verdict = await verifyCapabilityToken(delegated, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict.ok).toBe(true);
+  });
+
+  it("rejects a delegated token whose child path differs only in case", async () => {
+    const delegated = await delegateUnderWorkRoot({
+      kind: "folder",
+      path: "/Work",
+    });
+
+    const verdict = await verifyCapabilityToken(delegated, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: "delegation_exceeds_parent",
+    });
+  });
+
   it("rejects a delegated token with no path under a path-narrowed parent", async () => {
     // Absent path means the kind's whole-scope root, which is wider than the parent's /work
     const delegated = await delegateUnderWorkRoot({ kind: "folder" });
@@ -586,6 +657,52 @@ describe("verifyCapabilityToken", () => {
       { kind: "folder", path: "/work" },
       "exec:proc",
     );
+
+    const verdict = await verifyCapabilityToken(delegated, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: "delegation_exceeds_parent",
+    });
+  });
+
+  async function delegateUnderRootRoot(
+    childPath: string,
+  ): Promise<CapabilityToken> {
+    const root = await signToken(issuer, {
+      tokenId: nextTokenId(),
+      bearer: bearerDeviceId,
+      scope: { kind: "folder", path: "/" },
+      expires: now + 2 * HOUR_MS,
+    });
+    const delegate = await generateEs256Identity();
+    return signDelegated(bearerIdentity, {
+      tokenId: nextTokenId(),
+      bearer: delegate.deviceId,
+      scope: { kind: "folder", path: childPath },
+      expires: now + HOUR_MS,
+      parent: root,
+    });
+  }
+
+  it("accepts any well-formed child path under a whole-root parent path", async () => {
+    const delegated = await delegateUnderRootRoot("/anything/at/all");
+
+    const verdict = await verifyCapabilityToken(delegated, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict.ok).toBe(true);
+  });
+
+  it("rejects an empty child path", async () => {
+    const delegated = await delegateUnderWorkRoot({ kind: "folder", path: "" });
 
     const verdict = await verifyCapabilityToken(delegated, {
       identity: issuer,
@@ -805,6 +922,35 @@ describe("verifyRevocationEntry", () => {
 
     // The identity port supplies only crypto primitives (verify/derive); verification succeeds regardless of which port instance performs it.
     expect(verdict.ok).toBe(true);
+  });
+
+  it("returns malformed for an entry whose payload bytes are not CBOR, instead of throwing", async () => {
+    // This function's whole purpose is ingesting hostile gossiped entries: a lone top-level CBOR BREAK byte must produce the malformed verdict, never a throw
+    const garbage = buf(Buffer.from("ff", "hex"));
+    const hostile: RevocationEntry = [
+      encodeBuf({}),
+      {},
+      garbage,
+      new Uint8Array(P256_SIGNATURE_BYTE_LENGTH),
+    ];
+
+    const verdict = await verifyRevocationEntry(hostile, { identity: issuer });
+
+    expect(verdict).toEqual({ ok: false, reason: "malformed" });
+  });
+
+  it("returns malformed for an entry whose payload map keys are not canonically ordered, instead of throwing", async () => {
+    const nonCanonical = buf(Buffer.from("a2627a7a01616102", "hex"));
+    const hostile: RevocationEntry = [
+      encodeBuf({}),
+      {},
+      nonCanonical,
+      new Uint8Array(P256_SIGNATURE_BYTE_LENGTH),
+    ];
+
+    const verdict = await verifyRevocationEntry(hostile, { identity: issuer });
+
+    expect(verdict).toEqual({ ok: false, reason: "malformed" });
   });
 });
 
