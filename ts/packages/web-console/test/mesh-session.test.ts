@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type {
+  CapabilityScope,
+  CapabilityToken,
   Frame,
   HandshakeFrame,
+  ManageCommand,
+  ManageRequestFrame,
+  ManageResponseFrame,
 } from "@exadev/wire-mesh-core/generated/protocol";
 import type {
   Connection,
@@ -11,6 +16,8 @@ import type {
 import {
   HANDSHAKE_TIMEOUT_MS,
   createMeshSession,
+  type IncomingManageRequest,
+  type ManageOutcome,
 } from "../src/mesh-session.js";
 import { deviceIdFromFillHex } from "./hex.js";
 
@@ -385,5 +392,109 @@ describe("reconnect policy", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+const TEST_TOKEN_SIGNATURE_BYTE = 3;
+const TEST_INCOMING_REQUEST_ID = 7;
+
+describe("capability tokens and manage-request plumbing", () => {
+  const testCommand: ManageCommand = {
+    verb: "exec:proc",
+    params: { verb: "exec.list" },
+  };
+  const testScope: CapabilityScope = { kind: "folder" };
+  const testToken: CapabilityToken = [
+    new Uint8Array([1]),
+    {},
+    new Uint8Array([2]),
+    new Uint8Array([TEST_TOKEN_SIGNATURE_BYTE]),
+  ];
+
+  it("attaches the current token to every manage-request it sends", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport);
+    await session.connect("ws://node", ["core/management"]);
+    session.setToken(testToken);
+    void session.sendManageRequest(testCommand, testScope);
+    await Promise.resolve();
+    const sentRequest = connection.sent.at(-1) as ManageRequestFrame;
+    expect(sentRequest.type).toBe("manage-request");
+    expect(sentRequest.command).toEqual(testCommand);
+    expect(sentRequest.scope).toEqual(testScope);
+    expect(sentRequest.token).toEqual(testToken);
+    await session.close();
+  });
+
+  it("does not attach a token to a manage-request when none has been set", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport);
+    await session.connect("ws://node", ["core/management"]);
+    void session.sendManageRequest(testCommand, testScope);
+    await Promise.resolve();
+    const sentRequest = connection.sent.at(-1) as ManageRequestFrame;
+    expect(sentRequest.token).toBeUndefined();
+    await session.close();
+  });
+
+  it("resolves sendManageRequest only with the outcome of the matching manage-response", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport);
+    await session.connect("ws://node", ["core/management"]);
+    const pending = session.sendManageRequest(testCommand, testScope);
+    await Promise.resolve();
+    const sentRequest = connection.sent.at(-1) as ManageRequestFrame;
+    const requestId = sentRequest["request-id"];
+
+    // A response for a different request-id must not resolve this pending request.
+    connection.push({
+      type: "manage-response",
+      "request-id": requestId + 1,
+      outcome: { result: "error", code: "wrong-request" },
+    } satisfies ManageResponseFrame);
+    connection.push({
+      type: "manage-response",
+      "request-id": requestId,
+      outcome: { result: "ok" },
+    } satisfies ManageResponseFrame);
+
+    const outcome: ManageOutcome = await pending;
+    expect(outcome).toEqual({ result: "ok" });
+    await session.close();
+  });
+
+  it("surfaces an incoming manage-request on incomingManageRequests, and sends the response frame from respond()", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport);
+    await session.connect("ws://node", ["core/management"]);
+
+    const incomingDone = (async (): Promise<IncomingManageRequest> => {
+      const iterator = session.incomingManageRequests[Symbol.asyncIterator]();
+      const result = await iterator.next();
+      return result.value as IncomingManageRequest;
+    })();
+
+    connection.push({
+      type: "manage-request",
+      "request-id": TEST_INCOMING_REQUEST_ID,
+      command: testCommand,
+      scope: testScope,
+      token: testToken,
+    } satisfies ManageRequestFrame);
+
+    const incoming = await incomingDone;
+    expect(incoming.requestId).toBe(TEST_INCOMING_REQUEST_ID);
+    expect(incoming.command).toEqual(testCommand);
+    expect(incoming.scope).toEqual(testScope);
+    expect(incoming.token).toEqual(testToken);
+
+    await incoming.respond({ result: "ok" });
+    const sentResponse = connection.sent.at(-1) as ManageResponseFrame;
+    expect(sentResponse).toEqual({
+      type: "manage-response",
+      "request-id": TEST_INCOMING_REQUEST_ID,
+      outcome: { result: "ok" },
+    } satisfies ManageResponseFrame);
+    await session.close();
   });
 });
