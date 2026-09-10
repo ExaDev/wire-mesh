@@ -1,0 +1,55 @@
+; core/webrtc -- WebRTC signaling (SDP offer/answer and ICE candidate exchange)
+; relayed over an existing wire-mesh connection so two peers can establish a
+; direct browser-to-browser RTCDataChannel and stop relaying frames through
+; whatever connection carried the signaling. Like core/exec, control travels
+; as manage-command, never as a dedicated frame kind: a manage-request
+; already travels over one Connection to one specific peer, so which peer a
+; signal is with needs no wire field. What does need a field is which
+; negotiation: request-id only correlates one manage-request/manage-response
+; RPC round trip (the ack that a signal was received), not the multi-message
+; offer/answer/candidate* exchange that makes up one negotiation attempt --
+; especially since the answer and candidates arrive back as fresh
+; manage-requests from the other side's own request-id counter, with no
+; wire-level link to the offerer's own request-id. negotiation-id closes
+; that gap: chosen by the offering side, echoed by the answering side, so a
+; single connection can host more than one concurrent or superseding
+; negotiation without ambiguity.
+;
+; Authorisation: webrtc:signal is gated the same way core/exec's verbs are
+; (see registry/core-capabilities.md) -- accepting a signal causes the
+; receiver to allocate an RTCPeerConnection and disclose its own ICE
+; candidates (which can include LAN-local addresses) to whoever it answers,
+; the same class of receiver-side effect exec:pty/exec:proc exist to gate,
+; unlike ping/gossip which are frame kinds with no manage-command shape at
+; all and no comparable receiver-side effect.
+
+$manage-command-params /= webrtc-offer / webrtc-answer / webrtc-ice-candidate
+
+webrtc-offer = {
+  verb: "webrtc.offer",
+  "negotiation-id": uint,
+  sdp: tstr,
+}
+
+webrtc-answer = {
+  verb: "webrtc.answer",
+  "negotiation-id": uint,
+  sdp: tstr,
+}
+
+; The outer `candidate` key is itself optional: its absence is the
+; end-of-candidates sentinel (what the browser signals as event.candidate
+; === null when ICE gathering completes) -- collapsing "null" and "absent"
+; onto the wire is deliberate (nothing downstream distinguishes them).
+webrtc-ice-candidate = {
+  verb: "webrtc.ice-candidate",
+  "negotiation-id": uint,
+  ? candidate: ice-candidate-init,
+}
+
+ice-candidate-init = {
+  candidate: tstr,
+  ? "sdp-mid": tstr,
+  ? "sdp-m-line-index": uint,
+  ? "username-fragment": tstr,
+}
