@@ -19,7 +19,7 @@ importers:
         version: 2.3.0
       cddl.js:
         specifier: github:ExaDev/cddl.js#main
-        version: https://codeload.github.com/ExaDev/cddl.js/tar.gz/5ea7ef6578e3c08bcccd619b9698cd3d3d6d423d
+        version: https://codeload.github.com/ExaDev/cddl.js/tar.gz/1196b8d82b309a8c81991f5215ca9358cd382652
       zod:
         specifier: 4.5.4
         version: 4.5.4
@@ -625,8 +625,8 @@ packages:
     resolution: {integrity: sha512-76WB3hq8BoaGkMkBVJ27fW5LJU+qqDLEpgRNCG/SYKhODWXpVPOTD4UcUto3IEzYLA52nsvbhb0wabhHDn3qXg==}
     engines: {node: '>=20'}
 
-  cddl.js@https://codeload.github.com/ExaDev/cddl.js/tar.gz/5ea7ef6578e3c08bcccd619b9698cd3d3d6d423d:
-    resolution: {tarball: https://codeload.github.com/ExaDev/cddl.js/tar.gz/5ea7ef6578e3c08bcccd619b9698cd3d3d6d423d}
+  cddl.js@https://codeload.github.com/ExaDev/cddl.js/tar.gz/1196b8d82b309a8c81991f5215ca9358cd382652:
+    resolution: {tarball: https://codeload.github.com/ExaDev/cddl.js/tar.gz/1196b8d82b309a8c81991f5215ca9358cd382652}
     version: 0.0.0
 
   chai@6.2.2:
@@ -1882,7 +1882,7 @@ snapshots:
     dependencies:
       '@cto.af/wtf8': 0.0.5
 
-  cddl.js@https://codeload.github.com/ExaDev/cddl.js/tar.gz/5ea7ef6578e3c08bcccd619b9698cd3d3d6d423d:
+  cddl.js@https://codeload.github.com/ExaDev/cddl.js/tar.gz/1196b8d82b309a8c81991f5215ca9358cd382652:
     dependencies:
       camelcase: 9.0.0
       cbor2: 2.3.0
