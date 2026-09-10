@@ -536,12 +536,11 @@ pub(crate) mod param {
     }
 
     pub(super) fn decode_env(d: &mut Decoder<'_>) -> Result<Env, DecodeError> {
-        let count = strict::definite_map(d)?;
+        let mut map = strict::MapDecoder::new(d)?;
         let mut env = CanonicalMap::new();
-        for _ in 0..count {
-            let key = strict::text_key(d)?.to_owned();
+        while let Some(key) = map.next_key(d)? {
             let value = strict::text_value(d)?;
-            env.insert(key, value)?;
+            env.insert(key.to_owned(), value)?;
         }
         Ok(env)
     }
@@ -629,5 +628,13 @@ mod tests {
             .position(|w| w == b"session")
             .expect("session");
         assert!(cwd_at < argv_at && argv_at < kind_at && kind_at < session_at);
+    }
+
+    #[test]
+    fn env_map_rejects_unsorted_keys() {
+        // { "b": "1", "a": "2" } — same-length keys out of bytewise order.
+        let bytes = [0xA2, 0x61, b'b', 0x61, b'1', 0x61, b'a', 0x61, b'2'];
+        let mut d = Decoder::new(&bytes);
+        assert_eq!(param::decode_env(&mut d), Err(DecodeError::UnsortedMapKeys));
     }
 }
