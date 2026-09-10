@@ -156,9 +156,43 @@ jobs:
         working-directory: ts
         run: pnpm turbo run _test
 
+  rust-verify:
+    name: rust/ Verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Build
+        working-directory: rust
+        run: cargo build --all-targets
+
+      - name: Clippy (warnings denied)
+        working-directory: rust
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Format
+        working-directory: rust
+        run: cargo fmt --check
+
+      - name: Test
+        working-directory: rust
+        run: cargo test
+
+      - name: Conformance-check every golden vector byte-exactly
+        working-directory: rust
+        run: cargo run --bin conformance-check
+
   required-checks:
     name: Required Checks
-    needs: [cddl-validate, conformance-verify, ts-core-verify]
+    needs: [cddl-validate, conformance-verify, ts-core-verify, rust-verify]
     if: always()
     runs-on: ubuntu-latest
     steps:
