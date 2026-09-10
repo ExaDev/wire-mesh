@@ -3,9 +3,9 @@ import { encode } from "cbor2";
 import type { Frame } from "@exadev/wire-mesh-core/generated/protocol";
 import {
   createBrowserTransport,
-  messageFromFrame,
   wrapWebSocket,
 } from "../src/adapters/websocket-transport.js";
+import { messageFromFrame } from "../src/adapters/frame-codec.js";
 import { FakeWebSocket } from "./fake-websocket.js";
 import { bytesFromHex } from "./hex.js";
 
