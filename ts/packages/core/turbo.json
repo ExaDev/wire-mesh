@@ -9,8 +9,9 @@
     },
     "_generate": {
       "dependsOn": ["_build"],
-      "inputs": ["generate.ts"],
-      "outputs": ["src/generated/protocol.ts"]
+      // Uncached, deliberately: the task's real input (../../../spec/protocol.cddl) lives above this pnpm workspace's root, and turbo refuses to hash workspace-external paths in both task inputs and globalDependencies -- so any cache hit here is keyed on generate.ts alone and replays stale output after a spec edit. Generation is a sub-second script; caching it buys nothing and the staleness is real.
+      "cache": false,
+      "inputs": ["generate.ts"]
     },
     "_test": {
       "dependsOn": ["_build"]
