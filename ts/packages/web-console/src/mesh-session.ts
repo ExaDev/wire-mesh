@@ -23,7 +23,15 @@ export type ConnectionState =
   | { status: "idle" }
   | { status: "connecting"; address: string }
   | { status: "connected"; address: string; handshake: HandshakeStatus }
+  | { status: "reconnecting"; address: string; attempt: number; reason: string }
   | { status: "closed"; address: string; reason: string };
+
+/** Opt-in retry behaviour for a session's own reconnect attempts. Left at its default `null` in createMeshSession, a disconnect always falls straight to `"closed"` -- today's exact behaviour, unchanged unless a caller opts in. */
+export interface ReconnectPolicy {
+  maxAttempts: number;
+  /** Backoff before attempt N (1-indexed), in milliseconds. */
+  delayMs: (attempt: number) => number;
+}
 
 export type HandshakeStatus =
   | { status: "pending" }
@@ -64,16 +72,21 @@ function localHandshake(domains: readonly string[]): HandshakeFrame {
   };
 }
 
-export function createMeshSession(transport: Readonly<Transport>): MeshSession {
+export function createMeshSession(
+  transport: Readonly<Transport>,
+  reconnect: ReconnectPolicy | null = null,
+): MeshSession {
   let connection: Connection | null = null;
   let state: ConnectionState = { status: "idle" };
   let handshake: HandshakeStatus = { status: "pending" };
   const directory = new Map<string, DirectoryEntry>();
   const frameLog: FrameLogEntry[] = [];
   let feedCancelled = false;
-  let handshakeTimer: ReturnType<typeof setTimeout> | null = null;
   const eventWaiters: ((event: SessionEvent) => void)[] = [];
   const eventBacklog: SessionEvent[] = [];
+  let handshakeTimer: ReturnType<typeof setTimeout> | null = null;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let attempt = 0;
 
   function snapshot(): SessionEvent {
     return {
@@ -143,7 +156,45 @@ export function createMeshSession(transport: Readonly<Transport>): MeshSession {
     }
   }
 
-  async function consume(link: Readonly<Connection>): Promise<void> {
+  function handleDisconnect(
+    reason: string,
+    address: string,
+    localDomains: readonly string[],
+  ): void {
+    if (feedCancelled) {
+      return;
+    }
+    if (reconnect !== null && attempt < reconnect.maxAttempts) {
+      attempt += 1;
+      const currentAttempt = attempt;
+      state = {
+        status: "reconnecting",
+        address,
+        attempt: currentAttempt,
+        reason,
+      };
+      emit();
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        doConnect(address, localDomains).catch((error: unknown) => {
+          handleDisconnect(
+            error instanceof Error ? error.message : String(error),
+            address,
+            localDomains,
+          );
+        });
+      }, reconnect.delayMs(currentAttempt));
+      return;
+    }
+    state = { status: "closed", address, reason };
+    emit();
+  }
+
+  async function consume(
+    link: Readonly<Connection>,
+    address: string,
+    localDomains: readonly string[],
+  ): Promise<void> {
     for await (const frame of link.receive()) {
       if (feedCancelled) {
         return;
@@ -152,13 +203,51 @@ export function createMeshSession(transport: Readonly<Transport>): MeshSession {
       emit();
     }
     if (state.status === "connected") {
-      state = {
-        status: "closed",
-        address: state.address,
-        reason: "node closed the connection",
-      };
-      emit();
+      handleDisconnect("node closed the connection", address, localDomains);
     }
+  }
+
+  async function doConnect(
+    address: string,
+    localDomains: readonly string[],
+  ): Promise<void> {
+    if (handshakeTimer !== null) {
+      clearTimeout(handshakeTimer);
+      handshakeTimer = null;
+    }
+    state = { status: "connecting", address };
+    emit();
+    connection = await transport.connect(address);
+    if (feedCancelled) {
+      await connection.close();
+      return;
+    }
+    localHandshakeSent = localHandshake(localDomains);
+    handshake = { status: "pending" };
+    state = { status: "connected", address, handshake };
+    frameLog.push({ direction: "sent", frame: localHandshakeSent });
+    await connection.send(localHandshakeSent);
+    emit();
+    handshakeTimer = setTimeout(() => {
+      handshakeTimer = null;
+      if (handshake.status === "pending") {
+        handshake = { status: "unanswered" };
+        if (state.status === "connected") {
+          state = { ...state, handshake };
+        }
+        emit();
+      }
+    }, HANDSHAKE_TIMEOUT_MS);
+    const consuming = consume(connection, address, localDomains);
+    void consuming.catch((error: unknown) => {
+      if (state.status === "connected") {
+        handleDisconnect(
+          error instanceof Error ? error.message : String(error),
+          address,
+          localDomains,
+        );
+      }
+    });
   }
 
   return {
@@ -185,40 +274,8 @@ export function createMeshSession(transport: Readonly<Transport>): MeshSession {
           "a session connects once; create a new one to reconnect",
         );
       }
-      if (handshakeTimer !== null) {
-        clearTimeout(handshakeTimer);
-        handshakeTimer = null;
-      }
-      state = { status: "connecting", address };
-      emit();
-      connection = await transport.connect(address);
-      localHandshakeSent = localHandshake(localDomains);
-      handshake = { status: "pending" };
-      state = { status: "connected", address, handshake };
-      frameLog.push({ direction: "sent", frame: localHandshakeSent });
-      await connection.send(localHandshakeSent);
-      emit();
-      handshakeTimer = setTimeout(() => {
-        handshakeTimer = null;
-        if (handshake.status === "pending") {
-          handshake = { status: "unanswered" };
-          if (state.status === "connected") {
-            state = { ...state, handshake };
-          }
-          emit();
-        }
-      }, HANDSHAKE_TIMEOUT_MS);
-      const consuming = consume(connection);
-      void consuming.catch((error: unknown) => {
-        if (state.status === "connected") {
-          state = {
-            status: "closed",
-            address: state.address,
-            reason: error instanceof Error ? error.message : String(error),
-          };
-          emit();
-        }
-      });
+      attempt = 0;
+      await doConnect(address, localDomains);
     },
     async sendPing(): Promise<void> {
       if (connection === null || state.status !== "connected") {
@@ -231,10 +288,22 @@ export function createMeshSession(transport: Readonly<Transport>): MeshSession {
     },
     async close(): Promise<void> {
       feedCancelled = true;
+      if (handshakeTimer !== null) {
+        clearTimeout(handshakeTimer);
+        handshakeTimer = null;
+      }
+      if (reconnectTimer !== null) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
       if (connection !== null) {
         await connection.close();
       }
-      if (state.status === "connected" || state.status === "connecting") {
+      if (
+        state.status === "connected" ||
+        state.status === "connecting" ||
+        state.status === "reconnecting"
+      ) {
         state = {
           status: "closed",
           address: state.address,
