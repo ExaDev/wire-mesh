@@ -17,6 +17,7 @@ use crate::identity::{device_id_from, DeviceId, IdentityKey};
 use crate::strict;
 use crate::tokens::{scope_from, CapabilityScope, CapabilityVerb, CoseSign1};
 use crate::value::{CanonicalMap, CborValue, CdeKey, CdeMapBuilder};
+use crate::webrtc::{WebrtcAnswer, WebrtcIceCandidate, WebrtcOffer};
 
 /// `manage-command = { verb: capability-verb, params: $manage-command-params }`.
 ///
@@ -79,6 +80,9 @@ pub enum ManageParams {
     ProcSignal(ProcSignal),
     ProcKill(ProcKill),
     ExecList(ExecList),
+    WebrtcOffer(WebrtcOffer),
+    WebrtcAnswer(WebrtcAnswer),
+    WebrtcIceCandidate(WebrtcIceCandidate),
     /// An unrecognised command verb: the params map exactly as sent, `* tstr => any`.
     Json(CanonicalMap<String, CborValue>),
 }
@@ -95,6 +99,9 @@ impl ManageParams {
             ManageParams::ProcSignal(_) => ProcSignal::VERB,
             ManageParams::ProcKill(_) => ProcKill::VERB,
             ManageParams::ExecList(_) => ExecList::VERB,
+            ManageParams::WebrtcOffer(_) => WebrtcOffer::VERB,
+            ManageParams::WebrtcAnswer(_) => WebrtcAnswer::VERB,
+            ManageParams::WebrtcIceCandidate(_) => WebrtcIceCandidate::VERB,
             ManageParams::Json(map) => map
                 .get(&"verb".to_owned())
                 .and_then(|v| match v {
@@ -121,6 +128,9 @@ impl Encode<()> for ManageParams {
             ManageParams::ProcSignal(p) => p.encode(e, &mut ()),
             ManageParams::ProcKill(p) => p.encode(e, &mut ()),
             ManageParams::ExecList(p) => p.encode(e, &mut ()),
+            ManageParams::WebrtcOffer(p) => p.encode(e, &mut ()),
+            ManageParams::WebrtcAnswer(p) => p.encode(e, &mut ()),
+            ManageParams::WebrtcIceCandidate(p) => p.encode(e, &mut ()),
             ManageParams::Json(map) => {
                 e.map(map.len() as u64)?;
                 for (k, v) in map.iter() {
@@ -168,6 +178,11 @@ pub(crate) fn manage_params_from(d: &mut Decoder<'_>) -> Result<ManageParams, De
         ProcSignal::VERB => Ok(ManageParams::ProcSignal(ProcSignal::from_map(d)?)),
         ProcKill::VERB => Ok(ManageParams::ProcKill(ProcKill::from_map(d)?)),
         ExecList::VERB => Ok(ManageParams::ExecList(ExecList::from_map(d)?)),
+        WebrtcOffer::VERB => Ok(ManageParams::WebrtcOffer(WebrtcOffer::from_map(d)?)),
+        WebrtcAnswer::VERB => Ok(ManageParams::WebrtcAnswer(WebrtcAnswer::from_map(d)?)),
+        WebrtcIceCandidate::VERB => Ok(ManageParams::WebrtcIceCandidate(
+            WebrtcIceCandidate::from_map(d)?,
+        )),
         _ => {
             let count = strict::definite_map(d)?;
             let mut map = CanonicalMap::new();
