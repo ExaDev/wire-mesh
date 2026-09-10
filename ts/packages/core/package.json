@@ -1,0 +1,95 @@
+{
+  "name": "@exadev/wire-mesh-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "turbo run _build",
+    "_build": "tsdown",
+    "generate": "turbo run _generate",
+    "_generate": "node generate.ts",
+    "test": "turbo run _test",
+    "_test": "vitest run",
+    "typecheck": "turbo run _typecheck",
+    "_typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "lint": "turbo run _lint",
+    "_lint": "eslint . --fix --cache --max-warnings 0",
+    "conformance-check": "turbo run _conformance-check",
+    "_conformance-check": "vitest run test/conformance.test.ts"
+  },
+  "dependencies": {
+    "cbor2": "2.3.0",
+    "cddl.js": "github:ExaDev/cddl.js#main",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
+    "@exadev/eslint-config": "2.10.6",
+    "@types/node": "26.4.1",
+    "eslint": "10.10.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-prettier": "5.5.6",
+    "globals": "17.12.0",
+    "jiti": "2.7.0",
+    "prettier": "3.9.6",
+    "tsdown": "0.23.0",
+    "turbo": "2.10.12",
+    "typescript": "6.0.3",
+    "vitest": "5.0.0"
+  },
+  "exports": {
+    "./adapters/memory-storage": {
+      "import": "./dist/adapters/memory-storage.mjs",
+      "require": "./dist/adapters/memory-storage.cjs"
+    },
+    "./adapters/node-identity": {
+      "import": "./dist/adapters/node-identity.mjs",
+      "require": "./dist/adapters/node-identity.cjs"
+    },
+    "./adapters/system-clock": {
+      "import": "./dist/adapters/system-clock.mjs",
+      "require": "./dist/adapters/system-clock.cjs"
+    },
+    "./adapters/tcp-transport": {
+      "import": "./dist/adapters/tcp-transport.mjs",
+      "require": "./dist/adapters/tcp-transport.cjs"
+    },
+    "./domain/handshake": {
+      "import": "./dist/domain/handshake.mjs",
+      "require": "./dist/domain/handshake.cjs"
+    },
+    "./domain/tokens": {
+      "import": "./dist/domain/tokens.mjs",
+      "require": "./dist/domain/tokens.cjs"
+    },
+    "./generated/protocol": {
+      "import": "./dist/generated/protocol.mjs",
+      "require": "./dist/generated/protocol.cjs"
+    },
+    "./generated/runtime": {
+      "import": "./dist/generated/runtime.mjs",
+      "require": "./dist/generated/runtime.cjs"
+    },
+    "./ports/clock": {
+      "import": "./dist/ports/clock.mjs",
+      "require": "./dist/ports/clock.cjs"
+    },
+    "./ports/identity": {
+      "import": "./dist/ports/identity.mjs",
+      "require": "./dist/ports/identity.cjs"
+    },
+    "./ports/storage": {
+      "import": "./dist/ports/storage.mjs",
+      "require": "./dist/ports/storage.cjs"
+    },
+    "./ports/transport": {
+      "import": "./dist/ports/transport.mjs",
+      "require": "./dist/ports/transport.cjs"
+    },
+    "./package.json": "./package.json"
+  }
+}

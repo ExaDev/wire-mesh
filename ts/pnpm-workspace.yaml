@@ -1,0 +1,6 @@
+packages:
+  - "packages/*"
+
+# cddl.js is a git dependency (not published to npm) with a "prepare" build script -- an ExaDev-owned package this workspace already trusts, not a third-party one, so allowing its build script is the documented exception to pnpm's default script-blocking.
+onlyBuiltDependencies:
+  - cddl.js
