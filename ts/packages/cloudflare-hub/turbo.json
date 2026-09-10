@@ -1,0 +1,24 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "extends": ["//"],
+
+  "tasks": {
+    "_build": {
+      // wrangler's dry-run bundle IS this package's build: it resolves the entry, bundles the workspace's core package and every npm dependency, and type-checks along the way -- a genuine "does it build" gate with no Cloudflare credentials needed.
+      "inputs": ["src/**", "wrangler.toml", "tsconfig.json"],
+      "outputs": ["dist/**"]
+    },
+    "_test": {
+      "dependsOn": ["^_build"]
+    },
+    "_typecheck": {
+      "dependsOn": ["^_build"],
+      "inputs": ["**/*.ts", "tsconfig.json", "tsconfig.node.json"]
+    },
+    "_lint": {
+      "dependsOn": ["^_build"],
+      "inputs": ["$TURBO_DEFAULT$", "eslint.config.ts"],
+      "outputs": [".eslintcache"]
+    }
+  }
+}
