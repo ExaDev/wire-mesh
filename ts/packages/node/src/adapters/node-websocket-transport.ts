@@ -64,16 +64,12 @@ function decodeMessage(data: Uint8Array): Frame {
   return result.data;
 }
 
-/** Narrows `ws`'s RawData (Buffer | ArrayBuffer | Buffer[]) to a single contiguous Uint8Array. `ws` only ever delivers an array of buffers when a message arrives fragmented across a stream that itself isn't being reassembled -- doesn't happen for the default (non-streamed) receive path this adapter uses. */
+/** Narrows `ws`'s RawData (Buffer | ArrayBuffer | Buffer[]) to a single contiguous, genuinely plain Uint8Array. `ws` only ever delivers an array of buffers when a message arrives fragmented across a stream that itself isn't being reassembled -- doesn't happen for the default (non-streamed) receive path this adapter uses. A Node Buffer IS a Uint8Array subclass, but handing one to cbor2's decode() as-is leaks that subclass into every nested byte-string value decode() returns (it slices the same buffer type it was given); cbor2's encode() then does not recognise a Buffer as a plain byte string and serialises it as a generic object instead, corrupting any value (like a device-id) that round-trips decode -> store -> re-encode, as this hub's relay-connect -> relay-inbound path does. Always copying into a fresh Uint8Array here, the same normalisation the browser/Worker adapters get for free from `new Uint8Array(event.data)` on their own already-ArrayBuffer input, is the fix. */
 function bytesFromRawData(data: RawData): Uint8Array {
   if (Array.isArray(data)) {
     throw new Error("expected a single WebSocket message, got fragments");
   }
-  if (data instanceof ArrayBuffer) {
-    return new Uint8Array(data);
-  }
-  // A Node Buffer is already a Uint8Array subclass; no conversion needed.
-  return data;
+  return new Uint8Array(data);
 }
 
 /** Wraps an already-open `ws` WebSocket (client or server side) as a Connection, driven through `ws`'s EventEmitter API (`.on`, not `.addEventListener` -- this repo's other Node-native adapter, tcp-transport.ts, uses the same idiomatic-Node style; `.addEventListener` is reserved for the two adapters wrapping an actual platform WebSocket). */
