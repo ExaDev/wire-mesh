@@ -62,6 +62,10 @@
       "import": "./dist/domain/handshake.mjs",
       "require": "./dist/domain/handshake.cjs"
     },
+    "./domain/relay-hub": {
+      "import": "./dist/domain/relay-hub.mjs",
+      "require": "./dist/domain/relay-hub.cjs"
+    },
     "./domain/tokens": {
       "import": "./dist/domain/tokens.mjs",
       "require": "./dist/domain/tokens.cjs"

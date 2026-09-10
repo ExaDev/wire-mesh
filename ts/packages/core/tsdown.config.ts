@@ -10,6 +10,7 @@ export default defineConfig({
     "src/ports/identity.ts",
     "src/ports/clock.ts",
     "src/domain/handshake.ts",
+    "src/domain/relay-hub.ts",
     "src/domain/tokens.ts",
     "src/adapters/tcp-transport.ts",
     "src/adapters/memory-storage.ts",
