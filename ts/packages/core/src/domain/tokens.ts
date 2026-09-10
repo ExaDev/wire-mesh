@@ -49,6 +49,27 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   return true;
 }
 
+/** True when childPath is parentPath or a descendant of it, compared on "/"-segment boundaries: "/work/sub" narrows "/work", but "/workbook" does NOT narrow "/work" despite the string prefix, because "book" continues the same segment. */
+function pathNarrows(childPath: string, parentPath: string): boolean {
+  if (childPath === parentPath) return true;
+  if (!childPath.startsWith(parentPath)) return false;
+  if (parentPath.endsWith("/")) return true;
+  return childPath.charAt(parentPath.length) === "/";
+}
+
+/**
+ * True when childScope narrows parentScope per tokens.cddl ("each hop can only narrow authority, never widen it"): the kind must be identical (a different kind is a different kind of authority, not a narrower one), and a parent with a path requires the child to carry an equal-or-descendant path -- an absent child path means the kind's whole-scope root, which is wider than any path-narrowed parent. A parent with no path (whole-scope root) lets any child path under the same kind through.
+ */
+function scopeNarrows(
+  parent: TokenClaims["scope"],
+  child: TokenClaims["scope"],
+): boolean {
+  if (parent.kind !== child.kind) return false;
+  if (parent.path === undefined) return true;
+  if (child.path === undefined) return false;
+  return pathNarrows(child.path, parent.path);
+}
+
 /** RFC 9052 §4.4 Sig_structure for a COSE_Sign1 with no external AAD: ["Signature1", protected, external_aad, payload]. */
 function sig1ToBeSigned(
   protectedHeader: Uint8Array,
@@ -61,18 +82,45 @@ function sig1ToBeSigned(
 }
 
 /**
- * Verifies one capability token per tokens.cddl's own documented rules: the token is a well-formed COSE_Sign1 whose signature actually verifies against its own embedded issuer-key, that issuer-key is self-certifying (sha256(issuer-key.public-key) equals the claimed issuer device-id -- no shared secret needed to check this), the token is currently valid (not expired, not before not-before, not revoked), and -- recursively -- any parent delegation narrows rather than widens: the parent's bearer must be this token's issuer (the delegation chain is unbroken), and this token's expiry must not exceed its parent's.
+ * Verifies one capability token per tokens.cddl's own documented rules: the token is a well-formed COSE_Sign1 whose signature actually verifies against its own embedded issuer-key, that issuer-key is self-certifying (sha256(issuer-key.public-key) equals the claimed issuer device-id -- no shared secret needed to check this), the token is currently valid (not expired, not before not-before, not revoked by its own issuer), and -- recursively -- any parent delegation narrows rather than widens across all three axes of authority: the parent's bearer must be this token's issuer (the delegation chain is unbroken), this token's expiry must not exceed its parent's, and this token's scope must narrow its parent's (same kind; equal-or-descendant path when the parent carries one) with an identical capability verb (the capability-verb grammar has no sub-verb relation, so a different verb is a different authority, not a narrower one). Undecodable payload bytes return "malformed" and undecodable parent bytes return "parent_invalid" -- hostile input produces a verdict, never a throw.
  */
 export async function verifyCapabilityToken(
   token: CapabilityToken,
   options: VerifyCapabilityTokenOptions,
+): Promise<TokenVerdict> {
+  // expectedBearer applies to the leaf only: in any valid chain the parent's bearer is the child's issuer (structurally enforced below), never the leaf's presenter, so consulting it during the recursive walk would wrongly fail every ancestor.
+  const verdict = await verifyTokenChain(token, {
+    identity: options.identity,
+    clock: options.clock,
+    revocation: options.revocation,
+  });
+  if (!verdict.ok) {
+    return verdict;
+  }
+  if (
+    options.expectedBearer !== undefined &&
+    !bytesEqual(verdict.claims.bearer, options.expectedBearer)
+  ) {
+    return { ok: false, reason: "bearer_mismatch" };
+  }
+  return verdict;
+}
+
+async function verifyTokenChain(
+  token: CapabilityToken,
+  options: Omit<VerifyCapabilityTokenOptions, "expectedBearer">,
 ): Promise<TokenVerdict> {
   const [protectedHeader, , payload, signature] = token;
   if (payload === null) {
     return { ok: false, reason: "malformed" };
   }
 
-  const decodedClaims: unknown = decode(payload, cdeDecodeOptions);
+  let decodedClaims: unknown;
+  try {
+    decodedClaims = decode(payload, cdeDecodeOptions);
+  } catch {
+    return { ok: false, reason: "malformed" };
+  }
   const claimsResult = tokenClaimsSchema.safeParse(decodedClaims);
   if (!claimsResult.success) {
     return { ok: false, reason: "malformed" };
@@ -108,15 +156,17 @@ export async function verifyCapabilityToken(
   }
 
   if (claims.parent !== undefined) {
-    const decodedParent: unknown = decode(claims.parent, cdeDecodeOptions);
+    let decodedParent: unknown;
+    try {
+      decodedParent = decode(claims.parent, cdeDecodeOptions);
+    } catch {
+      return { ok: false, reason: "parent_invalid" };
+    }
     const parentResult = capabilityTokenSchema.safeParse(decodedParent);
     if (!parentResult.success) {
       return { ok: false, reason: "parent_invalid" };
     }
-    const parentVerdict = await verifyCapabilityToken(
-      parentResult.data,
-      options,
-    );
+    const parentVerdict = await verifyTokenChain(parentResult.data, options);
     if (!parentVerdict.ok) {
       return { ok: false, reason: "parent_invalid" };
     }
@@ -126,13 +176,12 @@ export async function verifyCapabilityToken(
     if (claims.expires > parentVerdict.claims.expires) {
       return { ok: false, reason: "delegation_exceeds_parent" };
     }
-  }
-
-  if (
-    options.expectedBearer !== undefined &&
-    !bytesEqual(claims.bearer, options.expectedBearer)
-  ) {
-    return { ok: false, reason: "bearer_mismatch" };
+    if (!scopeNarrows(parentVerdict.claims.scope, claims.scope)) {
+      return { ok: false, reason: "delegation_exceeds_parent" };
+    }
+    if (parentVerdict.claims.capability !== claims.capability) {
+      return { ok: false, reason: "delegation_exceeds_parent" };
+    }
   }
 
   return { ok: true, claims };
