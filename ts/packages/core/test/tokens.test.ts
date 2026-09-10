@@ -6,6 +6,7 @@ import { createMemoryStorage } from "../src/adapters/memory-storage.js";
 import { createSystemClock } from "../src/adapters/system-clock.js";
 import {
   verifyCapabilityToken,
+  verifyRevocationEntry,
   type RevocationCheck,
 } from "../src/domain/tokens.js";
 import type { IdentityPort } from "../src/ports/identity.js";
@@ -14,12 +15,16 @@ import type {
   CapabilityScope,
   CapabilityToken,
   DeviceId,
+  RevocationClaims,
+  RevocationEntry,
   TokenClaims,
 } from "../src/generated/protocol.js";
 
 const ES256 = -7;
 const HOUR_MS = 3_600_000;
+const REVOKED_SHORTLY_BEFORE_NOW_MS = 1_000; // revoked-at sits just before `now` in these tests -- the value only needs to be in the past, not any particular distance
 const P256_SIGNATURE_BYTE_LENGTH = 64; // raw ECDSA P-256 signature length
+const LOW_BYTE_MASK = 0xff; // XOR operand keeping the corrupted byte within one octet when tampering with a signature in tests
 
 let issuedTokenIds = 0;
 /** A fresh, distinct token-id per call -- the tests only need each token to be distinguishable from the others, not any particular byte value. */
@@ -53,9 +58,50 @@ function fixedClock(atMs: number): Clock {
   return { now: () => atMs };
 }
 
+function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
+  return a.length === b.length && a.every((byte, i) => byte === b[i]);
+}
+
 const neverRevoked: RevocationCheck = {
   isRevoked: async () => Promise.resolve(false),
 };
+
+/** A RevocationCheck over an explicit set of already-verified revocation claims, applying the port's own contract: an entry only counts against a token when BOTH its token-id and its issuer match the token's own -- a revocation signed by some third party must not revoke someone else's token. */
+function revocationView(entries: readonly RevocationClaims[]): RevocationCheck {
+  return {
+    isRevoked: async (tokenId, issuer) =>
+      Promise.resolve(
+        entries.some(
+          (entry) =>
+            equalBytes(entry["token-id"], tokenId) &&
+            equalBytes(entry.issuer, issuer),
+        ),
+      ),
+  };
+}
+
+/** Builds and signs one revocation-entry (a cose-sign1 over revocation-claims) as `identity`, mirroring signToken's construction. */
+async function signRevocationEntry(
+  identity: IdentityPort,
+  tokenId: Uint8Array<ArrayBuffer>,
+): Promise<RevocationEntry> {
+  const claims: RevocationClaims = {
+    "token-id": tokenId,
+    issuer: identity.deviceId,
+    "issuer-key": identity.identityKey,
+    "revoked-at": 0,
+  };
+  const payload = encodeBuf(claims);
+  const protectedHeader = encodeBuf({});
+  const toBeSigned = encodeBuf([
+    "Signature1",
+    protectedHeader,
+    new Uint8Array(0),
+    payload,
+  ]);
+  const signature = await identity.sign(toBeSigned);
+  return [protectedHeader, {}, payload, signature];
+}
 
 interface TokenSeed {
   tokenId: Uint8Array<ArrayBuffer>;
@@ -165,24 +211,54 @@ describe("verifyCapabilityToken", () => {
     expect(verdict).toEqual({ ok: false, reason: "expired" });
   });
 
-  it("rejects a revoked token", async () => {
+  it("rejects a token revoked by its own issuer's entry", async () => {
+    const tokenId = nextTokenId();
     const token = await signToken(issuer, {
-      tokenId: nextTokenId(),
+      tokenId,
       bearer: bearerDeviceId,
       scope: workScope,
       expires: now + HOUR_MS,
     });
-    const revoked: RevocationCheck = {
-      isRevoked: async () => Promise.resolve(true),
+    const ownIssuerEntry: RevocationClaims = {
+      "token-id": tokenId,
+      issuer: issuer.deviceId,
+      "issuer-key": issuer.identityKey,
+      "revoked-at": now - REVOKED_SHORTLY_BEFORE_NOW_MS,
     };
 
     const verdict = await verifyCapabilityToken(token, {
       identity: issuer,
       clock: fixedClock(now),
-      revocation: revoked,
+      revocation: revocationView([ownIssuerEntry]),
     });
 
     expect(verdict).toEqual({ ok: false, reason: "revoked" });
+  });
+
+  it("accepts a token whose revocation entry was signed by a third party, not its own issuer", async () => {
+    const tokenId = nextTokenId();
+    const token = await signToken(issuer, {
+      tokenId,
+      bearer: bearerDeviceId,
+      scope: workScope,
+      expires: now + HOUR_MS,
+    });
+    // Same token-id, but revoked-at attributed to a different issuer -- only a token's own issuer may revoke it, so this entry must not count.
+    const thirdParty = await generateEs256Identity();
+    const thirdPartyEntry: RevocationClaims = {
+      "token-id": tokenId,
+      issuer: thirdParty.deviceId,
+      "issuer-key": thirdParty.identityKey,
+      "revoked-at": now - REVOKED_SHORTLY_BEFORE_NOW_MS,
+    };
+
+    const verdict = await verifyCapabilityToken(token, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: revocationView([thirdPartyEntry]),
+    });
+
+    expect(verdict.ok).toBe(true);
   });
 
   it("rejects a token presented by a device other than its bearer", async () => {
@@ -288,6 +364,166 @@ describe("verifyCapabilityToken", () => {
     });
 
     expect(verdict).toEqual({ ok: false, reason: "delegation_exceeds_parent" });
+  });
+
+  it("rejects a delegated token whose ancestor is revoked, even though the leaf itself is not", async () => {
+    const rootTokenId = nextTokenId();
+    const root = await signToken(issuer, {
+      tokenId: rootTokenId,
+      bearer: bearerDeviceId,
+      scope: workScope,
+      expires: now + 2 * HOUR_MS,
+    });
+
+    const delegate = await generateEs256Identity();
+    const claims: TokenClaims = {
+      "token-id": nextTokenId(),
+      issuer: bearerDeviceId,
+      "issuer-key": bearerIdentity.identityKey,
+      bearer: delegate.deviceId,
+      capability: "exec:pty",
+      scope: { kind: "folder", path: "/work/subdir" },
+      expires: now + HOUR_MS,
+      parent: encodeBuf(root),
+    };
+    const payload = encodeBuf(claims);
+    const protectedHeader = encodeBuf({});
+    const toBeSigned = encodeBuf([
+      "Signature1",
+      protectedHeader,
+      new Uint8Array(0),
+      payload,
+    ]);
+    const signature = await bearerIdentity.sign(toBeSigned);
+    const delegated: CapabilityToken = [
+      protectedHeader,
+      {},
+      payload,
+      signature,
+    ];
+
+    // Only the ROOT is revoked, by the root's own issuer -- the sweep must reach it through the delegation chain, not stop at the leaf.
+    const rootRevokedByIssuer: RevocationClaims = {
+      "token-id": rootTokenId,
+      issuer: issuer.deviceId,
+      "issuer-key": issuer.identityKey,
+      "revoked-at": now - REVOKED_SHORTLY_BEFORE_NOW_MS,
+    };
+
+    const verdict = await verifyCapabilityToken(delegated, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: revocationView([rootRevokedByIssuer]),
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: "parent_invalid" });
+  });
+});
+
+describe("verifyRevocationEntry", () => {
+  let issuer: IdentityPort;
+
+  beforeAll(async () => {
+    issuer = await generateEs256Identity();
+  });
+
+  it("accepts a validly signed, self-certifying revocation entry and returns its claims", async () => {
+    const tokenId = nextTokenId();
+    const entry = await signRevocationEntry(issuer, tokenId);
+
+    const verdict = await verifyRevocationEntry(entry, { identity: issuer });
+
+    expect(verdict.ok).toBe(true);
+    if (verdict.ok) {
+      expect(equalBytes(verdict.claims["token-id"], tokenId)).toBe(true);
+      expect(equalBytes(verdict.claims.issuer, issuer.deviceId)).toBe(true);
+    }
+  });
+
+  it("rejects an entry whose signature doesn't verify against its embedded issuer-key", async () => {
+    const entry = await signRevocationEntry(issuer, nextTokenId());
+    // Corrupt the signature bytes themselves: the identity port only supplies crypto primitives and checks against the entry's own embedded key, so swapping port instances proves nothing (the neighbouring test covers exactly that) -- a genuinely bad signature must be forged in the bytes.
+    const [protectedHeader, unprotected, payload, signature] = entry;
+    const tampered = Uint8Array.from(signature);
+    const firstByte = tampered.at(0);
+    if (firstByte === undefined) {
+      throw new Error("test setup: signature has no bytes to corrupt");
+    }
+    tampered[0] = firstByte ^ LOW_BYTE_MASK;
+    const forged: RevocationEntry = [
+      protectedHeader,
+      unprotected,
+      payload,
+      tampered,
+    ];
+
+    const verdict = await verifyRevocationEntry(forged, { identity: issuer });
+
+    expect(verdict).toEqual({ ok: false, reason: "bad_signature" });
+  });
+
+  it("rejects an entry whose issuer-key does not derive its claimed issuer device-id", async () => {
+    // Sign as one identity but claim a different issuer: the signature verifies (it was really signed by the embedded key) but sha256(public-key) != the claimed issuer, so the entry is not self-certifying.
+    const actualSigner = await generateEs256Identity();
+    const claimedIssuer = await generateEs256Identity();
+    const claims: RevocationClaims = {
+      "token-id": nextTokenId(),
+      issuer: claimedIssuer.deviceId,
+      "issuer-key": actualSigner.identityKey,
+      "revoked-at": 0,
+    };
+    const payload = encodeBuf(claims);
+    const protectedHeader = encodeBuf({});
+    const toBeSigned = encodeBuf([
+      "Signature1",
+      protectedHeader,
+      new Uint8Array(0),
+      payload,
+    ]);
+    const signature = await actualSigner.sign(toBeSigned);
+    const forged: RevocationEntry = [protectedHeader, {}, payload, signature];
+
+    const verdict = await verifyRevocationEntry(forged, {
+      identity: actualSigner,
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: "wrong_issuer" });
+  });
+
+  it("rejects an entry whose payload doesn't parse as revocation-claims", async () => {
+    const payload = encodeBuf({ nonsense: true });
+    const protectedHeader = encodeBuf({});
+    const toBeSigned = encodeBuf([
+      "Signature1",
+      protectedHeader,
+      new Uint8Array(0),
+      payload,
+    ]);
+    const signature = await issuer.sign(toBeSigned);
+    const malformed: RevocationEntry = [
+      protectedHeader,
+      {},
+      payload,
+      signature,
+    ];
+
+    const verdict = await verifyRevocationEntry(malformed, {
+      identity: issuer,
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: "malformed" });
+  });
+
+  it("ignores bearer identity: an entry is about the issuer's token, not who presented the frame", async () => {
+    const entry = await signRevocationEntry(issuer, nextTokenId());
+    const anyOtherViewer = await generateEs256Identity();
+
+    const verdict = await verifyRevocationEntry(entry, {
+      identity: anyOtherViewer,
+    });
+
+    // The identity port supplies only crypto primitives (verify/derive); verification succeeds regardless of which port instance performs it.
+    expect(verdict.ok).toBe(true);
   });
 });
 
