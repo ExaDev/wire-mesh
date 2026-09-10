@@ -7,6 +7,6 @@ Append-only. A `core/*` domain name is spec-owned and defined in `handshake.cddl
 | `core/management` | `management.cddl` | active |
 | `core/exec` | `exec.cddl` | active |
 | `core/data` | `data-domain.cddl` | active |
-| `core/federation` | `federation.cddl` | active |
+| `core/federation` | `federation.cddl` | retired — no frames defined; cross-scope sharing now uses ordinary capability tokens (`tokens.cddl`) and discovery (`discovery.cddl`) instead |
 
 Third parties do not add entries here — see `namespaced-domain-id` in `handshake.cddl` for the registrant-owned namespace anyone else uses instead.
