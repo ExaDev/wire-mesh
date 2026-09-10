@@ -8,9 +8,45 @@
 ; Matrix all independently converged on the same DNS-anchored shape for
 ; exactly this category of problem.
 ;
-; A handle is "<local-part>@<domain>". It resolves out of band (this is never
-; sent as a Frame over an existing mesh connection — resolution is how you
-; get an address to connect to in the first place) via:
+; A handle is "<local-part>@<domain>". Resolving it is a bootstrap problem,
+; not an authorisation one: before any wire-mesh connection exists there is
+; nothing to ask over the wire, so the very first handle-record has to reach
+; a new principal through a channel outside this protocol entirely. Three
+; such channels are recognised, fitting three different reachability
+; situations, and none substitutes for the others:
+;
+; - DNS (below) — unbounded, works for any two principals anywhere on the
+;   internet, requires the publisher to control a domain.
+; - An out-of-band-delivered handle-record — explicit, requires a human or
+;   an existing relationship to actually hand it over, works anywhere.
+; - Local broadcast discovery (mDNS/Bonjour, or an equivalent) — zero
+;   configuration, but only within the same physical/broadcast network
+;   segment. Not itself a Frame carried over an existing mesh connection any
+;   more than the other two are; it is the same handle-record, published via
+;   multicast on the local segment instead of fetched over HTTPS or handed
+;   over out of band. A receiver verifies it exactly the same way regardless
+;   of which of the three channels delivered it — physical proximity is not
+;   a substitute for the signature check below, only for how the bytes
+;   arrived.
+;
+; A device discovered only through local broadcast has no durable roaming
+; story, and this is inherent to what that channel can do, not a gap to
+; close: local broadcast tells you nothing beyond "this device is currently
+; on my network segment", so once it leaves and stops advertising there, its
+; last-known candidates go stale with it. Reconnecting after that depends
+; entirely on what else the device published at discovery time — a DNS
+; handle (its record's candidates kept current the way a dynamic-DNS entry
+; is), or a handle-record replicated through a durably-reachable mailbox
+; device (below) whose own address doesn't change even if the device's
+; does. A device that was only ever seen over local broadcast, with neither
+; of those, cannot be relocated by this protocol once it roams — the same
+; limitation any purely local-discovery mechanism has (a Bonjour-discovered
+; printer that leaves the network is exactly as unreachable) until the two
+; devices share a network segment again or the roaming device reconnects
+; first, using an address the other side already published somewhere
+; durable.
+;
+; DNS resolution:
 ;
 ;   GET https://<domain>/.well-known/wire-mesh/<local-part>
 ;
@@ -18,17 +54,18 @@
 ; self-certifying — signed by the same key it claims to belong to, the same
 ; pattern Cascade's own announce/DHT candidate records use — specifically so
 ; it stays safe to serve and cache through an untrusted intermediary (a CDN,
-; a cache, an intermediate DNS resolver) rather than requiring the resolver
-; to trust the HTTPS transport alone. A resolver MUST verify
-; device-id == sha256(identity-key.public-key) and MUST check `expires`
-; before trusting a resolved record.
+; a cache, an intermediate DNS resolver, or a multicast listener on a shared
+; network) rather than requiring the resolver to trust the delivery channel
+; itself. A resolver MUST verify device-id == sha256(identity-key.public-key)
+; and MUST check `expires` before trusting a resolved record, regardless of
+; which of the three channels above delivered it.
 
 handle-claims = {
   handle: tstr,                  ; "local-part@domain", matching what was requested
   device-id: device-id,
   identity-key: identity-key,     ; verifier checks sha256(identity-key.public-key) == device-id
   ? candidates: [* wire-candidate],   ; optional connection hints, reusing transport.cddl's candidate shape
-  ? mailbox: device-id,               ; optional: a relay/hub device holding core/data entries on this handle's behalf while it is offline — the same replication mechanism data-domain.cddl describes for fan-out, not a separate delivery system
+  ? mailboxes: [* device-id],          ; optional: relay/hub devices holding core/data entries on this handle's behalf while it is offline — the same replication mechanism data-domain.cddl describes for fan-out, not a separate delivery system. Plural, matching `candidates` below and relay-offer-frame's own `addresses`: nothing about holding a replica is inherently single-device, and naming more than one gives a resolver redundancy (and the owner independence from any single mailbox's uptime) the same way multiple candidates or multiple relay addresses already do.
   issued: uint,     ; Unix ms
   expires: uint,    ; Unix ms — records are refreshed periodically, mirroring a DNS TTL; a resolver must not trust an expired record
 }
@@ -39,24 +76,42 @@ handle-claims = {
 ; token one.
 handle-record = cose-sign1   ; payload = bstr .cbor handle-claims
 
+; Why name mailboxes at all, given data-domain.cddl's own fan-out rule
+; already lets any peer holding a replica answer on the owner's behalf
+; regardless of whether it was ever named anywhere: naming and fan-out solve
+; different problems, not the same one twice. Fan-out cannot bootstrap
+; itself — gossip and data-have/data-request only reach peers a resolver is
+; already connected to, so "who, anywhere, has a copy of this handle's
+; entries" has no answer without a starting point, the identical bootstrap
+; problem the three channels above exist to solve. `mailboxes` is that
+; starting point: a signed, owner-chosen anchor delivered through one of
+; those same channels. It also carries something fan-out alone cannot:
+; naming a device is the owner deliberately vouching that this specific
+; peer has been arranged to stay current and can be trusted to behave
+; correctly while standing in for it, not merely "some peer, holding some
+; version, happened to still have a copy." Once a resolver has reached any
+; named mailbox, ordinary fan-out still takes over exactly as
+; data-domain.cddl describes for discovering further, unnamed replicas — the
+; two layer cleanly rather than competing, and neither makes the other
+; redundant.
+;
 ; Handle ownership without DNS control: a handle-claims record for the same
 ; handle MAY instead be published as an ordinary core/data entry, under the
-; conventional scope { kind: "handle-registry" }, and reached by resolving
-; via a federation link rather than DNS — a mesh's own root identity stands
-; in for a domain, and a federated mesh can then resolve any handle the
-; owning mesh has published, with no third party (no domain, no hosting
-; provider) involved at all. This needs no new frame type: it is the same
-; core/data replication (data-domain.cddl) and the same federation sharing
-; (federation.cddl's share-descriptor) already defined, applied to handle
-; records instead of application content — federation already has to resolve
-; and reach a partner mesh's resources somehow, and a handle registry is
-; simply one more resource a federation link can share. The tradeoff this
-; accepts, deliberately: resolvability is bounded to the owning mesh plus
-; whatever it is federated with, not the whole internet unconditionally —
-; DNS remains the only path for genuinely unbounded, internet-wide discovery.
+; conventional scope { kind: "handle-registry" }, and read by anyone holding
+; a valid capability token scoped to that registry — an ordinary grant,
+; delegated through however many hops trace back to the registry owner's own
+; root identity (see tokens.cddl's capability-scope comment), not membership
+; in any federation-specific relationship. This needs no new frame type: it
+; is the same core/data replication (data-domain.cddl) already defined,
+; applied to handle records instead of application content, gated the same
+; way every other core/data resource already is. The tradeoff this accepts,
+; deliberately: resolvability is bounded to whoever holds a valid token for
+; the registry, not the whole internet unconditionally — DNS remains the
+; only path for genuinely unbounded, internet-wide discovery with no prior
+; relationship required at all.
 ;
 ; A fully decentralised, third-party-free alternative with unbounded (not
-; federation-scoped) reach — e.g. a DHT keyed by a hash of the handle string,
+; token-gated) reach — e.g. a DHT keyed by a hash of the handle string,
 ; mirroring Cascade's own Mainline DHT precedent — was considered and
 ; deliberately deferred, not built: nothing else in this protocol needs a
 ; DHT, so building one solely for this would be speculative generality
