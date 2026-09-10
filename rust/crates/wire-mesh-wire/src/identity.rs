@@ -188,7 +188,7 @@ mod tests {
     {
         let bytes = minicbor::to_vec(&value).expect("encode");
         let back: T = minicbor::decode(&bytes).expect("decode");
-        assert_eq!(back, value, "round trip of {:?}", &value);
+        assert_eq!(back, value, "round trip of {value:?}");
     }
 
     #[test]
