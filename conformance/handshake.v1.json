@@ -1,0 +1,33 @@
+{
+  "protocol_version": 1,
+  "description": "Handshake conformance vectors for protocol version 1. A conformant codec must decode each wire_hex to the described message and re-encode that message to exactly wire_hex, using RFC 8949 4.2 core deterministic (DAG-CBOR-compatible) encoding.",
+  "vectors": [
+    {
+      "name": "handshake_v1_management_exec_federation",
+      "message": {
+        "type": "handshake",
+        "version": 1,
+        "domains": [
+          "core/management",
+          "core/exec",
+          "core/federation"
+        ]
+      },
+      "wire_hex": "a364747970656968616e647368616b6567646f6d61696e73836f636f72652f6d616e6167656d656e7469636f72652f657865636f636f72652f66656465726174696f6e6776657273696f6e01"
+    },
+    {
+      "name": "handshake_v1_with_forward_compatible_params",
+      "message": {
+        "type": "handshake",
+        "version": 1,
+        "domains": [
+          "core/data"
+        ],
+        "params": {
+          "max-frame-size": 65536
+        }
+      },
+      "wire_hex": "a464747970656968616e647368616b6566706172616d73a16e6d61782d6672616d652d73697a651a0001000067646f6d61696e738169636f72652f646174616776657273696f6e01"
+    }
+  ]
+}

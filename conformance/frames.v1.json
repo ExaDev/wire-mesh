@@ -1,0 +1,361 @@
+{
+  "protocol_version": 1,
+  "description": "Frame conformance vectors for protocol version 1, covering every $frame-variant in spec/frame.cddl except handshake-frame (see handshake.v1.json). manage-response-frame gets two vectors, one per branch of its manage-ok / manage-error outcome union.",
+  "vectors": [
+    {
+      "name": "ping_v1",
+      "message": {
+        "type": "ping"
+      },
+      "wire_hex": "a164747970656470696e67"
+    },
+    {
+      "name": "close_v1_with_reason",
+      "message": {
+        "type": "close",
+        "reason": "shutting down"
+      },
+      "wire_hex": "a2647479706565636c6f736566726561736f6e6d7368757474696e6720646f776e"
+    },
+    {
+      "name": "gossip_v1_two_peers",
+      "message": {
+        "type": "gossip",
+        "peers": [
+          {
+            "device": {
+              "hex": "1111111111111111111111111111111111111111111111111111111111111111"
+            },
+            "addresses": [
+              "203.0.113.5:4433"
+            ],
+            "snapshot-seconds": 1861833600
+          },
+          {
+            "device": {
+              "hex": "2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            "addresses": [
+              "203.0.113.9:4433",
+              "198.51.100.2:4433"
+            ],
+            "snapshot-seconds": 1861833601
+          }
+        ]
+      },
+      "wire_hex": "a2647479706566676f7373697065706565727382a366646576696365582011111111111111111111111111111111111111111111111111111111111111116961646472657373657381703230332e302e3131332e353a3434333370736e617073686f742d7365636f6e64731a6ef95380a366646576696365582022222222222222222222222222222222222222222222222222222222222222226961646472657373657382703230332e302e3131332e393a34343333713139382e35312e3130302e323a3434333370736e617073686f742d7365636f6e64731a6ef95381"
+    },
+    {
+      "name": "candidates_v1_host_and_relayed",
+      "message": {
+        "type": "candidates",
+        "candidates": [
+          {
+            "address": "203.0.113.5:4433",
+            "kind": "host",
+            "priority": 100
+          },
+          {
+            "address": "198.51.100.2:7000",
+            "kind": "relayed",
+            "priority": 10
+          }
+        ]
+      },
+      "wire_hex": "a264747970656a63616e646964617465736a63616e6469646174657382a3646b696e6464686f73746761646472657373703230332e302e3131332e353a34343333687072696f726974791864a3646b696e646772656c617965646761646472657373713139382e35312e3130302e323a37303030687072696f726974790a"
+    },
+    {
+      "name": "sync_punch_v1",
+      "message": {
+        "type": "sync-punch",
+        "nonce": 42,
+        "deadline-unix-ms": 1861833605000
+      },
+      "wire_hex": "a364747970656a73796e632d70756e6368656e6f6e6365182a70646561646c696e652d756e69782d6d731b000001b17dee3f88"
+    },
+    {
+      "name": "observed_address_v1",
+      "message": {
+        "type": "observed-address",
+        "address": "203.0.113.5:51820"
+      },
+      "wire_hex": "a26474797065706f627365727665642d616464726573736761646472657373713230332e302e3131332e353a3531383230"
+    },
+    {
+      "name": "relay_offer_v1",
+      "message": {
+        "type": "relay-offer",
+        "addresses": [
+          "198.51.100.2:7000"
+        ]
+      },
+      "wire_hex": "a264747970656b72656c61792d6f666665726961646472657373657381713139382e35312e3130302e323a37303030"
+    },
+    {
+      "name": "relay_connect_v1",
+      "message": {
+        "type": "relay-connect",
+        "target-device": {
+          "hex": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "wire_hex": "a264747970656d72656c61792d636f6e6e6563746d7461726765742d64657669636558203333333333333333333333333333333333333333333333333333333333333333"
+    },
+    {
+      "name": "relay_data_v1",
+      "message": {
+        "type": "relay-data",
+        "payload": {
+          "hex": "dededededededededededededededededededededededede"
+        }
+      },
+      "wire_hex": "a264747970656a72656c61792d64617461677061796c6f61645818dededededededededededededededededededededededede"
+    },
+    {
+      "name": "relay_inbound_v1",
+      "message": {
+        "type": "relay-inbound",
+        "source-device": {
+          "hex": "2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      },
+      "wire_hex": "a264747970656d72656c61792d696e626f756e646d736f757263652d64657669636558202222222222222222222222222222222222222222222222222222222222222222"
+    },
+    {
+      "name": "manage_request_v1_pty_spawn",
+      "message": {
+        "type": "manage-request",
+        "request-id": 1,
+        "command": {
+          "verb": "exec:pty",
+          "params": {
+            "verb": "pty.spawn",
+            "shell": "/bin/sh",
+            "argv": [],
+            "cwd": "/work",
+            "env": {},
+            "cols": 80,
+            "rows": 24
+          }
+        },
+        "scope": {
+          "kind": "folder",
+          "path": "/work"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696401"
+    },
+    {
+      "name": "manage_response_v1_ok",
+      "message": {
+        "type": "manage-response",
+        "request-id": 1,
+        "outcome": {
+          "result": "ok"
+        }
+      },
+      "wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a166726573756c74626f6b6a726571756573742d696401"
+    },
+    {
+      "name": "manage_response_v1_error",
+      "message": {
+        "type": "manage-response",
+        "request-id": 2,
+        "outcome": {
+          "result": "error",
+          "code": "scope-denied",
+          "message": "token does not authorise this path"
+        }
+      },
+      "wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a364636f64656c73636f70652d64656e69656466726573756c74656572726f72676d6573736167657822746f6b656e20646f6573206e6f7420617574686f72697365207468697320706174686a726571756573742d696402"
+    },
+    {
+      "name": "revocation_announce_v1_two_entries",
+      "message": {
+        "type": "revocation-announce",
+        "entries": [
+          {
+            "token-id": {
+              "hex": "01010101010101010101010101010101"
+            },
+            "revoked-at": 1861833700000
+          },
+          {
+            "token-id": {
+              "hex": "02020202020202020202020202020202"
+            },
+            "revoked-at": 1861833701000
+          }
+        ]
+      },
+      "wire_hex": "a26474797065737265766f636174696f6e2d616e6e6f756e636567656e747269657382a268746f6b656e2d696450010101010101010101010101010101016a7265766f6b65642d61741b000001b17defb2a0a268746f6b656e2d696450020202020202020202020202020202026a7265766f6b65642d61741b000001b17defb688"
+    },
+    {
+      "name": "stream_data_v1_stdout_chunk",
+      "message": {
+        "type": "stream-data",
+        "session": 7,
+        "seq": 3,
+        "channel": "stdout",
+        "bytes": {
+          "hex": "68656c6c6f0a"
+        }
+      },
+      "wire_hex": "a5637365710364747970656b73747265616d2d646174616562797465734668656c6c6f0a676368616e6e656c667374646f75746773657373696f6e07"
+    },
+    {
+      "name": "stream_ack_v1",
+      "message": {
+        "type": "stream-ack",
+        "session": 7,
+        "ack-seq": 3,
+        "window": 65536
+      },
+      "wire_hex": "a464747970656a73747265616d2d61636b6677696e646f771a000100006761636b2d736571036773657373696f6e07"
+    },
+    {
+      "name": "stream_end_v1_exit_code",
+      "message": {
+        "type": "stream-end",
+        "session": 7,
+        "exit-code": 0
+      },
+      "wire_hex": "a364747970656a73747265616d2d656e646773657373696f6e0769657869742d636f646500"
+    },
+    {
+      "name": "data_have_v1",
+      "message": {
+        "type": "data-have",
+        "peer": {
+          "hex": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "head-seq": 128
+      },
+      "wire_hex": "a3647065657258201111111111111111111111111111111111111111111111111111111111111111647479706569646174612d6861766568686561642d7365711880"
+    },
+    {
+      "name": "data_request_v1",
+      "message": {
+        "type": "data-request",
+        "peer": {
+          "hex": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "from-seq": 100
+      },
+      "wire_hex": "a364706565725820111111111111111111111111111111111111111111111111111111111111111164747970656c646174612d726571756573746866726f6d2d7365711864"
+    },
+    {
+      "name": "data_entries_v1_two_entries",
+      "message": {
+        "type": "data-entries",
+        "peer": {
+          "hex": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "from-seq": 100,
+        "entries": [
+          {
+            "hex": "aabbcc"
+          },
+          {
+            "hex": "ddeeff00"
+          }
+        ]
+      },
+      "wire_hex": "a464706565725820111111111111111111111111111111111111111111111111111111111111111164747970656c646174612d656e747269657367656e74726965738243aabbcc44ddeeff006866726f6d2d7365711864"
+    },
+    {
+      "name": "federation_link_request_v1",
+      "message": {
+        "type": "federation-link-request",
+        "local-mesh": "exadev-internal",
+        "local-name": "exadev",
+        "offered-shares": [
+          {
+            "domain": "core/data",
+            "resource": {
+              "kind": "room",
+              "path": "general"
+            },
+            "direction": "outbound"
+          }
+        ]
+      },
+      "wire_hex": "a464747970657766656465726174696f6e2d6c696e6b2d726571756573746a6c6f63616c2d6d6573686f6578616465762d696e7465726e616c6a6c6f63616c2d6e616d65666578616465766e6f6666657265642d73686172657381a366646f6d61696e69636f72652f64617461687265736f75726365a2646b696e6464726f6f6d64706174686767656e6572616c69646972656374696f6e686f7574626f756e64"
+    },
+    {
+      "name": "federation_link_accept_v1",
+      "message": {
+        "type": "federation-link-accept",
+        "remote-mesh": "example-partner",
+        "remote-name": "partner",
+        "accepted-shares": [
+          {
+            "domain": "core/data",
+            "resource": {
+              "kind": "room",
+              "path": "general"
+            },
+            "direction": "outbound"
+          }
+        ]
+      },
+      "wire_hex": "a464747970657666656465726174696f6e2d6c696e6b2d6163636570746b72656d6f74652d6d6573686f6578616d706c652d706172746e65726b72656d6f74652d6e616d6567706172746e65726f61636365707465642d73686172657381a366646f6d61696e69636f72652f64617461687265736f75726365a2646b696e6464726f6f6d64706174686767656e6572616c69646972656374696f6e686f7574626f756e64"
+    },
+    {
+      "name": "federation_link_reject_v1",
+      "message": {
+        "type": "federation-link-reject",
+        "reason": "no shared domains accepted"
+      },
+      "wire_hex": "a264747970657666656465726174696f6e2d6c696e6b2d72656a65637466726561736f6e781a6e6f2073686172656420646f6d61696e73206163636570746564"
+    },
+    {
+      "name": "federation_share_v1",
+      "message": {
+        "type": "federation-share",
+        "share": {
+          "domain": "core/data",
+          "resource": {
+            "kind": "room",
+            "path": "incidents"
+          },
+          "direction": "bidirectional"
+        }
+      },
+      "wire_hex": "a264747970657066656465726174696f6e2d7368617265657368617265a366646f6d61696e69636f72652f64617461687265736f75726365a2646b696e6464726f6f6d647061746869696e636964656e747369646972656374696f6e6d6269646972656374696f6e616c"
+    },
+    {
+      "name": "federation_unshare_v1",
+      "message": {
+        "type": "federation-unshare",
+        "share": {
+          "domain": "core/data",
+          "resource": {
+            "kind": "room",
+            "path": "incidents"
+          },
+          "direction": "bidirectional"
+        }
+      },
+      "wire_hex": "a264747970657266656465726174696f6e2d756e7368617265657368617265a366646f6d61696e69636f72652f64617461687265736f75726365a2646b696e6464726f6f6d647061746869696e636964656e747369646972656374696f6e6d6269646972656374696f6e616c"
+    },
+    {
+      "name": "federation_envelope_v1_wrapping_a_ping",
+      "message": {
+        "type": "federation-envelope",
+        "origin-mesh": "example-partner",
+        "origin-device": {
+          "hex": "3333333333333333333333333333333333333333333333333333333333333333"
+        },
+        "resource": {
+          "kind": "room",
+          "path": "general"
+        },
+        "inner": {
+          "hex": "a164747970656470696e67"
+        }
+      },
+      "wire_hex": "a564747970657366656465726174696f6e2d656e76656c6f706565696e6e65724ba164747970656470696e67687265736f75726365a2646b696e6464726f6f6d64706174686767656e6572616c6b6f726967696e2d6d6573686f6578616d706c652d706172746e65726d6f726967696e2d64657669636558203333333333333333333333333333333333333333333333333333333333333333"
+    }
+  ]
+}
