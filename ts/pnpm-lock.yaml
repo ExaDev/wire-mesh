@@ -113,6 +113,52 @@ importers:
         specifier: 5.0.0
         version: 5.0.0(@types/node@26.4.1)(vite@8.2.2(@types/node@26.4.1)(jiti@2.7.0))
 
+  packages/web-console:
+    dependencies:
+      '@exadev/wire-mesh-core':
+        specifier: workspace:*
+        version: link:../core
+      cbor2:
+        specifier: 2.3.0
+        version: 2.3.0
+    devDependencies:
+      '@exadev/eslint-config':
+        specifier: 2.10.6
+        version: 2.10.6(eslint@10.10.0(jiti@2.7.0))(typescript-eslint@8.69.0(eslint@10.10.0(jiti@2.7.0))(typescript@6.0.3))(typescript@6.0.3)
+      '@types/node':
+        specifier: 26.4.1
+        version: 26.4.1
+      eslint:
+        specifier: 10.10.0
+        version: 10.10.0(jiti@2.7.0)
+      eslint-config-prettier:
+        specifier: 10.1.8
+        version: 10.1.8(eslint@10.10.0(jiti@2.7.0))
+      eslint-plugin-prettier:
+        specifier: 5.5.6
+        version: 5.5.6(eslint-config-prettier@10.1.8(eslint@10.10.0(jiti@2.7.0)))(eslint@10.10.0(jiti@2.7.0))(prettier@3.9.6)
+      globals:
+        specifier: 17.12.0
+        version: 17.12.0
+      jiti:
+        specifier: 2.7.0
+        version: 2.7.0
+      prettier:
+        specifier: 3.9.6
+        version: 3.9.6
+      turbo:
+        specifier: 2.10.12
+        version: 2.10.12
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vite:
+        specifier: 8.2.2
+        version: 8.2.2(@types/node@26.4.1)(jiti@2.7.0)
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@26.4.1)(vite@8.2.2(@types/node@26.4.1)(jiti@2.7.0))
+
 packages:
 
   '@andrewbranch/untar.js@1.0.4':
