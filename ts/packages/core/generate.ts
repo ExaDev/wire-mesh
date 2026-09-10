@@ -1,4 +1,4 @@
-// Produces src/generated/protocol.ts from ../../../spec/protocol.cddl via cddl.js. Run `pnpm generate` after the spec changes, then `pnpm test` to confirm generated schemas still round-trip conformance/'s golden vectors. CI regenerates and diffs against the committed file (see .github/workflows/ci.yml's core-verify job) so protocol.ts is never edited by hand.
+// Produces src/generated/protocol.ts from ../../../spec/protocol.cddl via cddl.js. Run `pnpm generate` after the spec changes, then `pnpm test` to confirm generated schemas still round-trip conformance/'s golden vectors. CI regenerates and diffs against the committed file (see .github/workflows/ci.yml's ts-core-verify job) so protocol.ts is never edited by hand.
 
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
