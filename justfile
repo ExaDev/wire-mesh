@@ -1,10 +1,9 @@
 # Thin task dispatcher across the three implementation subtrees. Each recipe
 # just cd's into its own subtree and calls that language's native tool --
 # this file has no build-graph or caching logic of its own, and isn't meant
-# to. rust/ doesn't exist as code yet (only spec/, conformance/, and ts/ do),
-# so its build/test/lint recipes stay a no-op until it does. conformance/ and
-# ts/ each own their own build/test/lint via turbo (see their own turbo.json
-# files), so their recipes here just invoke that.
+# to. conformance/ and ts/ each own their own build/test/lint via turbo (see
+# their own turbo.json files), so their recipes here just invoke that; rust/
+# owns its own via cargo (see rust/Cargo.toml).
 
 default:
     @just --list
