@@ -1,0 +1,19 @@
+[package]
+name = "wire-mesh-conformance"
+description = "The conformance-check binary: proves the Rust codec round-trips every frozen vector in conformance/*.v1.json byte-exactly"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+wire-mesh-wire = { path = "../wire-mesh-wire" }
+serde_json = { workspace = true }
+
+[[bin]]
+name = "conformance-check"
+path = "src/main.rs"
+
+[lints]
+workspace = true
