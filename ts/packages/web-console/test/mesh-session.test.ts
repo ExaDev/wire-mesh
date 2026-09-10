@@ -416,7 +416,7 @@ describe("capability tokens and manage-request plumbing", () => {
     const session = createMeshSession(transport);
     await session.connect("ws://node", ["core/management"]);
     session.setToken(testToken);
-    void session.sendManageRequest(testCommand, testScope);
+    const pending = session.sendManageRequest(testCommand, testScope);
     await Promise.resolve();
     const sentRequest = connection.sent.at(-1) as ManageRequestFrame;
     expect(sentRequest.type).toBe("manage-request");
@@ -424,17 +424,19 @@ describe("capability tokens and manage-request plumbing", () => {
     expect(sentRequest.scope).toEqual(testScope);
     expect(sentRequest.token).toEqual(testToken);
     await session.close();
+    await expect(pending).rejects.toThrow();
   });
 
   it("does not attach a token to a manage-request when none has been set", async () => {
     const { transport, connection } = fakeTransport();
     const session = createMeshSession(transport);
     await session.connect("ws://node", ["core/management"]);
-    void session.sendManageRequest(testCommand, testScope);
+    const pending = session.sendManageRequest(testCommand, testScope);
     await Promise.resolve();
     const sentRequest = connection.sent.at(-1) as ManageRequestFrame;
     expect(sentRequest.token).toBeUndefined();
     await session.close();
+    await expect(pending).rejects.toThrow();
   });
 
   it("resolves sendManageRequest only with the outcome of the matching manage-response", async () => {
@@ -461,6 +463,28 @@ describe("capability tokens and manage-request plumbing", () => {
     const outcome: ManageOutcome = await pending;
     expect(outcome).toEqual({ result: "ok" });
     await session.close();
+  });
+
+  it("rejects a pending sendManageRequest when the session is closed before a response arrives", async () => {
+    const { transport } = fakeTransport();
+    const session = createMeshSession(transport);
+    await session.connect("ws://node", ["core/management"]);
+    const pending = session.sendManageRequest(testCommand, testScope);
+    await session.close();
+    await expect(pending).rejects.toThrow(
+      "connection closed before a response arrived",
+    );
+  });
+
+  it("rejects a pending sendManageRequest when the connection disconnects before a response arrives", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport);
+    await session.connect("ws://node", ["core/management"]);
+    const pending = session.sendManageRequest(testCommand, testScope);
+    connection.fail(new Error("dropped"));
+    await expect(pending).rejects.toThrow(
+      "disconnected before a response arrived",
+    );
   });
 
   it("surfaces an incoming manage-request on incomingManageRequests, and sends the response frame from respond()", async () => {
