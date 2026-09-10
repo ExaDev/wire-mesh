@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": [
+    "src/generated/protocol.ts",
+    "src/generated/runtime.ts",
+    "src/ports/transport.ts",
+    "src/ports/storage.ts",
+    "src/ports/identity.ts",
+    "src/ports/clock.ts",
+    "src/domain/handshake.ts",
+    "src/domain/tokens.ts",
+    "src/adapters/tcp-transport.ts",
+    "src/adapters/memory-storage.ts",
+    "src/adapters/node-identity.ts",
+    "src/adapters/system-clock.ts"
+  ]
+}
