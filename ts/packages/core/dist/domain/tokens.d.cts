@@ -1,4 +1,4 @@
-import { i as CapabilityToken, lt as TokenClaims, nt as RevocationClaims, rt as RevocationEntry, v as DeviceId } from "../protocol-BuKLld33.cjs";
+import { i as CapabilityToken, it as RevocationEntry, rt as RevocationClaims, ut as TokenClaims, v as DeviceId } from "../protocol-DX0RGNQS.cjs";
 import { IdentityPort } from "../ports/identity.cjs";
 import { Clock } from "../ports/clock.cjs";
 //#region src/domain/tokens.d.ts
