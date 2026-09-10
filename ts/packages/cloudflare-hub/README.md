@@ -19,7 +19,7 @@ The hub domain logic itself (`src/hub.ts`) is deliberately thin and transport-ag
 
 ## What is real versus deferred
 
-Real and tested: the WebSocket connection adapter (hostile-input behaviour included), the Web Crypto identity adapter with cross-adapter signature interop, the relay pairing logic — and the full entry path verified against the real workerd runtime, not just bundling: `pnpm dev` plus `node scripts/live-check.mjs` drives two genuine WebSocket clients through gossip → relay-connect → relay-inbound → bidirectional relay-data and passes (three consecutive runs, zero hang-cancellation errors in the dev log). Unit tests additionally drive the hub over the real adapter, not only fakes.
+Real and tested: the WebSocket connection adapter (hostile-input behaviour included), the Web Crypto identity adapter with cross-adapter signature interop, the relay pairing logic — and the full entry path verified against the real workerd runtime, not just bundling: `pnpm dev` plus `node scripts/live-check.mjs` drives two genuine WebSocket clients through gossip → relay-connect → relay-inbound → bidirectional relay-data and asserts every hop, exiting non-zero and naming the failing step if the runtime ever regresses to the hang-cancellation behaviour. Unit tests additionally drive the hub over the real adapter, not only fakes.
 
 Deferred deliberately:
 

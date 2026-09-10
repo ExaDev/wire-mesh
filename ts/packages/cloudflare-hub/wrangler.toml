@@ -1,4 +1,4 @@
-# A reference deployment of a wire-mesh hub node on Cloudflare Workers -- see README.md for what is implemented versus deferred. `wrangler deploy --dry-run --outdir=dist` (the package's _build task) validates the bundle without any Cloudflare credentials, which is what CI runs; a real deploy needs `wrangler deploy` with an authenticated account and is deliberately not part of this package's CI. The hub state lives in one named Durable Object instance -- see src/durable-hub.ts for why a plain Worker cannot host it.
+# A reference deployment of a wire-mesh hub node on Cloudflare Workers -- see README.md for what is implemented versus deferred. `wrangler deploy --dry-run --outdir=dist` (the package's _build task) validates the bundle without any Cloudflare credentials, which is what CI runs; a real deploy needs `wrangler deploy` with an authenticated account and is deliberately not part of this package's CI. The hub state lives in one named Durable Object instance -- see src/worker.ts for why a plain Worker cannot host it.
 name = "wire-mesh-hub"
 main = "src/worker.ts"
 compatibility_date = "2026-09-01"
