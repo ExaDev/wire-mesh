@@ -379,6 +379,112 @@ describe("createRelayHub", () => {
     await Promise.all([a.end(), b.end(), c.end()]);
     await Promise.all(handling);
   });
+
+  it("an initiator that was already a target sheds its old pipe when it re-connects out", async () => {
+    const hub = createRelayHub();
+    const x = new FakeConnection();
+    const a = new FakeConnection();
+    const b = new FakeConnection();
+    const handling = [
+      hub.handleConnection(x.connection),
+      hub.handleConnection(a.connection),
+      hub.handleConnection(b.connection),
+    ];
+
+    const deviceX = deviceIdFromFillHex("55");
+    x.push(gossipFor(deviceX));
+    a.push(gossipFor(deviceA));
+    b.push(gossipFor(deviceB));
+    await tick();
+
+    // x dials a: a becomes the target of x -> a
+    x.push({ type: "relay-connect", "target-device": deviceA });
+    await tick();
+    expect(a.sent).toEqual([
+      { type: "relay-inbound", "source-device": deviceX },
+    ]);
+
+    // a now initiates its own pipe to b: the x -> a pairing must be torn down too (a belongs to it, as target), or x keeps sending into what a believes is its pipe with b
+    a.push({ type: "relay-connect", "target-device": deviceB });
+    await tick();
+    expect(b.sent).toEqual([
+      { type: "relay-inbound", "source-device": deviceA },
+    ]);
+
+    x.push({ type: "relay-data", payload: relayPayload });
+    await tick();
+    // a.sent is unchanged from the earlier relay-inbound: x's data on the torn-down pipe arrived nowhere
+    expect(a.sent).toEqual([
+      { type: "relay-inbound", "source-device": deviceX },
+    ]);
+
+    // while the live a <-> b pipe still forwards both ways
+    a.push({ type: "relay-data", payload: relayPayload });
+    b.push({ type: "relay-data", payload: relayPayload });
+    await tick();
+    expect(a.sent).toEqual([
+      { type: "relay-inbound", "source-device": deviceX },
+      { type: "relay-data", payload: relayPayload },
+    ]);
+    expect(b.sent).toEqual([
+      { type: "relay-inbound", "source-device": deviceA },
+      { type: "relay-data", payload: relayPayload },
+    ]);
+
+    await Promise.all([x.end(), a.end(), b.end()]);
+    await Promise.all(handling);
+  });
+
+  it("a target that was already an initiator sheds its old pipe when dialed", async () => {
+    const hub = createRelayHub();
+    const a = new FakeConnection();
+    const b = new FakeConnection();
+    const y = new FakeConnection();
+    const handling = [
+      hub.handleConnection(a.connection),
+      hub.handleConnection(b.connection),
+      hub.handleConnection(y.connection),
+    ];
+
+    const deviceY = deviceIdFromFillHex("66");
+    a.push(gossipFor(deviceA));
+    b.push(gossipFor(deviceB));
+    y.push(gossipFor(deviceY));
+    await tick();
+
+    // b dials y: b becomes the initiator of b -> y
+    b.push({ type: "relay-connect", "target-device": deviceY });
+    await tick();
+    expect(y.sent).toEqual([
+      { type: "relay-inbound", "source-device": deviceB },
+    ]);
+
+    // a now dials b: the b -> y pairing must be torn down too (b belongs to it, as initiator), or y keeps sending into what b believes is its pipe with a
+    a.push({ type: "relay-connect", "target-device": deviceB });
+    await tick();
+    expect(b.sent).toEqual([
+      { type: "relay-inbound", "source-device": deviceA },
+    ]);
+
+    y.push({ type: "relay-data", payload: relayPayload });
+    await tick();
+    expect(b.sent).toEqual([
+      { type: "relay-inbound", "source-device": deviceA },
+    ]);
+
+    // while the live a <-> b pipe still forwards both ways
+    a.push({ type: "relay-data", payload: relayPayload });
+    b.push({ type: "relay-data", payload: relayPayload });
+    await tick();
+    expect(a.sent).toEqual([{ type: "relay-data", payload: relayPayload }]);
+    expect(b.sent).toEqual([
+      { type: "relay-inbound", "source-device": deviceA },
+      { type: "relay-data", payload: relayPayload },
+    ]);
+
+    await Promise.all([a.end(), b.end(), y.end()]);
+    await Promise.all(handling);
+  });
 });
 
 describe("createRelayHub over the real wrapWebSocket adapter", () => {

@@ -48,6 +48,11 @@ export function createRelayHub(): RelayHub {
         devices.delete(key);
       }
     }
+    forgetPairingsOf(connection);
+  }
+
+  /** Removes every pairing the connection belongs to -- in either role, and both directions of each. A connection can be the initiator of one pairing and the target of a different one at the same time, so covering both roles is what makes a teardown total. */
+  function forgetPairingsOf(connection: Readonly<Connection>): void {
     const asInitiator = pairingsByInitiator.get(connection);
     if (asInitiator) {
       pairingsByInitiator.delete(connection);
@@ -94,17 +99,9 @@ export function createRelayHub(): RelayHub {
         // The initiator never gossiped its own advert, so relay-inbound would carry no source-device; ignore until it identifies itself.
         return;
       }
-      // A new relay-connect re-pairs: any pairing either side already belongs to is torn down in BOTH directions first, so a stale partner's mapping cannot survive to mis-attribute its relay-data onto the new pipe.
-      const staleAsInitiator = pairingsByInitiator.get(connection);
-      if (staleAsInitiator) {
-        pairingsByInitiator.delete(connection);
-        pairingsByTarget.delete(staleAsInitiator.target);
-      }
-      const staleTarget = pairingsByTarget.get(registration.connection);
-      if (staleTarget) {
-        pairingsByTarget.delete(registration.connection);
-        pairingsByInitiator.delete(staleTarget.initiator);
-      }
+      // A new relay-connect re-pairs totally: every pairing the initiator belongs to (either role) and every pairing the target belongs to (either role) is torn down in both directions first, so a stale partner's mapping cannot survive on a half-dead pipe to mis-attribute its relay-data onto the new one.
+      forgetPairingsOf(connection);
+      forgetPairingsOf(registration.connection);
       await registration.connection.send({
         type: "relay-inbound",
         "source-device": initiatorDevice,
