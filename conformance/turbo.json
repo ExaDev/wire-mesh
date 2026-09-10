@@ -1,0 +1,29 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+
+  // Every task name is the underscore-prefixed one the package.json script actually runs (`_build` runs tsdown; the package's own `build` script is `turbo run _build`). Naming a task "build" here instead would make `pnpm run build`'s own `turbo run build` call resolve straight back to itself -- the recursive-call case Turborepo's docs warn against. The public names stay usable and stay the ones anything outside this package calls.
+  "tasks": {
+    "_build": {
+      "inputs": ["codec.ts", "tsdown.config.ts", "tsconfig.json"],
+      "outputs": ["dist/**"]
+    },
+    "_generate": {
+      "dependsOn": ["_build"],
+      "inputs": ["generate.ts"],
+      "outputs": ["*.v1.json"]
+    },
+    "_test": {
+      "dependsOn": ["_build"],
+      "inputs": ["verify.test.ts", "*.v1.json"]
+    },
+    "_typecheck": {
+      "dependsOn": ["_build"],
+      "inputs": ["**/*.ts", "tsconfig.json", "tsconfig.node.json"]
+    },
+    "_lint": {
+      "dependsOn": ["_build"],
+      "inputs": ["$TURBO_DEFAULT$", "eslint.config.ts"],
+      "outputs": [".eslintcache"]
+    }
+  }
+}
