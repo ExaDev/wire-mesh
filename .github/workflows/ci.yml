@@ -18,7 +18,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version-file: .tool-versions
 
       - name: Regenerate protocol.cddl and confirm it matches the committed file
         working-directory: spec
@@ -73,7 +73,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: '26'
+          node-version-file: .tool-versions
           cache: pnpm
           cache-dependency-path: conformance/pnpm-lock.yaml
 
