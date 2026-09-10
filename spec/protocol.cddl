@@ -8,6 +8,19 @@
 ; can share a mesh without the transport layer needing to understand any of
 ; their content. A domain implementing core/data defines its own entry
 ; schema separately, in its own application-level spec, not here.
+;
+; Durability is opportunistic by design, not guaranteed by the protocol: a
+; peer's own log lives on exactly that one device until some other peer
+; independently chooses to replicate it via data-have/data-request below --
+; there is no mandated minimum replication factor, and there shouldn't be
+; one baked into the wire shape, since how much redundancy is worth the
+; cost is an application/deployment policy question, not a protocol one. A
+; peer that wants durability for its own data doesn't need a new mechanism
+; for it: proactively pushing its own log to its own discovery.cddl
+; mailboxes (already redundant, already devices it trusts to stay current)
+; is the same fan-out this file already defines, just initiated by the
+; owner instead of waited on passively -- a recommended usage pattern of an
+; existing mechanism, not a new one.
 
 ; `peer` names whose log is being asked about; it is deliberately independent
 ; of which connection the frame travels over. A peer that has already
@@ -17,7 +30,7 @@
 ; by holding a direct link to the original author. No wire change is needed
 ; for this; it follows from `peer` already being a plain reference rather
 ; than an implicit "you" per connection. A relay/mailbox device (see
-; discovery.cddl's `mailbox` field) answering on behalf of a currently-offline
+; discovery.cddl's `mailboxes` field) answering on behalf of a currently-offline
 ; peer is the same mechanism, not a separate one: it is simply a replicator
 ; that is reachable when the original author is not.
 data-have-frame    = { type: "data-have", peer: device-id, head-seq: uint }
@@ -37,9 +50,45 @@ data-entries-frame = { type: "data-entries", peer: device-id, from-seq: uint, en
 ; Matrix all independently converged on the same DNS-anchored shape for
 ; exactly this category of problem.
 ;
-; A handle is "<local-part>@<domain>". It resolves out of band (this is never
-; sent as a Frame over an existing mesh connection — resolution is how you
-; get an address to connect to in the first place) via:
+; A handle is "<local-part>@<domain>". Resolving it is a bootstrap problem,
+; not an authorisation one: before any wire-mesh connection exists there is
+; nothing to ask over the wire, so the very first handle-record has to reach
+; a new principal through a channel outside this protocol entirely. Three
+; such channels are recognised, fitting three different reachability
+; situations, and none substitutes for the others:
+;
+; - DNS (below) — unbounded, works for any two principals anywhere on the
+;   internet, requires the publisher to control a domain.
+; - An out-of-band-delivered handle-record — explicit, requires a human or
+;   an existing relationship to actually hand it over, works anywhere.
+; - Local broadcast discovery (mDNS/Bonjour, or an equivalent) — zero
+;   configuration, but only within the same physical/broadcast network
+;   segment. Not itself a Frame carried over an existing mesh connection any
+;   more than the other two are; it is the same handle-record, published via
+;   multicast on the local segment instead of fetched over HTTPS or handed
+;   over out of band. A receiver verifies it exactly the same way regardless
+;   of which of the three channels delivered it — physical proximity is not
+;   a substitute for the signature check below, only for how the bytes
+;   arrived.
+;
+; A device discovered only through local broadcast has no durable roaming
+; story, and this is inherent to what that channel can do, not a gap to
+; close: local broadcast tells you nothing beyond "this device is currently
+; on my network segment", so once it leaves and stops advertising there, its
+; last-known candidates go stale with it. Reconnecting after that depends
+; entirely on what else the device published at discovery time — a DNS
+; handle (its record's candidates kept current the way a dynamic-DNS entry
+; is), or a handle-record replicated through a durably-reachable mailbox
+; device (below) whose own address doesn't change even if the device's
+; does. A device that was only ever seen over local broadcast, with neither
+; of those, cannot be relocated by this protocol once it roams — the same
+; limitation any purely local-discovery mechanism has (a Bonjour-discovered
+; printer that leaves the network is exactly as unreachable) until the two
+; devices share a network segment again or the roaming device reconnects
+; first, using an address the other side already published somewhere
+; durable.
+;
+; DNS resolution:
 ;
 ;   GET https://<domain>/.well-known/wire-mesh/<local-part>
 ;
@@ -47,17 +96,18 @@ data-entries-frame = { type: "data-entries", peer: device-id, from-seq: uint, en
 ; self-certifying — signed by the same key it claims to belong to, the same
 ; pattern Cascade's own announce/DHT candidate records use — specifically so
 ; it stays safe to serve and cache through an untrusted intermediary (a CDN,
-; a cache, an intermediate DNS resolver) rather than requiring the resolver
-; to trust the HTTPS transport alone. A resolver MUST verify
-; device-id == sha256(identity-key.public-key) and MUST check `expires`
-; before trusting a resolved record.
+; a cache, an intermediate DNS resolver, or a multicast listener on a shared
+; network) rather than requiring the resolver to trust the delivery channel
+; itself. A resolver MUST verify device-id == sha256(identity-key.public-key)
+; and MUST check `expires` before trusting a resolved record, regardless of
+; which of the three channels above delivered it.
 
 handle-claims = {
   handle: tstr,                  ; "local-part@domain", matching what was requested
   device-id: device-id,
   identity-key: identity-key,     ; verifier checks sha256(identity-key.public-key) == device-id
   ? candidates: [* wire-candidate],   ; optional connection hints, reusing transport.cddl's candidate shape
-  ? mailbox: device-id,               ; optional: a relay/hub device holding core/data entries on this handle's behalf while it is offline — the same replication mechanism data-domain.cddl describes for fan-out, not a separate delivery system
+  ? mailboxes: [* device-id],          ; optional: relay/hub devices holding core/data entries on this handle's behalf while it is offline — the same replication mechanism data-domain.cddl describes for fan-out, not a separate delivery system. Plural, matching `candidates` below and relay-offer-frame's own `addresses`: nothing about holding a replica is inherently single-device, and naming more than one gives a resolver redundancy (and the owner independence from any single mailbox's uptime) the same way multiple candidates or multiple relay addresses already do.
   issued: uint,     ; Unix ms
   expires: uint,    ; Unix ms — records are refreshed periodically, mirroring a DNS TTL; a resolver must not trust an expired record
 }
@@ -68,24 +118,42 @@ handle-claims = {
 ; token one.
 handle-record = cose-sign1   ; payload = bstr .cbor handle-claims
 
+; Why name mailboxes at all, given data-domain.cddl's own fan-out rule
+; already lets any peer holding a replica answer on the owner's behalf
+; regardless of whether it was ever named anywhere: naming and fan-out solve
+; different problems, not the same one twice. Fan-out cannot bootstrap
+; itself — gossip and data-have/data-request only reach peers a resolver is
+; already connected to, so "who, anywhere, has a copy of this handle's
+; entries" has no answer without a starting point, the identical bootstrap
+; problem the three channels above exist to solve. `mailboxes` is that
+; starting point: a signed, owner-chosen anchor delivered through one of
+; those same channels. It also carries something fan-out alone cannot:
+; naming a device is the owner deliberately vouching that this specific
+; peer has been arranged to stay current and can be trusted to behave
+; correctly while standing in for it, not merely "some peer, holding some
+; version, happened to still have a copy." Once a resolver has reached any
+; named mailbox, ordinary fan-out still takes over exactly as
+; data-domain.cddl describes for discovering further, unnamed replicas — the
+; two layer cleanly rather than competing, and neither makes the other
+; redundant.
+;
 ; Handle ownership without DNS control: a handle-claims record for the same
 ; handle MAY instead be published as an ordinary core/data entry, under the
-; conventional scope { kind: "handle-registry" }, and reached by resolving
-; via a federation link rather than DNS — a mesh's own root identity stands
-; in for a domain, and a federated mesh can then resolve any handle the
-; owning mesh has published, with no third party (no domain, no hosting
-; provider) involved at all. This needs no new frame type: it is the same
-; core/data replication (data-domain.cddl) and the same federation sharing
-; (federation.cddl's share-descriptor) already defined, applied to handle
-; records instead of application content — federation already has to resolve
-; and reach a partner mesh's resources somehow, and a handle registry is
-; simply one more resource a federation link can share. The tradeoff this
-; accepts, deliberately: resolvability is bounded to the owning mesh plus
-; whatever it is federated with, not the whole internet unconditionally —
-; DNS remains the only path for genuinely unbounded, internet-wide discovery.
+; conventional scope { kind: "handle-registry" }, and read by anyone holding
+; a valid capability token scoped to that registry — an ordinary grant,
+; delegated through however many hops trace back to the registry owner's own
+; root identity (see tokens.cddl's capability-scope comment), not membership
+; in any federation-specific relationship. This needs no new frame type: it
+; is the same core/data replication (data-domain.cddl) already defined,
+; applied to handle records instead of application content, gated the same
+; way every other core/data resource already is. The tradeoff this accepts,
+; deliberately: resolvability is bounded to whoever holds a valid token for
+; the registry, not the whole internet unconditionally — DNS remains the
+; only path for genuinely unbounded, internet-wide discovery with no prior
+; relationship required at all.
 ;
 ; A fully decentralised, third-party-free alternative with unbounded (not
-; federation-scoped) reach — e.g. a DHT keyed by a hash of the handle string,
+; token-gated) reach — e.g. a DHT keyed by a hash of the handle string,
 ; mirroring Cascade's own Mainline DHT precedent — was considered and
 ; deliberately deferred, not built: nothing else in this protocol needs a
 ; DHT, so building one solely for this would be speculative generality
@@ -123,66 +191,54 @@ exec-session-info = { session: stream-session, kind: "pty" / "proc", ? argv: [* 
 ; A manage-response-frame answering exec.list carries manage-ok extended with
 ; `sessions: [* exec-session-info]`, using manage-ok's own open {* tstr => any}
 ; tail rather than a dedicated result type.
-; core/federation — selective, explicit sharing between independently
-; operated meshes, distinct from ordinary intra-mesh relay. No Cascade
-; precedent exists for this; it is designed as its own capability domain
-; rather than a separate connection type, so it reuses Handshake negotiation,
-; the Frame choice, and capability-scope instead of inventing a parallel
-; mechanism. Generalises agent-comms' own existing fed_handshake/fed_room_*
-; messages past one specific application.
+; core/federation — retired as a distinct frame domain. This file
+; deliberately defines no rules; it exists so the design reasoning behind
+; the removal is discoverable exactly where a reader would look for the
+; mechanism that used to live here. `core-domain-name` in handshake.cddl
+; still reserves the "core/federation" string (append-only, never renumbered
+; or reused, per registry/core-domains.md's own convention) but no frames
+; are defined for it; a peer must never advertise or negotiate it.
 ;
-; Two designated gateway devices, one per mesh, negotiate core/federation at
-; Handshake like any other domain, then speak these frames on that
-; connection.
-
-mesh-id = tstr   ; a human-chosen or hash-derived identifier for an independently-operated mesh; opaque, not required to be device-id-shaped
-
-federation-link-request-frame = {
-  type: "federation-link-request",
-  local-mesh: mesh-id,
-  local-name: tstr,
-  offered-shares: [* share-descriptor],
-}
-
-federation-link-accept-frame = {
-  type: "federation-link-accept",
-  remote-mesh: mesh-id,
-  remote-name: tstr,
-  accepted-shares: [* share-descriptor],
-}
-
-federation-link-reject-frame = { type: "federation-link-reject", reason: tstr }
-
-; What's shared: reuses capability-scope so "a room path" and "a folder path"
-; are the same generic concept federation already needs elsewhere in this
-; schema.
-share-descriptor = {
-  domain: domain-id,
-  resource: capability-scope,
-  direction: "inbound" / "outbound" / "bidirectional",
-}
-
-; Renegotiate shares after the initial link — add or remove a room later
-; without tearing down the whole federation link.
-federation-share-frame   = { type: "federation-share", share: share-descriptor }
-federation-unshare-frame = { type: "federation-unshare", share: share-descriptor }
-
-; Once a share is accepted, content belonging to that shared resource is
-; forwarded across the link wrapped in this envelope — deliberately
-; content-aware and resource-scoped, unlike relay-data-frame's opaque byte
-; pipe. That is the actual distinction between federation and ordinary
-; intra-mesh relay: relay-data-frame is payload-blind NAT-traversal plumbing;
-; federation-envelope-frame is deliberate, selective, resource-scoped
-; cross-mesh sharing. origin-device is carried explicitly because the link's
-; own peer identity is the gateway device, not the device inside the remote
-; mesh that originated the content.
-federation-envelope-frame = {
-  type: "federation-envelope",
-  origin-mesh: mesh-id,
-  origin-device: device-id,
-  resource: capability-scope,
-  inner: bstr,   ; .cbor frame — a full inner Frame value, CBOR-encoded and embedded
-}
+; The original design modelled cross-mesh sharing as its own bilateral link
+; protocol: two designated gateway devices, one per mesh, negotiated a
+; mesh-scoped `federation-link-request`/`accept`, declared coarse
+; `share-descriptor`s (domain + resource + direction), and forwarded content
+; in a dedicated `federation-envelope-frame`. On review this conflated two
+; problems that were already solved separately, elsewhere in this schema,
+; and didn't need a third mechanism bolted on top:
+;
+; - Reachability — how do two principals with no prior relationship even
+;   find and connect to each other — is discovery.cddl's job (DNS-anchored
+;   handle resolution, an out-of-band-delivered handle-record, or local
+;   broadcast discovery), not a job for a link-negotiation frame.
+; - Authorisation — what a given bearer is allowed to do or see once
+;   connected — is tokens.cddl's job (capability tokens, signed,
+;   delegatable, narrowing-only, revocable). A federation-link-accept and a
+;   share-descriptor added no security property a signed capability token,
+;   scoped to the resource in question and handed to a bearer outside the
+;   issuer's own group, didn't already provide on its own: the token's own
+;   signature *is* the explicit, auditable, bilateral act of agreement that
+;   the link-negotiation frames were redundantly trying to represent again.
+;
+; What is lost by removing the dedicated frames, named rather than left
+; implicit: the coarse, wire-visible "here is what's declared to cross this
+; boundary" allowlist a share-descriptor gave you for free, ahead of and
+; independent from per-bearer token verification. Without it, "what's
+; allowed to cross" is answered purely by which tokens exist and verify —
+; correct, but no longer inspectable as a standing, pre-declared fact on the
+; wire. That trade was made deliberately: mesh-id and the gateway-device
+; role it implied were themselves the more artificial restriction (ordinary
+; capability-scope, per tokens.cddl, already expresses "a node", "a group",
+; or what would colloquially be called "a mesh" as the same kind of thing;
+; scoping the sharing mechanism to whole meshes only was never load-bearing
+; for any property federation existed to provide).
+;
+; Cross-scope sharing today: a resource owner mints a capability token
+; scoped to whatever `core/*` resource (or, per discovery.cddl, a
+; `handle-registry` entry) it wants to expose, and hands it to a bearer
+; outside its own group by whatever channel already gets a token to a
+; bearer — the same mechanism used for every other capability grant in this
+; schema, nothing federation-specific about it.
 ; The top-level Frame choice. This is the schema functioning as its own type
 ; registry: a frame's kind is expressed by CDDL's own tagged-union mechanism,
 ; not a separate external [type][body] byte header the way XDR-based
@@ -210,6 +266,7 @@ $frame-variant /= relay-offer-frame
 $frame-variant /= relay-connect-frame
 $frame-variant /= relay-data-frame
 $frame-variant /= relay-inbound-frame
+$frame-variant /= coordinator-frame
 $frame-variant /= manage-request-frame
 $frame-variant /= manage-response-frame
 $frame-variant /= revocation-announce-frame
@@ -219,12 +276,6 @@ $frame-variant /= stream-end-frame
 $frame-variant /= data-have-frame
 $frame-variant /= data-request-frame
 $frame-variant /= data-entries-frame
-$frame-variant /= federation-link-request-frame
-$frame-variant /= federation-link-accept-frame
-$frame-variant /= federation-link-reject-frame
-$frame-variant /= federation-share-frame
-$frame-variant /= federation-unshare-frame
-$frame-variant /= federation-envelope-frame
 
 frame = $frame-variant
 ; Handshake and the domain registry.
@@ -245,6 +296,9 @@ domain-id = core-domain-name / namespaced-domain-id / private-use-domain-id
 
 ; Spec-owned, append-only — see registry/core-domains.md. A retired entry is
 ; marked retired there, never renumbered or reused for something else.
+; "core/federation" is retired: no frames are defined for it (see
+; federation.cddl) and a peer must never advertise or negotiate it; the
+; string itself stays reserved rather than becoming available for reuse.
 core-domain-name = "core/management" / "core/exec" / "core/data" / "core/federation"
 
 ; "<registrant>/<local-name>", where uniqueness comes from the registrant
@@ -273,6 +327,21 @@ handshake-frame = {
 ; an identical key) was a bug found independently in both Cascade and
 ; agent-comms; this rule exists to make the correct derivation the only one
 ; representable.
+;
+; There is deliberately no key-rotation or recovery mechanism in this
+; protocol: identity is bare public-key hashing with no CA, so losing a
+; device's private key permanently orphans everything rooted at it -- no
+; new tokens or revocations can ever be issued under that identity again,
+; though already-signed tokens stay verifiable until their own expiry (see
+; tokens.cddl). Adding recovery machinery to the wire protocol itself would
+; be real scope and complexity this deliberately minimal identity layer
+; doesn't take on. The mitigation that already exists with no protocol
+; change needed: mint a scoped, long-lived capability token delegating
+; recovery-relevant authority to a separate, offline-stored backup identity
+; ahead of time, before it's ever needed -- ordinary delegation
+; (tokens.cddl), used as an operational pattern rather than a protocol
+; feature, the same way an offline root-CA backup key is operational
+; practice, not something X.509 itself specifies.
 
 identity-key = {
   alg: int,          ; COSE algorithm identifier (RFC 9053), e.g. -7 ES256, -8 EdDSA
@@ -311,7 +380,32 @@ manage-response-frame = { type: "manage-response", request-id: uint, outcome: ma
 ; Revocation — new, not present in Cascade's frozen set. Gossiped revocation
 ; entries let a peer check a token against a shared revocation view without
 ; a synchronous lookup against the issuer for every use of the token.
-revocation-entry = { token-id: bstr, revoked-at: uint }
+;
+; Self-certifying, the same COSE_Sign1 pattern as capability-token and
+; handle-record, deliberately: a bare, unsigned {token-id, revoked-at} pair
+; would let any peer falsely announce any other peer's valid token as
+; revoked with no attribution at all, a real denial-of-service vector this
+; closes rather than merely documents. issuer-key travels inside the signed
+; payload for the same reason it does in token-claims — self-certifying, no
+; prior contact with the issuer needed to verify the claim, only the claim
+; itself.
+;
+; A verifier MUST check revocation-claims.issuer against the *token's own*
+; issuer field, not merely that some signature verifies — only a token's
+; own issuer may revoke it. A verifier walking a token's parent chain (see
+; tokens.cddl's `parent` field) MUST check every ancestor's own token-id
+; against the revocation view, not only the leaf token's: revoking one
+; ancestor thereby revokes every token delegated beneath it, without
+; needing to individually re-revoke each descendant. Both are verifier
+; obligations, not something CDDL itself can enforce, the same way
+; delegation's narrowing rule is.
+revocation-claims = {
+  token-id: bstr,
+  issuer: device-id,
+  issuer-key: identity-key,   ; verifier checks sha256(issuer-key.public-key) == issuer
+  revoked-at: uint,
+}
+revocation-entry = cose-sign1   ; payload = bstr .cbor revocation-claims
 revocation-announce-frame = { type: "revocation-announce", entries: [* revocation-entry] }
 ; The generic streaming/backpressure pattern — reusable by any capability
 ; domain that carries a live byte stream (core/exec's stdio today; a future
@@ -368,10 +462,17 @@ namespaced-capability = tstr .regexp "[a-z0-9.-]+/[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]
 private-use-capability = tstr .regexp "x-[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+"
 
 ; A hierarchical scope string. "kind" is open on purpose: "node" and "folder"
-; are Cascade's own scopes; "room" and "org" are agent-comms'; "handle-registry"
-; is discovery.cddl's federation-scoped handle-resolution alternative to DNS;
-; a future application mints its own kind rather than needing this schema to
-; change.
+; are Cascade's own scopes; "room" and "org" are agent-comms'; "group" is a
+; person's, team's, or organisation's own set of owned devices — ownership is
+; not a separate wire concept, it is capability-token delegation targeting
+; this one more scope kind, the same mechanism as every other grant. What
+; would colloquially be called "a mesh" is not a distinct kind either: it is
+; simply the largest, root-level "group" a set of devices happens to share —
+; there is no wire-level membership list or identifier for it (see README's
+; discussion of why mesh membership is an emergent property of live
+; connectivity, not an asserted one). "handle-registry" is discovery.cddl's
+; token-gated handle-resolution alternative to DNS. A future application
+; mints its own kind rather than needing this schema to change.
 capability-scope = {
   kind: tstr,
   ? path: tstr,   ; absent means the kind's own whole-scope root
@@ -415,7 +516,7 @@ token-claims = {
   scope: capability-scope,
   expires: uint,               ; Unix ms
   ? not-before: uint,
-  ? parent: bstr,               ; bstr .cbor capability-token — a fully self-contained, nested COSE_Sign1 of the parent token; the recursive delegation chain
+  ? parent: bstr,               ; bstr .cbor capability-token — a fully self-contained, nested COSE_Sign1 of the parent token; the recursive delegation chain. A verifier walking this chain MUST also check every ancestor's own token-id against the revocation view (management.cddl's revocation-entry) -- revoking one ancestor revokes everything delegated beneath it, not just a leaf's own token-id.
   * tstr => any,                ; forward-compatible extension claims
 }
 
@@ -462,8 +563,29 @@ observed-address-frame = { type: "observed-address", address: tstr }
 ; traffic as an opaque, unreadable byte pipe. The relay never holds the keys
 ; to decrypt what it forwards — relay-data-frame's payload is ciphertext
 ; established one layer above the transport, not something this frame
-; interprets.
+; interprets. Who is allowed to use a given relay as a service is
+; deliberately not part of this shape: relay-connect-frame carries no
+; capability-token field, so an operator that wants to gate relay access
+; (rather than run an open relay) enforces it the same way any other
+; behaviour is gated in this schema — an ordinary core/management verb
+; checked before honouring subsequent relay frames on that connection, not a
+; constraint this frame's own fields express.
 relay-offer-frame   = { type: "relay-offer", addresses: [* tstr] }
 relay-connect-frame = { type: "relay-connect", target-device: device-id }
 relay-data-frame    = { type: "relay-data", payload: bstr }
 relay-inbound-frame = { type: "relay-inbound", source-device: device-id }
+
+; Coordinator election — a lightweight, gossiped claim to the introduction/
+; rendezvous role among whichever peers are presently reachable (there is no
+; membership list to scope this to: "the mesh" is the live connected
+; component of the transport graph, nothing more, so this frame is simply
+; gossiped the same way peer-advert already is, and reaches exactly the
+; peers that are reachable). `term` is a monotonically increasing epoch a
+; peer raises when claiming the role; a higher term always supersedes a
+; lower one, and two simultaneous claims at equal terms are broken by lowest
+; device-id — a verifier/receiver obligation, not something CDDL itself can
+; enforce, the same way capability-token delegation's narrowing rule is.
+; This gives the rendezvous role the same crash-recovery property a
+; port-race coordinator already has (any live peer can take over) without
+; relying on OS-level port contention to do the electing.
+coordinator-frame = { type: "coordinator", term: uint, coordinator: device-id, ? capacity-hint: uint }
