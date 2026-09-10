@@ -1,33 +1,46 @@
-// The Worker entry: a public, always-on hub node. WebSocket upgrades on any path become mesh connections fed through the WebSocket transport adapter into the relay hub; everything else gets a plain health response. State is per-isolate (module scope), which is the standard shape for a reference Worker -- the registry lives in the relay hub and needs no bindings, so no KV/Durable-Object configuration appears in wrangler.toml yet.
+// The Worker entry. The Durable Object class must be exported from this entrypoint file for wrangler to bind it (wrangler.toml names this export), so it is defined here directly rather than re-exported from a sibling module. A plain Worker's request context cannot host the hub's long-lived per-connection loops -- workerd's hang detection cancels any request whose promise chain parks on a pure-JS waiter (the pull-based receive() iteration), which is exactly what the relay loop does; a Durable Object is the documented home for that shape, its lifetime tied to the accepted WebSockets rather than to a single fetch. The DO keeps connections alive for its own lifetime; the hibernation API (state.acceptWebSocket + webSocketMessage handlers) is the idle-cost follow-up noted in README.md, not a correctness requirement.
 
-import { createRelayHub } from "./hub.js";
-import { createWebSocketTransport } from "./adapters/websocket-transport.js";
+import { DurableObject } from "cloudflare:workers";
+import { createRelayHub, type RelayHub } from "./hub.js";
+import { wrapWebSocket } from "./adapters/websocket-transport.js";
 
-const hub = createRelayHub();
-const { transport, acceptPair } = createWebSocketTransport();
+export function healthResponse(): Response {
+  return Response.json({
+    ok: true,
+    node: "wire-mesh-cloudflare-hub",
+    roles: ["relay"],
+  });
+}
 
-// A Worker has no listener to bind; registering the connection handler through the port keeps the hub driven entirely by the transport contract, with acceptPair below as the ingress the runtime provides instead.
-void transport.listen("wire-mesh-hub", (connection) => {
-  void hub.handleConnection(connection);
-});
+export class RelayHubDurableObject extends DurableObject<unknown> {
+  private readonly hub: RelayHub = createRelayHub();
+
+  fetch(request: Request): Response {
+    if (request.headers.get("Upgrade") !== "websocket") {
+      // The Worker router already answers non-WebSocket requests itself; this covers only a malformed upgrade routed here anyway.
+      return healthResponse();
+    }
+    const pair = new WebSocketPair();
+    pair[1].accept();
+    const connection = wrapWebSocket(pair[1]);
+    // Drives the relay loop for this connection until it closes; handleConnection treats a receive rejection as disconnect internally, so there is no rejection to surface here.
+    void this.hub.handleConnection(connection);
+    return new Response(null, { status: 101, webSocket: pair[0] });
+  }
+}
+
+interface Env {
+  HUB: DurableObjectNamespace<RelayHubDurableObject>;
+}
+
+const HUB_INSTANCE_NAME = "relay-hub";
 
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     if (request.headers.get("Upgrade") === "websocket") {
-      const pair = new WebSocketPair();
-      acceptPair(pair);
-      return Promise.resolve(
-        new Response(null, { status: 101, webSocket: pair[0] }),
-      );
+      const stub = env.HUB.get(env.HUB.idFromName(HUB_INSTANCE_NAME));
+      return stub.fetch(request);
     }
-    return Promise.resolve(
-      Response.json({
-        ok: true,
-        node: "wire-mesh-cloudflare-hub",
-        roles: ["relay"],
-      }),
-    );
+    return healthResponse();
   },
-} satisfies {
-  fetch: (request: Request) => Promise<Response>;
-};
+} satisfies ExportedHandler<Env>;
