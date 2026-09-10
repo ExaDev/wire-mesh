@@ -15,8 +15,9 @@
 //!   whose order is pinned by tests, and mixed typed-plus-tail maps
 //!   through [`value::CdeMapBuilder`].
 //! - **Strict decode** — unknown keys, wrong arity, indefinite lengths,
-//!   floats, tags, duplicate keys, non-32-byte device-ids, bad enum
-//!   literals, and trailing bytes are all rejected, so non-canonical
+//!   floats, tags, duplicate keys, unsorted keys, non-minimal heads,
+//!   non-32-byte device-ids, bad enum literals, and trailing bytes are
+//!   all rejected, so non-canonical
 //!   input cannot decode only to re-encode differently.
 //!
 //! The crate is `alloc`-only with no async, crypto, or serde dependencies:

@@ -70,12 +70,12 @@ impl PtySpawn {
         let mut rows: Option<u64> = None;
         param::decode_params_map(d, PtySpawn::VERB, &mut |d, key| {
             match key {
-                "shell" => shell = Some(strict::text_value(d)?),
-                "argv" => argv = Some(param::decode_string_array(d)?),
-                "cwd" => cwd = Some(strict::text_value(d)?),
-                "env" => env = Some(param::decode_env(d)?),
-                "cols" => cols = Some(strict::uint_value(d)?),
-                "rows" => rows = Some(strict::uint_value(d)?),
+                "shell" => strict::set_once(&mut shell, strict::text_value(d)?)?,
+                "argv" => strict::set_once(&mut argv, param::decode_string_array(d)?)?,
+                "cwd" => strict::set_once(&mut cwd, strict::text_value(d)?)?,
+                "env" => strict::set_once(&mut env, param::decode_env(d)?)?,
+                "cols" => strict::set_once(&mut cols, strict::uint_value(d)?)?,
+                "rows" => strict::set_once(&mut rows, strict::uint_value(d)?)?,
                 other => return Err(DecodeError::UnknownKey(other.to_owned())),
             }
             Ok(())
@@ -123,8 +123,8 @@ impl PtyWrite {
         let mut bytes: Option<Vec<u8>> = None;
         param::decode_params_map(d, PtyWrite::VERB, &mut |d, key| {
             match key {
-                "session" => session = Some(strict::uint_value(d)?),
-                "bytes" => bytes = Some(strict::bytes_value(d)?),
+                "session" => strict::set_once(&mut session, strict::uint_value(d)?)?,
+                "bytes" => strict::set_once(&mut bytes, strict::bytes_value(d)?)?,
                 other => return Err(DecodeError::UnknownKey(other.to_owned())),
             }
             Ok(())
@@ -171,9 +171,9 @@ impl PtyResize {
         let mut rows: Option<u64> = None;
         param::decode_params_map(d, PtyResize::VERB, &mut |d, key| {
             match key {
-                "session" => session = Some(strict::uint_value(d)?),
-                "cols" => cols = Some(strict::uint_value(d)?),
-                "rows" => rows = Some(strict::uint_value(d)?),
+                "session" => strict::set_once(&mut session, strict::uint_value(d)?)?,
+                "cols" => strict::set_once(&mut cols, strict::uint_value(d)?)?,
+                "rows" => strict::set_once(&mut rows, strict::uint_value(d)?)?,
                 other => return Err(DecodeError::UnknownKey(other.to_owned())),
             }
             Ok(())
@@ -218,8 +218,8 @@ impl PtyKill {
         let mut signal: Option<i64> = None;
         param::decode_params_map(d, PtyKill::VERB, &mut |d, key| {
             match key {
-                "session" => session = Some(strict::uint_value(d)?),
-                "signal" => signal = Some(strict::int_value(d)?),
+                "session" => strict::set_once(&mut session, strict::uint_value(d)?)?,
+                "signal" => strict::set_once(&mut signal, strict::int_value(d)?)?,
                 other => return Err(DecodeError::UnknownKey(other.to_owned())),
             }
             Ok(())
@@ -275,9 +275,9 @@ impl ProcSpawn {
         let mut env: Option<Env> = None;
         param::decode_params_map(d, ProcSpawn::VERB, &mut |d, key| {
             match key {
-                "argv" => argv = Some(param::decode_string_array(d)?),
-                "cwd" => cwd = Some(strict::text_value(d)?),
-                "env" => env = Some(param::decode_env(d)?),
+                "argv" => strict::set_once(&mut argv, param::decode_string_array(d)?)?,
+                "cwd" => strict::set_once(&mut cwd, strict::text_value(d)?)?,
+                "env" => strict::set_once(&mut env, param::decode_env(d)?)?,
                 other => return Err(DecodeError::UnknownKey(other.to_owned())),
             }
             Ok(())
@@ -321,8 +321,8 @@ impl ProcSignal {
         let mut signal: Option<i64> = None;
         param::decode_params_map(d, ProcSignal::VERB, &mut |d, key| {
             match key {
-                "session" => session = Some(strict::uint_value(d)?),
-                "signal" => signal = Some(strict::int_value(d)?),
+                "session" => strict::set_once(&mut session, strict::uint_value(d)?)?,
+                "signal" => strict::set_once(&mut signal, strict::int_value(d)?)?,
                 other => return Err(DecodeError::UnknownKey(other.to_owned())),
             }
             Ok(())
@@ -362,7 +362,7 @@ impl ProcKill {
         let mut session: Option<u64> = None;
         param::decode_params_map(d, ProcKill::VERB, &mut |d, key| {
             match key {
-                "session" => session = Some(strict::uint_value(d)?),
+                "session" => strict::set_once(&mut session, strict::uint_value(d)?)?,
                 other => return Err(DecodeError::UnknownKey(other.to_owned())),
             }
             Ok(())
@@ -439,16 +439,17 @@ impl Encode<()> for ExecSessionInfo {
     ) -> Result<(), minicbor::encode::Error<W::Error>> {
         let len = 2 + usize::from(self.argv.is_some()) + usize::from(self.cwd.is_some());
         e.map(len as u64)?;
-        if let Some(cwd) = &self.cwd {
-            e.str("cwd")?.str(cwd)?;
-        }
-        e.str("kind")?.str(self.kind.as_str())?;
+        // CDE key order: the three 5-byte keys bytewise ("argv" < "cwd" < "kind"), then the 9-byte "session".
         if let Some(argv) = &self.argv {
             e.str("argv")?.array(argv.len() as u64)?;
             for arg in argv {
                 e.str(arg)?;
             }
         }
+        if let Some(cwd) = &self.cwd {
+            e.str("cwd")?.str(cwd)?;
+        }
+        e.str("kind")?.str(self.kind.as_str())?;
         e.str("session")?.u64(self.session.0)?;
         e.ok()
     }
@@ -461,14 +462,14 @@ impl Decode<'_, ()> for ExecSessionInfo {
 }
 
 pub(crate) fn exec_session_info_from(d: &mut Decoder<'_>) -> Result<ExecSessionInfo, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut session: Option<u64> = None;
     let mut kind: Option<ExecSessionKind> = None;
     let mut argv: Option<Vec<String>> = None;
     let mut cwd: Option<String> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
-            "session" => session = Some(strict::uint_value(d)?),
+    while let Some(key) = map.next_key(d)? {
+        match key {
+            "session" => strict::set_once(&mut session, strict::uint_value(d)?)?,
             "kind" => {
                 let found = strict::text_value(d)?;
                 kind = Some(match found.as_str() {
@@ -482,8 +483,8 @@ pub(crate) fn exec_session_info_from(d: &mut Decoder<'_>) -> Result<ExecSessionI
                     }
                 });
             }
-            "argv" => argv = Some(param::decode_string_array(d)?),
-            "cwd" => cwd = Some(strict::text_value(d)?),
+            "argv" => strict::set_once(&mut argv, param::decode_string_array(d)?)?,
+            "cwd" => strict::set_once(&mut cwd, strict::text_value(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
@@ -509,10 +510,9 @@ pub(crate) mod param {
         expected_verb: &'static str,
         consume: &mut dyn FnMut(&mut Decoder<'b>, &str) -> Result<(), DecodeError>,
     ) -> Result<(), DecodeError> {
-        let n = strict::definite_map(d)?;
+        let mut map = strict::MapDecoder::new(d)?;
         let mut saw_verb = false;
-        for _ in 0..n {
-            let key = strict::text_key(d)?;
+        while let Some(key) = map.next_key(d)? {
             if key == "verb" {
                 strict::literal(d, expected_verb)?;
                 saw_verb = true;
@@ -607,6 +607,6 @@ mod tests {
             .windows(7)
             .position(|w| w == b"session")
             .expect("session");
-        assert!(kind_at < argv_at && argv_at < session_at);
+        assert!(argv_at < kind_at && kind_at < session_at);
     }
 }

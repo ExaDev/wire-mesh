@@ -55,13 +55,13 @@ impl Decode<'_, ()> for IdentityKey {
 }
 
 pub(crate) fn identity_key_from(d: &mut Decoder<'_>) -> Result<IdentityKey, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut alg: Option<i64> = None;
     let mut public_key: Option<Vec<u8>> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
-            "alg" => alg = Some(strict::int_value(d)?),
-            "public-key" => public_key = Some(strict::bytes_value(d)?),
+    while let Some(key) = map.next_key(d)? {
+        match key {
+            "alg" => strict::set_once(&mut alg, strict::int_value(d)?)?,
+            "public-key" => strict::set_once(&mut public_key, strict::bytes_value(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
@@ -159,15 +159,15 @@ impl Decode<'_, ()> for PeerIdentity {
 }
 
 pub(crate) fn peer_identity_from(d: &mut Decoder<'_>) -> Result<PeerIdentity, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut device_id: Option<DeviceId> = None;
     let mut identity_key: Option<IdentityKey> = None;
     let mut certificate: Option<Vec<u8>> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
-            "device-id" => device_id = Some(device_id_from(d)?),
-            "identity-key" => identity_key = Some(identity_key_from(d)?),
-            "certificate" => certificate = Some(strict::bytes_value(d)?),
+    while let Some(key) = map.next_key(d)? {
+        match key {
+            "device-id" => strict::set_once(&mut device_id, device_id_from(d)?)?,
+            "identity-key" => strict::set_once(&mut identity_key, identity_key_from(d)?)?,
+            "certificate" => strict::set_once(&mut certificate, strict::bytes_value(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
@@ -181,6 +181,20 @@ pub(crate) fn peer_identity_from(d: &mut Decoder<'_>) -> Result<PeerIdentity, De
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn identity_key_rejects_duplicate_typed_key() {
+        // { "alg": -7, "alg": -8 }: the repeated key is rejected as a
+        // duplicate rather than silently taking the last value.
+        let mut bytes = vec![0xa2, 0x63];
+        bytes.extend_from_slice(b"alg");
+        bytes.push(0x26);
+        bytes.push(0x63);
+        bytes.extend_from_slice(b"alg");
+        bytes.push(0x27);
+        let mut d = Decoder::new(&bytes);
+        assert_eq!(identity_key_from(&mut d), Err(DecodeError::DuplicateKey));
+    }
 
     fn round_trip<T>(value: T)
     where

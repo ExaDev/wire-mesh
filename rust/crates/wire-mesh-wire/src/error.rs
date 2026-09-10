@@ -6,9 +6,10 @@ use core::fmt;
 ///
 /// Decoding is strict by design: it rejects unknown map keys, wrong map
 /// arity, indefinite-length items (RFC 8949 4.2 core deterministic encoding
-/// requires definite lengths), floats, tags, non-32-byte device-ids, bad
-/// enum literals, duplicate map keys, and trailing bytes after a
-/// top-level item.
+/// requires definite lengths), non-minimal head widths, map keys out of CDE
+/// order (including duplicates), floats, tags, non-32-byte device-ids, bad
+/// enum literals, and trailing bytes after a top-level item — so any input
+/// that decodes also re-encodes to the identical bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DecodeError {
     /// A map key that no CDDL rule in the corresponding family defines.
@@ -21,6 +22,12 @@ pub enum DecodeError {
     IndefiniteLength,
     /// A duplicate key within a single map.
     DuplicateKey,
+    /// A head (integer, string, bytes, map, or array) not in shortest CBOR
+    /// form, which RFC 8949 4.2.1 core deterministic encoding requires.
+    NonMinimalHead,
+    /// Map keys not in RFC 8949 4.2.1 core deterministic order
+    /// (encoded-length first, then bytewise).
+    UnsortedMapKeys,
     /// A value of the wrong CBOR type or shape for the field.
     UnexpectedType {
         expected: &'static str,
@@ -60,6 +67,18 @@ impl fmt::Display for DecodeError {
                 )
             }
             DecodeError::DuplicateKey => write!(f, "duplicate map key"),
+            DecodeError::NonMinimalHead => {
+                write!(
+                    f,
+                    "head not in shortest form (CDE requires minimal-width encodings)"
+                )
+            }
+            DecodeError::UnsortedMapKeys => {
+                write!(
+                    f,
+                    "map keys not in CDE order (encoded-length first, then bytewise)"
+                )
+            }
             DecodeError::UnexpectedType { expected, found } => {
                 write!(f, "expected {expected}, found {found}")
             }

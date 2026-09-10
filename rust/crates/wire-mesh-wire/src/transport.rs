@@ -36,9 +36,9 @@ impl Decode<'_, ()> for PingFrame {
 }
 
 pub(crate) fn ping_from(d: &mut Decoder<'_>) -> Result<PingFrame, DecodeError> {
-    let n = strict::definite_map(d)?;
-    for _ in 0..n {
-        match strict::text_key(d)? {
+    let mut map = strict::MapDecoder::new(d)?;
+    while let Some(key) = map.next_key(d)? {
+        match key {
             "type" => strict::literal(d, PingFrame::TYPE)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
@@ -79,12 +79,12 @@ impl Decode<'_, ()> for CloseFrame {
 }
 
 pub(crate) fn close_from(d: &mut Decoder<'_>) -> Result<CloseFrame, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut reason: Option<String> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
+    while let Some(key) = map.next_key(d)? {
+        match key {
             "type" => strict::literal(d, CloseFrame::TYPE)?,
-            "reason" => reason = Some(strict::text_value(d)?),
+            "reason" => strict::set_once(&mut reason, strict::text_value(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
@@ -127,13 +127,13 @@ impl Decode<'_, ()> for PeerAdvert {
 }
 
 pub(crate) fn peer_advert_from(d: &mut Decoder<'_>) -> Result<PeerAdvert, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut device: Option<DeviceId> = None;
     let mut addresses: Option<Vec<String>> = None;
     let mut snapshot_seconds: Option<i64> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
-            "device" => device = Some(device_id_from(d)?),
+    while let Some(key) = map.next_key(d)? {
+        match key {
+            "device" => strict::set_once(&mut device, device_id_from(d)?)?,
             "addresses" => {
                 let count = strict::definite_array(d)?;
                 let mut list = Vec::new();
@@ -142,7 +142,7 @@ pub(crate) fn peer_advert_from(d: &mut Decoder<'_>) -> Result<PeerAdvert, Decode
                 }
                 addresses = Some(list);
             }
-            "snapshot-seconds" => snapshot_seconds = Some(strict::int_value(d)?),
+            "snapshot-seconds" => strict::set_once(&mut snapshot_seconds, strict::int_value(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
@@ -187,10 +187,10 @@ impl Decode<'_, ()> for GossipFrame {
 }
 
 pub(crate) fn gossip_from(d: &mut Decoder<'_>) -> Result<GossipFrame, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut peers: Option<Vec<PeerAdvert>> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
+    while let Some(key) = map.next_key(d)? {
+        match key {
             "type" => strict::literal(d, GossipFrame::TYPE)?,
             "peers" => {
                 let count = strict::definite_array(d)?;
@@ -282,20 +282,20 @@ impl Decode<'_, ()> for WireCandidate {
 }
 
 pub(crate) fn wire_candidate_from(d: &mut Decoder<'_>) -> Result<WireCandidate, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut address: Option<String> = None;
     let mut kind: Option<CandidateKind> = None;
     let mut priority: Option<u64> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
-            "address" => address = Some(strict::text_value(d)?),
+    while let Some(key) = map.next_key(d)? {
+        match key {
+            "address" => strict::set_once(&mut address, strict::text_value(d)?)?,
             "kind" => {
                 kind = Some(
                     CandidateKind::decode(d, &mut ())
                         .map_err(|e| DecodeError::Malformed(e.to_string()))?,
                 )
             }
-            "priority" => priority = Some(strict::uint_value(d)?),
+            "priority" => strict::set_once(&mut priority, strict::uint_value(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
@@ -339,10 +339,10 @@ impl Decode<'_, ()> for CandidatesFrame {
 }
 
 pub(crate) fn candidates_from(d: &mut Decoder<'_>) -> Result<CandidatesFrame, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut candidates: Option<Vec<WireCandidate>> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
+    while let Some(key) = map.next_key(d)? {
+        match key {
             "type" => strict::literal(d, CandidatesFrame::TYPE)?,
             "candidates" => {
                 let count = strict::definite_array(d)?;
@@ -393,14 +393,14 @@ impl Decode<'_, ()> for SyncPunchFrame {
 }
 
 pub(crate) fn sync_punch_from(d: &mut Decoder<'_>) -> Result<SyncPunchFrame, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut nonce: Option<u64> = None;
     let mut deadline_unix_ms: Option<u64> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
+    while let Some(key) = map.next_key(d)? {
+        match key {
             "type" => strict::literal(d, SyncPunchFrame::TYPE)?,
-            "nonce" => nonce = Some(strict::uint_value(d)?),
-            "deadline-unix-ms" => deadline_unix_ms = Some(strict::uint_value(d)?),
+            "nonce" => strict::set_once(&mut nonce, strict::uint_value(d)?)?,
+            "deadline-unix-ms" => strict::set_once(&mut deadline_unix_ms, strict::uint_value(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
@@ -442,12 +442,12 @@ impl Decode<'_, ()> for ObservedAddressFrame {
 pub(crate) fn observed_address_from(
     d: &mut Decoder<'_>,
 ) -> Result<ObservedAddressFrame, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut address: Option<String> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
+    while let Some(key) = map.next_key(d)? {
+        match key {
             "type" => strict::literal(d, ObservedAddressFrame::TYPE)?,
-            "address" => address = Some(strict::text_value(d)?),
+            "address" => strict::set_once(&mut address, strict::text_value(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
@@ -489,10 +489,10 @@ impl Decode<'_, ()> for RelayOfferFrame {
 }
 
 pub(crate) fn relay_offer_from(d: &mut Decoder<'_>) -> Result<RelayOfferFrame, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut addresses: Option<Vec<String>> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
+    while let Some(key) = map.next_key(d)? {
+        match key {
             "type" => strict::literal(d, RelayOfferFrame::TYPE)?,
             "addresses" => {
                 let count = strict::definite_array(d)?;
@@ -540,12 +540,12 @@ impl Decode<'_, ()> for RelayConnectFrame {
 }
 
 pub(crate) fn relay_connect_from(d: &mut Decoder<'_>) -> Result<RelayConnectFrame, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut target_device: Option<DeviceId> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
+    while let Some(key) = map.next_key(d)? {
+        match key {
             "type" => strict::literal(d, RelayConnectFrame::TYPE)?,
-            "target-device" => target_device = Some(device_id_from(d)?),
+            "target-device" => strict::set_once(&mut target_device, device_id_from(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
@@ -586,12 +586,12 @@ impl Decode<'_, ()> for RelayDataFrame {
 }
 
 pub(crate) fn relay_data_from(d: &mut Decoder<'_>) -> Result<RelayDataFrame, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut payload: Option<Vec<u8>> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
+    while let Some(key) = map.next_key(d)? {
+        match key {
             "type" => strict::literal(d, RelayDataFrame::TYPE)?,
-            "payload" => payload = Some(strict::bytes_value(d)?),
+            "payload" => strict::set_once(&mut payload, strict::bytes_value(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
@@ -630,12 +630,12 @@ impl Decode<'_, ()> for RelayInboundFrame {
 }
 
 pub(crate) fn relay_inbound_from(d: &mut Decoder<'_>) -> Result<RelayInboundFrame, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut source_device: Option<DeviceId> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
+    while let Some(key) = map.next_key(d)? {
+        match key {
             "type" => strict::literal(d, RelayInboundFrame::TYPE)?,
-            "source-device" => source_device = Some(device_id_from(d)?),
+            "source-device" => strict::set_once(&mut source_device, device_id_from(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
@@ -688,16 +688,16 @@ impl Decode<'_, ()> for CoordinatorFrame {
 }
 
 pub(crate) fn coordinator_from(d: &mut Decoder<'_>) -> Result<CoordinatorFrame, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut term: Option<u64> = None;
     let mut coordinator: Option<DeviceId> = None;
     let mut capacity_hint: Option<u64> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
+    while let Some(key) = map.next_key(d)? {
+        match key {
             "type" => strict::literal(d, CoordinatorFrame::TYPE)?,
-            "term" => term = Some(strict::uint_value(d)?),
-            "coordinator" => coordinator = Some(device_id_from(d)?),
-            "capacity-hint" => capacity_hint = Some(strict::uint_value(d)?),
+            "term" => strict::set_once(&mut term, strict::uint_value(d)?)?,
+            "coordinator" => strict::set_once(&mut coordinator, device_id_from(d)?)?,
+            "capacity-hint" => strict::set_once(&mut capacity_hint, strict::uint_value(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
@@ -711,6 +711,18 @@ pub(crate) fn coordinator_from(d: &mut Decoder<'_>) -> Result<CoordinatorFrame, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn close_frame_rejects_unsorted_keys() {
+        // { "reason": "b", "type": "close" }: "type" (5 bytes) sorts before
+        // "reason" (7), so reason-first is out of CDE order.
+        let bytes = [
+            0xa2, 0x66, b'r', b'e', b'a', b's', b'o', b'n', 0x61, b'b', 0x64, b't', b'y', b'p',
+            b'e', 0x65, b'c', b'l', b'o', b's', b'e',
+        ];
+        let mut d = Decoder::new(&bytes);
+        assert_eq!(close_from(&mut d), Err(DecodeError::UnsortedMapKeys));
+    }
 
     fn round_trip<T>(value: T) -> Vec<u8>
     where

@@ -88,7 +88,7 @@ impl Decode<'_, ()> for HandleClaims {
 }
 
 pub(crate) fn handle_claims_from(d: &mut Decoder<'_>) -> Result<HandleClaims, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut handle: Option<String> = None;
     let mut device_id: Option<DeviceId> = None;
     let mut identity_key: Option<IdentityKey> = None;
@@ -96,11 +96,13 @@ pub(crate) fn handle_claims_from(d: &mut Decoder<'_>) -> Result<HandleClaims, De
     let mut mailboxes: Option<Vec<DeviceId>> = None;
     let mut issued: Option<u64> = None;
     let mut expires: Option<u64> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
-            "handle" => handle = Some(strict::text_value(d)?),
-            "device-id" => device_id = Some(device_id_from(d)?),
-            "identity-key" => identity_key = Some(crate::identity::identity_key_from(d)?),
+    while let Some(key) = map.next_key(d)? {
+        match key {
+            "handle" => strict::set_once(&mut handle, strict::text_value(d)?)?,
+            "device-id" => strict::set_once(&mut device_id, device_id_from(d)?)?,
+            "identity-key" => {
+                strict::set_once(&mut identity_key, crate::identity::identity_key_from(d)?)?
+            }
             "candidates" => {
                 let count = strict::definite_array(d)?;
                 let mut list = Vec::new();
@@ -117,8 +119,8 @@ pub(crate) fn handle_claims_from(d: &mut Decoder<'_>) -> Result<HandleClaims, De
                 }
                 mailboxes = Some(list);
             }
-            "issued" => issued = Some(strict::uint_value(d)?),
-            "expires" => expires = Some(strict::uint_value(d)?),
+            "issued" => strict::set_once(&mut issued, strict::uint_value(d)?)?,
+            "expires" => strict::set_once(&mut expires, strict::uint_value(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }

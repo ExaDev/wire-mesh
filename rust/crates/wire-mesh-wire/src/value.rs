@@ -62,7 +62,7 @@ pub trait CdeKey {
 /// RFC 8949 4.2.1 core deterministic ordering of two encoded keys:
 /// shorter encoded key first, then bytewise.
 fn cde_cmp(a: &[u8], b: &[u8]) -> core::cmp::Ordering {
-    a.len().cmp(&b.len()).then_with(|| a.cmp(b))
+    crate::strict::cde_order(a, b)
 }
 
 impl CdeKey for String {
@@ -113,17 +113,15 @@ impl HeaderLabel {
     pub fn decode_strict(d: &mut Decoder<'_>) -> Result<Self, DecodeError> {
         match d.datatype().map_err(DecodeError::from_minicbor)? {
             Type::U8 | Type::U16 | Type::U32 | Type::U64 => {
-                let v = d.u64().map_err(DecodeError::from_minicbor)?;
+                let v = crate::strict::uint_value(d)?;
                 i64::try_from(v)
                     .map(HeaderLabel::Int)
                     .map_err(|_| DecodeError::Constraint("header label out of i64 range"))
             }
-            Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::Int => Ok(HeaderLabel::Int(
-                d.i64().map_err(DecodeError::from_minicbor)?,
-            )),
-            Type::String => Ok(HeaderLabel::Text(
-                d.str().map_err(DecodeError::from_minicbor)?.to_owned(),
-            )),
+            Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::Int => {
+                Ok(HeaderLabel::Int(crate::strict::int_value(d)?))
+            }
+            Type::String => Ok(HeaderLabel::Text(crate::strict::text_value(d)?)),
             other => Err(DecodeError::UnexpectedType {
                 expected: "int or tstr header label",
                 found: other.to_string(),
@@ -180,6 +178,16 @@ impl<K: CdeKey, V> CanonicalMap<K, V> {
 
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+
+    /// Remove and return `key`'s value, if present.
+    pub fn remove(&mut self, key: &K) -> Option<V> {
+        let encoded = key.encoded();
+        let idx = self
+            .entries
+            .binary_search_by(|(k, _)| cde_cmp(&k.encoded(), &encoded))
+            .ok()?;
+        Some(self.entries.remove(idx).1)
     }
 
     /// Insert `key`/`value`, keeping CDE order. Errors on a duplicate key.
@@ -340,19 +348,15 @@ impl CborValue {
             }
             Type::Bool => Ok(CborValue::Bool(d.bool().map_err(DecodeError::from_minicbor)?)),
             Type::U8 | Type::U16 | Type::U32 | Type::U64 => {
-                Ok(CborValue::UInt(d.u64().map_err(DecodeError::from_minicbor)?))
+                Ok(CborValue::UInt(crate::strict::uint_value(d)?))
             }
             Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::Int => {
-                Ok(CborValue::Int(d.i64().map_err(DecodeError::from_minicbor)?))
+                Ok(CborValue::Int(crate::strict::int_value(d)?))
             }
-            Type::Bytes => Ok(CborValue::Bytes(
-                d.bytes().map_err(DecodeError::from_minicbor)?.to_vec(),
-            )),
-            Type::String => Ok(CborValue::Text(
-                d.str().map_err(DecodeError::from_minicbor)?.to_owned(),
-            )),
+            Type::Bytes => Ok(CborValue::Bytes(crate::strict::bytes_value(d)?)),
+            Type::String => Ok(CborValue::Text(crate::strict::text_value(d)?)),
             Type::Array => {
-                let n = d.array().map_err(DecodeError::from_minicbor)?.ok_or(DecodeError::IndefiniteLength)?;
+                let n = crate::strict::definite_array(d)?;
                 let mut items = Vec::with_capacity(usize::try_from(n).map_err(|_| DecodeError::Constraint("array too large"))?);
                 for _ in 0..n {
                     items.push(CborValue::decode_strict(d)?);
@@ -360,10 +364,12 @@ impl CborValue {
                 Ok(CborValue::Array(items))
             }
             Type::Map => {
-                let n = d.map().map_err(DecodeError::from_minicbor)?.ok_or(DecodeError::IndefiniteLength)?;
+                let n = crate::strict::definite_map(d)?;
+                let mut order = crate::strict::KeyOrder::new();
                 let mut map = CanonicalMap::new();
                 for _ in 0..n {
                     let key = CborValue::decode_strict(d)?;
+                    order.push(&key.encoded())?;
                     let value = CborValue::decode_strict(d)?;
                     map.insert(key, value)?;
                 }

@@ -204,14 +204,14 @@ impl Decode<'_, ()> for HandshakeFrame {
 }
 
 pub(crate) fn handshake_from(d: &mut Decoder<'_>) -> Result<HandshakeFrame, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut version: Option<u64> = None;
     let mut domains: Option<Vec<DomainId>> = None;
     let mut params: Option<CanonicalMap<String, CborValue>> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
+    while let Some(key) = map.next_key(d)? {
+        match key {
             "type" => strict::literal(d, HandshakeFrame::TYPE)?,
-            "version" => version = Some(strict::uint_value(d)?),
+            "version" => strict::set_once(&mut version, strict::uint_value(d)?)?,
             "domains" => {
                 let count = strict::definite_array(d)?;
                 let mut list = Vec::new();
