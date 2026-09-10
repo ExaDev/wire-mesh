@@ -154,6 +154,13 @@ export function createMeshSession(
     }
   }
 
+  function rejectPendingManageRequests(reason: string): void {
+    for (const pending of pendingManageRequests.values()) {
+      pending.reject(new Error(reason));
+    }
+    pendingManageRequests.clear();
+  }
+
   function buildManageRequest(
     command: ManageCommand,
     scope: Readonly<CapabilityScope>,
@@ -256,6 +263,7 @@ export function createMeshSession(
     if (feedCancelled) {
       return;
     }
+    rejectPendingManageRequests("disconnected before a response arrived");
     if (reconnect !== null && attempt < reconnect.maxAttempts) {
       attempt += 1;
       const currentAttempt = attempt;
@@ -424,6 +432,9 @@ export function createMeshSession(
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
       }
+      rejectPendingManageRequests(
+        "connection closed before a response arrived",
+      );
       if (connection !== null) {
         await connection.close();
       }
