@@ -24,12 +24,16 @@ function writeFrame(socket: Socket, frame: Frame): void {
   socket.write(body);
 }
 
-/** Reassembles length-prefixed CBOR frames from a byte stream, validating each against frameSchema before handing it to a consumer. */
+/** Reassembles length-prefixed CBOR frames from a byte stream, validating each against frameSchema before handing it to a consumer. A body that doesn't even decode as CBOR rejects the receive() iteration and destroys the connection -- hostile wire input is a connection-level failure, surfaced through the Transport port rather than crashing the process or being silently swallowed. */
 function frameReader(socket: Socket): AsyncIterable<Frame> {
   let buffer = Buffer.alloc(0);
   const pending: Frame[] = [];
-  const waiters: ((value: IteratorResult<Frame>) => void)[] = [];
+  const waiters: {
+    resolve: (result: IteratorResult<Frame>) => void;
+    reject: (error: unknown) => void;
+  }[] = [];
   let ended = false;
+  let failure: Error | null = null;
 
   function tryDrain(): void {
     while (buffer.length >= LENGTH_PREFIX_BYTES) {
@@ -41,12 +45,24 @@ function frameReader(socket: Socket): AsyncIterable<Frame> {
       );
       buffer = buffer.subarray(LENGTH_PREFIX_BYTES + bodyLength);
 
-      const decoded: unknown = decode(body, cdeDecodeOptions);
+      let decoded: unknown;
+      try {
+        decoded = decode(body, cdeDecodeOptions);
+      } catch (error) {
+        // socket.destroy takes an Error; the caught value is unknown-typed even though cbor2 only ever throws Errors, so it is rewrapped rather than asserted
+        const connectionError =
+          error instanceof Error
+            ? error
+            : new Error(`frame body failed to decode: ${String(error)}`);
+        failAll(connectionError);
+        socket.destroy(connectionError);
+        return;
+      }
       const result = frameSchema.safeParse(decoded);
       if (result.success) {
         const waiter = waiters.shift();
         if (waiter) {
-          waiter({ value: result.data, done: false });
+          waiter.resolve({ value: result.data, done: false });
         } else {
           pending.push(result.data);
         }
@@ -58,7 +74,16 @@ function frameReader(socket: Socket): AsyncIterable<Frame> {
   function endAll(): void {
     ended = true;
     for (const waiter of waiters.splice(0)) {
-      waiter({ value: undefined, done: true });
+      waiter.resolve({ value: undefined, done: true });
+    }
+  }
+
+  /** Ends the iteration with the connection-level error: pending and future next() calls reject, so a consumer iterating receive() sees the failure where it consumed the stream. */
+  function failAll(error: Error): void {
+    failure = error;
+    ended = true;
+    for (const waiter of waiters.splice(0)) {
+      waiter.reject(error);
     }
   }
 
@@ -68,6 +93,8 @@ function frameReader(socket: Socket): AsyncIterable<Frame> {
   });
   socket.on("end", endAll);
   socket.on("close", endAll);
+  // destroy(error) above re-emits the failure as a socket 'error' event; it's already been delivered to the consumer through the rejected iteration, so this listener exists to stop EventEmitter treating it as a second, unhandled crash
+  socket.on("error", () => undefined);
 
   return {
     [Symbol.asyncIterator]() {
@@ -77,11 +104,14 @@ function frameReader(socket: Socket): AsyncIterable<Frame> {
           if (next !== undefined) {
             return Promise.resolve({ value: next, done: false });
           }
+          if (failure !== null) {
+            return Promise.reject(failure);
+          }
           if (ended) {
             return Promise.resolve({ value: undefined, done: true });
           }
-          return new Promise((resolve) => {
-            waiters.push(resolve);
+          return new Promise((resolve, reject) => {
+            waiters.push({ resolve, reject });
           });
         },
       };
