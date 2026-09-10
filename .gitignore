@@ -5,3 +5,4 @@ node_modules/
 dist/
 !ts/packages/core/dist/
 !ts/packages/core/dist/**
+rust/target/
