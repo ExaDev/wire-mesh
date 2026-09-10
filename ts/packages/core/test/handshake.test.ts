@@ -35,6 +35,25 @@ describe("negotiate", () => {
     expect(result.sharedDomains).toEqual([]);
   });
 
+  it("never negotiates a retired domain, even when both peers advertise it", () => {
+    // core/federation is retired (handshake.cddl): a peer must never advertise or negotiate it. Two buggy peers both advertising it must still not end up speaking it.
+    const result = negotiate(
+      handshake(1, ["core/management", "core/federation"]),
+      handshake(1, ["core/federation", "core/management"]),
+    );
+    expect(result.sharedDomains).toEqual(["core/management"]);
+    expect(result.ok).toBe(true);
+  });
+
+  it("fails when the only shared domain is a retired one", () => {
+    const result = negotiate(
+      handshake(1, ["core/federation"]),
+      handshake(1, ["core/federation"]),
+    );
+    expect(result.sharedDomains).toEqual([]);
+    expect(result.ok).toBe(false);
+  });
+
   it("succeeds when versions and domains both overlap", () => {
     const result = negotiate(
       handshake(1, ["core/management"]),

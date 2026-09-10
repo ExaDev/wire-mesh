@@ -7,11 +7,16 @@ import type {
 /** The highest protocol version this build of core understands. */
 export const SUPPORTED_PROTOCOL_VERSION: ProtocolVersion = 1;
 
+/**
+ * Domain names that must never be negotiated, per handshake.cddl: core/federation is retired (its string stays reserved, never reused) and "a peer must never advertise or negotiate it". Excluded here even if both peers advertise it -- two buggy advertisers must not end up speaking a dead domain.
+ */
+const RETIRED_DOMAINS: readonly DomainId[] = ["core/federation"];
+
 export interface NegotiationResult {
   ok: boolean;
   /** The version both peers will speak for the rest of the session -- the lower of the two offered versions, so a peer never has to understand a frame shape it didn't advertise. */
   version: ProtocolVersion;
-  /** Domains both peers advertised -- the only ones either side may address for the rest of the session. */
+  /** Domains both peers advertised and that are not retired -- the only ones either side may address for the rest of the session. */
   sharedDomains: DomainId[];
 }
 
@@ -23,8 +28,9 @@ export function negotiate(
   remote: HandshakeFrame,
 ): NegotiationResult {
   const version = Math.min(local.version, remote.version);
-  const sharedDomains = local.domains.filter((domain) =>
-    remote.domains.includes(domain),
+  const sharedDomains = local.domains.filter(
+    (domain) =>
+      !RETIRED_DOMAINS.includes(domain) && remote.domains.includes(domain),
   );
   return {
     ok: version >= 1 && sharedDomains.length > 0,
