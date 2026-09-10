@@ -1,0 +1,24 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "extends": ["//"],
+
+  "tasks": {
+    "_build": {
+      // vite build bundles the browser entry (src/main.ts per index.html), resolving the workspace's core package and every npm dependency into static assets under dist/ -- the package's deployable output, servable from any static origin including the hub's.
+      "inputs": ["src/**", "index.html", "vite.config.ts", "tsconfig.json"],
+      "outputs": ["dist/**"]
+    },
+    "_test": {
+      "dependsOn": ["^_build"]
+    },
+    "_typecheck": {
+      "dependsOn": ["^_build"],
+      "inputs": ["**/*.ts", "tsconfig.json", "tsconfig.node.json"]
+    },
+    "_lint": {
+      "dependsOn": ["^_build"],
+      "inputs": ["$TURBO_DEFAULT$", "eslint.config.ts"],
+      "outputs": [".eslintcache"]
+    }
+  }
+}

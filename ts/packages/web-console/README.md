@@ -1,0 +1,37 @@
+# @exadev/wire-mesh-web-console
+
+The browser client for wire-mesh: a client of *any* node, not just the hub. It connects over WebSocket to a node's endpoint, drives the connection through core's Transport port via a browser-side adapter, and renders what the node has to show. Built as static assets (vite), servable from any static origin — including the hub's, for deployment convenience, with no Cloudflare tie whatsoever.
+
+## What it does
+
+- **Connect** — enter a node's `ws://`/`wss://` URL (defaulting to `ws://localhost:8787`, the hub's `wrangler dev` port), pick the capability domains to offer, and connect. The console sends its handshake and shows the negotiated result once the node answers.
+- **Peer directory** — every `gossip` frame the node sends is folded into a directory table (device, addresses, snapshot time), latest advert per device winning.
+- **Frame log** — a live, ordered feed of every frame that crossed the connection in either direction, plus a *Send ping* button.
+
+## How it maps onto core's ports
+
+`src/adapters/websocket-transport.ts` implements core's `Transport`/`Connection` port over the browser's native WebSocket, the same message convention as the hub's Worker-side adapter (one CBOR frame per binary message, no length prefix; undecodable bytes reject the connection, a decodable-but-unknown frame drops without disconnecting). `src/mesh-session.ts` is the DOM-free session state machine — handshake exchange with an explicit *unanswered* state (a relay-only node like the hub legitimately never answers a handshake; that's displayed, not treated as an error), directory assembly, and the frame log — unit-tested against a fake Transport. `src/main.ts` is deliberately thin DOM wiring.
+
+## Connecting to a locally-running node
+
+```sh
+# terminal 1: run the hub (a wire-mesh node) locally on :8787
+cd ts/packages/cloudflare-hub && pnpm dev   # wrangler dev, no credentials needed
+
+# terminal 2: serve the console
+cd ts/packages/web-console && pnpm dev      # vite on :5173
+```
+
+Open the vite URL, keep the default `ws://localhost:8787` address, and connect: the status line reaches *connected*, the handshake moves to *unanswered* after the timeout (the relay-only hub never sends one back — that is the honest state, not a failure), and *Send ping* records the outgoing frame in the log (the hub drops non-relay frames by design). As fuller node implementations start answering handshakes and gossiping, the negotiated-domains line and the directory table light up with no console changes.
+
+Verified exactly that way during development, including an end-to-end run of the *actual* adapter and session modules (not a reimplementation) against a live `wrangler dev` hub: Node 26 provides the same native WebSocket the browser does, so the same code path a browser executes connected to `ws://localhost:8787`, reached `connected`, observed the handshake go `unanswered` after the timeout (the relay-only hub never sends one -- an honest state, not a failure), and recorded an outgoing ping in the frame log. The unit suite (`pnpm test`) covers the adapter and session against fakes; the live-hub run is a development-time verification, not part of CI, because it would couple the console's CI to a running workerd.
+
+## What is deliberately deferred
+
+- **Room browser / join-from-browser** — the plan's phrase for the agent-comms-shaped application layer. wire-mesh's `core/data` domain carries such content as opaque entries, but no node implementation serves room semantics yet; shipping dead UI for it would be dishonest. The connection + directory + frame inspector is the honest first pass; the room UI arrives with the application that defines it.
+- **Identity** — the console connects anonymously (no local keypair). When a node requires a client identity, core's Identity port gets a Web Crypto adapter here, exactly like the hub's.
+- **TLS in dev** — `ws://` against localhost is fine; production deployments serve the console over HTTPS and dial `wss://`, which the adapter already handles.
+
+## Type environment
+
+`src/` typechecks against the DOM lib. The tests run in Node under vitest but import that src, so the test tsconfig loads node types alongside the DOM lib — and since Node 26 ships the same native WebSocket global the browser does, the adapter runs unmodified under Node, which is what makes the automated end-to-end test against a real hub possible.
