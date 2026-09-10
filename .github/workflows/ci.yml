@@ -105,8 +105,8 @@ jobs:
         working-directory: conformance
         run: pnpm turbo run _test
 
-  ts-core-verify:
-    name: ts/packages/core Verify
+  ts-verify:
+    name: ts/ Verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -132,6 +132,10 @@ jobs:
       - name: Typecheck and build every package, verifying dual ESM/CJS + types with attw
         working-directory: ts
         run: pnpm turbo run _typecheck
+
+      - name: Build every package (cloudflare-hub's wrangler deploy --dry-run validates the Worker bundle without credentials)
+        working-directory: ts
+        run: pnpm turbo run _build
 
       - name: Confirm generate.ts's output matches the committed generated schema
         working-directory: ts/packages/core
@@ -192,7 +196,7 @@ jobs:
 
   required-checks:
     name: Required Checks
-    needs: [cddl-validate, conformance-verify, ts-core-verify, rust-verify]
+    needs: [cddl-validate, conformance-verify, ts-verify, rust-verify]
     if: always()
     runs-on: ubuntu-latest
     steps:
