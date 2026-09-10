@@ -4,6 +4,21 @@
 ; an identical key) was a bug found independently in both Cascade and
 ; agent-comms; this rule exists to make the correct derivation the only one
 ; representable.
+;
+; There is deliberately no key-rotation or recovery mechanism in this
+; protocol: identity is bare public-key hashing with no CA, so losing a
+; device's private key permanently orphans everything rooted at it -- no
+; new tokens or revocations can ever be issued under that identity again,
+; though already-signed tokens stay verifiable until their own expiry (see
+; tokens.cddl). Adding recovery machinery to the wire protocol itself would
+; be real scope and complexity this deliberately minimal identity layer
+; doesn't take on. The mitigation that already exists with no protocol
+; change needed: mint a scoped, long-lived capability token delegating
+; recovery-relevant authority to a separate, offline-stored backup identity
+; ahead of time, before it's ever needed -- ordinary delegation
+; (tokens.cddl), used as an operational pattern rather than a protocol
+; feature, the same way an offline root-CA backup key is operational
+; practice, not something X.509 itself specifies.
 
 identity-key = {
   alg: int,          ; COSE algorithm identifier (RFC 9053), e.g. -7 ES256, -8 EdDSA
