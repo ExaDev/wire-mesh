@@ -59,18 +59,18 @@ impl Decode<'_, ()> for StreamDataFrame {
 }
 
 pub(crate) fn stream_data_from(d: &mut Decoder<'_>) -> Result<StreamDataFrame, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut session: Option<u64> = None;
     let mut seq: Option<u64> = None;
     let mut channel: Option<String> = None;
     let mut bytes: Option<Vec<u8>> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
+    while let Some(key) = map.next_key(d)? {
+        match key {
             "type" => strict::literal(d, StreamDataFrame::TYPE)?,
-            "session" => session = Some(strict::uint_value(d)?),
-            "seq" => seq = Some(strict::uint_value(d)?),
-            "channel" => channel = Some(strict::text_value(d)?),
-            "bytes" => bytes = Some(strict::bytes_value(d)?),
+            "session" => strict::set_once(&mut session, strict::uint_value(d)?)?,
+            "seq" => strict::set_once(&mut seq, strict::uint_value(d)?)?,
+            "channel" => strict::set_once(&mut channel, strict::text_value(d)?)?,
+            "bytes" => strict::set_once(&mut bytes, strict::bytes_value(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
@@ -121,16 +121,16 @@ impl Decode<'_, ()> for StreamAckFrame {
 }
 
 pub(crate) fn stream_ack_from(d: &mut Decoder<'_>) -> Result<StreamAckFrame, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut session: Option<u64> = None;
     let mut ack_seq: Option<u64> = None;
     let mut window: Option<u64> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
+    while let Some(key) = map.next_key(d)? {
+        match key {
             "type" => strict::literal(d, StreamAckFrame::TYPE)?,
-            "session" => session = Some(strict::uint_value(d)?),
-            "ack-seq" => ack_seq = Some(strict::uint_value(d)?),
-            "window" => window = Some(strict::uint_value(d)?),
+            "session" => strict::set_once(&mut session, strict::uint_value(d)?)?,
+            "ack-seq" => strict::set_once(&mut ack_seq, strict::uint_value(d)?)?,
+            "window" => strict::set_once(&mut window, strict::uint_value(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
@@ -184,16 +184,16 @@ impl Decode<'_, ()> for StreamEndFrame {
 }
 
 pub(crate) fn stream_end_from(d: &mut Decoder<'_>) -> Result<StreamEndFrame, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut session: Option<u64> = None;
     let mut exit_code: Option<i64> = None;
     let mut exit_signal: Option<i64> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
+    while let Some(key) = map.next_key(d)? {
+        match key {
             "type" => strict::literal(d, StreamEndFrame::TYPE)?,
-            "session" => session = Some(strict::uint_value(d)?),
-            "exit-code" => exit_code = Some(strict::int_value(d)?),
-            "exit-signal" => exit_signal = Some(strict::int_value(d)?),
+            "session" => strict::set_once(&mut session, strict::uint_value(d)?)?,
+            "exit-code" => strict::set_once(&mut exit_code, strict::int_value(d)?)?,
+            "exit-signal" => strict::set_once(&mut exit_signal, strict::int_value(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }

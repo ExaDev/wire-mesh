@@ -196,13 +196,13 @@ impl Decode<'_, ()> for CapabilityScope {
 }
 
 pub(crate) fn scope_from(d: &mut Decoder<'_>) -> Result<CapabilityScope, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut kind: Option<String> = None;
     let mut path: Option<String> = None;
-    for _ in 0..n {
-        match strict::text_key(d)? {
-            "kind" => kind = Some(strict::text_value(d)?),
-            "path" => path = Some(strict::text_value(d)?),
+    while let Some(key) = map.next_key(d)? {
+        match key {
+            "kind" => strict::set_once(&mut kind, strict::text_value(d)?)?,
+            "path" => strict::set_once(&mut path, strict::text_value(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
@@ -300,21 +300,19 @@ impl Decode<'_, ()> for CoseTokenHeaders {
 }
 
 pub(crate) fn headers_from(d: &mut Decoder<'_>) -> Result<CoseTokenHeaders, DecodeError> {
+    // Header labels are `int / tstr`, not the text keys MapDecoder reads, so this loop orders raw label encodings through KeyOrder directly.
     let n = strict::definite_map(d)?;
+    let mut order = strict::KeyOrder::new();
     let mut headers = CoseTokenHeaders::new();
     for _ in 0..n {
-        match HeaderLabel::decode_strict(d)? {
+        let label = HeaderLabel::decode_strict(d)?;
+        order.push(&label.encoded())?;
+        match label {
             HeaderLabel::Int(HeaderLabel::ALG) => {
-                if headers.alg.is_some() {
-                    return Err(DecodeError::DuplicateKey);
-                }
-                headers.alg = Some(strict::int_value(d)?);
+                strict::set_once(&mut headers.alg, strict::int_value(d)?)?;
             }
             HeaderLabel::Int(HeaderLabel::KID) => {
-                if headers.kid.is_some() {
-                    return Err(DecodeError::DuplicateKey);
-                }
-                headers.kid = Some(strict::bytes_value(d)?);
+                strict::set_once(&mut headers.kid, strict::bytes_value(d)?)?;
             }
             label => {
                 let value = CborValue::decode_strict(d)?;
@@ -537,7 +535,7 @@ impl Decode<'_, ()> for TokenClaims {
 }
 
 pub(crate) fn token_claims_from(d: &mut Decoder<'_>) -> Result<TokenClaims, DecodeError> {
-    let n = strict::definite_map(d)?;
+    let mut map = strict::MapDecoder::new(d)?;
     let mut token_id: Option<Vec<u8>> = None;
     let mut issuer: Option<DeviceId> = None;
     let mut issuer_key: Option<IdentityKey> = None;
@@ -548,17 +546,19 @@ pub(crate) fn token_claims_from(d: &mut Decoder<'_>) -> Result<TokenClaims, Deco
     let mut not_before: Option<u64> = None;
     let mut parent: Option<Vec<u8>> = None;
     let mut extra = CanonicalMap::new();
-    for _ in 0..n {
-        match strict::text_key(d)? {
-            "token-id" => token_id = Some(strict::bytes_value(d)?),
-            "issuer" => issuer = Some(crate::identity::device_id_from(d)?),
-            "issuer-key" => issuer_key = Some(crate::identity::identity_key_from(d)?),
-            "bearer" => bearer = Some(crate::identity::device_id_from(d)?),
-            "capability" => capability = Some(strict::text_value(d)?),
-            "scope" => scope = Some(scope_from(d)?),
-            "expires" => expires = Some(strict::uint_value(d)?),
-            "not-before" => not_before = Some(strict::uint_value(d)?),
-            "parent" => parent = Some(strict::bytes_value(d)?),
+    while let Some(key) = map.next_key(d)? {
+        match key {
+            "token-id" => strict::set_once(&mut token_id, strict::bytes_value(d)?)?,
+            "issuer" => strict::set_once(&mut issuer, crate::identity::device_id_from(d)?)?,
+            "issuer-key" => {
+                strict::set_once(&mut issuer_key, crate::identity::identity_key_from(d)?)?
+            }
+            "bearer" => strict::set_once(&mut bearer, crate::identity::device_id_from(d)?)?,
+            "capability" => strict::set_once(&mut capability, strict::text_value(d)?)?,
+            "scope" => strict::set_once(&mut scope, scope_from(d)?)?,
+            "expires" => strict::set_once(&mut expires, strict::uint_value(d)?)?,
+            "not-before" => strict::set_once(&mut not_before, strict::uint_value(d)?)?,
+            "parent" => strict::set_once(&mut parent, strict::bytes_value(d)?)?,
             other => {
                 let value = CborValue::decode_strict(d)?;
                 extra.insert(other.to_owned(), value)?;
@@ -582,6 +582,59 @@ pub(crate) fn token_claims_from(d: &mut Decoder<'_>) -> Result<TokenClaims, Deco
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn token_claims_rejects_duplicate_typed_key() {
+        // { "expires": 1, "expires": 2 }: the repeated key is rejected as a
+        // duplicate rather than silently taking the last value.
+        let bytes = [
+            0xa2, 0x67, b'e', b'x', b'p', b'i', b'r', b'e', b's', 0x01, 0x67, b'e', b'x', b'p',
+            b'i', b'r', b'e', b's', 0x02,
+        ];
+        assert_eq!(
+            TokenClaims::decode_bytes(&bytes),
+            Err(DecodeError::DuplicateKey)
+        );
+    }
+
+    #[test]
+    fn token_claims_rejects_unsorted_keys() {
+        // { "issuer": <id>, "bearer": <id> }: "bearer" (8 bytes) sorts
+        // before "issuer" (9), so issuer-first is out of CDE order.
+        let id = [0x11u8; 32];
+        let mut bytes = vec![0xa2, 0x66];
+        bytes.extend_from_slice(b"issuer");
+        bytes.push(0x58);
+        bytes.push(32);
+        bytes.extend_from_slice(&id);
+        bytes.push(0x66);
+        bytes.extend_from_slice(b"bearer");
+        bytes.push(0x58);
+        bytes.push(32);
+        bytes.extend_from_slice(&id);
+        assert_eq!(
+            TokenClaims::decode_bytes(&bytes),
+            Err(DecodeError::UnsortedMapKeys)
+        );
+    }
+
+    #[test]
+    fn token_claims_rejects_non_minimal_integer_head() {
+        // alg for a minimal -7 is the single byte 0x26; 0x38 0x26 is the
+        // same value in a two-byte head, which CDE forbids.
+        let mut bytes = vec![0xa2, 0x63];
+        bytes.extend_from_slice(b"alg");
+        bytes.extend_from_slice(&[0x38, 0x06]);
+        bytes.push(0x6a);
+        bytes.extend_from_slice(b"public-key");
+        bytes.extend_from_slice(&[0x58, 0x41]);
+        bytes.extend_from_slice(&[0x04; 65]);
+        let mut d = Decoder::new(&bytes);
+        assert_eq!(
+            crate::identity::identity_key_from(&mut d),
+            Err(DecodeError::NonMinimalHead)
+        );
+    }
 
     #[test]
     fn verb_tiers() {
