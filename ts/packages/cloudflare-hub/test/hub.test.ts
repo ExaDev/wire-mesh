@@ -154,10 +154,10 @@ describe("createRelayHub over the real wrapWebSocket adapter", () => {
 
     expect(decodeSent(wsB)).toEqual([
       { type: "relay-inbound", "source-device": deviceA },
-      { type: "relay-data", payload: relayPayload },
+      { type: "relay-data", payload: relayPayload, "from-device": deviceA },
     ]);
     expect(decodeSent(wsA)).toEqual([
-      { type: "relay-data", payload: relayPayload },
+      { type: "relay-data", payload: relayPayload, "from-device": deviceB },
     ]);
 
     await Promise.all([a.close(), b.close()]);

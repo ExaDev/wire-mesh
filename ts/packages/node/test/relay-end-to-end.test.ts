@@ -118,8 +118,16 @@ describe("wire-mesh-node relay, end to end", () => {
 
     const toB = await queueB.waitFor("relay-data");
     const toA = await queueA.waitFor("relay-data");
-    expect(toB).toEqual({ type: "relay-data", payload: relayPayload });
-    expect(toA).toEqual({ type: "relay-data", payload: relayPayload });
+    expect(toB).toEqual({
+      type: "relay-data",
+      payload: relayPayload,
+      "from-device": deviceA,
+    });
+    expect(toA).toEqual({
+      type: "relay-data",
+      payload: relayPayload,
+      "from-device": deviceB,
+    });
 
     await a.close();
     await b.close();
