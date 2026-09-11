@@ -6,13 +6,18 @@ const HEX_RADIX = 16;
 const HEX_BYTE_WIDTH = 2;
 const DEVICE_ID_HEX_LENGTH = 64; // 32 bytes, hex-encoded
 
-/** Lowercase, byte-exact hex -- the same encoding room.cddl's device-id-hex regex and the conformance vectors' synthetic device-ids already use. */
-export function deviceIdToHex(device: DeviceId): string {
+/** Lowercase, byte-exact hex for an arbitrary-length byte string -- the same encoding convention deviceIdToHex uses for the fixed-length device-id case, extracted so any other byte string needing a stable, displayable, map-keyable text form (e.g. a token-id, which tokens.cddl defines as an arbitrary-length bstr rather than a 32-byte device-id) can use the identical convention without going through a device-id-shaped function. */
+export function bytesToHex(bytes: Uint8Array): string {
   let hex = "";
-  for (const byte of device) {
+  for (const byte of bytes) {
     hex += byte.toString(HEX_RADIX).padStart(HEX_BYTE_WIDTH, "0");
   }
   return hex;
+}
+
+/** Lowercase, byte-exact hex -- the same encoding room.cddl's device-id-hex regex and the conformance vectors' synthetic device-ids already use. */
+export function deviceIdToHex(device: DeviceId): string {
+  return bytesToHex(device);
 }
 
 /** Parses a lowercase, 64-character device-id-hex string back into the 32-byte DeviceId it encodes. Throws on anything that isn't exactly that shape, rather than silently truncating or zero-padding a malformed input. */
