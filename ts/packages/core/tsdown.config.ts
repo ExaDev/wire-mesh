@@ -16,6 +16,7 @@ export default defineConfig({
     "src/domain/tokens.ts",
     "src/adapters/frame-codec.ts",
     "src/adapters/tcp-transport.ts",
+    "src/adapters/tls-transport.ts",
     "src/adapters/memory-storage.ts",
     "src/adapters/node-identity.ts",
     "src/adapters/system-clock.ts",
