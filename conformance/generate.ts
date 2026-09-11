@@ -167,6 +167,54 @@ const roomMemberDelegatedTokenVector = vector(
   roomMemberDelegatedToken,
 );
 
+// core/room's own noticeboard entry (room.cddl's room-notice), self-certifying the same way capability-token and handle-record already are. deviceB posts to the same general room its roomMemberRootToken already grants it membership in, embedding that exact token in full so a reader with no other context can verify posting authority from the notice alone.
+const NOTICE_ID_BYTE_LENGTH = 16; // opaque notice-id, arbitrarily sized like token-id
+
+const roomNoticeClaims: JsonWire = {
+  room: `${deviceAHex}/general`,
+  poster: deviceB,
+  "poster-key": { alg: -7, "public-key": publicKeyEs256B },
+  token: roomMemberRootToken,
+  "notice-id": hex("a1".repeat(NOTICE_ID_BYTE_LENGTH)),
+  "posted-at": 1861920000000,
+  "content-type": "text/plain",
+  content: hex(wireHex("see you at the usual spot")),
+};
+
+const roomNotice: JsonWire = [
+  hex(wireHex({ 1: -7, 4: deviceB })),
+  {},
+  hex(wireHex(roomNoticeClaims)),
+  signatureFiller,
+];
+
+const roomNoticeVector = vector("room_notice_v1_posted", roomNotice);
+
+// Forwarding a notice needs no new verification mechanism: the proof of what was forwarded is nesting the ORIGINAL notice's own still-independently-verifiable room-notice as this notice's own `content`, content-type naming it as such. deviceC (also a member per its own delegated token) forwards deviceB's notice above into the same room; room/poster/poster-key stay signed inside the ORIGINAL envelope no matter how many times it's re-forwarded.
+const roomNoticeForwardClaims: JsonWire = {
+  room: `${deviceAHex}/general`,
+  poster: deviceC,
+  "poster-key": { alg: -7, "public-key": publicKeyEs256B }, // reusing B's synthetic key bytes for C is fine here -- this file freezes envelope shape, not real per-device key material
+  token: roomMemberDelegatedToken,
+  "notice-id": hex("a2".repeat(NOTICE_ID_BYTE_LENGTH)),
+  "posted-at": 1861920100000,
+  "content-type": "application/x-room-notice",
+  content: hex(roomNoticeVector.wire_hex),
+  refs: [{ id: hex("a1".repeat(NOTICE_ID_BYTE_LENGTH)), relation: "forward" }],
+};
+
+const roomNoticeForward: JsonWire = [
+  hex(wireHex({ 1: -7, 4: deviceC })),
+  {},
+  hex(wireHex(roomNoticeForwardClaims)),
+  signatureFiller,
+];
+
+const roomNoticeForwardVector = vector(
+  "room_notice_v1_forwarded",
+  roomNoticeForward,
+);
+
 const handleClaims: JsonWire = {
   handle: "alice@example.com",
   "device-id": deviceD,
@@ -189,6 +237,8 @@ const tokenVectors: Vector[] = [
   delegatedTokenVector,
   roomMemberRootTokenVector,
   roomMemberDelegatedTokenVector,
+  roomNoticeVector,
+  roomNoticeForwardVector,
   handleRecordVector,
 ];
 
@@ -497,7 +547,7 @@ write(
 
 write(
   "tokens.v1.json",
-  "Capability-token and handle-record conformance vectors for protocol version 1. Every cose-sign1 array's protected/payload byte strings are themselves canonical CBOR, decoded and re-verified the same way as any other bstr field. Signature and public-key bytes are structural placeholders (clearly-synthetic filler), not real cryptographic material -- this file freezes the byte-exact envelope shape (map key ordering, field presence, the recursive parent delegation chain), not a working signature, the same scope Cascade's own frozen vectors commit to for fields with no real crypto behind them yet.",
+  "Capability-token, room-notice, and handle-record conformance vectors for protocol version 1. Every cose-sign1 array's protected/payload byte strings are themselves canonical CBOR, decoded and re-verified the same way as any other bstr field. Signature and public-key bytes are structural placeholders (clearly-synthetic filler), not real cryptographic material -- this file freezes the byte-exact envelope shape (map key ordering, field presence, the recursive parent delegation chain), not a working signature, the same scope Cascade's own frozen vectors commit to for fields with no real crypto behind them yet. The two room-notice vectors exercise core/room's noticeboard entry schema: the first is an ordinary posted notice embedding its poster's own room:member token in full; the second forwards it, nesting the first notice's own still-independently-verifiable room-notice as its content with a content-type naming it as such, and a refs entry with relation \"forward\" pointing at the original notice-id.",
   tokenVectors,
 );
 
