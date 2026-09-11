@@ -1,4 +1,4 @@
-import { w as Frame } from "../protocol-DKGCdPBm.mjs";
+import { w as Frame } from "../protocol-D8yeaquP.mjs";
 //#region src/ports/transport.d.ts
 /**
  * An async, serialisable-data contract for exchanging frame values over some connection -- deliberately without baking in any specific transport's own primitives (no raw socket types, no WebSocket-specific options), so a TCP adapter, a WebSocket adapter, or an in-memory adapter for tests can all satisfy it.
