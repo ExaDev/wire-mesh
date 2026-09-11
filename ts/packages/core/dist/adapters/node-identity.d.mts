@@ -1,4 +1,4 @@
-import { k as IdentityKey, v as DeviceId } from "../protocol-DX0RGNQS.mjs";
+import { k as IdentityKey, v as DeviceId } from "../protocol-CBP_i9Ph.mjs";
 import { IdentityPort } from "../ports/identity.mjs";
 import { webcrypto } from "node:crypto";
 //#region src/adapters/node-identity.d.ts

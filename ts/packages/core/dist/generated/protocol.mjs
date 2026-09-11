@@ -279,11 +279,14 @@ const relayOfferFrameSchema = z.lazy(() => z.object({
 }));
 const relayConnectFrameSchema = z.lazy(() => z.object({
 	"type": z.literal("relay-connect"),
-	"target-device": z.lazy(() => deviceIdSchema)
+	"target-device": z.lazy(() => deviceIdSchema),
+	"direct-only": z.boolean().optional()
 }));
 const relayDataFrameSchema = z.lazy(() => z.object({
 	"type": z.literal("relay-data"),
-	"payload": z.instanceof(Uint8Array)
+	"payload": z.instanceof(Uint8Array),
+	"to-device": z.lazy(() => deviceIdSchema).optional(),
+	"from-device": z.lazy(() => deviceIdSchema).optional()
 }));
 const relayInboundFrameSchema = z.lazy(() => z.object({
 	"type": z.literal("relay-inbound"),
