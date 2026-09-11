@@ -12,7 +12,7 @@ import { createIndexedDbStorage } from "../src/adapters/indexeddb-storage.js";
 import {
   createNodeIdentity,
   verifyWithPublicKey as verifyWithNodeIdentity,
-} from "@exadev/wire-mesh-core/adapters/node-identity";
+} from "wire-mesh-core/adapters/node-identity";
 import { bytesFromHex } from "./hex.js";
 
 const ES256 = -7;

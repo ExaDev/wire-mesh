@@ -1,11 +1,8 @@
 // Real, in-suite equivalent of cloudflare-hub/scripts/live-check.mjs: two genuine wire-mesh-node clients gossiping, relay-connecting, and exchanging relay-data through a real createRelayHub() wired over a real createNodeWebSocketTransport() listener -- the same health-check wiring server.ts itself uses, so this test also proves the plain-HTTP health path works on the same listener a WebSocket client connects to.
 
 import { describe, expect, it } from "vitest";
-import { createRelayHub } from "@exadev/wire-mesh-core/domain/relay-hub";
-import type {
-  DeviceId,
-  Frame,
-} from "@exadev/wire-mesh-core/generated/protocol";
+import { createRelayHub } from "wire-mesh-core/domain/relay-hub";
+import type { DeviceId, Frame } from "wire-mesh-core/generated/protocol";
 import { createNodeWebSocketTransport } from "../src/adapters/node-websocket-transport.js";
 import { healthResponse } from "../src/server.js";
 import { bytesFromHex, deviceIdFromFillHex } from "./hex.js";

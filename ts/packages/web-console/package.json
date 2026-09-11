@@ -18,7 +18,7 @@
     "_lint": "eslint . --fix --cache --max-warnings 0"
   },
   "dependencies": {
-    "@exadev/wire-mesh-core": "workspace:*",
+    "wire-mesh-core": "workspace:*",
     "cbor2": "2.3.0"
   },
   "devDependencies": {

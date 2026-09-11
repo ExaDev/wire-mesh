@@ -1,6 +1,6 @@
 // A browser KeyValueStorage implementation over IndexedDB -- the one storage the console has that survives a reload, unlike an in-process Map. One object store holds opaque Uint8Array values keyed by string, matching the port's contract exactly; nothing here interprets what's stored.
 
-import type { KeyValueStorage } from "@exadev/wire-mesh-core/ports/storage";
+import type { KeyValueStorage } from "wire-mesh-core/ports/storage";
 
 export interface IndexedDbStorageOptions {
   dbName?: string;

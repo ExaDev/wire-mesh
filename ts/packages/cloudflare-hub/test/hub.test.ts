@@ -1,11 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { decode } from "cbor2";
-import type {
-  DeviceId,
-  Frame,
-} from "@exadev/wire-mesh-core/generated/protocol";
-import type { Connection } from "@exadev/wire-mesh-core/ports/transport";
-import { createRelayHub } from "@exadev/wire-mesh-core/domain/relay-hub";
+import type { DeviceId, Frame } from "wire-mesh-core/generated/protocol";
+import type { Connection } from "wire-mesh-core/ports/transport";
+import { createRelayHub } from "wire-mesh-core/domain/relay-hub";
 import {
   messageFromFrame,
   wrapWebSocket,

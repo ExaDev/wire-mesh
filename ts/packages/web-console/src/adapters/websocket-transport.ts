@@ -1,16 +1,16 @@
 // A browser Transport implementation over native WebSocket messages, the same convention as the hub's Worker-side adapter: each binary WebSocket message is already self-delimiting, so one message carries exactly one CBOR-encoded frame with no length prefix. Undecodable bytes are a connection-level failure (the receive iteration rejects and the socket closes), matching core's adapters' treatment of hostile wire input; a decodable frame that fails schema validation is dropped rather than disconnecting -- an unrecognised frame from a newer peer is what version negotiation exists to tolerate.
 
-import type { Frame } from "@exadev/wire-mesh-core/generated/protocol";
+import type { Frame } from "wire-mesh-core/generated/protocol";
 import type {
   Connection,
   Listener,
   Transport,
-} from "@exadev/wire-mesh-core/ports/transport";
+} from "wire-mesh-core/ports/transport";
 import {
   SchemaInvalidFrameError,
   decodeMessage,
   messageFromFrame,
-} from "@exadev/wire-mesh-core/adapters/frame-codec";
+} from "wire-mesh-core/adapters/frame-codec";
 
 // RFC 6455 close codes, named rather than bare: 1000 normal closure, 1002 protocol error.
 const CLOSE_NORMAL = 1000;

@@ -14,12 +14,12 @@ importers:
 
   packages/cloudflare-hub:
     dependencies:
-      '@exadev/wire-mesh-core':
-        specifier: workspace:*
-        version: link:../core
       cbor2:
         specifier: 2.3.0
         version: 2.3.0
+      wire-mesh-core:
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       '@cloudflare/workers-types':
         specifier: 5.20260905.1
@@ -136,12 +136,12 @@ importers:
 
   packages/node:
     dependencies:
-      '@exadev/wire-mesh-core':
-        specifier: workspace:*
-        version: link:../core
       cbor2:
         specifier: 2.3.0
         version: 2.3.0
+      wire-mesh-core:
+        specifier: workspace:*
+        version: link:../core
       ws:
         specifier: 8.21.3
         version: 8.21.3
@@ -191,12 +191,12 @@ importers:
 
   packages/web-console:
     dependencies:
-      '@exadev/wire-mesh-core':
-        specifier: workspace:*
-        version: link:../core
       cbor2:
         specifier: 2.3.0
         version: 2.3.0
+      wire-mesh-core:
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       '@exadev/eslint-config':
         specifier: 2.10.6

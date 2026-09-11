@@ -1,11 +1,8 @@
 // A Worker-runtime Connection implementation over WebSocket messages, driven directly by the Durable Object entry (worker.ts's RelayHubDurableObject): the DO accepts the server side of the runtime's WebSocketPair and hands it here. Unlike the TCP adapter -- a stream, needing a length prefix to delimit frames -- each WebSocket binary message is already self-delimiting, so one message carries exactly one CBOR-encoded frame and no prefix is needed. Undecodable bytes are a connection-level failure (the receive iteration rejects and the socket closes), matching the TCP adapter's treatment of hostile wire input; a decodable frame that fails schema validation is dropped rather than disconnecting -- an unrecognised frame from a newer peer is what version negotiation exists to tolerate.
 
 import { cdeDecodeOptions, cdeEncodeOptions, decode, encode } from "cbor2";
-import {
-  frameSchema,
-  type Frame,
-} from "@exadev/wire-mesh-core/generated/protocol";
-import type { Connection } from "@exadev/wire-mesh-core/ports/transport";
+import { frameSchema, type Frame } from "wire-mesh-core/generated/protocol";
+import type { Connection } from "wire-mesh-core/ports/transport";
 
 // RFC 6455 close codes, named rather than bare: 1000 normal closure, 1002 protocol error.
 const CLOSE_NORMAL = 1000;

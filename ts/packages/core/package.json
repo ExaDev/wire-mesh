@@ -1,5 +1,5 @@
 {
-  "name": "@exadev/wire-mesh-core",
+  "name": "wire-mesh-core",
   "version": "0.0.0",
   "type": "module",
   "packageManager": "pnpm@10.33.0",

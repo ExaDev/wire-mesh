@@ -1,4 +1,4 @@
-# @exadev/wire-mesh-core
+# wire-mesh-core
 
 The TypeScript implementation of wire-mesh's protocol, built ports/adapters: domain logic (`src/domain/`) depends only on port contracts (`src/ports/`) and the [cddl.js](https://github.com/ExaDev/cddl.js)-generated Zod schemas (`src/generated/protocol.ts`, regenerated from `../../../spec/protocol.cddl` via `generate.ts` -- never edited by hand), never on a specific adapter's own imports.
 
@@ -29,4 +29,4 @@ CI regenerates and diffs against the committed file, the same way `conformance/`
 
 ## Publishing
 
-Published to npm as [`@exadev/wire-mesh-core`](https://www.npmjs.com/package/@exadev/wire-mesh-core). A push to `main` runs `semantic-release` (`ts/packages/core/release.config.ts`, tagged `core-v*` to keep this package's releases distinct from any other publishable package in the workspace), which versions from conventional-commit messages, builds `dist/` fresh, and publishes it -- `dist/` itself is never committed to the repo.
+Published to npm as [`wire-mesh-core`](https://www.npmjs.com/package/wire-mesh-core). A push to `main` runs `semantic-release` (`ts/packages/core/release.config.ts`, tagged `core-v*` to keep this package's releases distinct from any other publishable package in the workspace), which versions from conventional-commit messages, builds `dist/` fresh, and publishes it -- `dist/` itself is never committed to the repo.

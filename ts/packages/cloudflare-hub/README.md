@@ -1,6 +1,6 @@
 # @exadev/wire-mesh-cloudflare-hub
 
-A reference deployment of a wire-mesh hub node on Cloudflare Workers: a public, always-on node other peers dial into, serving the relay role the repo README names for this package (transport.cddl's `relay-offer`/`relay-connect`/`relay-data`/`relay-inbound` — an opaque byte pipe when two peers can't connect directly, with device discovery over gossip). It depends on `@exadev/wire-mesh-core` as an ordinary workspace consumer and reinvents nothing the core owns: all protocol logic is core's, reached through its ports.
+A reference deployment of a wire-mesh hub node on Cloudflare Workers: a public, always-on node other peers dial into, serving the relay role the repo README names for this package (transport.cddl's `relay-offer`/`relay-connect`/`relay-data`/`relay-inbound` — an opaque byte pipe when two peers can't connect directly, with device discovery over gossip). It depends on `wire-mesh-core` as an ordinary workspace consumer and reinvents nothing the core owns: all protocol logic is core's, reached through its ports.
 
 ## Why the hub lives in a Durable Object
 
