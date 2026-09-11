@@ -28,3 +28,15 @@ export function decodeMessage(data: Readonly<ArrayBuffer>): Frame {
   }
   return result.data;
 }
+
+/** Best-effort decode of a nested Frame from raw bytes, e.g. a relay-data frame's opaque payload -- unlike decodeMessage, neither a CBOR decode failure nor a schema mismatch is a connection-level failure here: the bytes may simply not be a nested Frame at all (ordinary opaque relay-data with some other meaning), so this returns null instead of throwing either way. */
+export function tryDecodeFrame(bytes: Readonly<Uint8Array>): Frame | null {
+  let decoded: unknown;
+  try {
+    decoded = decode(bytes, cdeDecodeOptions);
+  } catch {
+    return null;
+  }
+  const result = frameSchema.safeParse(decoded);
+  return result.success ? result.data : null;
+}

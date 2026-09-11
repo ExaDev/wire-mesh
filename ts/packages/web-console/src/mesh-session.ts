@@ -25,6 +25,7 @@ import type {
   Connection,
   Transport,
 } from "@exadev/wire-mesh-core/ports/transport";
+import { messageFromFrame, tryDecodeFrame } from "./adapters/frame-codec.js";
 
 const MS_PER_SECOND = 1000;
 
@@ -54,6 +55,8 @@ export interface IncomingManageRequest {
   command: ManageCommand;
   scope: CapabilityScope;
   token?: CapabilityToken;
+  /** The device-id of the peer this request was relayed on behalf of, present only when the request arrived wrapped in a relay-data frame rather than directly over this session's own connection. A caller that needs to address a further request back to the same peer (one not sent via respond(), which already routes back correctly on its own) passes this as sendManageRequest's targetDevice. */
+  fromDevice?: DeviceId;
   respond: (outcome: ManageOutcome) => Promise<void>;
 }
 
@@ -89,10 +92,11 @@ export interface MeshSession {
   sendPing: () => Promise<void>;
   /** Attaches this token to every `manage-request` sent from now on. */
   setToken: (token: CapabilityToken) => void;
-  /** Sends a manage-request and resolves with the matching manage-response's outcome, correlated by request-id. */
+  /** Sends a manage-request and resolves with the matching manage-response's outcome, correlated by request-id. When targetDevice is given, the request is routed to that specific peer via an established relay-connect pairing (wrapped as relay-data) rather than sent directly over this session's own Connection -- relay-hub deliberately drops manage-request/manage-response frames sent to it directly, since routing between two connected peers is not the relay role's business, so a specific peer reachable only through a relay hub can only be addressed this way. Absent, this sends directly over the Connection exactly as before. */
   sendManageRequest: (
     command: ManageCommand,
     scope: Readonly<CapabilityScope>,
+    targetDevice?: DeviceId,
   ) => Promise<ManageOutcome>;
   close: () => Promise<void>;
 }
@@ -124,6 +128,8 @@ export function createMeshSession(
   let attempt = 0;
   let currentToken: CapabilityToken | null = null;
   let nextRequestId = 0;
+  // The device-id this session's relay-hub connection is currently paired with, in either role: set when this session sends its own relay-connect (initiator role), or when it receives a relay-inbound naming who is now paired with it (target role). relay-hub pairs at most one device per connection at a time -- a fresh relay-connect re-pairs totally -- so a single field is enough to track it, in whichever role this session is currently playing.
+  let relayPeerDevice: DeviceId | null = null;
   const pendingManageRequests = new Map<
     number,
     {
@@ -183,7 +189,77 @@ export function createMeshSession(
     };
   }
 
+  /** Sends a frame, wrapping it as relay-data first when viaRelay is set -- the single choke point every outbound manage-request/manage-response passes through, so a consumer of sendManageRequest/respond never needs its own relay-wrapping logic. */
+  async function transmit(frame: Frame, viaRelay: boolean): Promise<void> {
+    if (connection === null) {
+      throw new Error("not connected");
+    }
+    if (viaRelay) {
+      const relayFrame: Frame = {
+        type: "relay-data",
+        payload: messageFromFrame(frame),
+      };
+      await connection.send(relayFrame);
+      return;
+    }
+    await connection.send(frame);
+  }
+
+  function applyManageResponse(frame: ManageResponseFrame): void {
+    const requestId = frame["request-id"];
+    const pending = pendingManageRequests.get(requestId);
+    if (pending !== undefined) {
+      pendingManageRequests.delete(requestId);
+      pending.resolve(frame.outcome);
+    }
+  }
+
+  function applyManageRequest(
+    frame: ManageRequestFrame,
+    viaRelay: boolean,
+  ): void {
+    const requestId = frame["request-id"];
+    const fromDevice =
+      viaRelay && relayPeerDevice !== null ? relayPeerDevice : undefined;
+    const incoming: IncomingManageRequest = {
+      requestId,
+      command: frame.command,
+      scope: frame.scope,
+      ...(frame.token !== undefined ? { token: frame.token } : {}),
+      ...(fromDevice !== undefined ? { fromDevice } : {}),
+      respond: async (outcome: ManageOutcome): Promise<void> => {
+        const response: ManageResponseFrame = {
+          type: "manage-response",
+          "request-id": requestId,
+          outcome,
+        };
+        frameLog.push({ direction: "sent", frame: response });
+        await transmit(response, viaRelay);
+        emit();
+      },
+    };
+    emitIncomingManageRequest(incoming);
+  }
+
   function applyFrame(frame: Frame): void {
+    if (frame.type === "relay-data") {
+      // relay-data's payload is an opaque byte-pipe relay-hub forwards blindly between an established pairing, never interpreting it -- so a manage-request/manage-response addressed to a peer only reachable through a relay hub rides inside it (relay-hub itself drops those frame kinds when sent to it directly). A payload that doesn't decode as one of those two frame kinds is left as ordinary opaque relay-data: nothing else in this package currently sends or expects it, but this path must not assume it is the only future user of relay-data.
+      const inner = tryDecodeFrame(frame.payload);
+      if (
+        inner !== null &&
+        (inner.type === "manage-request" || inner.type === "manage-response")
+      ) {
+        frameLog.push({ direction: "received", frame: inner });
+        if (inner.type === "manage-response") {
+          applyManageResponse(inner);
+        } else {
+          applyManageRequest(inner, true);
+        }
+        return;
+      }
+      frameLog.push({ direction: "received", frame });
+      return;
+    }
     frameLog.push({ direction: "received", frame });
     if (frame.type === "handshake") {
       applyRemoteHandshake(frame);
@@ -195,35 +271,13 @@ export function createMeshSession(
           advert,
         });
       }
+    } else if (frame.type === "relay-inbound") {
+      // The target-role side of a relay-connect pairing learns who dialed it only via this frame -- there is no ack frame for relay-connect itself, so an initiator simply proceeds to relay-data right after sending it.
+      relayPeerDevice = frame["source-device"];
     } else if (frame.type === "manage-response") {
-      const requestId = frame["request-id"];
-      const pending = pendingManageRequests.get(requestId);
-      if (pending !== undefined) {
-        pendingManageRequests.delete(requestId);
-        pending.resolve(frame.outcome);
-      }
+      applyManageResponse(frame);
     } else if (frame.type === "manage-request") {
-      const requestId = frame["request-id"];
-      const incoming: IncomingManageRequest = {
-        requestId,
-        command: frame.command,
-        scope: frame.scope,
-        ...(frame.token !== undefined ? { token: frame.token } : {}),
-        respond: async (outcome: ManageOutcome): Promise<void> => {
-          if (connection === null) {
-            throw new Error("not connected");
-          }
-          const response: ManageResponseFrame = {
-            type: "manage-response",
-            "request-id": requestId,
-            outcome,
-          };
-          frameLog.push({ direction: "sent", frame: response });
-          await connection.send(response);
-          emit();
-        },
-      };
-      emitIncomingManageRequest(incoming);
+      applyManageRequest(frame, false);
     }
   }
 
@@ -236,6 +290,27 @@ export function createMeshSession(
       key += byte.toString(HEX_RADIX).padStart(2, "0");
     }
     return key;
+  }
+
+  /** Establishes a relay-connect pairing to targetDevice if this session isn't already paired with it -- a no-op when it already is, whether that pairing was established by this session's own prior relay-connect (initiator role) or learned from an incoming relay-inbound (target role, replying back to whoever dialed it). relay-connect has no ack frame: the initiator proceeds to relay-data right after sending it. */
+  async function ensureRelayPairing(targetDevice: DeviceId): Promise<void> {
+    if (connection === null) {
+      throw new Error("not connected");
+    }
+    if (
+      relayPeerDevice !== null &&
+      deviceKey(relayPeerDevice) === deviceKey(targetDevice)
+    ) {
+      return;
+    }
+    const relayConnect: Frame = {
+      type: "relay-connect",
+      "target-device": targetDevice,
+    };
+    frameLog.push({ direction: "sent", frame: relayConnect });
+    await connection.send(relayConnect);
+    relayPeerDevice = targetDevice;
+    emit();
   }
 
   // The local handshake actually sent on connect, kept for negotiating against the remote's answer.
@@ -430,16 +505,20 @@ export function createMeshSession(
     async sendManageRequest(
       command: ManageCommand,
       scope: Readonly<CapabilityScope>,
+      targetDevice?: DeviceId,
     ): Promise<ManageOutcome> {
       if (connection === null || state.status !== "connected") {
         throw new Error("not connected");
+      }
+      if (targetDevice !== undefined) {
+        await ensureRelayPairing(targetDevice);
       }
       const frame = buildManageRequest(command, scope);
       const outcome = new Promise<ManageOutcome>((resolve, reject) => {
         pendingManageRequests.set(frame["request-id"], { resolve, reject });
       });
       frameLog.push({ direction: "sent", frame });
-      await connection.send(frame);
+      await transmit(frame, targetDevice !== undefined);
       emit();
       return outcome;
     },
