@@ -43,4 +43,40 @@ export interface VerifyRevocationEntryOptions {
  * Verifies one gossiped revocation-entry (management.cddl): a well-formed COSE_Sign1 whose signature verifies against its own embedded issuer-key, where that issuer-key is self-certifying (sha256(issuer-key.public-key) equals the claimed issuer device-id). A verifier that ingests a revocation-announce frame runs each entry through this before recording it in its revocation view; entries failing here are dropped, not stored. The issuer-match against a specific token's own issuer (only a token's own issuer may revoke it) is deliberately NOT checked here -- it happens at lookup time in RevocationCheck, against whichever token is being verified.
  */
 export declare function verifyRevocationEntry(entry: RevocationEntry, options: VerifyRevocationEntryOptions): Promise<RevocationEntryVerdict>;
+export type MintRefusalReason = "already_expired" | "parent_malformed" | "parent_bearer_mismatch" | "expires_exceeds_parent" | "scope_does_not_narrow" | "capability_mismatch" | "delegation_exceeds_parent";
+export type MintVerdict = {
+  ok: true;
+  token: CapabilityToken;
+} | {
+  ok: false;
+  reason: MintRefusalReason;
+};
+export interface MintCapabilityTokenOptions {
+  /** The issuer -- signs the token, and supplies the self-certifying issuer/issuer-key claims. */
+  identity: IdentityPort;
+  clock: Clock;
+  tokenId: Uint8Array<ArrayBuffer>;
+  bearer: DeviceId;
+  capability: TokenClaims["capability"];
+  scope: TokenClaims["scope"];
+  expires: number;
+  notBefore?: number;
+  delegationsRemaining?: number;
+  /** The issuer's own token, when this is a delegation rather than a root grant. Its claims are checked against every narrowing rule below -- mint refuses rather than producing a token verifyCapabilityToken would reject anyway. */
+  parent?: CapabilityToken;
+}
+/**
+ * Mints one capability token: builds token-claims from the given fields, signs it as a COSE_Sign1 under `identity`'s own key, with a protected header matching what the frozen conformance vectors actually encode (`{1: alg, 4: issuer device-id}`, not the empty header a token merely needs to verify against itself).
+ *
+ * When `parent` is given, every one of `tokens.cddl`'s own narrowing obligations is enforced here, at issuance, rather than left for the far end to discover minutes or hours later as a bare `delegation_exceeds_parent` from `verifyCapabilityToken` -- the same "fail loudly, fail early" reasoning that governs every other boundary in this codebase. An issuer minting an invalid delegation is a bug in the caller; this function refuses rather than producing a token indistinguishable from a valid one until someone else verifies it.
+ */
+export declare function mintCapabilityToken(options: MintCapabilityTokenOptions): Promise<MintVerdict>;
+export interface MintRevocationEntryOptions {
+  /** The token's own issuer -- only a token's own issuer may revoke it (management.cddl), so this must be the same identity that minted the token being revoked. */
+  identity: IdentityPort;
+  tokenId: Uint8Array<ArrayBuffer>;
+  revokedAt: number;
+}
+/** Mints one revocation-entry (management.cddl): a COSE_Sign1 over revocation-claims, signed the same way mintCapabilityToken signs a token. No narrowing chain to check -- a revocation entry has no parent and cannot fail to be issuable the way a delegated token can, so this returns the entry directly rather than a verdict. */
+export declare function mintRevocationEntry(options: MintRevocationEntryOptions): Promise<RevocationEntry>;
 //#endregion
