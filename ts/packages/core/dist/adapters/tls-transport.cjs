@@ -112,7 +112,7 @@ function wrapSocket(socket, peerDeviceId) {
 				resolve();
 			});
 		}),
-		peerDeviceId,
+		...peerDeviceId !== void 0 ? { peerDeviceId } : {},
 		unref: () => {
 			socket.unref();
 		}
