@@ -44,15 +44,7 @@ const config: GlobalConfig = {
         },
       },
     ],
-    "@semantic-release/changelog",
     "@semantic-release/npm",
-    [
-      "@semantic-release/git",
-      {
-        assets: ["package.json", "CHANGELOG.md"],
-        message: "chore(release): core v${nextRelease.version} [skip ci]",
-      },
-    ],
     "@semantic-release/github",
   ],
 };
