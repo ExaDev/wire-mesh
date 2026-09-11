@@ -1,11 +1,23 @@
-// A real, checked-in end-to-end test for the WebRTC data path -- the thing vitest cannot exercise at all, since neither RTCPeerConnection nor RTCDataChannel exists under Node (unlike WebSocket, which Node provides natively). Two independent Playwright BrowserContexts (Playwright's own mechanism for two fully isolated sessions -- separate storage, separate IndexedDB, separate identity -- without the overhead of two full browser processes) each load the real production mesh-session/webrtc-negotiation/ webrtc-transport modules, connect to a real, unmodified wire-mesh-node relay (booted by playwright.config.ts's webServer, not a bespoke stand-in), and negotiate a real WebRTC data channel through it.
+// A real, checked-in end-to-end test for the WebRTC data path -- the thing vitest cannot exercise at all, since neither RTCPeerConnection nor RTCDataChannel exists under Node (unlike WebSocket, which Node provides natively). Two genuinely separate Chromium Browser instances (each its own OS process, launched independently rather than sharing one process via two BrowserContexts) each load the real production mesh-session/webrtc-negotiation/webrtc-transport modules, connect to a real, unmodified wire-mesh-node relay (booted by playwright.config.ts's webServer, not a bespoke stand-in), and negotiate a real WebRTC data channel through it.
 //
 // core's relay-hub domain (shared by wire-mesh-node and cloudflare-hub) deliberately drops manage-request/manage-response frames sent directly to it -- see relay-hub.ts's own handleFrame, whose final branch comment says so. That is correct for relay-hub's actual job (gossip/relay-connect/ relay-data), and it is exactly why core/webrtc signaling addressed to a specific peer rides inside relay-data's own opaque payload instead (see mesh-session.ts's sendManageRequest targetDevice parameter): relay-data is the one frame kind relay-hub already forwards blindly between an established relay-connect pairing. This test's relay is the real thing, not a stand-in, specifically to prove the signaling traverses an unmodified relay-hub's real forwarding.
 //
 // ICE itself may not reach "connected" on a host whose only routable network interface refuses to hairpin a UDP packet back to itself (confirmed directly on at least one development machine with a bare dgram socket, independent of Chromium/WebRTC entirely) -- two genuinely separate hosts on a LAN, the actual scenario this feature exists for, do not share this failure mode, and CI runners have not exhibited it. The signaling assertions below (the offer/answer round trip completing via the relay's real relay-data forwarding) are independent of whether the resulting RTCPeerConnection's own ICE handshake completes, and are the assertions that actually matter for proving this fix works; the data-channel-open assertion is kept as a stronger check but is written to skip gracefully rather than fail if this specific environment property blocks it.
 
-import { type Browser, type Page, expect, test } from "@playwright/test";
+import {
+  type Browser,
+  type Page,
+  chromium,
+  expect,
+  test,
+} from "@playwright/test";
 import { RELAY_ADDRESS } from "../../playwright.config.js";
+
+// Mirrors playwright.config.ts's own `use.launchOptions.args` -- that config only applies to browsers Playwright's own `browser`/`context`/`page` fixtures launch, so a browser launched directly via `chromium.launch()` needs the same same-machine-WebRTC flags passed explicitly.
+const SAME_MACHINE_WEBRTC_ARGS = [
+  "--disable-features=WebRtcHideLocalIpsWithMdns",
+  "--allow-loopback-in-peer-connection",
+];
 
 const NEGOTIATION_TIMEOUT_MS = 15_000;
 const POLL_INTERVAL_MS = 200;
@@ -75,7 +87,11 @@ async function pollUntil<T>(
   }
 }
 
-/** Two independent, fully isolated sessions -- separate storage/IndexedDB/identity -- simulating two separate devices, without the overhead of two full browser processes (Playwright's documented way to do this; see playwright.config.ts's launchOptions for the same-machine WebRTC flags every context needs). */
+/** A genuinely separate Chromium process, launched independently rather than as a second context inside a shared Browser, simulating one device -- separate storage/IndexedDB/identity, and no shared browser process either. */
+async function launchDeviceBrowser(): Promise<Browser> {
+  return chromium.launch({ args: SAME_MACHINE_WEBRTC_ARGS });
+}
+
 async function newDevicePage(browser: Readonly<Browser>): Promise<Page> {
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -85,15 +101,28 @@ async function newDevicePage(browser: Readonly<Browser>): Promise<Page> {
   return page;
 }
 
-test("two independent browser contexts negotiate a real WebRTC data channel, signaled through a real wire-mesh-node relay", async ({
-  browser,
+test("two independent browser instances negotiate a real WebRTC data channel, signaled through a real wire-mesh-node relay", async ({
   baseURL,
 }) => {
   test.setTimeout(TEST_TIMEOUT_MS);
   const harnessUrl = baseURL ?? "http://localhost:8798/live-check/harness.html";
 
-  const pageA = await newDevicePage(browser);
-  const pageB = await newDevicePage(browser);
+  const browserA = await launchDeviceBrowser();
+  const browserB = await launchDeviceBrowser();
+  try {
+    await runNegotiationTest(browserA, browserB, harnessUrl);
+  } finally {
+    await Promise.all([browserA.close(), browserB.close()]);
+  }
+});
+
+async function runNegotiationTest(
+  browserA: Readonly<Browser>,
+  browserB: Readonly<Browser>,
+  harnessUrl: string,
+): Promise<void> {
+  const pageA = await newDevicePage(browserA);
+  const pageB = await newDevicePage(browserB);
 
   await pageA.goto(harnessUrl);
   await pageB.goto(harnessUrl);
@@ -253,4 +282,4 @@ test("two independent browser contexts negotiate a real WebRTC data channel, sig
     async (connectionId) => window.harness.closeConnection(connectionId),
     bConnectionId,
   );
-});
+}
