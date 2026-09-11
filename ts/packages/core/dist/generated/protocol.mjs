@@ -39,6 +39,13 @@ const manageCommandParamsSchema = z.lazy(() => z.union([
 	]),
 	z.object({}).catchall(z.unknown()),
 	z.union([
+		z.lazy(() => roomSendSchema),
+		z.lazy(() => roomReadSchema),
+		z.lazy(() => roomLeaveSchema),
+		z.lazy(() => roomMembersSchema)
+	]),
+	z.union([z.lazy(() => roomJoinSchema), z.lazy(() => roomInviteSchema)]),
+	z.union([
 		z.lazy(() => webrtcOfferSchema),
 		z.lazy(() => webrtcAnswerSchema),
 		z.lazy(() => webrtcIceCandidateSchema)
@@ -126,9 +133,10 @@ const coreDomainNameSchema = z.lazy(() => z.union([
 	z.literal("core/exec"),
 	z.literal("core/data"),
 	z.literal("core/federation"),
-	z.literal("core/webrtc")
+	z.literal("core/webrtc"),
+	z.literal("core/room")
 ]));
-const namespacedDomainIdSchema = z.lazy(() => z.string().regex(/* @__PURE__ */ new RegExp("[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+/[A-Za-z0-9_.-]+")));
+const namespacedDomainIdSchema = z.lazy(() => z.string().regex(/* @__PURE__ */ new RegExp("[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+/[A-Za-z0-9_.-]+")));
 const privateUseDomainIdSchema = z.lazy(() => z.string().regex(/* @__PURE__ */ new RegExp("x-[A-Za-z0-9_.-]+")));
 const handshakeFrameSchema = z.lazy(() => z.object({
 	"type": z.literal("handshake"),
@@ -178,6 +186,31 @@ const revocationEntrySchema = z.lazy(() => z.lazy(() => coseSign1Schema));
 const revocationAnnounceFrameSchema = z.lazy(() => z.object({
 	"type": z.literal("revocation-announce"),
 	"entries": z.array(z.lazy(() => revocationEntrySchema))
+}));
+const roomPathSchema = z.lazy(() => z.union([z.lazy(() => ownerNamedRoomPathSchema), z.lazy(() => dmRoomPathSchema)]));
+const deviceIdHexSchema = z.lazy(() => z.string().regex(/* @__PURE__ */ new RegExp("[0-9a-f]{64}")));
+const ownerNamedRoomPathSchema = z.lazy(() => z.string().regex(/* @__PURE__ */ new RegExp("[0-9a-f]{64}/[A-Za-z0-9_-]+")));
+const dmRoomPathSchema = z.lazy(() => z.string().regex(/* @__PURE__ */ new RegExp("[0-9a-f]{64}\\+[0-9a-f]{64}")));
+const roomSendSchema = z.lazy(() => z.object({
+	"verb": z.literal("room.send"),
+	"message-id": z.instanceof(Uint8Array),
+	"text": z.string(),
+	"refs": z.array(z.lazy(() => messageRefSchema)).optional()
+}));
+const roomReadSchema = z.lazy(() => z.object({
+	"verb": z.literal("room.read"),
+	"message-id": z.instanceof(Uint8Array)
+}));
+const roomLeaveSchema = z.lazy(() => z.object({ "verb": z.literal("room.leave") }));
+const roomMembersSchema = z.lazy(() => z.object({ "verb": z.literal("room.members") }));
+const messageRefSchema = z.lazy(() => z.object({
+	"id": z.instanceof(Uint8Array),
+	"relation": z.string()
+}));
+const roomJoinSchema = z.lazy(() => z.object({ "verb": z.literal("room.join") }));
+const roomInviteSchema = z.lazy(() => z.object({
+	"verb": z.literal("room.invite"),
+	"invitee": z.lazy(() => deviceIdSchema)
 }));
 const streamSessionSchema = z.lazy(() => z.number().int().nonnegative());
 const streamDataFrameSchema = z.lazy(() => z.object({
@@ -234,7 +267,8 @@ const tokenClaimsSchema = z.lazy(() => z.object({
 	"scope": z.lazy(() => capabilityScopeSchema),
 	"expires": z.number().int().nonnegative(),
 	"not-before": z.number().int().nonnegative().optional(),
-	"parent": z.instanceof(Uint8Array).optional()
+	"parent": z.instanceof(Uint8Array).optional(),
+	"delegations-remaining": z.number().int().nonnegative().optional()
 }).catchall(z.unknown()));
 const pingFrameSchema = z.lazy(() => z.object({ "type": z.literal("ping") }));
 const closeFrameSchema = z.lazy(() => z.object({
@@ -319,4 +353,4 @@ const iceCandidateInitSchema = z.lazy(() => z.object({
 	"username-fragment": z.string().optional()
 }));
 //#endregion
-export { candidateKindSchema, candidatesFrameSchema, capabilityScopeSchema, capabilityTokenSchema, capabilityVerbSchema, closeFrameSchema, coordinatorFrameSchema, coreCapabilitySchema, coreDomainNameSchema, coseHeaderAlgSchema, coseHeaderKidSchema, coseHeaderLabelSchema, coseSign1Schema, coseTokenHeadersSchema, dataEntriesFrameSchema, dataHaveFrameSchema, dataRequestFrameSchema, deviceIdSchema, domainIdSchema, execListSchema, execSessionInfoSchema, frameSchema, frameVariantSchema, gossipFrameSchema, handleClaimsSchema, handleRecordSchema, handshakeFrameSchema, iceCandidateInitSchema, identityKeySchema, manageCommandParamsSchema, manageCommandSchema, manageErrorSchema, manageOkSchema, manageRequestFrameSchema, manageResponseFrameSchema, namespacedCapabilitySchema, namespacedDomainIdSchema, observedAddressFrameSchema, peerAdvertSchema, peerIdentitySchema, pingFrameSchema, privateUseCapabilitySchema, privateUseDomainIdSchema, procKillSchema, procSignalSchema, procSpawnSchema, protocolVersionSchema, ptyKillSchema, ptyResizeSchema, ptySpawnSchema, ptyWriteSchema, relayConnectFrameSchema, relayDataFrameSchema, relayInboundFrameSchema, relayOfferFrameSchema, revocationAnnounceFrameSchema, revocationClaimsSchema, revocationEntrySchema, streamAckFrameSchema, streamDataFrameSchema, streamEndFrameSchema, streamSessionSchema, syncPunchFrameSchema, tokenClaimsSchema, webrtcAnswerSchema, webrtcIceCandidateSchema, webrtcOfferSchema, wireCandidateSchema };
+export { candidateKindSchema, candidatesFrameSchema, capabilityScopeSchema, capabilityTokenSchema, capabilityVerbSchema, closeFrameSchema, coordinatorFrameSchema, coreCapabilitySchema, coreDomainNameSchema, coseHeaderAlgSchema, coseHeaderKidSchema, coseHeaderLabelSchema, coseSign1Schema, coseTokenHeadersSchema, dataEntriesFrameSchema, dataHaveFrameSchema, dataRequestFrameSchema, deviceIdHexSchema, deviceIdSchema, dmRoomPathSchema, domainIdSchema, execListSchema, execSessionInfoSchema, frameSchema, frameVariantSchema, gossipFrameSchema, handleClaimsSchema, handleRecordSchema, handshakeFrameSchema, iceCandidateInitSchema, identityKeySchema, manageCommandParamsSchema, manageCommandSchema, manageErrorSchema, manageOkSchema, manageRequestFrameSchema, manageResponseFrameSchema, messageRefSchema, namespacedCapabilitySchema, namespacedDomainIdSchema, observedAddressFrameSchema, ownerNamedRoomPathSchema, peerAdvertSchema, peerIdentitySchema, pingFrameSchema, privateUseCapabilitySchema, privateUseDomainIdSchema, procKillSchema, procSignalSchema, procSpawnSchema, protocolVersionSchema, ptyKillSchema, ptyResizeSchema, ptySpawnSchema, ptyWriteSchema, relayConnectFrameSchema, relayDataFrameSchema, relayInboundFrameSchema, relayOfferFrameSchema, revocationAnnounceFrameSchema, revocationClaimsSchema, revocationEntrySchema, roomInviteSchema, roomJoinSchema, roomLeaveSchema, roomMembersSchema, roomPathSchema, roomReadSchema, roomSendSchema, streamAckFrameSchema, streamDataFrameSchema, streamEndFrameSchema, streamSessionSchema, syncPunchFrameSchema, tokenClaimsSchema, webrtcAnswerSchema, webrtcIceCandidateSchema, webrtcOfferSchema, wireCandidateSchema };
