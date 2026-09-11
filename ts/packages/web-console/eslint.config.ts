@@ -5,8 +5,7 @@ import globals from "globals";
 export default exadevConfig(
   {},
   {
-    // scripts/ holds plain-JS operational scripts (the live-runtime check) with no TS project to type them against.
-    ignores: ["dist", "coverage", "node_modules", ".turbo", "scripts"],
+    ignores: ["dist", "coverage", "node_modules", ".turbo"],
   },
   {
     languageOptions: {

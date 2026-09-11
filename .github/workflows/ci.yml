@@ -160,6 +160,38 @@ jobs:
         working-directory: ts
         run: pnpm turbo run _test
 
+  web-console-e2e:
+    name: web-console E2E (WebRTC)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: ts/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .tool-versions
+          cache: pnpm
+          cache-dependency-path: ts/pnpm-lock.yaml
+
+      - name: Install ts/ workspace
+        working-directory: ts
+        run: pnpm install --frozen-lockfile
+
+      - name: Build wire-mesh-node, the real relay this test signals through
+        working-directory: ts
+        run: pnpm --filter wire-mesh-node build
+
+      - name: Install Playwright's Chromium and its OS dependencies
+        working-directory: ts/packages/web-console
+        run: npx playwright install --with-deps chromium
+
+      - name: Run the WebRTC end-to-end test against a real relay and two real browser contexts
+        working-directory: ts/packages/web-console
+        run: pnpm run test:e2e
+
   rust-verify:
     name: rust/ Verify
     runs-on: ubuntu-latest
@@ -196,7 +228,8 @@ jobs:
 
   required-checks:
     name: Required Checks
-    needs: [cddl-validate, conformance-verify, ts-verify, rust-verify]
+    needs:
+      [cddl-validate, conformance-verify, ts-verify, web-console-e2e, rust-verify]
     if: always()
     runs-on: ubuntu-latest
     steps:

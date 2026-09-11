@@ -4,5 +4,10 @@
     "allowImportingTsExtensions": true,
     "types": ["node", "vite/client"]
   },
-  "include": ["vite.config.ts", "eslint.config.ts", "test/**/*.ts"]
+  "include": [
+    "vite.config.ts",
+    "playwright.config.ts",
+    "eslint.config.ts",
+    "test/**/*.ts"
+  ]
 }
