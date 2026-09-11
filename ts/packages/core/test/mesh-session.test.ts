@@ -443,6 +443,7 @@ describe("reconnect policy", () => {
 
 const TEST_TOKEN_SIGNATURE_BYTE = 3;
 const TEST_INCOMING_REQUEST_ID = 7;
+const OVERRIDE_TOKEN_BYTE = 9;
 
 describe("capability tokens and manage-request plumbing", () => {
   const testCommand: ManageCommand = {
@@ -483,6 +484,61 @@ describe("capability tokens and manage-request plumbing", () => {
     expect(sentRequest.token).toBeUndefined();
     await session.close();
     await expect(pending).rejects.toThrow();
+  });
+
+  it("attaches a per-call token override even when no session-global token has been set", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/management"]);
+    const pending = session.sendManageRequest(
+      testCommand,
+      testScope,
+      undefined,
+      testToken,
+    );
+    await Promise.resolve();
+    const sentRequest = connection.sent.at(-1) as ManageRequestFrame;
+    expect(sentRequest.token).toEqual(testToken);
+    await session.close();
+    await expect(pending).rejects.toThrow();
+  });
+
+  it("a per-call token override takes precedence over the session-global token for that one request only", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/management"]);
+    session.setToken(testToken);
+    const overrideToken: CapabilityToken = [
+      new Uint8Array([OVERRIDE_TOKEN_BYTE]),
+      {},
+      new Uint8Array([OVERRIDE_TOKEN_BYTE]),
+      new Uint8Array([OVERRIDE_TOKEN_BYTE]),
+    ];
+
+    const overridden = session.sendManageRequest(
+      testCommand,
+      testScope,
+      undefined,
+      overrideToken,
+    );
+    await Promise.resolve();
+    expect((connection.sent.at(-1) as ManageRequestFrame).token).toEqual(
+      overrideToken,
+    );
+
+    // The very next request, with no override of its own, must fall back to setToken's session-global value -- the override applies to the one call it was passed to, not for the rest of the session.
+    const usingSessionDefault = session.sendManageRequest(
+      testCommand,
+      testScope,
+    );
+    await Promise.resolve();
+    expect((connection.sent.at(-1) as ManageRequestFrame).token).toEqual(
+      testToken,
+    );
+
+    await session.close();
+    await expect(overridden).rejects.toThrow();
+    await expect(usingSessionDefault).rejects.toThrow();
   });
 
   it("resolves sendManageRequest only with the outcome of the matching manage-response", async () => {

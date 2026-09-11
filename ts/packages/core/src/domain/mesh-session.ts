@@ -87,11 +87,12 @@ export interface MeshSession {
   sendPing: () => Promise<void>;
   /** Attaches this token to every `manage-request` sent from now on. */
   setToken: (token: CapabilityToken) => void;
-  /** Sends a manage-request and resolves with the matching manage-response's outcome, correlated by request-id. When targetDevice is given, the request is routed to that specific peer via an established relay-connect pairing (wrapped as relay-data) rather than sent directly over this session's own Connection -- relay-hub deliberately drops manage-request/manage-response frames sent to it directly, since routing between two connected peers is not the relay role's business, so a specific peer reachable only through a relay hub can only be addressed this way. Absent, this sends directly over the Connection exactly as before. */
+  /** Sends a manage-request and resolves with the matching manage-response's outcome, correlated by request-id. When targetDevice is given, the request is routed to that specific peer via an established relay-connect pairing (wrapped as relay-data) rather than sent directly over this session's own Connection -- relay-hub deliberately drops manage-request/manage-response frames sent to it directly, since routing between two connected peers is not the relay role's business, so a specific peer reachable only through a relay hub can only be addressed this way. Absent, this sends directly over the Connection exactly as before. When token is given, it is attached to this one request instead of whatever setToken last set -- a single session routinely needs a different token per request when its peer shares more than one scope with this side (e.g. several core/room memberships over one connection), and a session-global token can only ever be correct for one of them. Absent, this request carries setToken's own session-global token exactly as before. */
   sendManageRequest: (
     command: ManageCommand,
     scope: Readonly<CapabilityScope>,
     targetDevice?: DeviceId,
+    token?: CapabilityToken,
   ) => Promise<ManageOutcome>;
   close: () => Promise<void>;
 }
@@ -187,15 +188,17 @@ function createSessionCore(
   function buildManageRequest(
     command: ManageCommand,
     scope: Readonly<CapabilityScope>,
+    tokenOverride?: CapabilityToken,
   ): ManageRequestFrame {
     const requestId = nextRequestId;
     nextRequestId += 1;
+    const token = tokenOverride ?? currentToken;
     return {
       type: "manage-request",
       "request-id": requestId,
       command,
       scope,
-      ...(currentToken !== null ? { token: currentToken } : {}),
+      ...(token !== null ? { token } : {}),
     };
   }
 
@@ -523,6 +526,7 @@ function createSessionCore(
         command: ManageCommand,
         scope: Readonly<CapabilityScope>,
         targetDevice?: DeviceId,
+        token?: CapabilityToken,
       ): Promise<ManageOutcome> {
         if (connection === null || state.status !== "connected") {
           throw new Error("not connected");
@@ -530,7 +534,7 @@ function createSessionCore(
         if (targetDevice !== undefined) {
           await ensureRelayPairing(targetDevice);
         }
-        const frame = buildManageRequest(command, scope);
+        const frame = buildManageRequest(command, scope, token);
         const outcome = new Promise<ManageOutcome>((resolve, reject) => {
           pendingManageRequests.set(frame["request-id"], { resolve, reject });
         });

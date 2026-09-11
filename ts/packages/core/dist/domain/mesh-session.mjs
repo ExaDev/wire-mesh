@@ -55,15 +55,16 @@ function createSessionCore(identity, clock, reconnect, dial, onPeerAdvert) {
 		for (const pending of pendingManageRequests.values()) pending.reject(new Error(reason));
 		pendingManageRequests.clear();
 	}
-	function buildManageRequest(command, scope) {
+	function buildManageRequest(command, scope, tokenOverride) {
 		const requestId = nextRequestId;
 		nextRequestId += 1;
+		const token = tokenOverride ?? currentToken;
 		return {
 			type: "manage-request",
 			"request-id": requestId,
 			command,
 			scope,
-			...currentToken !== null ? { token: currentToken } : {}
+			...token !== null ? { token } : {}
 		};
 	}
 	/** Sends a frame, wrapping it as relay-data first when viaRelay is set -- the single choke point every outbound manage-request/manage-response passes through, so a consumer of sendManageRequest/respond never needs its own relay-wrapping logic. */
@@ -332,10 +333,10 @@ function createSessionCore(identity, clock, reconnect, dial, onPeerAdvert) {
 			setToken(token) {
 				currentToken = token;
 			},
-			async sendManageRequest(command, scope, targetDevice) {
+			async sendManageRequest(command, scope, targetDevice, token) {
 				if (connection === null || state.status !== "connected") throw new Error("not connected");
 				if (targetDevice !== void 0) await ensureRelayPairing(targetDevice);
-				const frame = buildManageRequest(command, scope);
+				const frame = buildManageRequest(command, scope, token);
 				const outcome = new Promise((resolve, reject) => {
 					pendingManageRequests.set(frame["request-id"], {
 						resolve,
