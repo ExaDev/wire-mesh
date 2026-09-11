@@ -42,6 +42,10 @@
     "vitest": "5.0.0"
   },
   "exports": {
+    "./adapters/frame-codec": {
+      "import": "./dist/adapters/frame-codec.mjs",
+      "require": "./dist/adapters/frame-codec.cjs"
+    },
     "./adapters/memory-storage": {
       "import": "./dist/adapters/memory-storage.mjs",
       "require": "./dist/adapters/memory-storage.cjs"
@@ -58,9 +62,17 @@
       "import": "./dist/adapters/tcp-transport.mjs",
       "require": "./dist/adapters/tcp-transport.cjs"
     },
+    "./domain/device-id": {
+      "import": "./dist/domain/device-id.mjs",
+      "require": "./dist/domain/device-id.cjs"
+    },
     "./domain/handshake": {
       "import": "./dist/domain/handshake.mjs",
       "require": "./dist/domain/handshake.cjs"
+    },
+    "./domain/mesh-session": {
+      "import": "./dist/domain/mesh-session.mjs",
+      "require": "./dist/domain/mesh-session.cjs"
     },
     "./domain/relay-hub": {
       "import": "./dist/domain/relay-hub.mjs",

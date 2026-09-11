@@ -10,7 +10,7 @@ import {
   SchemaInvalidFrameError,
   decodeMessage,
   messageFromFrame,
-} from "./frame-codec.js";
+} from "@exadev/wire-mesh-core/adapters/frame-codec";
 
 // RFC 6455 close codes, named rather than bare: 1000 normal closure, 1002 protocol error.
 const CLOSE_NORMAL = 1000;

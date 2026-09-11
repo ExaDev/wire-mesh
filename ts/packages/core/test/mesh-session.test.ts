@@ -9,20 +9,21 @@ import type {
   ManageRequestFrame,
   ManageResponseFrame,
   RelayDataFrame,
-} from "@exadev/wire-mesh-core/generated/protocol";
-import type { Clock } from "@exadev/wire-mesh-core/ports/clock";
-import type { IdentityPort } from "@exadev/wire-mesh-core/ports/identity";
+} from "../src/generated/protocol.js";
+import type { Clock } from "../src/ports/clock.js";
+import type { IdentityPort } from "../src/ports/identity.js";
 import type {
   Connection,
   Listener,
   Transport,
-} from "@exadev/wire-mesh-core/ports/transport";
+} from "../src/ports/transport.js";
 import {
   HANDSHAKE_TIMEOUT_MS,
+  acceptMeshSession,
   createMeshSession,
   type IncomingManageRequest,
   type ManageOutcome,
-} from "../src/mesh-session.js";
+} from "../src/domain/mesh-session.js";
 import {
   messageFromFrame,
   tryDecodeFrame,
@@ -786,5 +787,95 @@ describe("relay routing", () => {
       frame: wrapped,
     });
     await session.close();
+  });
+});
+
+describe("acceptMeshSession", () => {
+  it("wires up handshake and self-advert immediately, with no dial step at all", async () => {
+    const fake = new FakeConnection();
+    const session = await acceptMeshSession(
+      fake.connection,
+      testIdentity,
+      ["core/data"],
+      { clock: testClock, label: "peer-over-tcp" },
+    );
+
+    expect(fake.sent[0]).toEqual({
+      type: "handshake",
+      version: 1,
+      domains: ["core/data"],
+    } satisfies HandshakeFrame);
+    const selfAdvert = fake.sent[1] as GossipFrame;
+    expect(selfAdvert.peers[0]?.device).toEqual(testIdentity.deviceId);
+    await session.close();
+  });
+
+  it("negotiates against the remote's own handshake exactly like the dial side", async () => {
+    const fake = new FakeConnection();
+    const session = await acceptMeshSession(fake.connection, testIdentity, [
+      "core/management",
+      "core/data",
+    ]);
+    const eventsDone = nthEvent(session, EVENTS_THROUGH_REMOTE_HANDSHAKE - 1);
+    fake.push({
+      type: "handshake",
+      version: 1,
+      domains: ["core/data", "core/exec"],
+    });
+    const event = (await eventsDone) as {
+      state: {
+        status: string;
+        handshake: { status: string; sharedDomains: string[] };
+      };
+    };
+    expect(event.state.status).toBe("connected");
+    expect(event.state.handshake.status).toBe("negotiated");
+    expect(event.state.handshake.sharedDomains).toEqual(["core/data"]);
+    await session.close();
+  });
+
+  it("resolves peerDeviceId from the remote's own first self-advert", async () => {
+    const fake = new FakeConnection();
+    const session = await acceptMeshSession(fake.connection, testIdentity, [
+      "core/data",
+    ]);
+    fake.push(gossipFor(deviceB));
+    await expect(session.peerDeviceId).resolves.toEqual(deviceB);
+    await session.close();
+  });
+
+  it("peerDeviceId resolves from the first advert and never changes on a later one", async () => {
+    const fake = new FakeConnection();
+    const session = await acceptMeshSession(fake.connection, testIdentity, [
+      "core/data",
+    ]);
+    fake.push(gossipFor(deviceA));
+    await expect(session.peerDeviceId).resolves.toEqual(deviceA);
+    fake.push(gossipFor(deviceB));
+    // Same promise, already settled -- a second, different advert cannot retroactively change what it resolved to.
+    await expect(session.peerDeviceId).resolves.toEqual(deviceA);
+    await session.close();
+  });
+
+  it("refuses connect(): the session is already connected by construction, with nothing to dial", async () => {
+    const fake = new FakeConnection();
+    const session = await acceptMeshSession(fake.connection, testIdentity, [
+      "core/data",
+    ]);
+    await expect(session.connect("ws://node", ["core/data"])).rejects.toThrow();
+    await session.close();
+  });
+
+  it("close() closes the underlying connection and rejects pending manage-requests, same as the dial side", async () => {
+    const fake = new FakeConnection();
+    const session = await acceptMeshSession(fake.connection, testIdentity, [
+      "core/data",
+    ]);
+    const pending = session.sendManageRequest(
+      { verb: "exec:proc", params: { verb: "exec.list" } },
+      { kind: "folder" },
+    );
+    await session.close();
+    await expect(pending).rejects.toThrow();
   });
 });

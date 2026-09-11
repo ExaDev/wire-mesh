@@ -5,7 +5,7 @@ import {
   createBrowserTransport,
   wrapWebSocket,
 } from "../src/adapters/websocket-transport.js";
-import { messageFromFrame } from "../src/adapters/frame-codec.js";
+import { messageFromFrame } from "@exadev/wire-mesh-core/adapters/frame-codec";
 import { FakeWebSocket } from "./fake-websocket.js";
 import { bytesFromHex } from "./hex.js";
 
