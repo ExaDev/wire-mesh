@@ -1,10 +1,7 @@
 node_modules/
 .turbo/
 .eslintcache
-# dist/ everywhere except ts/packages/core, whose build output is committed deliberately (see that package's README): consumers install it as a git-subdirectory dependency (github:ExaDev/wire-mesh#path:ts/packages/core), and a git install always resolves under node_modules where no build step can run -- the same reasoning as ExaDev/cddl.js committing its own dist. CI rebuilds and diffs, so it cannot drift from src/.
 dist/
-!ts/packages/core/dist/
-!ts/packages/core/dist/**
 rust/target/
 .wrangler/
 test-results/

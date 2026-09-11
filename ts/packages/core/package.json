@@ -1,9 +1,12 @@
 {
   "name": "@exadev/wire-mesh-core",
   "version": "0.0.0",
-  "private": true,
   "type": "module",
   "packageManager": "pnpm@10.33.0",
+  "publishConfig": {
+    "provenance": true,
+    "access": "public"
+  },
   "files": [
     "dist"
   ],
@@ -29,6 +32,12 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
     "@exadev/eslint-config": "2.10.6",
+    "@semantic-release/changelog": "7.0.0",
+    "@semantic-release/commit-analyzer": "13.0.1",
+    "@semantic-release/git": "11.0.1",
+    "@semantic-release/github": "12.0.9",
+    "@semantic-release/npm": "13.1.5",
+    "@semantic-release/release-notes-generator": "14.1.1",
     "@types/node": "26.4.1",
     "eslint": "10.10.0",
     "eslint-config-prettier": "10.1.8",
@@ -36,6 +45,7 @@
     "globals": "17.12.0",
     "jiti": "2.7.0",
     "prettier": "3.9.6",
+    "semantic-release": "25.0.9",
     "tsdown": "0.23.0",
     "turbo": "2.10.12",
     "typescript": "6.0.3",
