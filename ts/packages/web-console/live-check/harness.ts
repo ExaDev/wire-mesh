@@ -5,14 +5,14 @@ import type {
   CapabilityToken,
   Frame,
   TokenClaims,
-} from "@exadev/wire-mesh-core/generated/protocol";
-import type { Connection } from "@exadev/wire-mesh-core/ports/transport";
+} from "wire-mesh-core/generated/protocol";
+import type { Connection } from "wire-mesh-core/ports/transport";
 import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
 import { createBrowserTransport } from "../src/adapters/websocket-transport.js";
 import {
   createMeshSession,
   type SessionEvent,
-} from "@exadev/wire-mesh-core/domain/mesh-session";
+} from "wire-mesh-core/domain/mesh-session";
 import {
   WEBRTC_SIGNAL_SCOPE,
   WEBRTC_SIGNAL_VERB,

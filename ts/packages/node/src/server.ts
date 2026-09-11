@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// The wire-mesh-node CLI entrypoint: a self-hostable, no-cloud LAN counterpart to cloudflare-hub, wiring the same shared relay-hub domain logic from @exadev/wire-mesh-core over a real Node WebSocket + http server instead of a Cloudflare Durable Object. Default bind address is 0.0.0.0, not loopback -- the whole point of this package is LAN reachability, unlike a dev-server tool's usual loopback-only default.
+// The wire-mesh-node CLI entrypoint: a self-hostable, no-cloud LAN counterpart to cloudflare-hub, wiring the same shared relay-hub domain logic from wire-mesh-core over a real Node WebSocket + http server instead of a Cloudflare Durable Object. Default bind address is 0.0.0.0, not loopback -- the whole point of this package is LAN reachability, unlike a dev-server tool's usual loopback-only default.
 
-import { createRelayHub } from "@exadev/wire-mesh-core/domain/relay-hub";
+import { createRelayHub } from "wire-mesh-core/domain/relay-hub";
 import { createNodeWebSocketTransport } from "./adapters/node-websocket-transport.js";
 
 export function healthResponse(): { ok: true; node: string; roles: string[] } {

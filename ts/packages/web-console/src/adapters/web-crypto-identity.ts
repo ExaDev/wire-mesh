@@ -1,12 +1,9 @@
 // A Worker-runtime IdentityPort implementation using the standard Web Crypto API (globalThis.crypto.subtle), which exists identically in Cloudflare Workers and in Node >= 19 -- mirroring core's node-identity adapter's algorithm coverage (ES256 P-256 and Ed25519, the two algorithms identity-key.alg carries in the spec's own conformance vectors) so the two adapters are drop-in substitutes for each other behind the same port.
 
 import { cdeDecodeOptions, cdeEncodeOptions, decode, encode } from "cbor2";
-import type {
-  DeviceId,
-  IdentityKey,
-} from "@exadev/wire-mesh-core/generated/protocol";
-import type { IdentityPort } from "@exadev/wire-mesh-core/ports/identity";
-import type { KeyValueStorage } from "@exadev/wire-mesh-core/ports/storage";
+import type { DeviceId, IdentityKey } from "wire-mesh-core/generated/protocol";
+import type { IdentityPort } from "wire-mesh-core/ports/identity";
+import type { KeyValueStorage } from "wire-mesh-core/ports/storage";
 
 const ES256 = -7;
 const EDDSA = -8;

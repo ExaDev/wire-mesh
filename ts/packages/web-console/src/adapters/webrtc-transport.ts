@@ -2,13 +2,13 @@
 //
 // Exactly like createBrowserTransport's connect() sets ws.binaryType before calling wrapWebSocket, the caller here (webrtc-negotiation.ts) must set channel.binaryType = "arraybuffer" explicitly -- not relied on as an unstated default -- on the still-mutable channel before handing it to wrapRtcDataChannel. This adapter takes a Readonly channel and never mutates it itself.
 
-import type { Frame } from "@exadev/wire-mesh-core/generated/protocol";
-import type { Connection } from "@exadev/wire-mesh-core/ports/transport";
+import type { Frame } from "wire-mesh-core/generated/protocol";
+import type { Connection } from "wire-mesh-core/ports/transport";
 import {
   SchemaInvalidFrameError,
   decodeMessage,
   messageFromFrame,
-} from "@exadev/wire-mesh-core/adapters/frame-codec";
+} from "wire-mesh-core/adapters/frame-codec";
 
 export function wrapRtcDataChannel(
   channel: Readonly<RTCDataChannel>,

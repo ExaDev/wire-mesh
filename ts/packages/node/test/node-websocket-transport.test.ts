@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { encode } from "cbor2";
-import type { Frame } from "@exadev/wire-mesh-core/generated/protocol";
+import type { Frame } from "wire-mesh-core/generated/protocol";
 import type { WebSocket } from "ws";
 import {
   createNodeWebSocketTransport,

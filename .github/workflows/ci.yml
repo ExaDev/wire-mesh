@@ -233,7 +233,7 @@ jobs:
           fi
 
   release-core:
-    name: Release @exadev/wire-mesh-core
+    name: Release wire-mesh-core
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: [required-checks]
     runs-on: ubuntu-latest

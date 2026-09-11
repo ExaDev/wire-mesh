@@ -6,15 +6,12 @@ import {
   type ServerResponse,
 } from "node:http";
 import { cdeDecodeOptions, cdeEncodeOptions, decode, encode } from "cbor2";
-import {
-  frameSchema,
-  type Frame,
-} from "@exadev/wire-mesh-core/generated/protocol";
+import { frameSchema, type Frame } from "wire-mesh-core/generated/protocol";
 import type {
   Connection,
   Listener,
   Transport,
-} from "@exadev/wire-mesh-core/ports/transport";
+} from "wire-mesh-core/ports/transport";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 
 // RFC 6455 close codes, named rather than bare: 1000 normal closure, 1002 protocol error.
