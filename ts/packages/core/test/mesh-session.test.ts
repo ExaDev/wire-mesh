@@ -9,6 +9,8 @@ import type {
   ManageRequestFrame,
   ManageResponseFrame,
   RelayDataFrame,
+  RevocationAnnounceFrame,
+  RevocationEntry,
 } from "../src/generated/protocol.js";
 import type { Clock } from "../src/ports/clock.js";
 import type { IdentityPort } from "../src/ports/identity.js";
@@ -621,6 +623,60 @@ describe("capability tokens and manage-request plumbing", () => {
       "request-id": TEST_INCOMING_REQUEST_ID,
       outcome: { result: "ok" },
     } satisfies ManageResponseFrame);
+    await session.close();
+  });
+});
+
+describe("revocation-announce plumbing", () => {
+  const ENTRY_B_PROTECTED_HEADER_BYTE = 11;
+  const ENTRY_B_PAYLOAD_BYTE = 12;
+  const testEntryA: RevocationEntry = [
+    new Uint8Array([1]),
+    {},
+    new Uint8Array([2]),
+    new Uint8Array([TEST_TOKEN_SIGNATURE_BYTE]),
+  ];
+  const testEntryB: RevocationEntry = [
+    new Uint8Array([ENTRY_B_PROTECTED_HEADER_BYTE]),
+    {},
+    new Uint8Array([ENTRY_B_PAYLOAD_BYTE]),
+    new Uint8Array([TEST_TOKEN_SIGNATURE_BYTE + 1]),
+  ];
+
+  it("sends a revocation-announce frame carrying the given entries", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/management"]);
+
+    await session.sendRevocationAnnounce([testEntryA, testEntryB]);
+
+    const sentFrame = connection.sent.at(-1) as RevocationAnnounceFrame;
+    expect(sentFrame).toEqual({
+      type: "revocation-announce",
+      entries: [testEntryA, testEntryB],
+    } satisfies RevocationAnnounceFrame);
+    await session.close();
+  });
+
+  it("flattens an incoming revocation-announce frame's entries onto revocationAnnouncements, one item per entry", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/management"]);
+
+    const received: RevocationEntry[] = [];
+    const receivedBoth = (async (): Promise<void> => {
+      const iterator = session.revocationAnnouncements[Symbol.asyncIterator]();
+      received.push((await iterator.next()).value as RevocationEntry);
+      received.push((await iterator.next()).value as RevocationEntry);
+    })();
+
+    connection.push({
+      type: "revocation-announce",
+      entries: [testEntryA, testEntryB],
+    } satisfies RevocationAnnounceFrame);
+
+    await receivedBoth;
+    expect(received).toEqual([testEntryA, testEntryB]);
     await session.close();
   });
 });

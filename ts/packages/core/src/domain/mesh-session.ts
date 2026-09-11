@@ -14,6 +14,8 @@ import {
   type ManageResponseFrame,
   type PeerAdvert,
   type ProtocolVersion,
+  type RevocationAnnounceFrame,
+  type RevocationEntry,
 } from "../generated/protocol.js";
 import { SUPPORTED_PROTOCOL_VERSION, negotiate } from "./handshake.js";
 import { deviceIdToHex } from "./device-id.js";
@@ -83,10 +85,16 @@ export interface MeshSession {
   readonly events: AsyncIterable<SessionEvent>;
   /** Every `manage-request` received from the peer, in arrival order. */
   readonly incomingManageRequests: AsyncIterable<IncomingManageRequest>;
+  /** Every `revocation-entry` received from the peer, in arrival order -- a `revocation-announce` frame's own `entries` array is flattened to one item per entry, since each entry is independently verifiable and independently meaningful regardless of which frame carried it. A consumer typically feeds each one into a RevocationView's own `record`. */
+  readonly revocationAnnouncements: AsyncIterable<RevocationEntry>;
   connect: (address: string, localDomains: readonly string[]) => Promise<void>;
   sendPing: () => Promise<void>;
   /** Attaches this token to every `manage-request` sent from now on. */
   setToken: (token: CapabilityToken) => void;
+  /** Announces one or more already-minted revocation-entries to the peer. Sent directly over the connection, never relay-wrapped -- revocation-announce is a gossiped broadcast, not a request addressed to a specific peer, so it has no targetDevice/token parameters the way sendManageRequest does. */
+  sendRevocationAnnounce: (
+    entries: readonly RevocationEntry[],
+  ) => Promise<void>;
   /** Sends a manage-request and resolves with the matching manage-response's outcome, correlated by request-id. When targetDevice is given, the request is routed to that specific peer via an established relay-connect pairing (wrapped as relay-data) rather than sent directly over this session's own Connection -- relay-hub deliberately drops manage-request/manage-response frames sent to it directly, since routing between two connected peers is not the relay role's business, so a specific peer reachable only through a relay hub can only be addressed this way. Absent, this sends directly over the Connection exactly as before. When token is given, it is attached to this one request instead of whatever setToken last set -- a single session routinely needs a different token per request when its peer shares more than one scope with this side (e.g. several core/room memberships over one connection), and a session-global token can only ever be correct for one of them. Absent, this request carries setToken's own session-global token exactly as before. */
   sendManageRequest: (
     command: ManageCommand,
@@ -150,6 +158,8 @@ function createSessionCore(
   >();
   const incomingWaiters: ((request: IncomingManageRequest) => void)[] = [];
   const incomingBacklog: IncomingManageRequest[] = [];
+  const revocationWaiters: ((entry: RevocationEntry) => void)[] = [];
+  const revocationBacklog: RevocationEntry[] = [];
 
   function snapshot(): SessionEvent {
     return {
@@ -175,6 +185,15 @@ function createSessionCore(
       waiter(request);
     } else {
       incomingBacklog.push(request);
+    }
+  }
+
+  function emitRevocationEntry(entry: RevocationEntry): void {
+    const waiter = revocationWaiters.shift();
+    if (waiter) {
+      waiter(entry);
+    } else {
+      revocationBacklog.push(entry);
     }
   }
 
@@ -292,6 +311,10 @@ function createSessionCore(
       applyManageResponse(frame);
     } else if (frame.type === "manage-request") {
       applyManageRequest(frame, false);
+    } else if (frame.type === "revocation-announce") {
+      for (const entry of frame.entries) {
+        emitRevocationEntry(entry);
+      }
     }
   }
 
@@ -501,6 +524,23 @@ function createSessionCore(
           };
         },
       },
+      revocationAnnouncements: {
+        [Symbol.asyncIterator]() {
+          return {
+            next: async (): Promise<IteratorResult<RevocationEntry>> =>
+              new Promise((resolve) => {
+                const backlogEntry = revocationBacklog.shift();
+                if (backlogEntry) {
+                  resolve({ value: backlogEntry, done: false });
+                } else {
+                  revocationWaiters.push((entry) => {
+                    resolve({ value: entry, done: false });
+                  });
+                }
+              }),
+          };
+        },
+      },
       async connect(address, localDomains): Promise<void> {
         if (connection !== null) {
           throw new Error(
@@ -542,6 +582,20 @@ function createSessionCore(
         await transmit(frame, targetDevice !== undefined);
         emit();
         return outcome;
+      },
+      async sendRevocationAnnounce(
+        entries: readonly RevocationEntry[],
+      ): Promise<void> {
+        if (connection === null || state.status !== "connected") {
+          throw new Error("not connected");
+        }
+        const frame: RevocationAnnounceFrame = {
+          type: "revocation-announce",
+          entries: [...entries],
+        };
+        frameLog.push({ direction: "sent", frame });
+        await transmit(frame, false);
+        emit();
       },
       async close(): Promise<void> {
         feedCancelled = true;
