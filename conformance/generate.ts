@@ -114,6 +114,59 @@ const delegatedTokenVector = vector(
   delegatedToken,
 );
 
+// core/room's own device-id-hex path components -- the tstr hex-string encoding room-path regexes match against, distinct from deviceA/deviceB/deviceC's bstr wire encoding used everywhere else. Reuses the same synthetic byte pattern so a reader can see it's the same device in both forms.
+const deviceAHex = "11".repeat(SHA256_BYTE_LENGTH);
+const deviceBHex = "22".repeat(SHA256_BYTE_LENGTH);
+const deviceCHex = "33".repeat(SHA256_BYTE_LENGTH);
+
+// A room:member grant chain demonstrating this session's own delegations-remaining fix: the owner (deviceA) issues a root grant to deviceB capped at one further re-delegation, and deviceB narrows it (a strictly lower value, 0) when re-delegating to deviceC -- deviceC's own token therefore bears no further-delegation authority at all, closing the unbounded-admission gap the claim exists to fix.
+const roomMemberRootTokenClaims: JsonWire = {
+  "token-id": hex("03".repeat(TOKEN_ID_BYTE_LENGTH)),
+  issuer: deviceA,
+  "issuer-key": { alg: -7, "public-key": publicKeyEs256A },
+  bearer: deviceB,
+  capability: "room:member",
+  scope: { kind: "room", path: `${deviceAHex}/general` },
+  expires: 1893456000000,
+  "delegations-remaining": 1,
+};
+
+const roomMemberRootToken: JsonWire = [
+  hex(wireHex({ 1: -7, 4: deviceA })),
+  {},
+  hex(wireHex(roomMemberRootTokenClaims)),
+  signatureFiller,
+];
+
+const roomMemberRootTokenVector = vector(
+  "capability_token_v1_room_member_root_grant",
+  roomMemberRootToken,
+);
+
+const roomMemberDelegatedTokenClaims: JsonWire = {
+  "token-id": hex("04".repeat(TOKEN_ID_BYTE_LENGTH)),
+  issuer: deviceB,
+  "issuer-key": { alg: -7, "public-key": publicKeyEs256B },
+  bearer: deviceC,
+  capability: "room:member",
+  scope: { kind: "room", path: `${deviceAHex}/general` },
+  expires: 1861920000000,
+  parent: hex(roomMemberRootTokenVector.wire_hex),
+  "delegations-remaining": 0,
+};
+
+const roomMemberDelegatedToken: JsonWire = [
+  hex(wireHex({ 1: -7, 4: deviceB })),
+  {},
+  hex(wireHex(roomMemberDelegatedTokenClaims)),
+  signatureFiller,
+];
+
+const roomMemberDelegatedTokenVector = vector(
+  "capability_token_v1_room_member_delegated_no_further_delegation",
+  roomMemberDelegatedToken,
+);
+
 const handleClaims: JsonWire = {
   handle: "alice@example.com",
   "device-id": deviceD,
@@ -134,6 +187,8 @@ const handleRecordVector = vector("handle_record_v1_dns_anchored", [
 const tokenVectors: Vector[] = [
   rootTokenVector,
   delegatedTokenVector,
+  roomMemberRootTokenVector,
+  roomMemberDelegatedTokenVector,
   handleRecordVector,
 ];
 
@@ -282,6 +337,77 @@ const frameVectors: Vector[] = [
     },
     scope: { kind: "node" },
   }),
+  // core/room -- room.send carries an optional refs array (message-ref's own open relation string), exercising the reply/forward reference mechanism alongside the gated room:member token.
+  vector("manage_request_v1_room_send_with_reply_ref", {
+    type: "manage-request",
+    "request-id": 7,
+    command: {
+      verb: "room:member",
+      params: {
+        verb: "room.send",
+        "message-id": hex("aa01"),
+        text: "sounds good, see you then",
+        refs: [{ id: hex("aa00"), relation: "reply" }],
+      },
+    },
+    scope: { kind: "room", path: `${deviceAHex}/general` },
+    token: roomMemberRootToken,
+  }),
+  vector("manage_request_v1_room_read", {
+    type: "manage-request",
+    "request-id": 8,
+    command: {
+      verb: "room:member",
+      params: { verb: "room.read", "message-id": hex("aa01") },
+    },
+    scope: { kind: "room", path: `${deviceAHex}/general` },
+    token: roomMemberRootToken,
+  }),
+  vector("manage_request_v1_room_leave", {
+    type: "manage-request",
+    "request-id": 9,
+    command: {
+      verb: "room:member",
+      params: { verb: "room.leave" },
+    },
+    scope: { kind: "room", path: `${deviceAHex}/general` },
+    token: roomMemberRootToken,
+  }),
+  vector("manage_request_v1_room_members", {
+    type: "manage-request",
+    "request-id": 10,
+    command: {
+      verb: "room:member",
+      params: { verb: "room.members" },
+    },
+    scope: { kind: "room", path: `${deviceAHex}/general` },
+    token: roomMemberRootToken,
+  }),
+  // room.join and room.invite are deliberately ungated (no token field) -- access control is a human's explicit approval in the receiving UI, not a pre-shared token, the first verbs in this spec to work that way. This join vector uses a DM room path (the sorted device-id pair), the shape a first, tokenless contact actually needs.
+  vector("manage_request_v1_room_join_dm", {
+    type: "manage-request",
+    "request-id": 11,
+    command: {
+      verb: "room:member",
+      params: { verb: "room.join" },
+    },
+    scope: { kind: "room", path: `${deviceBHex}+${deviceCHex}` },
+  }),
+  vector("manage_request_v1_room_invite", {
+    type: "manage-request",
+    "request-id": 12,
+    command: {
+      verb: "room:member",
+      params: { verb: "room.invite", invitee: deviceC },
+    },
+    scope: { kind: "room", path: `${deviceAHex}/general` },
+  }),
+  // The approval response to room.join/room.invite: manage-ok extended with the freshly minted grant, riding the existing `* tstr => any` tail rather than a new response shape.
+  vector("manage_response_v1_room_join_granted", {
+    type: "manage-response",
+    "request-id": 11,
+    outcome: { result: "ok", "granted-token": roomMemberDelegatedToken },
+  }),
   vector("revocation_announce_v1_two_entries", {
     type: "revocation-announce",
     // Each entry is its own cose-sign1 (same shape as capability-token), so a revocation carries the same self-certifying attribution as the token it revokes: a verifier checks revocation-claims.issuer against the token's own issuer field, not merely that some signature verifies -- only a token's own issuer may revoke it.
@@ -377,6 +503,6 @@ write(
 
 write(
   "frames.v1.json",
-  "Frame conformance vectors for protocol version 1, covering every $frame-variant in spec/frame.cddl except handshake-frame (see handshake.v1.json). manage-response-frame gets two vectors, one per branch of its manage-ok / manage-error outcome union. The four core/webrtc vectors (offer, answer, ice-candidate, end-of-candidates) exercise manage-request-frame's params socket with new content, not a new frame kind; the offer vector is also the first in this file to exercise manage-request-frame's optional token field.",
+  "Frame conformance vectors for protocol version 1, covering every $frame-variant in spec/frame.cddl except handshake-frame (see handshake.v1.json). manage-response-frame gets two vectors, one per branch of its manage-ok / manage-error outcome union. The four core/webrtc vectors (offer, answer, ice-candidate, end-of-candidates) exercise manage-request-frame's params socket with new content, not a new frame kind; the offer vector is also the first in this file to exercise manage-request-frame's optional token field. The core/room vectors (send with a reply ref, read, leave, members, invite) carry the room:member token from tokens.v1.json's own root grant; the join vector and its manage-ok grant response are the first in this file to exercise an ungated manage-request (no token field at all) and manage-ok's own `* tstr => any` extension tail respectively.",
   frameVectors,
 );
