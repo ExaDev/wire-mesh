@@ -12,6 +12,8 @@ Two sockets (`$frame-variant`, `$manage-command-params`) are the deliberate exte
 
 `registry/` holds the append-only core domain and capability name lists referenced from `handshake.cddl` and `tokens.cddl`.
 
+`CONVENTIONS.md` collects spec-wide idioms (deterministic tiebreaks, a canonical correlation-id, the facilitator role, verifier obligations, open `tstr` discriminators) that have been independently reinvented more than once — check it before inventing a new one for a domain that needs the same underlying property.
+
 A schema alone never proves interop, only shared vectors do -- see `../conformance/` for the golden test vectors every implementation's CI round-trips against, one per structure defined here.
 
 ## Validated against two independent RFC 8610 implementations
