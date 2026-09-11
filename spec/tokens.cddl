@@ -64,6 +64,23 @@ capability-token = cose-sign1
 ; issuer device-id, and that the signature verifies against that same
 ; embedded key — no shared secret or prior contact with the issuer is needed
 ; to verify a token, only the token itself.
+; `delegations-remaining` bounds how many further hops a chain may narrow
+; through, closing a real gap the narrowing rule alone leaves open: narrowing
+; preserves the capability verb, so without a separate bound, any bearer can
+; mint a child token carrying the identical verb, and every member of an
+; invite-only room could transitively admit anyone, to any depth, with
+; nothing in the delegation model able to stop it -- the same latent problem
+; applies to any capability re-grantable by its own bearer, exec:pty
+; included, not just room membership.
+;
+; A verifier obligation, the same register as the narrowing rule itself: a
+; child's own value MUST be strictly less than its parent's. Absent means
+; unbounded, so every token minted before this claim existed keeps its exact
+; current meaning -- no migration, no shim. `0` means the bearer may not
+; delegate further at all; an owner wanting a controlled-admission room sets
+; `0` on every grant it issues directly, so every member's token was issued
+; by the owner and is therefore directly revocable with zero collateral,
+; rather than only revocable by tearing down an entire invited subtree.
 token-claims = {
   token-id: bstr,
   issuer: device-id,
@@ -74,6 +91,7 @@ token-claims = {
   expires: uint,               ; Unix ms
   ? not-before: uint,
   ? parent: bstr,               ; bstr .cbor capability-token — a fully self-contained, nested COSE_Sign1 of the parent token; the recursive delegation chain. A verifier walking this chain MUST also check every ancestor's own token-id against the revocation view (management.cddl's revocation-entry) -- revoking one ancestor revokes everything delegated beneath it, not just a leaf's own token-id.
+  ? "delegations-remaining": uint,
   * tstr => any,                ; forward-compatible extension claims
 }
 

@@ -8,5 +8,8 @@ Append-only. A bare `subsystem:action` capability verb is spec-owned and matched
 | `exec:pty` | `folder` | `core/exec` | active |
 | `exec:proc` | `folder` | `core/exec` | active |
 | `webrtc:signal` | `node` | `core/webrtc` | active |
+| `room:member` | `room` | `core/room` | active |
+| `room:join` | `room` | `core/room` | active |
+| `room:invite` | `room` | `core/room` | active |
 
 Third parties do not add entries here — see `namespaced-capability` in `tokens.cddl` for the registrant-owned namespace anyone else uses instead.
