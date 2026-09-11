@@ -154,7 +154,8 @@ function wrapSocket(
           resolve();
         });
       }),
-    peerDeviceId,
+    // Connection.peerDeviceId is `?: DeviceId`, not `?: DeviceId | undefined` -- under exactOptionalPropertyTypes, the two are genuinely different types, and a plain `peerDeviceId,` shorthand here would always include the key (even when its value is undefined), which the stricter type refuses. Spreading conditionally leaves the key entirely absent instead, matching what "no authenticated peer" actually means: a fact this side has nothing to report, not a reported fact whose value happens to be undefined.
+    ...(peerDeviceId !== undefined ? { peerDeviceId } : {}),
     unref: () => {
       socket.unref();
     },
