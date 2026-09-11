@@ -280,8 +280,7 @@ const relayOfferFrameSchema = zod.z.lazy(() => zod.z.object({
 }));
 const relayConnectFrameSchema = zod.z.lazy(() => zod.z.object({
 	"type": zod.z.literal("relay-connect"),
-	"target-device": zod.z.lazy(() => deviceIdSchema),
-	"direct-only": zod.z.boolean().optional()
+	"target-device": zod.z.lazy(() => deviceIdSchema)
 }));
 const relayDataFrameSchema = zod.z.lazy(() => zod.z.object({
 	"type": zod.z.literal("relay-data"),
