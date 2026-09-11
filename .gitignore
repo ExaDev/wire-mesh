@@ -7,3 +7,6 @@ dist/
 !ts/packages/core/dist/**
 rust/target/
 .wrangler/
+test-results/
+playwright-report/
+blob-report/
