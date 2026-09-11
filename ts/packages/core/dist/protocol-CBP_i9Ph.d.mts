@@ -175,9 +175,12 @@ declare const frameVariantSchema: z.ZodLazy<z.ZodUnion<readonly [z.ZodLazy<z.Zod
 }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
   type: z.ZodLiteral<"relay-connect">;
   "target-device": z.ZodLazy<z.ZodLazy<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>>;
+  "direct-only": z.ZodOptional<z.ZodBoolean>;
 }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
   type: z.ZodLiteral<"relay-data">;
   payload: z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>;
+  "to-device": z.ZodOptional<z.ZodLazy<z.ZodLazy<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>>>;
+  "from-device": z.ZodOptional<z.ZodLazy<z.ZodLazy<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>>>;
 }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
   type: z.ZodLiteral<"relay-inbound">;
   "source-device": z.ZodLazy<z.ZodLazy<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>>;
@@ -336,9 +339,12 @@ declare const frameSchema: z.ZodLazy<z.ZodLazy<z.ZodLazy<z.ZodUnion<readonly [z.
 }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
   type: z.ZodLiteral<"relay-connect">;
   "target-device": z.ZodLazy<z.ZodLazy<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>>;
+  "direct-only": z.ZodOptional<z.ZodBoolean>;
 }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
   type: z.ZodLiteral<"relay-data">;
   payload: z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>;
+  "to-device": z.ZodOptional<z.ZodLazy<z.ZodLazy<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>>>;
+  "from-device": z.ZodOptional<z.ZodLazy<z.ZodLazy<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>>>;
 }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
   type: z.ZodLiteral<"relay-inbound">;
   "source-device": z.ZodLazy<z.ZodLazy<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>>;
@@ -757,10 +763,13 @@ declare const relayOfferFrameSchema: z.ZodLazy<z.ZodObject<{
 declare const relayConnectFrameSchema: z.ZodLazy<z.ZodObject<{
   type: z.ZodLiteral<"relay-connect">;
   "target-device": z.ZodLazy<z.ZodLazy<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>>;
+  "direct-only": z.ZodOptional<z.ZodBoolean>;
 }, z.core.$strip>>;
 declare const relayDataFrameSchema: z.ZodLazy<z.ZodObject<{
   type: z.ZodLiteral<"relay-data">;
   payload: z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>;
+  "to-device": z.ZodOptional<z.ZodLazy<z.ZodLazy<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>>>;
+  "from-device": z.ZodOptional<z.ZodLazy<z.ZodLazy<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>>>;
 }, z.core.$strip>>;
 declare const relayInboundFrameSchema: z.ZodLazy<z.ZodObject<{
   type: z.ZodLiteral<"relay-inbound">;

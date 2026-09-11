@@ -1,19 +1,13 @@
 // The hub's relay role, expressed purely against core's Transport port and the generated frame schemas -- no Worker-specific or WebSocket-specific type appears here, so the same logic runs under the TCP adapter in tests or any future transport. A connection's device-id is learned from its own gossiped peer-advert (the only spec frame that carries a device-id over a plain connection; TLS-cert identity extraction is deliberately out of scope for the WebSocket-ingress first pass, noted in the README). Registry semantics: last gossip wins for a device-id, and a mapping is only removed on disconnect if it still points at the connection that registered it, so a re-announcement by a newer connection isn't clobbered by an older one leaving.
+//
+// Multiplexing: a connection may hold more than one relay pairing at once (a peer fanning a message out to several members of a group, all of whom are only reachable through this same hub). Pairings are therefore a symmetric adjacency map keyed by *connection*, not resolved through the device registry at forward time -- device-ids here are gossip-asserted, not certificate-verified, and re-resolving through the registry per frame would let a pairing silently re-attach to whichever connection most recently claimed a device-id, a spoofing vector. Keying by connection preserves the existing behaviour that an established pairing survives its peer's device mapping moving to a fresher connection, and dies only with the connection itself. `relay-data-frame`'s `to-device`/`from-device` fields disambiguate which pairing a frame belongs to now that a connection can hold several; a connection with exactly one pairing may omit `to-device`, which every legacy peer already does, so an unaddressed frame under multiplexing routes to the most recently established pairing -- the same "last one wins" semantics the old single-pairing hub already had.
 
 import type { DeviceId, Frame } from "../generated/protocol.js";
 import type { Connection } from "../ports/transport.js";
 
 interface Registration {
   connection: Readonly<Connection>;
-  /** The original bytes, kept so relay-inbound can carry the initiator's device-id without re-parsing; the map itself is keyed by the hex form because a Map keyed directly on Uint8Array compares by reference, and two equal device-ids from two different parsed frames are always distinct objects. */
   device: DeviceId;
-}
-
-/** Pairs an initiating connection with the target connection it asked to reach. `initiatorDevice` is the initiator's gossiped device-id, carried in relay-inbound so the target knows who is dialing it. */
-interface RelayPairing {
-  initiator: Readonly<Connection>;
-  initiatorDevice: DeviceId;
-  target: Readonly<Connection>;
 }
 
 export interface RelayHub {
@@ -36,8 +30,42 @@ function deviceKey(device: Uint8Array): string {
 
 export function createRelayHub(): RelayHub {
   const devices = new Map<string, Registration>();
-  const pairingsByInitiator = new Map<Readonly<Connection>, RelayPairing>();
-  const pairingsByTarget = new Map<Readonly<Connection>, RelayPairing>();
+  // The connection each gossip-registered device is currently reachable over -- maintained alongside `devices` so relay-data forwarding never needs the linear scan `deviceOf` used to do, which would otherwise run once per forwarded frame instead of once per relay-connect.
+  const connectionDevice = new Map<Readonly<Connection>, DeviceId>();
+  // Symmetric: pairing a connection with a peer always registers both directions, so either side's own map lookup finds the other. Each connection's own map is keyed by the peer's device hex, letting one connection hold pairings with several peers at once.
+  const pairings = new Map<
+    Readonly<Connection>,
+    Map<string, Readonly<Connection>>
+  >();
+  // The most recently established pairing per connection, for routing a legacy peer's unaddressed relay-data (no to-device) the same way the old single-pairing hub always did: whichever relay-connect happened last wins.
+  const mostRecentPairing = new Map<
+    Readonly<Connection>,
+    Readonly<Connection>
+  >();
+
+  function pairingsOf(
+    connection: Readonly<Connection>,
+  ): Map<string, Readonly<Connection>> {
+    const existing = pairings.get(connection);
+    if (existing) {
+      return existing;
+    }
+    const created = new Map<string, Readonly<Connection>>();
+    pairings.set(connection, created);
+    return created;
+  }
+
+  function addPairing(
+    a: Readonly<Connection>,
+    aDevice: DeviceId,
+    b: Readonly<Connection>,
+    bDevice: DeviceId,
+  ): void {
+    pairingsOf(a).set(deviceKey(bDevice), b);
+    pairingsOf(b).set(deviceKey(aDevice), a);
+    mostRecentPairing.set(a, b);
+    mostRecentPairing.set(b, a);
+  }
 
   function forgetConnection(connection: Readonly<Connection>): void {
     for (const [key, registration] of devices) {
@@ -45,30 +73,23 @@ export function createRelayHub(): RelayHub {
         devices.delete(key);
       }
     }
-    forgetPairingsOf(connection);
-  }
-
-  /** Removes every pairing the connection belongs to -- in either role, and both directions of each. A connection can be the initiator of one pairing and the target of a different one at the same time, so covering both roles is what makes a teardown total. */
-  function forgetPairingsOf(connection: Readonly<Connection>): void {
-    const asInitiator = pairingsByInitiator.get(connection);
-    if (asInitiator) {
-      pairingsByInitiator.delete(connection);
-      pairingsByTarget.delete(asInitiator.target);
-    }
-    const asTarget = pairingsByTarget.get(connection);
-    if (asTarget) {
-      pairingsByTarget.delete(connection);
-      pairingsByInitiator.delete(asTarget.initiator);
-    }
-  }
-
-  function deviceOf(connection: Readonly<Connection>): DeviceId | null {
-    for (const registration of devices.values()) {
-      if (registration.connection === connection) {
-        return registration.device;
+    // Captured before deletion: needed below to find which key in each peer's own pairing map points back at this connection.
+    const ownDevice = connectionDevice.get(connection);
+    connectionDevice.delete(connection);
+    mostRecentPairing.delete(connection);
+    const own = pairings.get(connection);
+    if (own) {
+      for (const peer of own.values()) {
+        const peerOwn = pairings.get(peer);
+        if (peerOwn && ownDevice !== undefined) {
+          peerOwn.delete(deviceKey(ownDevice));
+        }
+        if (mostRecentPairing.get(peer) === connection) {
+          mostRecentPairing.delete(peer);
+        }
       }
+      pairings.delete(connection);
     }
-    return null;
   }
 
   async function handleFrame(
@@ -82,6 +103,13 @@ export function createRelayHub(): RelayHub {
           device: advert.device,
         });
       }
+      // Recomputed here, once per gossip frame, rather than scanned per relay-data forward: mirrors the previous deviceOf() scan's own semantics (the connection's own device is whichever currently-registered device points back at it) without paying that scan's cost on every forwarded frame.
+      for (const registration of devices.values()) {
+        if (registration.connection === connection) {
+          connectionDevice.set(connection, registration.device);
+          break;
+        }
+      }
       return;
     }
 
@@ -91,37 +119,44 @@ export function createRelayHub(): RelayHub {
         // No such device on this hub (or it dialled itself): the spec's transport.cddl defines no error frame for this, so a first pass silently ignores the request -- a protocol change would be needed to answer it, noted in the README.
         return;
       }
-      const initiatorDevice = deviceOf(connection);
-      if (initiatorDevice === null) {
+      const initiatorDevice = connectionDevice.get(connection);
+      if (initiatorDevice === undefined) {
         // The initiator never gossiped its own advert, so relay-inbound would carry no source-device; ignore until it identifies itself.
         return;
       }
-      // A new relay-connect re-pairs totally: every pairing the initiator belongs to (either role) and every pairing the target belongs to (either role) is torn down in both directions first, so a stale partner's mapping cannot survive on a half-dead pipe to mis-attribute its relay-data onto the new one.
-      forgetPairingsOf(connection);
-      forgetPairingsOf(registration.connection);
+      // Adds a pairing; does not tear down any existing ones -- a connection may hold several simultaneously. Idempotent for a target already paired (re-adding the same map entry is a no-op beyond refreshing mostRecentPairing).
+      addPairing(
+        connection,
+        initiatorDevice,
+        registration.connection,
+        registration.device,
+      );
       await registration.connection.send({
         type: "relay-inbound",
         "source-device": initiatorDevice,
       });
-      const pairing: RelayPairing = {
-        initiator: connection,
-        initiatorDevice,
-        target: registration.connection,
-      };
-      pairingsByInitiator.set(connection, pairing);
-      pairingsByTarget.set(registration.connection, pairing);
       return;
     }
 
     if (frame.type === "relay-data") {
-      const pairing =
-        pairingsByInitiator.get(connection) ?? pairingsByTarget.get(connection);
-      if (!pairing) {
+      const own = pairings.get(connection);
+      const toDevice = frame["to-device"];
+      const peer =
+        toDevice !== undefined
+          ? own?.get(deviceKey(toDevice))
+          : mostRecentPairing.get(connection);
+      if (!peer) {
         return;
       }
-      const peer =
-        pairing.initiator === connection ? pairing.target : pairing.initiator;
-      await peer.send(frame);
+      const senderDevice = connectionDevice.get(connection);
+      if (senderDevice === undefined) {
+        return;
+      }
+      await peer.send({
+        type: "relay-data",
+        payload: frame.payload,
+        "from-device": senderDevice,
+      });
       return;
     }
 
@@ -142,8 +177,9 @@ export function createRelayHub(): RelayHub {
     },
     stop() {
       devices.clear();
-      pairingsByInitiator.clear();
-      pairingsByTarget.clear();
+      connectionDevice.clear();
+      pairings.clear();
+      mostRecentPairing.clear();
     },
   };
 }

@@ -9,28 +9,36 @@ function deviceKey(device) {
 }
 function createRelayHub() {
 	const devices = /* @__PURE__ */ new Map();
-	const pairingsByInitiator = /* @__PURE__ */ new Map();
-	const pairingsByTarget = /* @__PURE__ */ new Map();
+	const connectionDevice = /* @__PURE__ */ new Map();
+	const pairings = /* @__PURE__ */ new Map();
+	const mostRecentPairing = /* @__PURE__ */ new Map();
+	function pairingsOf(connection) {
+		const existing = pairings.get(connection);
+		if (existing) return existing;
+		const created = /* @__PURE__ */ new Map();
+		pairings.set(connection, created);
+		return created;
+	}
+	function addPairing(a, aDevice, b, bDevice) {
+		pairingsOf(a).set(deviceKey(bDevice), b);
+		pairingsOf(b).set(deviceKey(aDevice), a);
+		mostRecentPairing.set(a, b);
+		mostRecentPairing.set(b, a);
+	}
 	function forgetConnection(connection) {
 		for (const [key, registration] of devices) if (registration.connection === connection) devices.delete(key);
-		forgetPairingsOf(connection);
-	}
-	/** Removes every pairing the connection belongs to -- in either role, and both directions of each. A connection can be the initiator of one pairing and the target of a different one at the same time, so covering both roles is what makes a teardown total. */
-	function forgetPairingsOf(connection) {
-		const asInitiator = pairingsByInitiator.get(connection);
-		if (asInitiator) {
-			pairingsByInitiator.delete(connection);
-			pairingsByTarget.delete(asInitiator.target);
+		const ownDevice = connectionDevice.get(connection);
+		connectionDevice.delete(connection);
+		mostRecentPairing.delete(connection);
+		const own = pairings.get(connection);
+		if (own) {
+			for (const peer of own.values()) {
+				const peerOwn = pairings.get(peer);
+				if (peerOwn && ownDevice !== void 0) peerOwn.delete(deviceKey(ownDevice));
+				if (mostRecentPairing.get(peer) === connection) mostRecentPairing.delete(peer);
+			}
+			pairings.delete(connection);
 		}
-		const asTarget = pairingsByTarget.get(connection);
-		if (asTarget) {
-			pairingsByTarget.delete(connection);
-			pairingsByInitiator.delete(asTarget.initiator);
-		}
-	}
-	function deviceOf(connection) {
-		for (const registration of devices.values()) if (registration.connection === connection) return registration.device;
-		return null;
 	}
 	async function handleFrame(connection, frame) {
 		if (frame.type === "gossip") {
@@ -38,32 +46,36 @@ function createRelayHub() {
 				connection,
 				device: advert.device
 			});
+			for (const registration of devices.values()) if (registration.connection === connection) {
+				connectionDevice.set(connection, registration.device);
+				break;
+			}
 			return;
 		}
 		if (frame.type === "relay-connect") {
 			const registration = devices.get(deviceKey(frame["target-device"]));
 			if (!registration || registration.connection === connection) return;
-			const initiatorDevice = deviceOf(connection);
-			if (initiatorDevice === null) return;
-			forgetPairingsOf(connection);
-			forgetPairingsOf(registration.connection);
+			const initiatorDevice = connectionDevice.get(connection);
+			if (initiatorDevice === void 0) return;
+			addPairing(connection, initiatorDevice, registration.connection, registration.device);
 			await registration.connection.send({
 				type: "relay-inbound",
 				"source-device": initiatorDevice
 			});
-			const pairing = {
-				initiator: connection,
-				initiatorDevice,
-				target: registration.connection
-			};
-			pairingsByInitiator.set(connection, pairing);
-			pairingsByTarget.set(registration.connection, pairing);
 			return;
 		}
 		if (frame.type === "relay-data") {
-			const pairing = pairingsByInitiator.get(connection) ?? pairingsByTarget.get(connection);
-			if (!pairing) return;
-			await (pairing.initiator === connection ? pairing.target : pairing.initiator).send(frame);
+			const own = pairings.get(connection);
+			const toDevice = frame["to-device"];
+			const peer = toDevice !== void 0 ? own?.get(deviceKey(toDevice)) : mostRecentPairing.get(connection);
+			if (!peer) return;
+			const senderDevice = connectionDevice.get(connection);
+			if (senderDevice === void 0) return;
+			await peer.send({
+				type: "relay-data",
+				payload: frame.payload,
+				"from-device": senderDevice
+			});
 			return;
 		}
 	}
@@ -77,8 +89,9 @@ function createRelayHub() {
 		},
 		stop() {
 			devices.clear();
-			pairingsByInitiator.clear();
-			pairingsByTarget.clear();
+			connectionDevice.clear();
+			pairings.clear();
+			mostRecentPairing.clear();
 		}
 	};
 }
