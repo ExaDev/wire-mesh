@@ -1,0 +1,139 @@
+; core/room — communication membership: a set of devices, regardless of who
+; owns them, that may send and receive messages together. Unifies what would
+; otherwise be two primitives (a named, multi-member room and a two-party
+; direct message) into one: a DM is simply a room whose membership happens
+; to be exactly two participants, addressed by a deterministic path derived
+; from the pair rather than requiring an explicit room-creation step.
+;
+; Like core/exec and core/webrtc, control travels as manage-command, never as
+; a dedicated frame kind. No new frame shape is needed: `room.send` and
+; `room.read` ride the existing manage-request-frame/manage-response-frame
+; pair, and `room.join`/`room.invite`'s grant rides manage-ok's own
+; `* tstr => any` extension tail.
+;
+; `room` is deliberately a different scope kind from `group` (tokens.cddl):
+; both use the identical capability-token mechanism, but they encode
+; different relationships. `group` is ownership — full administrative
+; control, delegated the ordinary way. `room` is participation — a room
+; owner can revoke someone's membership, but never act as their device.
+; Collapsing the two would lose exactly the distinction a verifier needs:
+; whether holding a grant means "you control this" or merely "you may be
+; here".
+
+; Membership proof is rooted in the scope's own path, mirroring how a
+; device-id is the hash of its own key: `room-path` names the device-id(s)
+; whose signature makes a membership token valid, so a verifier recovers the
+; root authority by parsing the scope it was handed, with no member list, no
+; prior contact with the room's owner, and no gossip required.
+;
+; Two shapes, two different trust roots, for a real security reason:
+;
+; - `<owner-hex>/<local-name>` (a named, persistent room): the acceptable
+;   root is the owner named in the path. A member honours another member's
+;   token because that token's own chain terminates at the owner, and the
+;   verifying member already accepted that owner's authority the moment it
+;   accepted its own membership token.
+; - `<lower-hex>+<higher-hex>` (a DM — the sorted pair of exactly the two
+;   participants, lower device-id hex first): the only acceptable root is
+;   THE VERIFIER ITSELF. If either named party were an acceptable root, a
+;   sender could self-issue a token for a path it appears in and message a
+;   stranger unsolicited — the entire point of gating room:member at all.
+;   Requiring the verifier's own key as root makes the token mean "I
+;   consented to hear from this bearer", which self-issuance cannot forge.
+;   A consequence worth stating plainly: a DM path is verifiable only by the
+;   two members it names — nothing else needs it to be.
+;
+; Six verifier obligations, the same register as tokens.cddl's own narrowing
+; and delegations-remaining rules:
+;
+; 1. A `room:member` token's delegation chain MUST terminate at the correct
+;    root for the path's own shape (owner for a named room, either verifier
+;    for a DM — see above).
+; 2. `bearer` MUST equal the peer identity actually authenticated on the
+;    arriving connection — for a relay-routed request, the identity
+;    authenticated by the end-to-end session tunnelled inside `relay-data`,
+;    NEVER `relay-inbound-frame.source-device`, which the relay merely
+;    asserts and is therefore untrusted.
+; 3. `scope.kind` MUST be `"room"` and `scope.path` MUST equal the room path
+;    the request claims to act on — a token scoped to one room authorises
+;    nothing in another, however similar the paths look.
+; 4. Ordinary token-claims obligations apply unchanged: signature, expiry
+;    (and `not-before` if present), and revocation, walking the full
+;    `parent` chain, not just the leaf.
+; 5. `delegations-remaining` (tokens.cddl), if present anywhere in the
+;    chain, bounds further re-delegation the same way it does for any other
+;    capability — an owner wanting controlled admission sets `0` on every
+;    grant it issues directly.
+; 6. A verifier that does not recognise an entry's `content-type` (or, for a
+;    threshold-signed subject elsewhere in this spec, an unrecognised
+;    `kind`) MUST refuse to act on it rather than proceed blindly — the
+;    general "don't trust what you can't understand" obligation this spec
+;    applies everywhere an open discriminator appears.
+
+room-path = owner-named-room-path / dm-room-path
+
+; 64 lowercase hex characters = the 32-byte device-id, hex-encoded.
+device-id-hex = tstr .regexp "[0-9a-f]{64}"
+
+owner-named-room-path = tstr .regexp "[0-9a-f]{64}/[A-Za-z0-9_-]+"
+
+; The verifier obligation the regex cannot express: the two hex components
+; MUST be the bytewise-ascending sorted pair of the two participants'
+; device-ids, lower first. A path constructed with the pair in the wrong
+; order, or naming a device twice, is not a valid DM path at all -- there is
+; exactly one canonical path per unordered pair.
+dm-room-path = tstr .regexp "[0-9a-f]{64}\\+[0-9a-f]{64}"
+
+; One capability authorises all four ordinary-membership verbs, the same
+; "one resource, not several" pattern `exec:pty` already uses for its own
+; four inner verbs — the resource being authorised is "participation in this
+; room", not each action independently.
+$manage-command-params /= room-send / room-read / room-leave / room-members
+
+room-send    = { verb: "room.send", "message-id": bstr, text: tstr, ? refs: [* message-ref] }
+room-read    = { verb: "room.read", "message-id": bstr }
+room-leave   = { verb: "room.leave" }
+room-members = { verb: "room.members" }
+
+; A reference to another message -- reply, forwarding, or any future
+; relation -- expressed as one typed edge rather than a separate ad-hoc field
+; per relation, mirroring capability-scope.kind's own "open on purpose"
+; precedent so a new relation never needs a schema change. "reply" and
+; "forward" are the two relations needed today; a message may carry more
+; than one (replying to, or synthesising, more than one prior message).
+; Forwarding needs no separate verification mechanism beyond this structural
+; hint: the actual proof of what was forwarded is nesting the original,
+; still-independently-verifiable content (see room-notice-claims'
+; content-type in the noticeboard extension of this domain), never
+; re-attributed by the act of forwarding it, since the original's own
+; signature travels with it.
+message-ref = { id: bstr, relation: tstr }
+
+; Ungated by design -- deliberately relies on manage-request-frame's `token`
+; field being optional rather than requiring one, the first verb in this
+; spec to do so. Access control is a human's explicit approval in the
+; receiving UI, a different but no lesser control than a pre-shared token:
+; a room (or DM pair) with no prior relationship has no token to gate on in
+; the first place, so gating this would make the very first contact
+; impossible to establish at all. Approving mints a `room:member` token on
+; the spot and returns it as an extension field on the SAME manage-response
+; rather than a separate grant frame -- manage-ok's own `* tstr => any`
+; already permits this, so no new response shape is needed.
+$manage-command-params /= room-join / room-invite
+room-join   = { verb: "room.join" }
+room-invite = { verb: "room.invite", invitee: device-id }
+
+; The response to an approved room.join/room.invite: manage-ok extended with
+; the freshly minted token. A denial is an ordinary manage-error (a `code`
+; such as "denied" is an application convention, not a wire requirement).
+;
+; granted-token: capability-token   ; documented here, not a separate rule --
+;                                    ; manage-ok's own schema already allows
+;                                    ; this key with no change.
+
+; Kick rides the existing revocation-announce-frame unchanged: only a
+; token's own issuer may revoke it (management.cddl), so an owner revoking
+; its own direct grant to a member removes exactly that member (and,
+; correctly, everyone that member had gone on to invite -- the same
+; ancestor-walking obligation tokens.cddl already states), with no new
+; mechanism required here.
