@@ -11,6 +11,11 @@
     "_test": {
       "dependsOn": ["^_build"]
     },
+    "_test:e2e": {
+      // Depends on this package's own build (the harness imports src/ modules directly, not the built dist/) but not on wire-mesh-node -- that's the real relay this test signals through, built by CI as its own explicit prerequisite step (see .github/workflows/ci.yml), not a workspace dependency turbo's own graph would know about. Never cached: a real browser negotiating over a real socket against a real, freshly-started relay is exactly the kind of run where replaying a stale cached pass could mask a genuine regression in the actual runtime environment.
+      "dependsOn": ["_build"],
+      "cache": false
+    },
     "_typecheck": {
       "dependsOn": ["^_build"],
       "inputs": ["**/*.ts", "tsconfig.json", "tsconfig.node.json"]
