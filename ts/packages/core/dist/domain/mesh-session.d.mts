@@ -1,4 +1,4 @@
-import { A as ManageCommand, M as ManageError, N as ManageOk, S as Frame, i as CapabilityToken, q as ProtocolVersion, r as CapabilityScope, v as DeviceId, z as PeerAdvert } from "../protocol-DZyNTfIN.mjs";
+import { F as ManageOk, M as ManageCommand, P as ManageError, U as PeerAdvert, Z as ProtocolVersion, i as CapabilityToken, r as CapabilityScope, v as DeviceId, w as Frame } from "../protocol-DKGCdPBm.mjs";
 import { IdentityPort } from "../ports/identity.mjs";
 import { Clock } from "../ports/clock.mjs";
 import { Connection, Transport } from "../ports/transport.mjs";
