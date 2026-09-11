@@ -40,6 +40,13 @@ const manageCommandParamsSchema = zod.z.lazy(() => zod.z.union([
 	]),
 	zod.z.object({}).catchall(zod.z.unknown()),
 	zod.z.union([
+		zod.z.lazy(() => roomSendSchema),
+		zod.z.lazy(() => roomReadSchema),
+		zod.z.lazy(() => roomLeaveSchema),
+		zod.z.lazy(() => roomMembersSchema)
+	]),
+	zod.z.union([zod.z.lazy(() => roomJoinSchema), zod.z.lazy(() => roomInviteSchema)]),
+	zod.z.union([
 		zod.z.lazy(() => webrtcOfferSchema),
 		zod.z.lazy(() => webrtcAnswerSchema),
 		zod.z.lazy(() => webrtcIceCandidateSchema)
@@ -127,9 +134,10 @@ const coreDomainNameSchema = zod.z.lazy(() => zod.z.union([
 	zod.z.literal("core/exec"),
 	zod.z.literal("core/data"),
 	zod.z.literal("core/federation"),
-	zod.z.literal("core/webrtc")
+	zod.z.literal("core/webrtc"),
+	zod.z.literal("core/room")
 ]));
-const namespacedDomainIdSchema = zod.z.lazy(() => zod.z.string().regex(/* @__PURE__ */ new RegExp("[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+/[A-Za-z0-9_.-]+")));
+const namespacedDomainIdSchema = zod.z.lazy(() => zod.z.string().regex(/* @__PURE__ */ new RegExp("[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+/[A-Za-z0-9_.-]+")));
 const privateUseDomainIdSchema = zod.z.lazy(() => zod.z.string().regex(/* @__PURE__ */ new RegExp("x-[A-Za-z0-9_.-]+")));
 const handshakeFrameSchema = zod.z.lazy(() => zod.z.object({
 	"type": zod.z.literal("handshake"),
@@ -179,6 +187,31 @@ const revocationEntrySchema = zod.z.lazy(() => zod.z.lazy(() => coseSign1Schema)
 const revocationAnnounceFrameSchema = zod.z.lazy(() => zod.z.object({
 	"type": zod.z.literal("revocation-announce"),
 	"entries": zod.z.array(zod.z.lazy(() => revocationEntrySchema))
+}));
+const roomPathSchema = zod.z.lazy(() => zod.z.union([zod.z.lazy(() => ownerNamedRoomPathSchema), zod.z.lazy(() => dmRoomPathSchema)]));
+const deviceIdHexSchema = zod.z.lazy(() => zod.z.string().regex(/* @__PURE__ */ new RegExp("[0-9a-f]{64}")));
+const ownerNamedRoomPathSchema = zod.z.lazy(() => zod.z.string().regex(/* @__PURE__ */ new RegExp("[0-9a-f]{64}/[A-Za-z0-9_-]+")));
+const dmRoomPathSchema = zod.z.lazy(() => zod.z.string().regex(/* @__PURE__ */ new RegExp("[0-9a-f]{64}\\+[0-9a-f]{64}")));
+const roomSendSchema = zod.z.lazy(() => zod.z.object({
+	"verb": zod.z.literal("room.send"),
+	"message-id": zod.z.instanceof(Uint8Array),
+	"text": zod.z.string(),
+	"refs": zod.z.array(zod.z.lazy(() => messageRefSchema)).optional()
+}));
+const roomReadSchema = zod.z.lazy(() => zod.z.object({
+	"verb": zod.z.literal("room.read"),
+	"message-id": zod.z.instanceof(Uint8Array)
+}));
+const roomLeaveSchema = zod.z.lazy(() => zod.z.object({ "verb": zod.z.literal("room.leave") }));
+const roomMembersSchema = zod.z.lazy(() => zod.z.object({ "verb": zod.z.literal("room.members") }));
+const messageRefSchema = zod.z.lazy(() => zod.z.object({
+	"id": zod.z.instanceof(Uint8Array),
+	"relation": zod.z.string()
+}));
+const roomJoinSchema = zod.z.lazy(() => zod.z.object({ "verb": zod.z.literal("room.join") }));
+const roomInviteSchema = zod.z.lazy(() => zod.z.object({
+	"verb": zod.z.literal("room.invite"),
+	"invitee": zod.z.lazy(() => deviceIdSchema)
 }));
 const streamSessionSchema = zod.z.lazy(() => zod.z.number().int().nonnegative());
 const streamDataFrameSchema = zod.z.lazy(() => zod.z.object({
@@ -235,7 +268,8 @@ const tokenClaimsSchema = zod.z.lazy(() => zod.z.object({
 	"scope": zod.z.lazy(() => capabilityScopeSchema),
 	"expires": zod.z.number().int().nonnegative(),
 	"not-before": zod.z.number().int().nonnegative().optional(),
-	"parent": zod.z.instanceof(Uint8Array).optional()
+	"parent": zod.z.instanceof(Uint8Array).optional(),
+	"delegations-remaining": zod.z.number().int().nonnegative().optional()
 }).catchall(zod.z.unknown()));
 const pingFrameSchema = zod.z.lazy(() => zod.z.object({ "type": zod.z.literal("ping") }));
 const closeFrameSchema = zod.z.lazy(() => zod.z.object({
@@ -337,7 +371,9 @@ exports.coseTokenHeadersSchema = coseTokenHeadersSchema;
 exports.dataEntriesFrameSchema = dataEntriesFrameSchema;
 exports.dataHaveFrameSchema = dataHaveFrameSchema;
 exports.dataRequestFrameSchema = dataRequestFrameSchema;
+exports.deviceIdHexSchema = deviceIdHexSchema;
 exports.deviceIdSchema = deviceIdSchema;
+exports.dmRoomPathSchema = dmRoomPathSchema;
 exports.domainIdSchema = domainIdSchema;
 exports.execListSchema = execListSchema;
 exports.execSessionInfoSchema = execSessionInfoSchema;
@@ -355,9 +391,11 @@ exports.manageErrorSchema = manageErrorSchema;
 exports.manageOkSchema = manageOkSchema;
 exports.manageRequestFrameSchema = manageRequestFrameSchema;
 exports.manageResponseFrameSchema = manageResponseFrameSchema;
+exports.messageRefSchema = messageRefSchema;
 exports.namespacedCapabilitySchema = namespacedCapabilitySchema;
 exports.namespacedDomainIdSchema = namespacedDomainIdSchema;
 exports.observedAddressFrameSchema = observedAddressFrameSchema;
+exports.ownerNamedRoomPathSchema = ownerNamedRoomPathSchema;
 exports.peerAdvertSchema = peerAdvertSchema;
 exports.peerIdentitySchema = peerIdentitySchema;
 exports.pingFrameSchema = pingFrameSchema;
@@ -378,6 +416,13 @@ exports.relayOfferFrameSchema = relayOfferFrameSchema;
 exports.revocationAnnounceFrameSchema = revocationAnnounceFrameSchema;
 exports.revocationClaimsSchema = revocationClaimsSchema;
 exports.revocationEntrySchema = revocationEntrySchema;
+exports.roomInviteSchema = roomInviteSchema;
+exports.roomJoinSchema = roomJoinSchema;
+exports.roomLeaveSchema = roomLeaveSchema;
+exports.roomMembersSchema = roomMembersSchema;
+exports.roomPathSchema = roomPathSchema;
+exports.roomReadSchema = roomReadSchema;
+exports.roomSendSchema = roomSendSchema;
 exports.streamAckFrameSchema = streamAckFrameSchema;
 exports.streamDataFrameSchema = streamDataFrameSchema;
 exports.streamEndFrameSchema = streamEndFrameSchema;

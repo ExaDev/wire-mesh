@@ -30,7 +30,7 @@ export const handleClaimsSchema = z.lazy(() => z.object({
 export const handleRecordSchema = z.lazy(() => z.lazy(() => coseSign1Schema));
 export const manageCommandParamsSchema = z.lazy(() => z.union([z.union([z.lazy(() => ptySpawnSchema), z.lazy(() => ptyWriteSchema), z.lazy(() => ptyResizeSchema), z.lazy(() => ptyKillSchema), z.lazy(() => procSpawnSchema), z.lazy(() => procSignalSchema), z.lazy(() => procKillSchema), z.lazy(() => execListSchema)]), z.object({
 
-}).catchall(z.unknown()), z.union([z.lazy(() => webrtcOfferSchema), z.lazy(() => webrtcAnswerSchema), z.lazy(() => webrtcIceCandidateSchema)])]));
+}).catchall(z.unknown()), z.union([z.lazy(() => roomSendSchema), z.lazy(() => roomReadSchema), z.lazy(() => roomLeaveSchema), z.lazy(() => roomMembersSchema)]), z.union([z.lazy(() => roomJoinSchema), z.lazy(() => roomInviteSchema)]), z.union([z.lazy(() => webrtcOfferSchema), z.lazy(() => webrtcAnswerSchema), z.lazy(() => webrtcIceCandidateSchema)])]));
 export const ptySpawnSchema = z.lazy(() => z.object({
   "verb": z.literal("pty.spawn"),
   "shell": z.string().optional(),
@@ -88,8 +88,8 @@ export const frameVariantSchema = z.lazy(() => z.union([z.lazy(() => handshakeFr
 export const frameSchema = z.lazy(() => z.lazy(() => frameVariantSchema));
 export const protocolVersionSchema = z.lazy(() => z.number().int().nonnegative());
 export const domainIdSchema = z.lazy(() => z.union([z.lazy(() => coreDomainNameSchema), z.lazy(() => namespacedDomainIdSchema), z.lazy(() => privateUseDomainIdSchema)]));
-export const coreDomainNameSchema = z.lazy(() => z.union([z.literal("core/management"), z.literal("core/exec"), z.literal("core/data"), z.literal("core/federation"), z.literal("core/webrtc")]));
-export const namespacedDomainIdSchema = z.lazy(() => z.string().regex(new RegExp("[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+/[A-Za-z0-9_.-]+")));
+export const coreDomainNameSchema = z.lazy(() => z.union([z.literal("core/management"), z.literal("core/exec"), z.literal("core/data"), z.literal("core/federation"), z.literal("core/webrtc"), z.literal("core/room")]));
+export const namespacedDomainIdSchema = z.lazy(() => z.string().regex(new RegExp("[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+/[A-Za-z0-9_.-]+")));
 export const privateUseDomainIdSchema = z.lazy(() => z.string().regex(new RegExp("x-[A-Za-z0-9_.-]+")));
 export const handshakeFrameSchema = z.lazy(() => z.object({
   "type": z.literal("handshake"),
@@ -144,6 +144,37 @@ export const revocationAnnounceFrameSchema = z.lazy(() => z.object({
   "type": z.literal("revocation-announce"),
   "entries": z.array(z.lazy(() => revocationEntrySchema)),
 }));
+export const roomPathSchema = z.lazy(() => z.union([z.lazy(() => ownerNamedRoomPathSchema), z.lazy(() => dmRoomPathSchema)]));
+export const deviceIdHexSchema = z.lazy(() => z.string().regex(new RegExp("[0-9a-f]{64}")));
+export const ownerNamedRoomPathSchema = z.lazy(() => z.string().regex(new RegExp("[0-9a-f]{64}/[A-Za-z0-9_-]+")));
+export const dmRoomPathSchema = z.lazy(() => z.string().regex(new RegExp("[0-9a-f]{64}\\+[0-9a-f]{64}")));
+export const roomSendSchema = z.lazy(() => z.object({
+  "verb": z.literal("room.send"),
+  "message-id": z.instanceof(Uint8Array),
+  "text": z.string(),
+  "refs": z.array(z.lazy(() => messageRefSchema)).optional(),
+}));
+export const roomReadSchema = z.lazy(() => z.object({
+  "verb": z.literal("room.read"),
+  "message-id": z.instanceof(Uint8Array),
+}));
+export const roomLeaveSchema = z.lazy(() => z.object({
+  "verb": z.literal("room.leave"),
+}));
+export const roomMembersSchema = z.lazy(() => z.object({
+  "verb": z.literal("room.members"),
+}));
+export const messageRefSchema = z.lazy(() => z.object({
+  "id": z.instanceof(Uint8Array),
+  "relation": z.string(),
+}));
+export const roomJoinSchema = z.lazy(() => z.object({
+  "verb": z.literal("room.join"),
+}));
+export const roomInviteSchema = z.lazy(() => z.object({
+  "verb": z.literal("room.invite"),
+  "invitee": z.lazy(() => deviceIdSchema),
+}));
 export const streamSessionSchema = z.lazy(() => z.number().int().nonnegative());
 export const streamDataFrameSchema = z.lazy(() => z.object({
   "type": z.literal("stream-data"),
@@ -191,6 +222,7 @@ export const tokenClaimsSchema = z.lazy(() => z.object({
   "expires": z.number().int().nonnegative(),
   "not-before": z.number().int().nonnegative().optional(),
   "parent": z.instanceof(Uint8Array).optional(),
+  "delegations-remaining": z.number().int().nonnegative().optional(),
 }).catchall(z.unknown()));
 export const pingFrameSchema = z.lazy(() => z.object({
   "type": z.literal("ping"),
@@ -307,6 +339,17 @@ export type ManageResponseFrame = z.infer<typeof manageResponseFrameSchema>;
 export type RevocationClaims = z.infer<typeof revocationClaimsSchema>;
 export type RevocationEntry = z.infer<typeof revocationEntrySchema>;
 export type RevocationAnnounceFrame = z.infer<typeof revocationAnnounceFrameSchema>;
+export type RoomPath = z.infer<typeof roomPathSchema>;
+export type DeviceIdHex = z.infer<typeof deviceIdHexSchema>;
+export type OwnerNamedRoomPath = z.infer<typeof ownerNamedRoomPathSchema>;
+export type DmRoomPath = z.infer<typeof dmRoomPathSchema>;
+export type RoomSend = z.infer<typeof roomSendSchema>;
+export type RoomRead = z.infer<typeof roomReadSchema>;
+export type RoomLeave = z.infer<typeof roomLeaveSchema>;
+export type RoomMembers = z.infer<typeof roomMembersSchema>;
+export type MessageRef = z.infer<typeof messageRefSchema>;
+export type RoomJoin = z.infer<typeof roomJoinSchema>;
+export type RoomInvite = z.infer<typeof roomInviteSchema>;
 export type StreamSession = z.infer<typeof streamSessionSchema>;
 export type StreamDataFrame = z.infer<typeof streamDataFrameSchema>;
 export type StreamAckFrame = z.infer<typeof streamAckFrameSchema>;
