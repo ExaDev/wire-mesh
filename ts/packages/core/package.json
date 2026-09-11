@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "cbor2": "2.3.0",
-    "cddl.js": "1.0.0",
+    "cddl.js": "1.0.1",
     "zod": "4.5.4"
   },
   "devDependencies": {
