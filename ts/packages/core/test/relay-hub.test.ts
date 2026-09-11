@@ -199,8 +199,14 @@ describe("createRelayHub", () => {
       type: "relay-inbound",
       "source-device": deviceA,
     });
-    expect(b.sent[1]).toEqual({ type: "relay-data", payload: relayPayload });
-    expect(a.sent).toEqual([{ type: "relay-data", payload: relayPayload }]);
+    expect(b.sent[1]).toEqual({
+      type: "relay-data",
+      payload: relayPayload,
+      "from-device": deviceA,
+    });
+    expect(a.sent).toEqual([
+      { type: "relay-data", payload: relayPayload, "from-device": deviceB },
+    ]);
     await Promise.all([a.end(), b.end()]);
     await Promise.all(handling);
   });
@@ -324,7 +330,7 @@ describe("createRelayHub", () => {
     await bHandling;
   });
 
-  it("a second relay-connect from the same initiator tears the old pairing down in both directions", async () => {
+  it("a second relay-connect from the same initiator ADDS a pairing rather than replacing the first -- both stay live and route independently", async () => {
     const hub = createRelayHub();
     const a = new FakeConnection();
     const b = new FakeConnection();
@@ -346,31 +352,54 @@ describe("createRelayHub", () => {
     a.push({ type: "relay-connect", "target-device": deviceC });
     await tick();
 
-    // c was notified of the new pairing; the stale partner b was not told anything, but its side of the old pairing is gone
+    expect(b.sent).toEqual([
+      { type: "relay-inbound", "source-device": deviceA },
+    ]);
     expect(c.sent).toEqual([
       { type: "relay-inbound", "source-device": deviceA },
     ]);
 
-    // b's relay-data must NOT reach a anymore -- the pipe a holds is now with c
+    // b's relay-data (single pairing on b's own side) still reaches a -- the b<->a pairing was never torn down
     b.push({ type: "relay-data", payload: relayPayload });
     await tick();
-    expect(a.sent).toEqual([]);
+    expect(a.sent).toEqual([
+      { type: "relay-data", payload: relayPayload, "from-device": deviceB },
+    ]);
 
-    // while c's relay-data does reach a, and a's reaches c
+    // c's relay-data reaches a too, correctly attributed and not mixed up with b's
     c.push({ type: "relay-data", payload: relayPayload });
-    a.push({ type: "relay-data", payload: relayPayload });
     await tick();
-    expect(a.sent).toEqual([{ type: "relay-data", payload: relayPayload }]);
+    expect(a.sent).toEqual([
+      { type: "relay-data", payload: relayPayload, "from-device": deviceB },
+      { type: "relay-data", payload: relayPayload, "from-device": deviceC },
+    ]);
+
+    // a, holding two pairings, addresses each explicitly via to-device and both routes work independently
+    a.push({
+      type: "relay-data",
+      payload: relayPayload,
+      "to-device": deviceB,
+    });
+    a.push({
+      type: "relay-data",
+      payload: relayPayload,
+      "to-device": deviceC,
+    });
+    await tick();
+    expect(b.sent).toEqual([
+      { type: "relay-inbound", "source-device": deviceA },
+      { type: "relay-data", payload: relayPayload, "from-device": deviceA },
+    ]);
     expect(c.sent).toEqual([
       { type: "relay-inbound", "source-device": deviceA },
-      { type: "relay-data", payload: relayPayload },
+      { type: "relay-data", payload: relayPayload, "from-device": deviceA },
     ]);
 
     await Promise.all([a.end(), b.end(), c.end()]);
     await Promise.all(handling);
   });
 
-  it("an initiator that was already a target sheds its old pipe when it re-connects out", async () => {
+  it("an initiator that was already a target keeps both pairings live when it connects out", async () => {
     const hub = createRelayHub();
     const x = new FakeConnection();
     const a = new FakeConnection();
@@ -394,38 +423,44 @@ describe("createRelayHub", () => {
       { type: "relay-inbound", "source-device": deviceX },
     ]);
 
-    // a now initiates its own pipe to b: the x -> a pairing must be torn down too (a belongs to it, as target), or x keeps sending into what a believes is its pipe with b
+    // a now also initiates its own pipe to b -- the x <-> a pairing stays live alongside the new a <-> b one
     a.push({ type: "relay-connect", "target-device": deviceB });
     await tick();
     expect(b.sent).toEqual([
       { type: "relay-inbound", "source-device": deviceA },
     ]);
 
+    // x's data (x holds one pairing, no to-device needed) still reaches a
     x.push({ type: "relay-data", payload: relayPayload });
     await tick();
-    // a.sent is unchanged from the earlier relay-inbound: x's data on the torn-down pipe arrived nowhere
     expect(a.sent).toEqual([
       { type: "relay-inbound", "source-device": deviceX },
+      { type: "relay-data", payload: relayPayload, "from-device": deviceX },
     ]);
 
-    // while the live a <-> b pipe still forwards both ways
-    a.push({ type: "relay-data", payload: relayPayload });
+    // a, now holding two pairings, must address b explicitly
+    a.push({
+      type: "relay-data",
+      payload: relayPayload,
+      "to-device": deviceB,
+    });
     b.push({ type: "relay-data", payload: relayPayload });
     await tick();
     expect(a.sent).toEqual([
       { type: "relay-inbound", "source-device": deviceX },
-      { type: "relay-data", payload: relayPayload },
+      { type: "relay-data", payload: relayPayload, "from-device": deviceX },
+      { type: "relay-data", payload: relayPayload, "from-device": deviceB },
     ]);
     expect(b.sent).toEqual([
       { type: "relay-inbound", "source-device": deviceA },
-      { type: "relay-data", payload: relayPayload },
+      { type: "relay-data", payload: relayPayload, "from-device": deviceA },
     ]);
 
     await Promise.all([x.end(), a.end(), b.end()]);
     await Promise.all(handling);
   });
 
-  it("a target that was already an initiator sheds its old pipe when dialed", async () => {
+  it("a target that was already an initiator keeps both pairings live when dialed", async () => {
     const hub = createRelayHub();
     const a = new FakeConnection();
     const b = new FakeConnection();
@@ -449,30 +484,105 @@ describe("createRelayHub", () => {
       { type: "relay-inbound", "source-device": deviceB },
     ]);
 
-    // a now dials b: the b -> y pairing must be torn down too (b belongs to it, as initiator), or y keeps sending into what b believes is its pipe with a
+    // a now dials b -- the b <-> y pairing stays live alongside the new a <-> b one
     a.push({ type: "relay-connect", "target-device": deviceB });
     await tick();
     expect(b.sent).toEqual([
       { type: "relay-inbound", "source-device": deviceA },
     ]);
 
+    // y's data (single pairing on y's own side) still reaches b
     y.push({ type: "relay-data", payload: relayPayload });
     await tick();
     expect(b.sent).toEqual([
       { type: "relay-inbound", "source-device": deviceA },
+      { type: "relay-data", payload: relayPayload, "from-device": deviceY },
     ]);
 
-    // while the live a <-> b pipe still forwards both ways
+    // b, now holding two pairings, must address a explicitly
     a.push({ type: "relay-data", payload: relayPayload });
-    b.push({ type: "relay-data", payload: relayPayload });
+    b.push({
+      type: "relay-data",
+      payload: relayPayload,
+      "to-device": deviceA,
+    });
     await tick();
-    expect(a.sent).toEqual([{ type: "relay-data", payload: relayPayload }]);
+    expect(a.sent).toEqual([
+      { type: "relay-data", payload: relayPayload, "from-device": deviceB },
+    ]);
     expect(b.sent).toEqual([
       { type: "relay-inbound", "source-device": deviceA },
-      { type: "relay-data", payload: relayPayload },
+      { type: "relay-data", payload: relayPayload, "from-device": deviceY },
+      { type: "relay-data", payload: relayPayload, "from-device": deviceA },
     ]);
 
     await Promise.all([a.end(), b.end(), y.end()]);
+    await Promise.all(handling);
+  });
+
+  it("one initiator fans out to three targets over the same relay, each attributed correctly in both directions", async () => {
+    const hub = createRelayHub();
+    const a = new FakeConnection();
+    const b = new FakeConnection();
+    const c = new FakeConnection();
+    const d = new FakeConnection();
+    const handling = [
+      hub.handleConnection(a.connection),
+      hub.handleConnection(b.connection),
+      hub.handleConnection(c.connection),
+      hub.handleConnection(d.connection),
+    ];
+
+    const deviceC = deviceIdFromFillHex("44");
+    const deviceD = deviceIdFromFillHex("77");
+    a.push(gossipFor(deviceA));
+    b.push(gossipFor(deviceB));
+    c.push(gossipFor(deviceC));
+    d.push(gossipFor(deviceD));
+    await tick();
+
+    a.push({ type: "relay-connect", "target-device": deviceB });
+    a.push({ type: "relay-connect", "target-device": deviceC });
+    a.push({ type: "relay-connect", "target-device": deviceD });
+    await tick();
+
+    a.push({
+      type: "relay-data",
+      payload: relayPayload,
+      "to-device": deviceB,
+    });
+    a.push({
+      type: "relay-data",
+      payload: relayPayload,
+      "to-device": deviceC,
+    });
+    a.push({
+      type: "relay-data",
+      payload: relayPayload,
+      "to-device": deviceD,
+    });
+    b.push({ type: "relay-data", payload: relayPayload });
+    c.push({ type: "relay-data", payload: relayPayload });
+    d.push({ type: "relay-data", payload: relayPayload });
+    await tick();
+
+    for (const target of [b, c, d]) {
+      expect(target.sent).toEqual([
+        { type: "relay-inbound", "source-device": deviceA },
+        {
+          type: "relay-data",
+          payload: relayPayload,
+          "from-device": deviceA,
+        },
+      ]);
+    }
+    expect(a.sent).toEqual([
+      { type: "relay-data", payload: relayPayload, "from-device": deviceB },
+      { type: "relay-data", payload: relayPayload, "from-device": deviceC },
+      { type: "relay-data", payload: relayPayload, "from-device": deviceD },
+    ]);
+
+    await Promise.all([a.end(), b.end(), c.end(), d.end()]);
     await Promise.all(handling);
   });
 });
