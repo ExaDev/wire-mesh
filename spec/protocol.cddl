@@ -571,8 +571,21 @@ observed-address-frame = { type: "observed-address", address: tstr }
 ; checked before honouring subsequent relay frames on that connection, not a
 ; constraint this frame's own fields express.
 relay-offer-frame   = { type: "relay-offer", addresses: [* tstr] }
-relay-connect-frame = { type: "relay-connect", target-device: device-id }
-relay-data-frame    = { type: "relay-data", payload: bstr }
+relay-connect-frame = { type: "relay-connect", target-device: device-id, ? direct-only: bool }
+; Multiplexing: a connection may hold more than one relay pairing at once (a
+; peer fanning a message out to several members of a group, all of whom are
+; only reachable through this same hub). `to-device` names which pairing an
+; outbound payload belongs to, and `from-device` names which pairing an
+; inbound one arrived on -- the same demultiplexing `relay-inbound` already
+; does once per pairing, now carried per frame so it stays unambiguous when a
+; connection holds several. Directional obligations, not something CDDL
+; itself can enforce (the same idiom as coordinator-frame's tiebreak rule
+; above): a peer sets `to-device` and MUST NOT set `from-device`; a hub
+; overwrites `from-device` with the sending peer's own gossiped device-id on
+; every frame it forwards, and strips `to-device`. A connection holding
+; exactly one pairing may omit `to-device` entirely, which is what every
+; pre-multiplexing peer does.
+relay-data-frame    = { type: "relay-data", payload: bstr, ? to-device: device-id, ? from-device: device-id }
 relay-inbound-frame = { type: "relay-inbound", source-device: device-id }
 
 ; Coordinator election — a lightweight, gossiped claim to the introduction/
