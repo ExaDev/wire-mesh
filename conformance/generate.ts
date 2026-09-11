@@ -387,7 +387,7 @@ const frameVectors: Vector[] = [
     },
     scope: { kind: "node" },
   }),
-  // core/room -- room.send carries an optional refs array (message-ref's own open relation string), exercising the reply/forward reference mechanism alongside the gated room:member token.
+  // core/room -- room.send carries sent-at (self-asserted, mandatory), an optional content-type, and an optional refs array (message-ref's own open relation string), exercising the reply/forward reference mechanism alongside the gated room:member token.
   vector("manage_request_v1_room_send_with_reply_ref", {
     type: "manage-request",
     "request-id": 7,
@@ -396,19 +396,26 @@ const frameVectors: Vector[] = [
       params: {
         verb: "room.send",
         "message-id": hex("aa01"),
+        "sent-at": 1893456000000,
         text: "sounds good, see you then",
+        "content-type": "text/plain",
         refs: [{ id: hex("aa00"), relation: "reply" }],
       },
     },
     scope: { kind: "room", path: `${deviceAHex}/general` },
     token: roomMemberRootToken,
   }),
+  // room.read is batched -- an agent typically drains and marks read several messages in one pass, and a one-message-per-round-trip receipt verb would turn one drain into N round trips per peer.
   vector("manage_request_v1_room_read", {
     type: "manage-request",
     "request-id": 8,
     command: {
       verb: "room:member",
-      params: { verb: "room.read", "message-id": hex("aa01") },
+      params: {
+        verb: "room.read",
+        messages: [hex("aa01"), hex("aa02")],
+        at: 1893456005000,
+      },
     },
     scope: { kind: "room", path: `${deviceAHex}/general` },
     token: roomMemberRootToken,
@@ -443,20 +450,38 @@ const frameVectors: Vector[] = [
     },
     scope: { kind: "room", path: `${deviceBHex}+${deviceCHex}` },
   }),
+  // room.invite pushes the freshly minted grant in the request itself -- unlike room.join (a pull, answered by room-join-ok on the SAME round trip), an invite has no approval response of its own to carry the grant back on, so the token travels here instead.
   vector("manage_request_v1_room_invite", {
     type: "manage-request",
     "request-id": 12,
     command: {
       verb: "room:member",
-      params: { verb: "room.invite", invitee: deviceC },
+      params: {
+        verb: "room.invite",
+        invitee: deviceC,
+        token: roomMemberDelegatedToken,
+      },
     },
     scope: { kind: "room", path: `${deviceAHex}/general` },
   }),
-  // The approval response to room.join/room.invite: manage-ok extended with the freshly minted grant, riding the existing `* tstr => any` tail rather than a new response shape.
-  vector("manage_response_v1_room_join_granted", {
+  // room-join-ok: the approval response to room.join, carrying the freshly minted grant AND the room's current membership so a joiner learns who else is there on the same round trip that grants it membership.
+  vector("manage_response_v1_room_join_ok", {
     type: "manage-response",
     "request-id": 11,
-    outcome: { result: "ok", "granted-token": roomMemberDelegatedToken },
+    outcome: {
+      result: "ok",
+      "granted-token": roomMemberDelegatedToken,
+      members: [{ device: deviceA }, { device: deviceB }],
+    },
+  }),
+  // room-members-ok: a plain membership refresh, no grant involved -- the requester already held a valid room:member token to reach this verb at all.
+  vector("manage_response_v1_room_members_ok", {
+    type: "manage-response",
+    "request-id": 10,
+    outcome: {
+      result: "ok",
+      members: [{ device: deviceA }, { device: deviceB }, { device: deviceC }],
+    },
   }),
   vector("revocation_announce_v1_two_entries", {
     type: "revocation-announce",
@@ -553,6 +578,6 @@ write(
 
 write(
   "frames.v1.json",
-  "Frame conformance vectors for protocol version 1, covering every $frame-variant in spec/frame.cddl except handshake-frame (see handshake.v1.json). manage-response-frame gets two vectors, one per branch of its manage-ok / manage-error outcome union. The four core/webrtc vectors (offer, answer, ice-candidate, end-of-candidates) exercise manage-request-frame's params socket with new content, not a new frame kind; the offer vector is also the first in this file to exercise manage-request-frame's optional token field. The core/room vectors (send with a reply ref, read, leave, members, invite) carry the room:member token from tokens.v1.json's own root grant; the join vector and its manage-ok grant response are the first in this file to exercise an ungated manage-request (no token field at all) and manage-ok's own `* tstr => any` extension tail respectively.",
+  "Frame conformance vectors for protocol version 1, covering every $frame-variant in spec/frame.cddl except handshake-frame (see handshake.v1.json). manage-response-frame gets two vectors, one per branch of its manage-ok / manage-error outcome union. The four core/webrtc vectors (offer, answer, ice-candidate, end-of-candidates) exercise manage-request-frame's params socket with new content, not a new frame kind; the offer vector is also the first in this file to exercise manage-request-frame's optional token field. The core/room vectors (send with sent-at/content-type/a reply ref, batched read, leave, members, invite carrying its own pushed grant) carry the room:member token from tokens.v1.json's own root grant; the join vector is the first in this file to exercise an ungated manage-request (no token field at all). room-join-ok and room-members-ok are this domain's own named manage-ok variants (a minted grant plus membership, and a plain membership refresh, respectively), not the generic `* tstr => any` tail alone.",
   frameVectors,
 );
