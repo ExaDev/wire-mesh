@@ -12,6 +12,10 @@ export type TokenVerdictReason = "malformed" | "bad_signature" | "wrong_issuer" 
 export type TokenVerdict = {
   ok: true;
   claims: TokenClaims;
+  /** The device-id at the root of this token's delegation chain: its own issuer when it carries no parent, otherwise the root of its parent's chain. Lets a caller (e.g. core/room's obligation that a chain must terminate at the path's own owner, or the verifier itself for a DM) check the chain's root with one equality comparison instead of re-walking the parent chain a second time. */
+  rootIssuer: DeviceId;
+  /** How many delegation hops this token is from its own root -- 0 for a root grant. Costs nothing extra once rootIssuer is being tracked, and makes the delegation bound observable for diagnostics. */
+  depth: number;
 } | {
   ok: false;
   reason: TokenVerdictReason;

@@ -113,9 +113,10 @@ interface TokenSeed {
   scope: CapabilityScope;
   expires: number;
   parent?: Uint8Array<ArrayBuffer>;
+  delegationsRemaining?: number;
 }
 
-/** Builds and signs one capability token as `identity` -- explicit field-by-field construction rather than spreading a partial claims object, since TokenClaims' own `.catchall(z.unknown())` index signature (the spec's forward-compatible extension-field pattern) makes a spread-based Omit<TokenClaims, ...> lose the specific field types. */
+/** Builds and signs one capability token as `identity` -- explicit field-by-field construction rather than spreading a partial claims object, since TokenClaims' own `.catchall(z.unknown())` index signature (the spec's forward-compatible extension-field pattern) makes a spread-based Omit<TokenClaims, ...> lose the specific field types. Deliberately does none of mintCapabilityToken's own narrowing checks -- tests exercising verifyCapabilityToken's own enforcement need to construct chains mint would refuse to produce. */
 async function signToken(
   identity: IdentityPort,
   seed: TokenSeed,
@@ -129,6 +130,9 @@ async function signToken(
     scope: seed.scope,
     expires: seed.expires,
     ...(seed.parent !== undefined ? { parent: seed.parent } : {}),
+    ...(seed.delegationsRemaining !== undefined
+      ? { "delegations-remaining": seed.delegationsRemaining }
+      : {}),
   };
 
   const payload = encodeBuf(claims);
@@ -432,9 +436,10 @@ describe("verifyCapabilityToken", () => {
     capability?: string;
     expires: number;
     parent: CapabilityToken;
+    delegationsRemaining?: number;
   }
 
-  /** Signs a child token as `identity` with an explicit parent token embedded -- the parent's own claims are recoverable by the verifier's own recursion, so they are not restated here. */
+  /** Signs a child token as `identity` with an explicit parent token embedded -- the parent's own claims are recoverable by the verifier's own recursion, so they are not restated here. Deliberately does none of mintCapabilityToken's own narrowing checks -- tests exercising verifyCapabilityToken's own enforcement need to construct chains mint would refuse to produce. */
   async function signDelegated(
     identity: IdentityPort,
     seed: DelegatedSeed,
@@ -448,6 +453,9 @@ describe("verifyCapabilityToken", () => {
       scope: seed.scope,
       expires: seed.expires,
       parent: encodeBuf(seed.parent),
+      ...(seed.delegationsRemaining !== undefined
+        ? { "delegations-remaining": seed.delegationsRemaining }
+        : {}),
     };
     const payload = encodeBuf(claims);
     const protectedHeader = encodeBuf({});
@@ -672,6 +680,117 @@ describe("verifyCapabilityToken", () => {
       ok: false,
       reason: "delegation_exceeds_parent",
     });
+  });
+
+  it("rejects a delegated token whose delegations-remaining is not strictly less than its parent's", async () => {
+    const root = await signToken(issuer, {
+      tokenId: nextTokenId(),
+      bearer: bearerDeviceId,
+      scope: { kind: "folder", path: "/work" },
+      expires: now + 2 * HOUR_MS,
+      delegationsRemaining: 1,
+    });
+    const delegate = await generateEs256Identity();
+    // Equal to the parent's own delegations-remaining (1), not strictly less -- this is the exact unbounded-admission gap the claim exists to close: without this check, any bearer of a bounded grant could mint an equally-unbounded child.
+    const delegated = await signDelegated(bearerIdentity, {
+      tokenId: nextTokenId(),
+      bearer: delegate.deviceId,
+      scope: { kind: "folder", path: "/work" },
+      expires: now + HOUR_MS,
+      parent: root,
+      delegationsRemaining: 1,
+    });
+
+    const verdict = await verifyCapabilityToken(delegated, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: "delegation_exceeds_parent",
+    });
+  });
+
+  it("rejects an unbounded delegated token under a parent that itself bounds re-delegation", async () => {
+    const root = await signToken(issuer, {
+      tokenId: nextTokenId(),
+      bearer: bearerDeviceId,
+      scope: { kind: "folder", path: "/work" },
+      expires: now + 2 * HOUR_MS,
+      delegationsRemaining: 1,
+    });
+    const delegate = await generateEs256Identity();
+    // No delegations-remaining at all -- unbounded, which is wider than the parent's bounded 1.
+    const delegated = await signDelegated(bearerIdentity, {
+      tokenId: nextTokenId(),
+      bearer: delegate.deviceId,
+      scope: { kind: "folder", path: "/work" },
+      expires: now + HOUR_MS,
+      parent: root,
+    });
+
+    const verdict = await verifyCapabilityToken(delegated, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: "delegation_exceeds_parent",
+    });
+  });
+
+  it("accepts a delegated token whose delegations-remaining strictly narrows its parent's, and reports the chain's root and depth", async () => {
+    const root = await signToken(issuer, {
+      tokenId: nextTokenId(),
+      bearer: bearerDeviceId,
+      scope: { kind: "folder", path: "/work" },
+      expires: now + 2 * HOUR_MS,
+      delegationsRemaining: 1,
+    });
+    const delegate = await generateEs256Identity();
+    const delegated = await signDelegated(bearerIdentity, {
+      tokenId: nextTokenId(),
+      bearer: delegate.deviceId,
+      scope: { kind: "folder", path: "/work" },
+      expires: now + HOUR_MS,
+      parent: root,
+      delegationsRemaining: 0,
+    });
+
+    const verdict = await verifyCapabilityToken(delegated, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    expect(verdict.rootIssuer).toEqual(issuer.deviceId);
+    expect(verdict.depth).toBe(1);
+  });
+
+  it("reports depth 0 and itself as the root for a root grant with no parent", async () => {
+    const token = await signToken(issuer, {
+      tokenId: nextTokenId(),
+      bearer: bearerDeviceId,
+      scope: workScope,
+      expires: now + HOUR_MS,
+    });
+
+    const verdict = await verifyCapabilityToken(token, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    expect(verdict.rootIssuer).toEqual(issuer.deviceId);
+    expect(verdict.depth).toBe(0);
   });
 
   async function delegateUnderRootRoot(

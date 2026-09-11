@@ -158,10 +158,23 @@ async function verifyTokenChain(token, options) {
 			ok: false,
 			reason: "delegation_exceeds_parent"
 		};
+		const parentRemaining = parentVerdict.claims["delegations-remaining"];
+		if (parentRemaining !== void 0 && (claims["delegations-remaining"] === void 0 || claims["delegations-remaining"] >= parentRemaining)) return {
+			ok: false,
+			reason: "delegation_exceeds_parent"
+		};
+		return {
+			ok: true,
+			claims,
+			rootIssuer: parentVerdict.rootIssuer,
+			depth: parentVerdict.depth + 1
+		};
 	}
 	return {
 		ok: true,
-		claims
+		claims,
+		rootIssuer: claims.issuer,
+		depth: 0
 	};
 }
 /**
