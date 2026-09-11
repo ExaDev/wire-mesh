@@ -274,7 +274,8 @@ jobs:
 
   release-core:
     name: Release wire-mesh-core
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # required-checks' own needs include release-core-dry-run, which is deliberately skipped on a push event (it only runs for pull_request) -- GitHub Actions propagates that skip transitively through the needs graph to this job by default even though required-checks itself succeeds, so the condition checks required-checks' own result explicitly rather than relying on implicit success() propagation.
+    if: ${{ !cancelled() && needs.required-checks.result == 'success' && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
     needs: [required-checks]
     runs-on: ubuntu-latest
     permissions:
