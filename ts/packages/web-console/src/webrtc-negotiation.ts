@@ -1,4 +1,4 @@
-// Drives a real RTCPeerConnection through the core/webrtc signaling exchange over an existing MeshSession's sendManageRequest/incomingManageRequests plumbing -- the one place in this package that both consumes the browser's WebRTC API and speaks the wire protocol, so it lives beside the adapters rather than in mesh-session.ts (protocol-generic) or main.ts (DOM-only). One negotiator is constructed per session and, from construction, both offers new negotiations and answers incoming ones on that same session -- the protocol carries no target-device field (a webrtc-offer's scope is "this node's own signaling", not a routed resource), so signaling is always between the two direct ends of one connection, never relayed to a third party by this module.
+// Drives a real RTCPeerConnection through the core/webrtc signaling exchange over an existing MeshSession's sendManageRequest/incomingManageRequests plumbing -- the one place in this package that both consumes the browser's WebRTC API and speaks the wire protocol, so it lives beside the adapters rather than in mesh-session.ts (protocol-generic) or main.ts (DOM-only). One negotiator is constructed per session and, from construction, both offers new negotiations and answers incoming ones on that same session. The protocol itself carries no target-device field (a webrtc-offer's scope is "this node's own signaling", not a routed resource) -- addressing a specific peer when this session's own Connection is to a relay hub rather than to the peer directly is a MeshSession.sendManageRequest concern (its own targetDevice parameter), not something this module encodes on the wire.
 
 import type { Connection } from "@exadev/wire-mesh-core/ports/transport";
 import type { IdentityPort } from "@exadev/wire-mesh-core/ports/identity";
@@ -10,6 +10,7 @@ import {
 } from "@exadev/wire-mesh-core/domain/tokens";
 import type {
   CapabilityScope,
+  DeviceId,
   IceCandidateInit,
   ManageCommand,
   ManageCommandParams,
@@ -43,8 +44,8 @@ export interface WebrtcNegotiatorOptions {
 }
 
 export interface WebrtcNegotiator {
-  /** Offers a new WebRTC data channel to whatever this session is connected to. Resolves once the channel opens, with it wrapped as a Connection; rejects if the peer's own manage-response to the offer itself reports an error (e.g. unauthorized). */
-  initiate: () => Promise<Connection>;
+  /** Offers a new WebRTC data channel. With no targetDevice, the offer is sent directly over whatever this session's own Connection is (a direct peer-to-peer session, or a bespoke test relay that forwards everything verbatim). With targetDevice, the offer -- and every subsequent message this negotiation sends (answer, ice candidates) -- is routed to that specific peer via a relay-connect pairing, since a real relay hub deliberately drops manage-request/manage-response frames sent to it directly. Resolves once the channel opens, with it wrapped as a Connection; rejects if the peer's own manage-response to the offer itself reports an error (e.g. unauthorized). */
+  initiate: (targetDevice?: DeviceId) => Promise<Connection>;
 }
 
 function isWebrtcOffer(params: ManageCommandParams): params is WebrtcOffer {
@@ -198,6 +199,8 @@ export function createWebrtcNegotiator(
   };
   // Keyed by negotiation-id, shared by both roles this negotiator plays: an outgoing initiate() call and an incoming accepted offer both register here, so a later ice-candidate message (which carries no role information of its own) routes to the right peer connection regardless of who initiated.
   const peerConnections = new Map<number, RTCPeerConnection>();
+  // The peer device each negotiation was addressed to via relay, if any -- undefined for a direct (non-relayed) negotiation. Recorded once, when the negotiation starts (initiate() for the offering side, the offer's own incoming.fromDevice for the answering side), and reused for every later manage-request this same negotiation sends (the answer, every ice candidate) so they all route the same way as the negotiation's first message.
+  const negotiationTargets = new Map<number, DeviceId | undefined>();
   const allocateNegotiationId = createNegotiationIdAllocator();
 
   async function sendIceCandidate(
@@ -208,7 +211,11 @@ export function createWebrtcNegotiator(
       negotiationId,
       candidate !== null ? wireIceCandidateFromRtc(candidate) : undefined,
     );
-    await session.sendManageRequest(command, WEBRTC_SIGNAL_SCOPE);
+    await session.sendManageRequest(
+      command,
+      WEBRTC_SIGNAL_SCOPE,
+      negotiationTargets.get(negotiationId),
+    );
   }
 
   async function handleIncomingOffer(
@@ -221,6 +228,7 @@ export function createWebrtcNegotiator(
       return;
     }
     const negotiationId = offer["negotiation-id"];
+    negotiationTargets.set(negotiationId, incoming.fromDevice);
     // No ICE servers configured -- host candidates alone are enough for the same-LAN scenario this feature exists for; a caller needing cross-network NAT traversal would thread STUN/TURN servers in here, deliberately not built since nothing in this plan calls for it.
     const pc = new RTCPeerConnection();
     peerConnections.set(negotiationId, pc);
@@ -238,6 +246,7 @@ export function createWebrtcNegotiator(
     await session.sendManageRequest(
       buildAnswerCommand(negotiationId, answer.sdp ?? ""),
       WEBRTC_SIGNAL_SCOPE,
+      incoming.fromDevice,
     );
   }
 
@@ -286,8 +295,9 @@ export function createWebrtcNegotiator(
   void consumeIncoming();
 
   return {
-    async initiate(): Promise<Connection> {
+    async initiate(targetDevice?: DeviceId): Promise<Connection> {
       const negotiationId = allocateNegotiationId();
+      negotiationTargets.set(negotiationId, targetDevice);
       // No ICE servers configured -- see the matching comment in handleIncomingOffer.
       const pc = new RTCPeerConnection();
       peerConnections.set(negotiationId, pc);
@@ -311,9 +321,11 @@ export function createWebrtcNegotiator(
       const outcome = await session.sendManageRequest(
         buildOfferCommand(negotiationId, offer.sdp ?? ""),
         WEBRTC_SIGNAL_SCOPE,
+        targetDevice,
       );
       if (outcome.result === "error") {
         peerConnections.delete(negotiationId);
+        negotiationTargets.delete(negotiationId);
         pc.close();
         throw new Error(`webrtc offer rejected: ${outcome.code}`);
       }
