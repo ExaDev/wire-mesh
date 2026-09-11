@@ -554,12 +554,17 @@ pub(crate) fn relay_connect_from(d: &mut Decoder<'_>) -> Result<RelayConnectFram
     })
 }
 
-/// `relay-data-frame = { type, payload }`. The payload is ciphertext
-/// established one layer above the transport; this layer never interprets
-/// it.
+/// `relay-data-frame = { type, payload, ? to-device, ? from-device }`. The
+/// payload is ciphertext established one layer above the transport; this
+/// layer never interprets it. `to-device`/`from-device` disambiguate which
+/// pairing a frame belongs to when a connection holds more than one relay
+/// pairing at once; a connection with exactly one pairing may omit
+/// `to-device`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RelayDataFrame {
     pub payload: Vec<u8>,
+    pub to_device: Option<DeviceId>,
+    pub from_device: Option<DeviceId>,
 }
 
 impl RelayDataFrame {
@@ -572,9 +577,16 @@ impl Encode<()> for RelayDataFrame {
         e: &mut Encoder<W>,
         _ctx: &mut (),
     ) -> Result<(), minicbor::encode::Error<W::Error>> {
-        e.map(2)?;
+        let field_count = 2 + self.to_device.is_some() as u64 + self.from_device.is_some() as u64;
+        e.map(field_count)?;
         e.str("type")?.str(Self::TYPE)?;
         e.str("payload")?.bytes(&self.payload)?;
+        if let Some(to_device) = self.to_device {
+            e.str("to-device")?.encode(to_device)?;
+        }
+        if let Some(from_device) = self.from_device {
+            e.str("from-device")?.encode(from_device)?;
+        }
         e.ok()
     }
 }
@@ -588,15 +600,21 @@ impl Decode<'_, ()> for RelayDataFrame {
 pub(crate) fn relay_data_from(d: &mut Decoder<'_>) -> Result<RelayDataFrame, DecodeError> {
     let mut map = strict::MapDecoder::new(d)?;
     let mut payload: Option<Vec<u8>> = None;
+    let mut to_device: Option<DeviceId> = None;
+    let mut from_device: Option<DeviceId> = None;
     while let Some(key) = map.next_key(d)? {
         match key {
             "type" => strict::literal(d, RelayDataFrame::TYPE)?,
             "payload" => strict::set_once(&mut payload, strict::bytes_value(d)?)?,
+            "to-device" => strict::set_once(&mut to_device, device_id_from(d)?)?,
+            "from-device" => strict::set_once(&mut from_device, device_id_from(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
     Ok(RelayDataFrame {
         payload: payload.ok_or(DecodeError::MissingField("payload"))?,
+        to_device,
+        from_device,
     })
 }
 
@@ -845,6 +863,13 @@ mod tests {
         });
         round_trip(RelayDataFrame {
             payload: vec![9, 9, 9],
+            to_device: None,
+            from_device: None,
+        });
+        round_trip(RelayDataFrame {
+            payload: vec![9, 9, 9],
+            to_device: Some(DeviceId([4; 32])),
+            from_device: Some(DeviceId([5; 32])),
         });
         round_trip(RelayInboundFrame {
             source_device: DeviceId([3; 32]),

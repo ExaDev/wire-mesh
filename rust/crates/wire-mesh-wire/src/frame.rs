@@ -260,7 +260,7 @@ mod tests {
             Frame::ObservedAddress(ObservedAddressFrame { address: "a".to_owned() }),
             Frame::RelayOffer(RelayOfferFrame::default()),
             Frame::RelayConnect(RelayConnectFrame { target_device: crate::identity::DeviceId([1; 32]) }),
-            Frame::RelayData(RelayDataFrame { payload: vec![1] }),
+            Frame::RelayData(RelayDataFrame { payload: vec![1], to_device: None, from_device: None }),
             Frame::RelayInbound(RelayInboundFrame { source_device: crate::identity::DeviceId([1; 32]) }),
             Frame::Coordinator(CoordinatorFrame { term: 1, coordinator: crate::identity::DeviceId([1; 32]), capacity_hint: None }),
             Frame::ManageRequest(Box::new(ManageRequestFrame {
