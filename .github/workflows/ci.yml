@@ -147,15 +147,6 @@ jobs:
             exit 1
           fi
 
-      - name: Confirm the committed dist/ matches a fresh build
-        working-directory: ts/packages/core
-        run: |
-          pnpm turbo run _build
-          if ! git diff --exit-code -- dist; then
-            echo "::error::ts/packages/core/dist is out of date. Run 'pnpm build' in ts/packages/core and commit the result -- dist is committed deliberately (see the package README) and must never be hand-edited or left stale."
-            exit 1
-          fi
-
       - name: Test, including the conformance-check round-tripping conformance/'s golden vectors through the generated schemas
         working-directory: ts
         run: pnpm turbo run _test
@@ -240,3 +231,35 @@ jobs:
             echo '${{ toJSON(needs) }}'
             exit 1
           fi
+
+  release-core:
+    name: Release @exadev/wire-mesh-core
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [required-checks]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .tool-versions
+          # Do NOT set registry-url -- it creates an .npmrc that overrides OIDC
+
+      - run: pnpm install --frozen-lockfile
+        working-directory: ts
+
+      - run: pnpm turbo run _build
+        working-directory: ts
+
+      - run: pnpm exec semantic-release
+        working-directory: ts/packages/core
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

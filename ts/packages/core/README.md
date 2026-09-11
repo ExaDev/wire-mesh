@@ -27,6 +27,6 @@ pnpm test       # confirms it still round-trips every conformance vector
 
 CI regenerates and diffs against the committed file, the same way `conformance/`'s own vector files are verified never to drift from hand-editing.
 
-## Why dist/ is committed
+## Publishing
 
-Consumers install this package as a git-subdirectory dependency (`github:ExaDev/wire-mesh#path:ts/packages/core`), and a git install always resolves into a path under `node_modules` -- the one place a build step cannot run (Node refuses to load a `.ts` config from inside `node_modules`, so even the tsdown build that would produce `dist/` cannot start there). Committing the build output means an install gets working code with zero build, exactly the pattern `ExaDev/cddl.js` established for its own git-consumed package. CI rebuilds from source and fails on any diff, so `dist/` cannot silently drift from `src/` -- edit `src/`, run `pnpm build`, commit both.
+Published to npm as [`@exadev/wire-mesh-core`](https://www.npmjs.com/package/@exadev/wire-mesh-core). A push to `main` runs `semantic-release` (`ts/packages/core/release.config.ts`, tagged `core-v*` to keep this package's releases distinct from any other publishable package in the workspace), which versions from conventional-commit messages, builds `dist/` fresh, and publishes it -- `dist/` itself is never committed to the repo.
