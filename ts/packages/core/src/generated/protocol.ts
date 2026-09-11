@@ -175,6 +175,18 @@ export const roomInviteSchema = z.lazy(() => z.object({
   "verb": z.literal("room.invite"),
   "invitee": z.lazy(() => deviceIdSchema),
 }));
+export const roomNoticeSchema = z.lazy(() => z.lazy(() => coseSign1Schema));
+export const roomNoticeClaimsSchema = z.lazy(() => z.object({
+  "room": z.lazy(() => roomPathSchema),
+  "poster": z.lazy(() => deviceIdSchema),
+  "poster-key": z.lazy(() => identityKeySchema),
+  "token": z.lazy(() => capabilityTokenSchema),
+  "notice-id": z.instanceof(Uint8Array),
+  "posted-at": z.number().int().nonnegative(),
+  "content-type": z.string(),
+  "content": z.instanceof(Uint8Array),
+  "refs": z.array(z.lazy(() => messageRefSchema)).optional(),
+}).catchall(z.unknown()));
 export const streamSessionSchema = z.lazy(() => z.number().int().nonnegative());
 export const streamDataFrameSchema = z.lazy(() => z.object({
   "type": z.literal("stream-data"),
@@ -350,6 +362,8 @@ export type RoomMembers = z.infer<typeof roomMembersSchema>;
 export type MessageRef = z.infer<typeof messageRefSchema>;
 export type RoomJoin = z.infer<typeof roomJoinSchema>;
 export type RoomInvite = z.infer<typeof roomInviteSchema>;
+export type RoomNotice = z.infer<typeof roomNoticeSchema>;
+export type RoomNoticeClaims = z.infer<typeof roomNoticeClaimsSchema>;
 export type StreamSession = z.infer<typeof streamSessionSchema>;
 export type StreamDataFrame = z.infer<typeof streamDataFrameSchema>;
 export type StreamAckFrame = z.infer<typeof streamAckFrameSchema>;
