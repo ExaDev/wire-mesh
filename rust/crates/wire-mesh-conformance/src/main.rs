@@ -154,6 +154,11 @@ fn check_vector(file: &str, vector: Vector) -> Result<(), String> {
                     .decode_claims()
                     .map_err(|e| format!("nested token-claims failed to parse: {e}"))?;
                 claims.encode_to_vec()
+            } else if vector.name.starts_with("room_notice") {
+                let claims = cose
+                    .decode_room_notice_claims()
+                    .map_err(|e| format!("nested room-notice-claims failed to parse: {e}"))?;
+                claims.encode_to_vec()
             } else {
                 let claims = cose
                     .decode_handle_claims()

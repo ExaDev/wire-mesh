@@ -388,6 +388,15 @@ impl CoseSign1 {
             .ok_or(DecodeError::Constraint("handle-record payload is nil"))?;
         crate::discovery::HandleClaims::decode_bytes(payload)
     }
+
+    /// Parse the payload as `room-notice-claims` (room.cddl) on demand.
+    pub fn decode_room_notice_claims(&self) -> Result<crate::room::RoomNoticeClaims, DecodeError> {
+        let payload = self
+            .payload
+            .as_deref()
+            .ok_or(DecodeError::Constraint("room-notice payload is nil"))?;
+        crate::room::RoomNoticeClaims::decode_bytes(payload)
+    }
 }
 
 impl Encode<()> for CoseSign1 {

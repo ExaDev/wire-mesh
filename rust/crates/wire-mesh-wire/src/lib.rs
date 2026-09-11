@@ -34,6 +34,7 @@ pub mod frame;
 pub mod handshake;
 pub mod identity;
 pub mod management;
+pub mod room;
 pub mod streaming;
 pub mod strict;
 pub mod tokens;
