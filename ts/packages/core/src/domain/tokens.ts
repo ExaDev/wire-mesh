@@ -89,6 +89,34 @@ function sig1ToBeSigned(
   );
 }
 
+/** Normalises cbor2's encode() (and any other Uint8Array<ArrayBufferLike>-typed construction) to a fresh, non-shared, whole-buffer Uint8Array<ArrayBuffer> -- what the generated schemas' concrete-typed fields require. */
+function buf(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
+  return Uint8Array.from(bytes);
+}
+
+function encodeBuf(value: unknown): Uint8Array<ArrayBuffer> {
+  return buf(encode(value, cdeEncodeOptions));
+}
+
+/** The COSE protected header every capability-token/revocation-entry envelope in this codebase actually signs over: label 1 (alg) and label 4 (kid, the issuer's own device-id) -- matching the frozen conformance vectors, not the empty header a token merely needs to verify against itself. */
+function protectedHeaderFor(identity: IdentityPort): Uint8Array<ArrayBuffer> {
+  return encodeBuf({ 1: identity.identityKey.alg, 4: identity.deviceId });
+}
+
+/** Decodes and validates a parent token's own claims from its raw CapabilityToken tuple -- the same decode `verifyTokenChain` performs on `claims.parent`, extracted here so mint can check narrowing against a parent's real claims without duplicating the CBOR/schema plumbing. Returns undefined for anything that doesn't parse; the caller turns that into its own refusal reason since "malformed" means something different at mint time than at verify time. */
+function decodeTokenClaims(token: CapabilityToken): TokenClaims | undefined {
+  const [, , payload] = token;
+  if (payload === null) return undefined;
+  let decoded: unknown;
+  try {
+    decoded = decode(payload, cdeDecodeOptions);
+  } catch {
+    return undefined;
+  }
+  const result = tokenClaimsSchema.safeParse(decoded);
+  return result.success ? result.data : undefined;
+}
+
 /**
  * Verifies one capability token per tokens.cddl's own documented rules: the token is a well-formed COSE_Sign1 whose signature actually verifies against its own embedded issuer-key, that issuer-key is self-certifying (sha256(issuer-key.public-key) equals the claimed issuer device-id -- no shared secret needed to check this), the token is currently valid (not expired, not before not-before, not revoked by its own issuer), and -- recursively -- any parent delegation narrows rather than widens across all three axes of authority: the parent's bearer must be this token's issuer (the delegation chain is unbroken), this token's expiry must not exceed its parent's, and this token's scope must narrow its parent's (same kind; equal-or-descendant path when the parent carries one) with an identical capability verb (the capability-verb grammar has no sub-verb relation, so a different verb is a different authority, not a narrower one). Undecodable payload bytes return "malformed" and undecodable parent bytes return "parent_invalid" -- hostile input produces a verdict, never a throw.
  */
@@ -248,4 +276,123 @@ export async function verifyRevocationEntry(
   }
 
   return { ok: true, claims };
+}
+
+export type MintRefusalReason =
+  | "already_expired"
+  | "parent_malformed"
+  | "parent_bearer_mismatch"
+  | "expires_exceeds_parent"
+  | "scope_does_not_narrow"
+  | "capability_mismatch"
+  | "delegation_exceeds_parent";
+
+export type MintVerdict =
+  | { ok: true; token: CapabilityToken }
+  | { ok: false; reason: MintRefusalReason };
+
+export interface MintCapabilityTokenOptions {
+  /** The issuer -- signs the token, and supplies the self-certifying issuer/issuer-key claims. */
+  identity: IdentityPort;
+  clock: Clock;
+  tokenId: Uint8Array<ArrayBuffer>;
+  bearer: DeviceId;
+  capability: TokenClaims["capability"];
+  scope: TokenClaims["scope"];
+  expires: number;
+  notBefore?: number;
+  delegationsRemaining?: number;
+  /** The issuer's own token, when this is a delegation rather than a root grant. Its claims are checked against every narrowing rule below -- mint refuses rather than producing a token verifyCapabilityToken would reject anyway. */
+  parent?: CapabilityToken;
+}
+
+/**
+ * Mints one capability token: builds token-claims from the given fields, signs it as a COSE_Sign1 under `identity`'s own key, with a protected header matching what the frozen conformance vectors actually encode (`{1: alg, 4: issuer device-id}`, not the empty header a token merely needs to verify against itself).
+ *
+ * When `parent` is given, every one of `tokens.cddl`'s own narrowing obligations is enforced here, at issuance, rather than left for the far end to discover minutes or hours later as a bare `delegation_exceeds_parent` from `verifyCapabilityToken` -- the same "fail loudly, fail early" reasoning that governs every other boundary in this codebase. An issuer minting an invalid delegation is a bug in the caller; this function refuses rather than producing a token indistinguishable from a valid one until someone else verifies it.
+ */
+export async function mintCapabilityToken(
+  options: MintCapabilityTokenOptions,
+): Promise<MintVerdict> {
+  if (options.expires <= options.clock.now()) {
+    return { ok: false, reason: "already_expired" };
+  }
+
+  let parentBytes: Uint8Array<ArrayBuffer> | undefined;
+  if (options.parent !== undefined) {
+    const parentClaims = decodeTokenClaims(options.parent);
+    if (parentClaims === undefined) {
+      return { ok: false, reason: "parent_malformed" };
+    }
+    if (!bytesEqual(parentClaims.bearer, options.identity.deviceId)) {
+      return { ok: false, reason: "parent_bearer_mismatch" };
+    }
+    if (options.expires > parentClaims.expires) {
+      return { ok: false, reason: "expires_exceeds_parent" };
+    }
+    if (!scopeNarrows(parentClaims.scope, options.scope)) {
+      return { ok: false, reason: "scope_does_not_narrow" };
+    }
+    if (parentClaims.capability !== options.capability) {
+      return { ok: false, reason: "capability_mismatch" };
+    }
+    const parentRemaining = parentClaims["delegations-remaining"];
+    if (
+      parentRemaining !== undefined &&
+      (options.delegationsRemaining === undefined ||
+        options.delegationsRemaining >= parentRemaining)
+    ) {
+      return { ok: false, reason: "delegation_exceeds_parent" };
+    }
+    parentBytes = encodeBuf(options.parent);
+  }
+
+  const claims: TokenClaims = {
+    "token-id": options.tokenId,
+    issuer: options.identity.deviceId,
+    "issuer-key": options.identity.identityKey,
+    bearer: options.bearer,
+    capability: options.capability,
+    scope: options.scope,
+    expires: options.expires,
+    ...(options.notBefore !== undefined
+      ? { "not-before": options.notBefore }
+      : {}),
+    ...(parentBytes !== undefined ? { parent: parentBytes } : {}),
+    ...(options.delegationsRemaining !== undefined
+      ? { "delegations-remaining": options.delegationsRemaining }
+      : {}),
+  };
+
+  const payload = encodeBuf(claims);
+  const protectedHeader = protectedHeaderFor(options.identity);
+  const signature = await options.identity.sign(
+    sig1ToBeSigned(protectedHeader, payload),
+  );
+  return { ok: true, token: [protectedHeader, {}, payload, signature] };
+}
+
+export interface MintRevocationEntryOptions {
+  /** The token's own issuer -- only a token's own issuer may revoke it (management.cddl), so this must be the same identity that minted the token being revoked. */
+  identity: IdentityPort;
+  tokenId: Uint8Array<ArrayBuffer>;
+  revokedAt: number;
+}
+
+/** Mints one revocation-entry (management.cddl): a COSE_Sign1 over revocation-claims, signed the same way mintCapabilityToken signs a token. No narrowing chain to check -- a revocation entry has no parent and cannot fail to be issuable the way a delegated token can, so this returns the entry directly rather than a verdict. */
+export async function mintRevocationEntry(
+  options: MintRevocationEntryOptions,
+): Promise<RevocationEntry> {
+  const claims: RevocationClaims = {
+    "token-id": options.tokenId,
+    issuer: options.identity.deviceId,
+    "issuer-key": options.identity.identityKey,
+    "revoked-at": options.revokedAt,
+  };
+  const payload = encodeBuf(claims);
+  const protectedHeader = protectedHeaderFor(options.identity);
+  const signature = await options.identity.sign(
+    sig1ToBeSigned(protectedHeader, payload),
+  );
+  return [protectedHeader, {}, payload, signature];
 }

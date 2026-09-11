@@ -5,6 +5,8 @@ import { createNodeIdentity } from "../src/adapters/node-identity.js";
 import { createMemoryStorage } from "../src/adapters/memory-storage.js";
 import { createSystemClock } from "../src/adapters/system-clock.js";
 import {
+  mintCapabilityToken,
+  mintRevocationEntry,
   verifyCapabilityToken,
   verifyRevocationEntry,
   type RevocationCheck,
@@ -24,6 +26,8 @@ const ES256 = -7;
 const HOUR_MS = 3_600_000;
 const REVOKED_SHORTLY_BEFORE_NOW_MS = 1_000; // revoked-at sits just before `now` in these tests -- the value only needs to be in the past, not any particular distance
 const P256_SIGNATURE_BYTE_LENGTH = 64; // raw ECDSA P-256 signature length
+const DEVICE_ID_BYTE_LENGTH = 32; // SHA-256 digest length
+const ROOM_MEMBER_ROOM_PATH = "aa".repeat(DEVICE_ID_BYTE_LENGTH) + "/general"; // a syntactically valid owner-named room-path; the tests below never verify path ownership against a real device-id, only scope-narrowing between parent and child
 const LOW_BYTE_MASK = 0xff; // XOR operand keeping the corrupted byte within one octet when tampering with a signature in tests
 
 let issuedTokenIds = 0;
@@ -979,5 +983,298 @@ describe("createMemoryStorage / createSystemClock", () => {
     const after = Date.now();
     expect(reported).toBeGreaterThanOrEqual(before);
     expect(reported).toBeLessThanOrEqual(after);
+  });
+});
+
+describe("mintCapabilityToken", () => {
+  let issuer: IdentityPort;
+  let bearerIdentity: IdentityPort;
+
+  beforeAll(async () => {
+    issuer = await generateEs256Identity();
+    bearerIdentity = await generateEs256Identity();
+  });
+
+  const now = 1_893_456_000_000;
+  const workScope: CapabilityScope = { kind: "folder", path: "/work" };
+
+  it("mints a root token that verifyCapabilityToken accepts", async () => {
+    const verdict = await mintCapabilityToken({
+      identity: issuer,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: bearerIdentity.deviceId,
+      capability: "exec:pty",
+      scope: workScope,
+      expires: now + HOUR_MS,
+    });
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+
+    const verified = await verifyCapabilityToken(verdict.token, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+    expect(verified.ok).toBe(true);
+    if (!verified.ok) return;
+    expect(verified.claims.bearer).toEqual(bearerIdentity.deviceId);
+    expect(verified.claims.capability).toBe("exec:pty");
+  });
+
+  it("mints a delegated token, signed as the parent's own bearer, that verifyCapabilityToken accepts", async () => {
+    const rootVerdict = await mintCapabilityToken({
+      identity: issuer,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: bearerIdentity.deviceId,
+      capability: "room:member",
+      scope: { kind: "room", path: ROOM_MEMBER_ROOM_PATH },
+      expires: now + HOUR_MS,
+      delegationsRemaining: 1,
+    });
+    expect(rootVerdict.ok).toBe(true);
+    if (!rootVerdict.ok) return;
+
+    const delegate = await generateEs256Identity();
+    const delegatedVerdict = await mintCapabilityToken({
+      identity: bearerIdentity,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: delegate.deviceId,
+      capability: "room:member",
+      scope: { kind: "room", path: ROOM_MEMBER_ROOM_PATH },
+      expires: now + HOUR_MS,
+      delegationsRemaining: 0,
+      parent: rootVerdict.token,
+    });
+    expect(delegatedVerdict.ok).toBe(true);
+    if (!delegatedVerdict.ok) return;
+
+    const verified = await verifyCapabilityToken(delegatedVerdict.token, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+    expect(verified.ok).toBe(true);
+  });
+
+  it("refuses to mint an already-expired token", async () => {
+    const verdict = await mintCapabilityToken({
+      identity: issuer,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: bearerIdentity.deviceId,
+      capability: "exec:pty",
+      scope: workScope,
+      expires: now - 1,
+    });
+    expect(verdict).toEqual({ ok: false, reason: "already_expired" });
+  });
+
+  it("refuses to mint against a malformed parent", async () => {
+    const malformedParent: CapabilityToken = [
+      new Uint8Array(),
+      {},
+      null,
+      new Uint8Array(P256_SIGNATURE_BYTE_LENGTH),
+    ];
+    const verdict = await mintCapabilityToken({
+      identity: bearerIdentity,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: (await generateEs256Identity()).deviceId,
+      capability: "exec:pty",
+      scope: workScope,
+      expires: now + HOUR_MS,
+      parent: malformedParent,
+    });
+    expect(verdict).toEqual({ ok: false, reason: "parent_malformed" });
+  });
+
+  it("refuses to mint a delegation the issuer's own device does not hold the parent's bearer for", async () => {
+    const rootVerdict = await mintCapabilityToken({
+      identity: issuer,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: bearerIdentity.deviceId,
+      capability: "exec:pty",
+      scope: workScope,
+      expires: now + HOUR_MS,
+    });
+    expect(rootVerdict.ok).toBe(true);
+    if (!rootVerdict.ok) return;
+
+    // Minting as `issuer` itself, not `bearerIdentity` -- the parent's bearer is bearerIdentity, not issuer, so issuer cannot delegate from it.
+    const verdict = await mintCapabilityToken({
+      identity: issuer,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: (await generateEs256Identity()).deviceId,
+      capability: "exec:pty",
+      scope: workScope,
+      expires: now + HOUR_MS,
+      parent: rootVerdict.token,
+    });
+    expect(verdict).toEqual({ ok: false, reason: "parent_bearer_mismatch" });
+  });
+
+  it("refuses to mint a delegation whose expiry exceeds its parent's", async () => {
+    const rootVerdict = await mintCapabilityToken({
+      identity: issuer,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: bearerIdentity.deviceId,
+      capability: "exec:pty",
+      scope: workScope,
+      expires: now + HOUR_MS,
+    });
+    expect(rootVerdict.ok).toBe(true);
+    if (!rootVerdict.ok) return;
+
+    const verdict = await mintCapabilityToken({
+      identity: bearerIdentity,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: (await generateEs256Identity()).deviceId,
+      capability: "exec:pty",
+      scope: workScope,
+      expires: now + 2 * HOUR_MS,
+      parent: rootVerdict.token,
+    });
+    expect(verdict).toEqual({ ok: false, reason: "expires_exceeds_parent" });
+  });
+
+  it("refuses to mint a delegation whose scope does not narrow its parent's", async () => {
+    const rootVerdict = await mintCapabilityToken({
+      identity: issuer,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: bearerIdentity.deviceId,
+      capability: "exec:pty",
+      scope: workScope,
+      expires: now + HOUR_MS,
+    });
+    expect(rootVerdict.ok).toBe(true);
+    if (!rootVerdict.ok) return;
+
+    const verdict = await mintCapabilityToken({
+      identity: bearerIdentity,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: (await generateEs256Identity()).deviceId,
+      capability: "exec:pty",
+      scope: { kind: "folder", path: "/elsewhere" },
+      expires: now + HOUR_MS,
+      parent: rootVerdict.token,
+    });
+    expect(verdict).toEqual({ ok: false, reason: "scope_does_not_narrow" });
+  });
+
+  it("refuses to mint a delegation with a different capability than its parent's", async () => {
+    const rootVerdict = await mintCapabilityToken({
+      identity: issuer,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: bearerIdentity.deviceId,
+      capability: "exec:pty",
+      scope: workScope,
+      expires: now + HOUR_MS,
+    });
+    expect(rootVerdict.ok).toBe(true);
+    if (!rootVerdict.ok) return;
+
+    const verdict = await mintCapabilityToken({
+      identity: bearerIdentity,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: (await generateEs256Identity()).deviceId,
+      capability: "exec:proc",
+      scope: workScope,
+      expires: now + HOUR_MS,
+      parent: rootVerdict.token,
+    });
+    expect(verdict).toEqual({ ok: false, reason: "capability_mismatch" });
+  });
+
+  it("refuses to mint a delegation whose delegations-remaining is not strictly less than its parent's", async () => {
+    const rootVerdict = await mintCapabilityToken({
+      identity: issuer,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: bearerIdentity.deviceId,
+      capability: "room:member",
+      scope: { kind: "room", path: ROOM_MEMBER_ROOM_PATH },
+      expires: now + HOUR_MS,
+      delegationsRemaining: 1,
+    });
+    expect(rootVerdict.ok).toBe(true);
+    if (!rootVerdict.ok) return;
+
+    // Equal to the parent's own delegations-remaining (1), not strictly less.
+    const verdict = await mintCapabilityToken({
+      identity: bearerIdentity,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: (await generateEs256Identity()).deviceId,
+      capability: "room:member",
+      scope: { kind: "room", path: ROOM_MEMBER_ROOM_PATH },
+      expires: now + HOUR_MS,
+      delegationsRemaining: 1,
+      parent: rootVerdict.token,
+    });
+    expect(verdict).toEqual({ ok: false, reason: "delegation_exceeds_parent" });
+  });
+
+  it("refuses to mint an unbounded delegation under a parent that itself bounds re-delegation", async () => {
+    const rootVerdict = await mintCapabilityToken({
+      identity: issuer,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: bearerIdentity.deviceId,
+      capability: "room:member",
+      scope: { kind: "room", path: ROOM_MEMBER_ROOM_PATH },
+      expires: now + HOUR_MS,
+      delegationsRemaining: 1,
+    });
+    expect(rootVerdict.ok).toBe(true);
+    if (!rootVerdict.ok) return;
+
+    // No delegationsRemaining at all -- unbounded, which is wider than the parent's bounded 1.
+    const verdict = await mintCapabilityToken({
+      identity: bearerIdentity,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: (await generateEs256Identity()).deviceId,
+      capability: "room:member",
+      scope: { kind: "room", path: ROOM_MEMBER_ROOM_PATH },
+      expires: now + HOUR_MS,
+      parent: rootVerdict.token,
+    });
+    expect(verdict).toEqual({ ok: false, reason: "delegation_exceeds_parent" });
+  });
+});
+
+describe("mintRevocationEntry", () => {
+  it("mints a revocation entry that verifyRevocationEntry accepts", async () => {
+    const issuer = await generateEs256Identity();
+    const tokenId = nextTokenId();
+
+    const entry = await mintRevocationEntry({
+      identity: issuer,
+      tokenId,
+      revokedAt: 1_893_456_000_000,
+    });
+
+    const verdict = await verifyRevocationEntry(entry, { identity: issuer });
+    expect(verdict).toEqual({
+      ok: true,
+      claims: {
+        "token-id": tokenId,
+        issuer: issuer.deviceId,
+        "issuer-key": issuer.identityKey,
+        "revoked-at": 1_893_456_000_000,
+      },
+    });
   });
 });
