@@ -1,4 +1,4 @@
-import { j as IdentityKey, v as DeviceId } from "../protocol-DKGCdPBm.cjs";
+import { j as IdentityKey, v as DeviceId } from "../protocol-D8yeaquP.cjs";
 //#region src/ports/identity.d.ts
 /**
  * Wraps the local node's own identity plus the signing/verification primitives capability-token handling needs -- never hardcoded to one crypto library's own API shape (Node's webcrypto, a WASM implementation, a hardware key, etc. can all satisfy this same contract).

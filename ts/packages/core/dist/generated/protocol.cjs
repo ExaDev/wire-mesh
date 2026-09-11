@@ -213,6 +213,18 @@ const roomInviteSchema = zod.z.lazy(() => zod.z.object({
 	"verb": zod.z.literal("room.invite"),
 	"invitee": zod.z.lazy(() => deviceIdSchema)
 }));
+const roomNoticeSchema = zod.z.lazy(() => zod.z.lazy(() => coseSign1Schema));
+const roomNoticeClaimsSchema = zod.z.lazy(() => zod.z.object({
+	"room": zod.z.lazy(() => roomPathSchema),
+	"poster": zod.z.lazy(() => deviceIdSchema),
+	"poster-key": zod.z.lazy(() => identityKeySchema),
+	"token": zod.z.lazy(() => capabilityTokenSchema),
+	"notice-id": zod.z.instanceof(Uint8Array),
+	"posted-at": zod.z.number().int().nonnegative(),
+	"content-type": zod.z.string(),
+	"content": zod.z.instanceof(Uint8Array),
+	"refs": zod.z.array(zod.z.lazy(() => messageRefSchema)).optional()
+}).catchall(zod.z.unknown()));
 const streamSessionSchema = zod.z.lazy(() => zod.z.number().int().nonnegative());
 const streamDataFrameSchema = zod.z.lazy(() => zod.z.object({
 	"type": zod.z.literal("stream-data"),
@@ -420,6 +432,8 @@ exports.roomInviteSchema = roomInviteSchema;
 exports.roomJoinSchema = roomJoinSchema;
 exports.roomLeaveSchema = roomLeaveSchema;
 exports.roomMembersSchema = roomMembersSchema;
+exports.roomNoticeClaimsSchema = roomNoticeClaimsSchema;
+exports.roomNoticeSchema = roomNoticeSchema;
 exports.roomPathSchema = roomPathSchema;
 exports.roomReadSchema = roomReadSchema;
 exports.roomSendSchema = roomSendSchema;
