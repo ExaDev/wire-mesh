@@ -546,6 +546,98 @@ room-invite = { verb: "room.invite", invitee: device-id }
 ; correctly, everyone that member had gone on to invite -- the same
 ; ancestor-walking obligation tokens.cddl already states), with no new
 ; mechanism required here.
+
+; Noticeboard entries -- core/room's own application-level entry schema for
+; core/data (data-domain.cddl explicitly defers to each application for
+; this; entries there are opaque bstr). A room member posts durable,
+; catch-up-able content by appending a room-notice to their OWN peer log,
+; tagged as belonging to this room -- data-domain.cddl is deliberately
+; single-writer-per-peer, so there is no single shared log to write into,
+; and no central gatekeeper: every reader verifies a notice's posting
+; authority independently from the entry itself, not from who happened to
+; relay it.
+;
+; room-notice is self-certifying, the identical pattern capability-token
+; and revocation-entry already use: a bare cose-sign1 whose payload carries
+; its own signer's key, so a verifier needs no prior contact with the
+; poster to check it, only the entry itself.
+room-notice = cose-sign1   ; payload = bstr .cbor room-notice-claims
+
+; `room` and `poster`/`poster-key` travel INSIDE the signed payload, not as
+; sidecar metadata a replicating peer could strip or rewrite -- exactly why
+; capability-scope and token-claims already embed what they embed. `token`
+; is the poster's own room:member capability-token, embedded in full
+; (never a bare token-id reference), so a reader with no other context can
+; verify posting authority from the notice alone.
+;
+; Five verifier obligations, beyond token-claims' own (signature, expiry,
+; not-before, revocation, delegations-remaining):
+;
+; 1. sha256(poster-key.public-key) MUST equal poster -- the same
+;    self-certification check every other signed payload in this spec
+;    requires of its own embedded key.
+; 2. token.token-claims.bearer MUST equal poster. A live room.send binds a
+;    token's bearer to the authenticated connection it arrived on; a
+;    notice has no connection to bind to, so this check is what the
+;    entry's own signature carries instead -- without it, any peer could
+;    wrap someone else's valid token around its own content.
+; 3. token.token-claims.scope.kind MUST be "room" and scope.path MUST
+;    equal this notice's own `room` field -- a token scoped to one room
+;    authorises posting nothing in another.
+; 4. Cross-author ordering (there is no single shared log to order
+;    entries with a plain per-writer sequence number) sorts by
+;    (posted-at, poster, notice-id), the same deterministic-tiebreak
+;    idiom coordinator-frame's lowest-device-id rule already uses for
+;    equal-term claims. `posted-at` MUST be non-decreasing within one
+;    poster's own log (makes back-dating within your own history
+;    unrepresentable, not merely detectable); an implausibly-future
+;    timestamp SHOULD be held rather than displayed.
+; 5. Revocation is posting-time valid, not retroactive: a member's prior
+;    notices stay valid after that member is kicked, bounded three ways --
+;    a reader's own locally-observed sequence cut at the moment a
+;    revocation arrives, the poster's own token's signed validity window,
+;    and ordinary ancestor-walking (tokens.cddl). Different readers can
+;    genuinely disagree about a notice's validity depending on when they
+;    joined; this is not closable without a trusted clock or sequencer,
+;    neither of which this design has, deliberately.
+room-notice-claims = {
+  room: room-path,
+  poster: device-id,
+  poster-key: identity-key,
+  token: capability-token,
+  "notice-id": bstr,
+  "posted-at": uint,           ; Unix ms, self-asserted -- see obligation 4
+  "content-type": tstr,
+  content: bstr,
+  ? refs: [* message-ref],
+  * tstr => any,                ; forward-compatible extension claims, the same tail token-claims already carries
+}
+
+; Forwarding needs no separate verification mechanism: the proof of what
+; was forwarded is nesting the ORIGINAL notice's own still-independently-
+; verifiable room-notice (a bstr .cbor room-notice) as this notice's own
+; `content`, with content-type naming it as such (e.g.
+; "application/x-room-notice"). Because room/poster/poster-key are signed
+; inside the ORIGINAL envelope, a forwarder cannot strip or misattribute
+; it no matter how many times it is re-forwarded -- unforgeable provenance
+; through an arbitrary forwarding chain, for free, the same "one signed
+; envelope inside another's payload" idiom federation-envelope-frame uses
+; elsewhere in this spec. A ref naming a notice in a room the reader isn't
+; a member of is a dangling, unverifiable pointer -- the same limit any
+; reference into content you lack access to already has.
+;
+; A real structural limit, not closed here: noticeboards authenticate
+; authorship and posting authority, not confidentiality of readership.
+; data-domain.cddl's replication unit is a whole peer log, not a room, so
+; a member posting in both a public and a secret room hands over both when
+; replicating for either, and entries are plaintext at rest (the
+; transport is encrypted, the replica is not). Filtering by room is not a
+; fix either: data-request-frame's gap-rejection contract makes a
+; filtered response indistinguishable from a corrupted one. Scoped
+; explicitly for v1: a noticeboard is for content whose access control is
+; about who may POST, not confidentiality of who may READ -- anything
+; genuinely confidential stays on live room.send, which never lands in a
+; replicated log.
 ; The generic streaming/backpressure pattern — reusable by any capability
 ; domain that carries a live byte stream (core/exec's stdio today; a future
 ; audio stream, or a different agent-comms transport, tomorrow), so
