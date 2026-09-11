@@ -12,5 +12,10 @@
   },
   "devDependencies": {
     "turbo": "2.10.12"
+  },
+  "pnpm": {
+    "overrides": {
+      "conventional-changelog-writer": "^9.2.0"
+    }
   }
 }
