@@ -217,10 +217,50 @@ jobs:
         working-directory: rust
         run: cargo run --bin conformance-check
 
+  release-core-dry-run:
+    name: Release wire-mesh-core (dry run)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: ts/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .tool-versions
+          # Do NOT set registry-url -- it creates an .npmrc that overrides OIDC
+
+      - run: pnpm install --frozen-lockfile
+        working-directory: ts
+
+      - run: pnpm turbo run _build
+        working-directory: ts
+
+      # A dry run exercises the exact same setup/build/plugin-load path release-core's real publish does -- catching a break in that shared path (e.g. #70's pnpm/action-setup misconfiguration) here, before merge, rather than discovering it only after main goes red on the next real push.
+      - run: pnpm exec semantic-release --dry-run
+        working-directory: ts/packages/core
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   required-checks:
     name: Required Checks
     needs:
-      [cddl-validate, conformance-verify, ts-verify, web-console-e2e, rust-verify]
+      [
+        cddl-validate,
+        conformance-verify,
+        ts-verify,
+        web-console-e2e,
+        rust-verify,
+        release-core-dry-run,
+      ]
     if: always()
     runs-on: ubuntu-latest
     steps:
