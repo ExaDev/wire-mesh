@@ -96,6 +96,10 @@
       "import": "./dist/domain/relay-hub.mjs",
       "require": "./dist/domain/relay-hub.cjs"
     },
+    "./domain/revocation-view": {
+      "import": "./dist/domain/revocation-view.mjs",
+      "require": "./dist/domain/revocation-view.cjs"
+    },
     "./domain/tokens": {
       "import": "./dist/domain/tokens.mjs",
       "require": "./dist/domain/tokens.cjs"

@@ -14,6 +14,7 @@ export default defineConfig({
     "src/domain/mesh-session.ts",
     "src/domain/relay-hub.ts",
     "src/domain/tokens.ts",
+    "src/domain/revocation-view.ts",
     "src/adapters/frame-codec.ts",
     "src/adapters/tcp-transport.ts",
     "src/adapters/tls-transport.ts",
