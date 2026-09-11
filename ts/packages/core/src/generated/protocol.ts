@@ -151,30 +151,46 @@ export const dmRoomPathSchema = z.lazy(() => z.string().regex(new RegExp("[0-9a-
 export const roomSendSchema = z.lazy(() => z.object({
   "verb": z.literal("room.send"),
   "message-id": z.instanceof(Uint8Array),
+  "sent-at": z.number().int().nonnegative(),
   "text": z.string(),
+  "content-type": z.string().optional(),
   "refs": z.array(z.lazy(() => messageRefSchema)).optional(),
-}));
+}).catchall(z.unknown()));
 export const roomReadSchema = z.lazy(() => z.object({
   "verb": z.literal("room.read"),
-  "message-id": z.instanceof(Uint8Array),
-}));
+  "messages": z.array(z.instanceof(Uint8Array)),
+  "at": z.number().int().nonnegative(),
+}).catchall(z.unknown()));
 export const roomLeaveSchema = z.lazy(() => z.object({
   "verb": z.literal("room.leave"),
-}));
+}).catchall(z.unknown()));
 export const roomMembersSchema = z.lazy(() => z.object({
   "verb": z.literal("room.members"),
-}));
+}).catchall(z.unknown()));
 export const messageRefSchema = z.lazy(() => z.object({
   "id": z.instanceof(Uint8Array),
   "relation": z.string(),
 }));
 export const roomJoinSchema = z.lazy(() => z.object({
   "verb": z.literal("room.join"),
-}));
+}).catchall(z.unknown()));
 export const roomInviteSchema = z.lazy(() => z.object({
   "verb": z.literal("room.invite"),
   "invitee": z.lazy(() => deviceIdSchema),
-}));
+  "token": z.lazy(() => capabilityTokenSchema),
+}).catchall(z.unknown()));
+export const roomMemberSchema = z.lazy(() => z.object({
+  "device": z.lazy(() => deviceIdSchema),
+}).catchall(z.unknown()));
+export const roomJoinOkSchema = z.lazy(() => z.object({
+  "result": z.literal("ok"),
+  "granted-token": z.lazy(() => capabilityTokenSchema),
+  "members": z.array(z.lazy(() => roomMemberSchema)),
+}).catchall(z.unknown()));
+export const roomMembersOkSchema = z.lazy(() => z.object({
+  "result": z.literal("ok"),
+  "members": z.array(z.lazy(() => roomMemberSchema)),
+}).catchall(z.unknown()));
 export const roomNoticeSchema = z.lazy(() => z.lazy(() => coseSign1Schema));
 export const roomNoticeClaimsSchema = z.lazy(() => z.object({
   "room": z.lazy(() => roomPathSchema),
@@ -362,6 +378,9 @@ export type RoomMembers = z.infer<typeof roomMembersSchema>;
 export type MessageRef = z.infer<typeof messageRefSchema>;
 export type RoomJoin = z.infer<typeof roomJoinSchema>;
 export type RoomInvite = z.infer<typeof roomInviteSchema>;
+export type RoomMember = z.infer<typeof roomMemberSchema>;
+export type RoomJoinOk = z.infer<typeof roomJoinOkSchema>;
+export type RoomMembersOk = z.infer<typeof roomMembersOkSchema>;
 export type RoomNotice = z.infer<typeof roomNoticeSchema>;
 export type RoomNoticeClaims = z.infer<typeof roomNoticeClaimsSchema>;
 export type StreamSession = z.infer<typeof streamSessionSchema>;
