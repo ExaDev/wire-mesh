@@ -1,10 +1,13 @@
-// The console's DOM wiring: one MeshSession per open connection, rendering each session's SessionEvent into its own status line, peer directory table, and frame log. Kept thin on purpose -- everything with behaviour lives in mesh-session.ts so it can be tested without a browser.
+// The console's DOM wiring: one MeshSession per open connection, rendering each session's SessionEvent into its own status line, peer directory table, and frame log. Kept thin on purpose -- everything with behaviour lives in @exadev/wire-mesh-core's own mesh-session domain module so it can be tested without a browser.
 
 import { createIndexedDbStorage } from "./adapters/indexeddb-storage.js";
 import { createPersistedWebCryptoIdentity } from "./adapters/web-crypto-identity.js";
 import { createBrowserTransport } from "./adapters/websocket-transport.js";
-import { createMeshSession } from "./mesh-session.js";
-import type { ReconnectPolicy, SessionEvent } from "./mesh-session.js";
+import { createMeshSession } from "@exadev/wire-mesh-core/domain/mesh-session";
+import type {
+  ReconnectPolicy,
+  SessionEvent,
+} from "@exadev/wire-mesh-core/domain/mesh-session";
 
 // Passing the constructor rather than asserting: T appears in both the parameter and return, and the instanceof check makes the lookup self-verifying at runtime.
 function requireElement<E extends HTMLElement>(

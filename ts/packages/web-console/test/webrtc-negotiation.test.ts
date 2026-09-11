@@ -12,7 +12,7 @@ import type { IdentityPort } from "@exadev/wire-mesh-core/ports/identity";
 import type { Clock } from "@exadev/wire-mesh-core/ports/clock";
 import type { RevocationCheck } from "@exadev/wire-mesh-core/domain/tokens";
 import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
-import type { IncomingManageRequest } from "../src/mesh-session.js";
+import type { IncomingManageRequest } from "@exadev/wire-mesh-core/domain/mesh-session";
 import {
   WEBRTC_SIGNAL_SCOPE,
   WEBRTC_SIGNAL_VERB,

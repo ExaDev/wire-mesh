@@ -1,4 +1,4 @@
-// Drives a real RTCPeerConnection through the core/webrtc signaling exchange over an existing MeshSession's sendManageRequest/incomingManageRequests plumbing -- the one place in this package that both consumes the browser's WebRTC API and speaks the wire protocol, so it lives beside the adapters rather than in mesh-session.ts (protocol-generic) or main.ts (DOM-only). One negotiator is constructed per session and, from construction, both offers new negotiations and answers incoming ones on that same session. The protocol itself carries no target-device field (a webrtc-offer's scope is "this node's own signaling", not a routed resource) -- addressing a specific peer when this session's own Connection is to a relay hub rather than to the peer directly is a MeshSession.sendManageRequest concern (its own targetDevice parameter), not something this module encodes on the wire.
+// Drives a real RTCPeerConnection through the core/webrtc signaling exchange over an existing MeshSession's sendManageRequest/incomingManageRequests plumbing -- the one place in this package that both consumes the browser's WebRTC API and speaks the wire protocol, so it lives beside the adapters rather than in @exadev/wire-mesh-core's own mesh-session domain module (protocol-generic) or main.ts (DOM-only). One negotiator is constructed per session and, from construction, both offers new negotiations and answers incoming ones on that same session. The protocol itself carries no target-device field (a webrtc-offer's scope is "this node's own signaling", not a routed resource) -- addressing a specific peer when this session's own Connection is to a relay hub rather than to the peer directly is a MeshSession.sendManageRequest concern (its own targetDevice parameter), not something this module encodes on the wire.
 
 import type { Connection } from "@exadev/wire-mesh-core/ports/transport";
 import type { IdentityPort } from "@exadev/wire-mesh-core/ports/identity";
@@ -18,7 +18,10 @@ import type {
   WebrtcIceCandidate,
   WebrtcOffer,
 } from "@exadev/wire-mesh-core/generated/protocol";
-import type { IncomingManageRequest, MeshSession } from "./mesh-session.js";
+import type {
+  IncomingManageRequest,
+  MeshSession,
+} from "@exadev/wire-mesh-core/domain/mesh-session";
 import { wrapRtcDataChannel } from "./adapters/webrtc-transport.js";
 
 /** The one capability verb gating every core/webrtc message shape -- an authority over this node's own signaling as a whole, not three separate resources, mirroring how core/exec's exec:pty gates all of its own inner verbs. */

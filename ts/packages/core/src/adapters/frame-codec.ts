@@ -1,10 +1,7 @@
-// The CBOR frame codec shared by every message-based Connection adapter in this package (WebSocket, WebRTC DataChannel): one CBOR frame per message, no length prefix, with schema validation distinguishing an undecodable payload (connection-level failure) from a decodable-but-unrecognised frame (dropped, connection survives).
+// The CBOR frame codec shared by every message-based Connection adapter (WebSocket, WebRTC DataChannel, or any future one): one CBOR frame per message, no length prefix, with schema validation distinguishing an undecodable payload (connection-level failure) from a decodable-but-unrecognised frame (dropped, connection survives). Distinct from tcp-transport.ts's own inline codec, which frames a byte *stream* with a length prefix -- a different transport shape, not a duplicate of this one.
 
 import { cdeDecodeOptions, cdeEncodeOptions, decode, encode } from "cbor2";
-import {
-  frameSchema,
-  type Frame,
-} from "@exadev/wire-mesh-core/generated/protocol";
+import { frameSchema, type Frame } from "../generated/protocol.js";
 
 export function messageFromFrame(frame: Frame): Uint8Array<ArrayBuffer> {
   // A fresh whole-buffer view over a plain ArrayBuffer: the WebSocket/DataChannel send signatures require it, and it matches the fresh-buffer discipline the other adapters apply to anything crossing a runtime boundary.
