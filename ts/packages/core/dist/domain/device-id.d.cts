@@ -1,4 +1,4 @@
-import { v as DeviceId } from "../protocol-D8yeaquP.cjs";
+import { v as DeviceId } from "../protocol-B26-5VX7.cjs";
 //#region src/domain/device-id.d.ts
 /** Lowercase, byte-exact hex -- the same encoding room.cddl's device-id-hex regex and the conformance vectors' synthetic device-ids already use. */
 export declare function deviceIdToHex(device: DeviceId): string;

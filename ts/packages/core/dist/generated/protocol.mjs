@@ -194,24 +194,38 @@ const dmRoomPathSchema = z.lazy(() => z.string().regex(/* @__PURE__ */ new RegEx
 const roomSendSchema = z.lazy(() => z.object({
 	"verb": z.literal("room.send"),
 	"message-id": z.instanceof(Uint8Array),
+	"sent-at": z.number().int().nonnegative(),
 	"text": z.string(),
+	"content-type": z.string().optional(),
 	"refs": z.array(z.lazy(() => messageRefSchema)).optional()
-}));
+}).catchall(z.unknown()));
 const roomReadSchema = z.lazy(() => z.object({
 	"verb": z.literal("room.read"),
-	"message-id": z.instanceof(Uint8Array)
-}));
-const roomLeaveSchema = z.lazy(() => z.object({ "verb": z.literal("room.leave") }));
-const roomMembersSchema = z.lazy(() => z.object({ "verb": z.literal("room.members") }));
+	"messages": z.array(z.instanceof(Uint8Array)),
+	"at": z.number().int().nonnegative()
+}).catchall(z.unknown()));
+const roomLeaveSchema = z.lazy(() => z.object({ "verb": z.literal("room.leave") }).catchall(z.unknown()));
+const roomMembersSchema = z.lazy(() => z.object({ "verb": z.literal("room.members") }).catchall(z.unknown()));
 const messageRefSchema = z.lazy(() => z.object({
 	"id": z.instanceof(Uint8Array),
 	"relation": z.string()
 }));
-const roomJoinSchema = z.lazy(() => z.object({ "verb": z.literal("room.join") }));
+const roomJoinSchema = z.lazy(() => z.object({ "verb": z.literal("room.join") }).catchall(z.unknown()));
 const roomInviteSchema = z.lazy(() => z.object({
 	"verb": z.literal("room.invite"),
-	"invitee": z.lazy(() => deviceIdSchema)
-}));
+	"invitee": z.lazy(() => deviceIdSchema),
+	"token": z.lazy(() => capabilityTokenSchema)
+}).catchall(z.unknown()));
+const roomMemberSchema = z.lazy(() => z.object({ "device": z.lazy(() => deviceIdSchema) }).catchall(z.unknown()));
+const roomJoinOkSchema = z.lazy(() => z.object({
+	"result": z.literal("ok"),
+	"granted-token": z.lazy(() => capabilityTokenSchema),
+	"members": z.array(z.lazy(() => roomMemberSchema))
+}).catchall(z.unknown()));
+const roomMembersOkSchema = z.lazy(() => z.object({
+	"result": z.literal("ok"),
+	"members": z.array(z.lazy(() => roomMemberSchema))
+}).catchall(z.unknown()));
 const roomNoticeSchema = z.lazy(() => z.lazy(() => coseSign1Schema));
 const roomNoticeClaimsSchema = z.lazy(() => z.object({
 	"room": z.lazy(() => roomPathSchema),
@@ -365,4 +379,4 @@ const iceCandidateInitSchema = z.lazy(() => z.object({
 	"username-fragment": z.string().optional()
 }));
 //#endregion
-export { candidateKindSchema, candidatesFrameSchema, capabilityScopeSchema, capabilityTokenSchema, capabilityVerbSchema, closeFrameSchema, coordinatorFrameSchema, coreCapabilitySchema, coreDomainNameSchema, coseHeaderAlgSchema, coseHeaderKidSchema, coseHeaderLabelSchema, coseSign1Schema, coseTokenHeadersSchema, dataEntriesFrameSchema, dataHaveFrameSchema, dataRequestFrameSchema, deviceIdHexSchema, deviceIdSchema, dmRoomPathSchema, domainIdSchema, execListSchema, execSessionInfoSchema, frameSchema, frameVariantSchema, gossipFrameSchema, handleClaimsSchema, handleRecordSchema, handshakeFrameSchema, iceCandidateInitSchema, identityKeySchema, manageCommandParamsSchema, manageCommandSchema, manageErrorSchema, manageOkSchema, manageRequestFrameSchema, manageResponseFrameSchema, messageRefSchema, namespacedCapabilitySchema, namespacedDomainIdSchema, observedAddressFrameSchema, ownerNamedRoomPathSchema, peerAdvertSchema, peerIdentitySchema, pingFrameSchema, privateUseCapabilitySchema, privateUseDomainIdSchema, procKillSchema, procSignalSchema, procSpawnSchema, protocolVersionSchema, ptyKillSchema, ptyResizeSchema, ptySpawnSchema, ptyWriteSchema, relayConnectFrameSchema, relayDataFrameSchema, relayInboundFrameSchema, relayOfferFrameSchema, revocationAnnounceFrameSchema, revocationClaimsSchema, revocationEntrySchema, roomInviteSchema, roomJoinSchema, roomLeaveSchema, roomMembersSchema, roomNoticeClaimsSchema, roomNoticeSchema, roomPathSchema, roomReadSchema, roomSendSchema, streamAckFrameSchema, streamDataFrameSchema, streamEndFrameSchema, streamSessionSchema, syncPunchFrameSchema, tokenClaimsSchema, webrtcAnswerSchema, webrtcIceCandidateSchema, webrtcOfferSchema, wireCandidateSchema };
+export { candidateKindSchema, candidatesFrameSchema, capabilityScopeSchema, capabilityTokenSchema, capabilityVerbSchema, closeFrameSchema, coordinatorFrameSchema, coreCapabilitySchema, coreDomainNameSchema, coseHeaderAlgSchema, coseHeaderKidSchema, coseHeaderLabelSchema, coseSign1Schema, coseTokenHeadersSchema, dataEntriesFrameSchema, dataHaveFrameSchema, dataRequestFrameSchema, deviceIdHexSchema, deviceIdSchema, dmRoomPathSchema, domainIdSchema, execListSchema, execSessionInfoSchema, frameSchema, frameVariantSchema, gossipFrameSchema, handleClaimsSchema, handleRecordSchema, handshakeFrameSchema, iceCandidateInitSchema, identityKeySchema, manageCommandParamsSchema, manageCommandSchema, manageErrorSchema, manageOkSchema, manageRequestFrameSchema, manageResponseFrameSchema, messageRefSchema, namespacedCapabilitySchema, namespacedDomainIdSchema, observedAddressFrameSchema, ownerNamedRoomPathSchema, peerAdvertSchema, peerIdentitySchema, pingFrameSchema, privateUseCapabilitySchema, privateUseDomainIdSchema, procKillSchema, procSignalSchema, procSpawnSchema, protocolVersionSchema, ptyKillSchema, ptyResizeSchema, ptySpawnSchema, ptyWriteSchema, relayConnectFrameSchema, relayDataFrameSchema, relayInboundFrameSchema, relayOfferFrameSchema, revocationAnnounceFrameSchema, revocationClaimsSchema, revocationEntrySchema, roomInviteSchema, roomJoinOkSchema, roomJoinSchema, roomLeaveSchema, roomMemberSchema, roomMembersOkSchema, roomMembersSchema, roomNoticeClaimsSchema, roomNoticeSchema, roomPathSchema, roomReadSchema, roomSendSchema, streamAckFrameSchema, streamDataFrameSchema, streamEndFrameSchema, streamSessionSchema, syncPunchFrameSchema, tokenClaimsSchema, webrtcAnswerSchema, webrtcIceCandidateSchema, webrtcOfferSchema, wireCandidateSchema };

@@ -1,4 +1,4 @@
-import { w as Frame } from "../protocol-D8yeaquP.mjs";
+import { w as Frame } from "../protocol-B26-5VX7.mjs";
 //#region src/adapters/frame-codec.d.ts
 export declare function messageFromFrame(frame: Frame): Uint8Array<ArrayBuffer>;
 /** A frame that fails schema validation, caught separately from a decode failure so it can be dropped without disconnecting. */

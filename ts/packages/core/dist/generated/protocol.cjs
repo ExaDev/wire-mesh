@@ -195,24 +195,38 @@ const dmRoomPathSchema = zod.z.lazy(() => zod.z.string().regex(/* @__PURE__ */ n
 const roomSendSchema = zod.z.lazy(() => zod.z.object({
 	"verb": zod.z.literal("room.send"),
 	"message-id": zod.z.instanceof(Uint8Array),
+	"sent-at": zod.z.number().int().nonnegative(),
 	"text": zod.z.string(),
+	"content-type": zod.z.string().optional(),
 	"refs": zod.z.array(zod.z.lazy(() => messageRefSchema)).optional()
-}));
+}).catchall(zod.z.unknown()));
 const roomReadSchema = zod.z.lazy(() => zod.z.object({
 	"verb": zod.z.literal("room.read"),
-	"message-id": zod.z.instanceof(Uint8Array)
-}));
-const roomLeaveSchema = zod.z.lazy(() => zod.z.object({ "verb": zod.z.literal("room.leave") }));
-const roomMembersSchema = zod.z.lazy(() => zod.z.object({ "verb": zod.z.literal("room.members") }));
+	"messages": zod.z.array(zod.z.instanceof(Uint8Array)),
+	"at": zod.z.number().int().nonnegative()
+}).catchall(zod.z.unknown()));
+const roomLeaveSchema = zod.z.lazy(() => zod.z.object({ "verb": zod.z.literal("room.leave") }).catchall(zod.z.unknown()));
+const roomMembersSchema = zod.z.lazy(() => zod.z.object({ "verb": zod.z.literal("room.members") }).catchall(zod.z.unknown()));
 const messageRefSchema = zod.z.lazy(() => zod.z.object({
 	"id": zod.z.instanceof(Uint8Array),
 	"relation": zod.z.string()
 }));
-const roomJoinSchema = zod.z.lazy(() => zod.z.object({ "verb": zod.z.literal("room.join") }));
+const roomJoinSchema = zod.z.lazy(() => zod.z.object({ "verb": zod.z.literal("room.join") }).catchall(zod.z.unknown()));
 const roomInviteSchema = zod.z.lazy(() => zod.z.object({
 	"verb": zod.z.literal("room.invite"),
-	"invitee": zod.z.lazy(() => deviceIdSchema)
-}));
+	"invitee": zod.z.lazy(() => deviceIdSchema),
+	"token": zod.z.lazy(() => capabilityTokenSchema)
+}).catchall(zod.z.unknown()));
+const roomMemberSchema = zod.z.lazy(() => zod.z.object({ "device": zod.z.lazy(() => deviceIdSchema) }).catchall(zod.z.unknown()));
+const roomJoinOkSchema = zod.z.lazy(() => zod.z.object({
+	"result": zod.z.literal("ok"),
+	"granted-token": zod.z.lazy(() => capabilityTokenSchema),
+	"members": zod.z.array(zod.z.lazy(() => roomMemberSchema))
+}).catchall(zod.z.unknown()));
+const roomMembersOkSchema = zod.z.lazy(() => zod.z.object({
+	"result": zod.z.literal("ok"),
+	"members": zod.z.array(zod.z.lazy(() => roomMemberSchema))
+}).catchall(zod.z.unknown()));
 const roomNoticeSchema = zod.z.lazy(() => zod.z.lazy(() => coseSign1Schema));
 const roomNoticeClaimsSchema = zod.z.lazy(() => zod.z.object({
 	"room": zod.z.lazy(() => roomPathSchema),
@@ -429,8 +443,11 @@ exports.revocationAnnounceFrameSchema = revocationAnnounceFrameSchema;
 exports.revocationClaimsSchema = revocationClaimsSchema;
 exports.revocationEntrySchema = revocationEntrySchema;
 exports.roomInviteSchema = roomInviteSchema;
+exports.roomJoinOkSchema = roomJoinOkSchema;
 exports.roomJoinSchema = roomJoinSchema;
 exports.roomLeaveSchema = roomLeaveSchema;
+exports.roomMemberSchema = roomMemberSchema;
+exports.roomMembersOkSchema = roomMembersOkSchema;
 exports.roomMembersSchema = roomMembersSchema;
 exports.roomNoticeClaimsSchema = roomNoticeClaimsSchema;
 exports.roomNoticeSchema = roomNoticeSchema;

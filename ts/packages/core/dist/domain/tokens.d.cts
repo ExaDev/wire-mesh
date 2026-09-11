@@ -1,4 +1,4 @@
-import { Ct as TokenClaims, ct as RevocationEntry, i as CapabilityToken, st as RevocationClaims, v as DeviceId } from "../protocol-D8yeaquP.cjs";
+import { Et as TokenClaims, ct as RevocationEntry, i as CapabilityToken, st as RevocationClaims, v as DeviceId } from "../protocol-B26-5VX7.cjs";
 import { IdentityPort } from "../ports/identity.cjs";
 import { Clock } from "../ports/clock.cjs";
 //#region src/domain/tokens.d.ts

@@ -74,24 +74,31 @@ declare const manageCommandParamsSchema: z.ZodLazy<z.ZodUnion<readonly [z.ZodUni
 }, z.core.$strip>>>]>, z.ZodObject<{}, z.core.$catchall<z.ZodUnknown>>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
   verb: z.ZodLiteral<"room.send">;
   "message-id": z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>;
+  "sent-at": z.ZodNumber;
   text: z.ZodString;
+  "content-type": z.ZodOptional<z.ZodString>;
   refs: z.ZodOptional<z.ZodArray<z.ZodLazy<z.ZodLazy<z.ZodObject<{
     id: z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>;
     relation: z.ZodString;
   }, z.core.$strip>>>>>;
-}, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+}, z.core.$catchall<z.ZodUnknown>>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
   verb: z.ZodLiteral<"room.read">;
-  "message-id": z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>;
-}, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+  messages: z.ZodArray<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>;
+  at: z.ZodNumber;
+}, z.core.$catchall<z.ZodUnknown>>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
   verb: z.ZodLiteral<"room.leave">;
-}, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+}, z.core.$catchall<z.ZodUnknown>>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
   verb: z.ZodLiteral<"room.members">;
-}, z.core.$strip>>>]>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
+}, z.core.$catchall<z.ZodUnknown>>>>]>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
   verb: z.ZodLiteral<"room.join">;
-}, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+}, z.core.$catchall<z.ZodUnknown>>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
   verb: z.ZodLiteral<"room.invite">;
   invitee: z.ZodLazy<z.ZodLazy<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>>;
-}, z.core.$strip>>>]>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
+  token: z.ZodLazy<z.ZodLazy<z.ZodLazy<z.ZodLazy<z.ZodTuple<[z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    "1": z.ZodOptional<z.ZodNumber>;
+    "4": z.ZodOptional<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>;
+  }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodUnion<readonly [z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>, z.ZodNull]>, z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>], null>>>>>;
+}, z.core.$catchall<z.ZodUnknown>>>>]>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
   verb: z.ZodLiteral<"webrtc.offer">;
   "negotiation-id": z.ZodNumber;
   sdp: z.ZodString;
@@ -251,24 +258,31 @@ declare const frameVariantSchema: z.ZodLazy<z.ZodUnion<readonly [z.ZodLazy<z.Zod
     }, z.core.$strip>>>]>, z.ZodObject<{}, z.core.$catchall<z.ZodUnknown>>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"room.send">;
       "message-id": z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>;
+      "sent-at": z.ZodNumber;
       text: z.ZodString;
+      "content-type": z.ZodOptional<z.ZodString>;
       refs: z.ZodOptional<z.ZodArray<z.ZodLazy<z.ZodLazy<z.ZodObject<{
         id: z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>;
         relation: z.ZodString;
       }, z.core.$strip>>>>>;
-    }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"room.read">;
-      "message-id": z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>;
-    }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+      messages: z.ZodArray<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>;
+      at: z.ZodNumber;
+    }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"room.leave">;
-    }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"room.members">;
-    }, z.core.$strip>>>]>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    }, z.core.$catchall<z.ZodUnknown>>>>]>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"room.join">;
-    }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"room.invite">;
       invitee: z.ZodLazy<z.ZodLazy<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>>;
-    }, z.core.$strip>>>]>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
+      token: z.ZodLazy<z.ZodLazy<z.ZodLazy<z.ZodLazy<z.ZodTuple<[z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+        "1": z.ZodOptional<z.ZodNumber>;
+        "4": z.ZodOptional<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>;
+      }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodUnion<readonly [z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>, z.ZodNull]>, z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>], null>>>>>;
+    }, z.core.$catchall<z.ZodUnknown>>>>]>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"webrtc.offer">;
       "negotiation-id": z.ZodNumber;
       sdp: z.ZodString;
@@ -434,24 +448,31 @@ declare const frameSchema: z.ZodLazy<z.ZodLazy<z.ZodLazy<z.ZodUnion<readonly [z.
     }, z.core.$strip>>>]>, z.ZodObject<{}, z.core.$catchall<z.ZodUnknown>>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"room.send">;
       "message-id": z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>;
+      "sent-at": z.ZodNumber;
       text: z.ZodString;
+      "content-type": z.ZodOptional<z.ZodString>;
       refs: z.ZodOptional<z.ZodArray<z.ZodLazy<z.ZodLazy<z.ZodObject<{
         id: z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>;
         relation: z.ZodString;
       }, z.core.$strip>>>>>;
-    }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"room.read">;
-      "message-id": z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>;
-    }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+      messages: z.ZodArray<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>;
+      at: z.ZodNumber;
+    }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"room.leave">;
-    }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"room.members">;
-    }, z.core.$strip>>>]>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    }, z.core.$catchall<z.ZodUnknown>>>>]>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"room.join">;
-    }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"room.invite">;
       invitee: z.ZodLazy<z.ZodLazy<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>>;
-    }, z.core.$strip>>>]>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
+      token: z.ZodLazy<z.ZodLazy<z.ZodLazy<z.ZodLazy<z.ZodTuple<[z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+        "1": z.ZodOptional<z.ZodNumber>;
+        "4": z.ZodOptional<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>;
+      }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodUnion<readonly [z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>, z.ZodNull]>, z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>], null>>>>>;
+    }, z.core.$catchall<z.ZodUnknown>>>>]>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"webrtc.offer">;
       "negotiation-id": z.ZodNumber;
       sdp: z.ZodString;
@@ -588,24 +609,31 @@ declare const manageCommandSchema: z.ZodLazy<z.ZodObject<{
   }, z.core.$strip>>>]>, z.ZodObject<{}, z.core.$catchall<z.ZodUnknown>>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
     verb: z.ZodLiteral<"room.send">;
     "message-id": z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>;
+    "sent-at": z.ZodNumber;
     text: z.ZodString;
+    "content-type": z.ZodOptional<z.ZodString>;
     refs: z.ZodOptional<z.ZodArray<z.ZodLazy<z.ZodLazy<z.ZodObject<{
       id: z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>;
       relation: z.ZodString;
     }, z.core.$strip>>>>>;
-  }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+  }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
     verb: z.ZodLiteral<"room.read">;
-    "message-id": z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>;
-  }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    messages: z.ZodArray<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>;
+    at: z.ZodNumber;
+  }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
     verb: z.ZodLiteral<"room.leave">;
-  }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+  }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
     verb: z.ZodLiteral<"room.members">;
-  }, z.core.$strip>>>]>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
+  }, z.core.$catchall<z.ZodUnknown>>>>]>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
     verb: z.ZodLiteral<"room.join">;
-  }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+  }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
     verb: z.ZodLiteral<"room.invite">;
     invitee: z.ZodLazy<z.ZodLazy<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>>;
-  }, z.core.$strip>>>]>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    token: z.ZodLazy<z.ZodLazy<z.ZodLazy<z.ZodLazy<z.ZodTuple<[z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+      "1": z.ZodOptional<z.ZodNumber>;
+      "4": z.ZodOptional<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>;
+    }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodUnion<readonly [z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>, z.ZodNull]>, z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>], null>>>>>;
+  }, z.core.$catchall<z.ZodUnknown>>>>]>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
     verb: z.ZodLiteral<"webrtc.offer">;
     "negotiation-id": z.ZodNumber;
     sdp: z.ZodString;
@@ -667,24 +695,31 @@ declare const manageRequestFrameSchema: z.ZodLazy<z.ZodObject<{
     }, z.core.$strip>>>]>, z.ZodObject<{}, z.core.$catchall<z.ZodUnknown>>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"room.send">;
       "message-id": z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>;
+      "sent-at": z.ZodNumber;
       text: z.ZodString;
+      "content-type": z.ZodOptional<z.ZodString>;
       refs: z.ZodOptional<z.ZodArray<z.ZodLazy<z.ZodLazy<z.ZodObject<{
         id: z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>;
         relation: z.ZodString;
       }, z.core.$strip>>>>>;
-    }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"room.read">;
-      "message-id": z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>;
-    }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+      messages: z.ZodArray<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>;
+      at: z.ZodNumber;
+    }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"room.leave">;
-    }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"room.members">;
-    }, z.core.$strip>>>]>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    }, z.core.$catchall<z.ZodUnknown>>>>]>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"room.join">;
-    }, z.core.$strip>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"room.invite">;
       invitee: z.ZodLazy<z.ZodLazy<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>>;
-    }, z.core.$strip>>>]>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
+      token: z.ZodLazy<z.ZodLazy<z.ZodLazy<z.ZodLazy<z.ZodTuple<[z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+        "1": z.ZodOptional<z.ZodNumber>;
+        "4": z.ZodOptional<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>;
+      }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodUnion<readonly [z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>, z.ZodNull]>, z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>], null>>>>>;
+    }, z.core.$catchall<z.ZodUnknown>>>>]>, z.ZodUnion<readonly [z.ZodLazy<z.ZodLazy<z.ZodObject<{
       verb: z.ZodLiteral<"webrtc.offer">;
       "negotiation-id": z.ZodNumber;
       sdp: z.ZodString;
@@ -758,33 +793,59 @@ declare const dmRoomPathSchema: z.ZodLazy<z.ZodString>;
 declare const roomSendSchema: z.ZodLazy<z.ZodObject<{
   verb: z.ZodLiteral<"room.send">;
   "message-id": z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>;
+  "sent-at": z.ZodNumber;
   text: z.ZodString;
+  "content-type": z.ZodOptional<z.ZodString>;
   refs: z.ZodOptional<z.ZodArray<z.ZodLazy<z.ZodLazy<z.ZodObject<{
     id: z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>;
     relation: z.ZodString;
   }, z.core.$strip>>>>>;
-}, z.core.$strip>>;
+}, z.core.$catchall<z.ZodUnknown>>>;
 declare const roomReadSchema: z.ZodLazy<z.ZodObject<{
   verb: z.ZodLiteral<"room.read">;
-  "message-id": z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>;
-}, z.core.$strip>>;
+  messages: z.ZodArray<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>;
+  at: z.ZodNumber;
+}, z.core.$catchall<z.ZodUnknown>>>;
 declare const roomLeaveSchema: z.ZodLazy<z.ZodObject<{
   verb: z.ZodLiteral<"room.leave">;
-}, z.core.$strip>>;
+}, z.core.$catchall<z.ZodUnknown>>>;
 declare const roomMembersSchema: z.ZodLazy<z.ZodObject<{
   verb: z.ZodLiteral<"room.members">;
-}, z.core.$strip>>;
+}, z.core.$catchall<z.ZodUnknown>>>;
 declare const messageRefSchema: z.ZodLazy<z.ZodObject<{
   id: z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>;
   relation: z.ZodString;
 }, z.core.$strip>>;
 declare const roomJoinSchema: z.ZodLazy<z.ZodObject<{
   verb: z.ZodLiteral<"room.join">;
-}, z.core.$strip>>;
+}, z.core.$catchall<z.ZodUnknown>>>;
 declare const roomInviteSchema: z.ZodLazy<z.ZodObject<{
   verb: z.ZodLiteral<"room.invite">;
   invitee: z.ZodLazy<z.ZodLazy<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>>;
-}, z.core.$strip>>;
+  token: z.ZodLazy<z.ZodLazy<z.ZodLazy<z.ZodLazy<z.ZodTuple<[z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    "1": z.ZodOptional<z.ZodNumber>;
+    "4": z.ZodOptional<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>;
+  }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodUnion<readonly [z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>, z.ZodNull]>, z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>], null>>>>>;
+}, z.core.$catchall<z.ZodUnknown>>>;
+declare const roomMemberSchema: z.ZodLazy<z.ZodObject<{
+  device: z.ZodLazy<z.ZodLazy<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>>;
+}, z.core.$catchall<z.ZodUnknown>>>;
+declare const roomJoinOkSchema: z.ZodLazy<z.ZodObject<{
+  result: z.ZodLiteral<"ok">;
+  "granted-token": z.ZodLazy<z.ZodLazy<z.ZodLazy<z.ZodLazy<z.ZodTuple<[z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    "1": z.ZodOptional<z.ZodNumber>;
+    "4": z.ZodOptional<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>;
+  }, z.core.$catchall<z.ZodUnknown>>>>, z.ZodUnion<readonly [z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>, z.ZodNull]>, z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>], null>>>>>;
+  members: z.ZodArray<z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    device: z.ZodLazy<z.ZodLazy<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>>;
+  }, z.core.$catchall<z.ZodUnknown>>>>>;
+}, z.core.$catchall<z.ZodUnknown>>>;
+declare const roomMembersOkSchema: z.ZodLazy<z.ZodObject<{
+  result: z.ZodLiteral<"ok">;
+  members: z.ZodArray<z.ZodLazy<z.ZodLazy<z.ZodObject<{
+    device: z.ZodLazy<z.ZodLazy<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>>;
+  }, z.core.$catchall<z.ZodUnknown>>>>>;
+}, z.core.$catchall<z.ZodUnknown>>>;
 declare const roomNoticeSchema: z.ZodLazy<z.ZodLazy<z.ZodLazy<z.ZodTuple<[z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>, z.ZodLazy<z.ZodLazy<z.ZodObject<{
   "1": z.ZodOptional<z.ZodNumber>;
   "4": z.ZodOptional<z.ZodCustom<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>>;
@@ -1008,6 +1069,9 @@ type RoomMembers = z.infer<typeof roomMembersSchema>;
 type MessageRef = z.infer<typeof messageRefSchema>;
 type RoomJoin = z.infer<typeof roomJoinSchema>;
 type RoomInvite = z.infer<typeof roomInviteSchema>;
+type RoomMember = z.infer<typeof roomMemberSchema>;
+type RoomJoinOk = z.infer<typeof roomJoinOkSchema>;
+type RoomMembersOk = z.infer<typeof roomMembersOkSchema>;
 type RoomNotice = z.infer<typeof roomNoticeSchema>;
 type RoomNoticeClaims = z.infer<typeof roomNoticeClaimsSchema>;
 type StreamSession = z.infer<typeof streamSessionSchema>;
@@ -1045,4 +1109,4 @@ type WebrtcAnswer = z.infer<typeof webrtcAnswerSchema>;
 type WebrtcIceCandidate = z.infer<typeof webrtcIceCandidateSchema>;
 type IceCandidateInit = z.infer<typeof iceCandidateInitSchema>;
 //#endregion
-export { PtyResize as $, webrtcOfferSchema as $n, gossipFrameSchema as $t, IceCandidateInit as A, relayDataFrameSchema as An, capabilityScopeSchema as At, NamespacedDomainId as B, roomNoticeClaimsSchema as Bn, coseSign1Schema as Bt, ExecSessionInfo as C, procSpawnSchema as Cn, TokenClaims as Ct, HandleClaims as D, ptySpawnSchema as Dn, WireCandidate as Dt, GossipFrame as E, ptyResizeSchema as En, WebrtcOffer as Et, ManageOk as F, revocationEntrySchema as Fn, coreCapabilitySchema as Ft, PingFrame as G, streamAckFrameSchema as Gn, deviceIdHexSchema as Gt, OwnerNamedRoomPath as H, roomPathSchema as Hn, dataEntriesFrameSchema as Ht, ManageRequestFrame as I, roomInviteSchema as In, coreDomainNameSchema as It, ProcKill as J, streamSessionSchema as Jn, domainIdSchema as Jt, PrivateUseCapability as K, streamDataFrameSchema as Kn, deviceIdSchema as Kt, ManageResponseFrame as L, roomJoinSchema as Ln, coseHeaderAlgSchema as Lt, ManageCommand as M, relayOfferFrameSchema as Mn, capabilityVerbSchema as Mt, ManageCommandParams as N, revocationAnnounceFrameSchema as Nn, closeFrameSchema as Nt, HandleRecord as O, ptyWriteSchema as On, candidateKindSchema as Ot, ManageError as P, revocationClaimsSchema as Pn, coordinatorFrameSchema as Pt, PtyKill as Q, webrtcIceCandidateSchema as Qn, frameVariantSchema as Qt, MessageRef as R, roomLeaveSchema as Rn, coseHeaderKidSchema as Rt, ExecList as S, procSignalSchema as Sn, SyncPunchFrame as St, FrameVariant as T, ptyKillSchema as Tn, WebrtcIceCandidate as Tt, PeerAdvert as U, roomReadSchema as Un, dataHaveFrameSchema as Ut, ObservedAddressFrame as V, roomNoticeSchema as Vn, coseTokenHeadersSchema as Vt, PeerIdentity as W, roomSendSchema as Wn, dataRequestFrameSchema as Wt, ProcSpawn as X, tokenClaimsSchema as Xn, execSessionInfoSchema as Xt, ProcSignal as Y, syncPunchFrameSchema as Yn, execListSchema as Yt, ProtocolVersion as Z, webrtcAnswerSchema as Zn, frameSchema as Zt, DataRequestFrame as _, peerIdentitySchema as _n, RoomSend as _t, CapabilityVerb as a, manageCommandParamsSchema as an, RelayOfferFrame as at, DmRoomPath as b, privateUseDomainIdSchema as bn, StreamEndFrame as bt, CoreCapability as c, manageOkSchema as cn, RevocationEntry as ct, CoseHeaderKid as d, messageRefSchema as dn, RoomLeave as dt, handleClaimsSchema as en, wireCandidateSchema as er, PtySpawn as et, CoseHeaderLabel as f, namespacedCapabilitySchema as fn, RoomMembers as ft, DataHaveFrame as g, peerAdvertSchema as gn, RoomRead as gt, DataEntriesFrame as h, ownerNamedRoomPathSchema as hn, RoomPath as ht, CapabilityToken as i, identityKeySchema as in, RelayInboundFrame as it, IdentityKey as j, relayInboundFrameSchema as jn, capabilityTokenSchema as jt, HandshakeFrame as k, relayConnectFrameSchema as kn, candidatesFrameSchema as kt, CoreDomainName as l, manageRequestFrameSchema as ln, RoomInvite as lt, CoseTokenHeaders as m, observedAddressFrameSchema as mn, RoomNoticeClaims as mt, CandidatesFrame as n, handshakeFrameSchema as nn, RelayConnectFrame as nt, CloseFrame as o, manageCommandSchema as on, RevocationAnnounceFrame as ot, CoseSign1 as p, namespacedDomainIdSchema as pn, RoomNotice as pt, PrivateUseDomainId as q, streamEndFrameSchema as qn, dmRoomPathSchema as qt, CapabilityScope as r, iceCandidateInitSchema as rn, RelayDataFrame as rt, CoordinatorFrame as s, manageErrorSchema as sn, RevocationClaims as st, CandidateKind as t, handleRecordSchema as tn, PtyWrite as tt, CoseHeaderAlg as u, manageResponseFrameSchema as un, RoomJoin as ut, DeviceId as v, pingFrameSchema as vn, StreamAckFrame as vt, Frame as w, protocolVersionSchema as wn, WebrtcAnswer as wt, DomainId as x, procKillSchema as xn, StreamSession as xt, DeviceIdHex as y, privateUseCapabilitySchema as yn, StreamDataFrame as yt, NamespacedCapability as z, roomMembersSchema as zn, coseHeaderLabelSchema as zt };
+export { PtyResize as $, streamEndFrameSchema as $n, execSessionInfoSchema as $t, IceCandidateInit as A, ptySpawnSchema as An, WireCandidate as At, NamespacedDomainId as B, roomJoinOkSchema as Bn, coseHeaderAlgSchema as Bt, ExecSessionInfo as C, privateUseDomainIdSchema as Cn, StreamEndFrame as Ct, HandleClaims as D, protocolVersionSchema as Dn, WebrtcAnswer as Dt, GossipFrame as E, procSpawnSchema as En, TokenClaims as Et, ManageOk as F, relayOfferFrameSchema as Fn, capabilityVerbSchema as Ft, PingFrame as G, roomMembersSchema as Gn, dataEntriesFrameSchema as Gt, OwnerNamedRoomPath as H, roomLeaveSchema as Hn, coseHeaderLabelSchema as Ht, ManageRequestFrame as I, revocationAnnounceFrameSchema as In, closeFrameSchema as It, ProcKill as J, roomPathSchema as Jn, deviceIdHexSchema as Jt, PrivateUseCapability as K, roomNoticeClaimsSchema as Kn, dataHaveFrameSchema as Kt, ManageResponseFrame as L, revocationClaimsSchema as Ln, coordinatorFrameSchema as Lt, ManageCommand as M, relayConnectFrameSchema as Mn, candidatesFrameSchema as Mt, ManageCommandParams as N, relayDataFrameSchema as Nn, capabilityScopeSchema as Nt, HandleRecord as O, ptyKillSchema as On, WebrtcIceCandidate as Ot, ManageError as P, relayInboundFrameSchema as Pn, capabilityTokenSchema as Pt, PtyKill as Q, streamDataFrameSchema as Qn, execListSchema as Qt, MessageRef as R, revocationEntrySchema as Rn, coreCapabilitySchema as Rt, ExecList as S, privateUseCapabilitySchema as Sn, StreamDataFrame as St, FrameVariant as T, procSignalSchema as Tn, SyncPunchFrame as Tt, PeerAdvert as U, roomMemberSchema as Un, coseSign1Schema as Ut, ObservedAddressFrame as V, roomJoinSchema as Vn, coseHeaderKidSchema as Vt, PeerIdentity as W, roomMembersOkSchema as Wn, coseTokenHeadersSchema as Wt, ProcSpawn as X, roomSendSchema as Xn, dmRoomPathSchema as Xt, ProcSignal as Y, roomReadSchema as Yn, deviceIdSchema as Yt, ProtocolVersion as Z, streamAckFrameSchema as Zn, domainIdSchema as Zt, DataRequestFrame as _, observedAddressFrameSchema as _n, RoomNoticeClaims as _t, CapabilityVerb as a, handshakeFrameSchema as an, webrtcOfferSchema as ar, RelayOfferFrame as at, DmRoomPath as b, peerIdentitySchema as bn, RoomSend as bt, CoreCapability as c, manageCommandParamsSchema as cn, RevocationEntry as ct, CoseHeaderKid as d, manageOkSchema as dn, RoomJoinOk as dt, frameSchema as en, streamSessionSchema as er, PtySpawn as et, CoseHeaderLabel as f, manageRequestFrameSchema as fn, RoomLeave as ft, DataHaveFrame as g, namespacedDomainIdSchema as gn, RoomNotice as gt, DataEntriesFrame as h, namespacedCapabilitySchema as hn, RoomMembersOk as ht, CapabilityToken as i, handleRecordSchema as in, webrtcIceCandidateSchema as ir, RelayInboundFrame as it, IdentityKey as j, ptyWriteSchema as jn, candidateKindSchema as jt, HandshakeFrame as k, ptyResizeSchema as kn, WebrtcOffer as kt, CoreDomainName as l, manageCommandSchema as ln, RoomInvite as lt, CoseTokenHeaders as m, messageRefSchema as mn, RoomMembers as mt, CandidatesFrame as n, gossipFrameSchema as nn, tokenClaimsSchema as nr, RelayConnectFrame as nt, CloseFrame as o, iceCandidateInitSchema as on, wireCandidateSchema as or, RevocationAnnounceFrame as ot, CoseSign1 as p, manageResponseFrameSchema as pn, RoomMember as pt, PrivateUseDomainId as q, roomNoticeSchema as qn, dataRequestFrameSchema as qt, CapabilityScope as r, handleClaimsSchema as rn, webrtcAnswerSchema as rr, RelayDataFrame as rt, CoordinatorFrame as s, identityKeySchema as sn, RevocationClaims as st, CandidateKind as t, frameVariantSchema as tn, syncPunchFrameSchema as tr, PtyWrite as tt, CoseHeaderAlg as u, manageErrorSchema as un, RoomJoin as ut, DeviceId as v, ownerNamedRoomPathSchema as vn, RoomPath as vt, Frame as w, procKillSchema as wn, StreamSession as wt, DomainId as x, pingFrameSchema as xn, StreamAckFrame as xt, DeviceIdHex as y, peerAdvertSchema as yn, RoomRead as yt, NamespacedCapability as z, roomInviteSchema as zn, coreDomainNameSchema as zt };

@@ -417,8 +417,10 @@ revocation-announce-frame = { type: "revocation-announce", entries: [* revocatio
 ; Like core/exec and core/webrtc, control travels as manage-command, never as
 ; a dedicated frame kind. No new frame shape is needed: `room.send` and
 ; `room.read` ride the existing manage-request-frame/manage-response-frame
-; pair, and `room.join`/`room.invite`'s grant rides manage-ok's own
-; `* tstr => any` extension tail.
+; pair, `room.join`'s grant rides its own explicit room-join-ok response
+; rule (a manage-ok extended with the freshly minted token and the room's
+; membership), and `room.invite`'s grant travels in the request itself,
+; since there is no approval round-trip on the invite path to carry it back.
 ;
 ; `room` is deliberately a different scope kind from `group` (tokens.cddl):
 ; both use the identical capability-token mechanism, but they encode
@@ -499,10 +501,22 @@ dm-room-path = tstr .regexp "[0-9a-f]{64}\\+[0-9a-f]{64}"
 ; room", not each action independently.
 $manage-command-params /= room-send / room-read / room-leave / room-members
 
-room-send    = { verb: "room.send", "message-id": bstr, text: tstr, ? refs: [* message-ref] }
-room-read    = { verb: "room.read", "message-id": bstr }
-room-leave   = { verb: "room.leave" }
-room-members = { verb: "room.members" }
+; `* tstr => any` on every verb params map below, matching token-claims/
+; room-notice-claims/manage-ok/cose-token-headers' own already-established
+; open-extension convention: an application field with nowhere else to
+; live (e.g. agent-comms' own delivery-timing hint) can ride this tail with
+; no further schema change, the same reasoning capability-scope.kind's own
+; "open on purpose" precedent already applies to a discriminator.
+room-send    = { verb: "room.send", "message-id": bstr, "sent-at": uint, text: tstr, ? "content-type": tstr, ? refs: [* message-ref], * tstr => any }
+; The verifier obligation the array type cannot express: `messages` MUST be
+; non-empty -- a read receipt for zero messages is not a request, and `[+
+; bstr]` (CDDL's own one-or-more indicator) is written here as `[* bstr]`
+; only because cddl.js's own emitter does not yet support a fixed-array
+; occurrence indicator other than `*` (tracked separately, not a spec
+; decision -- every other array in this spec is genuinely zero-or-more).
+room-read    = { verb: "room.read", messages: [* bstr], at: uint, * tstr => any }
+room-leave   = { verb: "room.leave", * tstr => any }
+room-members = { verb: "room.members", * tstr => any }
 
 ; A reference to another message -- reply, forwarding, or any future
 ; relation -- expressed as one typed edge rather than a separate ad-hoc field
@@ -529,16 +543,34 @@ message-ref = { id: bstr, relation: tstr }
 ; rather than a separate grant frame -- manage-ok's own `* tstr => any`
 ; already permits this, so no new response shape is needed.
 $manage-command-params /= room-join / room-invite
-room-join   = { verb: "room.join" }
-room-invite = { verb: "room.invite", invitee: device-id }
+room-join   = { verb: "room.join", * tstr => any }
+; token carries the freshly minted room:member grant, pushed unprompted by
+; the owner -- room.join is a pull (the requester asks, the owner mints and
+; returns a grant on the SAME response), room.invite is the push half of the
+; identical relationship (the owner mints unprompted and delivers the grant
+; in the request itself, since there is no approval round-trip to carry it
+; on the way back). Without this field the verb could tell an invitee it is
+; invited but hand it nothing it can actually act on.
+room-invite = { verb: "room.invite", invitee: device-id, token: capability-token, * tstr => any }
 
-; The response to an approved room.join/room.invite: manage-ok extended with
-; the freshly minted token. A denial is an ordinary manage-error (a `code`
-; such as "denied" is an application convention, not a wire requirement).
-;
-; granted-token: capability-token   ; documented here, not a separate rule --
-;                                    ; manage-ok's own schema already allows
-;                                    ; this key with no change.
+; One member as it appears in a room-members-ok/room-join-ok member list --
+; deliberately minimal (core/room itself has no notion of a display name or
+; any other application metadata), with the same open tail as everything
+; else in this domain so an application can attach what it needs (e.g.
+; agent-comms' own agent name) without a schema change.
+room-member = { device: device-id, * tstr => any }
+
+; The response to an approved room.join: manage-ok extended with the freshly
+; minted token AND the room's current membership, so a joiner learns who
+; else is here on the same round trip that grants it membership. A denial
+; is an ordinary manage-error (a `code` such as "denied" is an application
+; convention, not a wire requirement).
+room-join-ok = { result: "ok", "granted-token": capability-token, members: [* room-member], * tstr => any }
+
+; The response to room.members -- a plain membership refresh, no grant
+; involved (the requester must already hold a valid room:member token to
+; have reached this verb at all).
+room-members-ok = { result: "ok", members: [* room-member], * tstr => any }
 
 ; Kick rides the existing revocation-announce-frame unchanged: only a
 ; token's own issuer may revoke it (management.cddl), so an owner revoking
