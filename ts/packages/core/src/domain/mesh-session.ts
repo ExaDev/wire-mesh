@@ -14,18 +14,13 @@ import {
   type ManageResponseFrame,
   type PeerAdvert,
   type ProtocolVersion,
-} from "@exadev/wire-mesh-core/generated/protocol";
-import {
-  SUPPORTED_PROTOCOL_VERSION,
-  negotiate,
-} from "@exadev/wire-mesh-core/domain/handshake";
-import type { Clock } from "@exadev/wire-mesh-core/ports/clock";
-import type { IdentityPort } from "@exadev/wire-mesh-core/ports/identity";
-import type {
-  Connection,
-  Transport,
-} from "@exadev/wire-mesh-core/ports/transport";
-import { messageFromFrame, tryDecodeFrame } from "./adapters/frame-codec.js";
+} from "../generated/protocol.js";
+import { SUPPORTED_PROTOCOL_VERSION, negotiate } from "./handshake.js";
+import { deviceIdToHex } from "./device-id.js";
+import type { Clock } from "../ports/clock.js";
+import type { IdentityPort } from "../ports/identity.js";
+import type { Connection, Transport } from "../ports/transport.js";
+import { messageFromFrame, tryDecodeFrame } from "../adapters/frame-codec.js";
 
 const MS_PER_SECOND = 1000;
 
@@ -109,12 +104,27 @@ function localHandshake(domains: readonly string[]): HandshakeFrame {
   };
 }
 
-export function createMeshSession(
-  transport: Readonly<Transport>,
+interface SessionCore {
+  session: MeshSession;
+  /** Wires up an already-established connection directly, bypassing dial entirely -- the shared entry point both doConnect (after a successful dial) and acceptMeshSession (given a connection up front) converge on. */
+  wireUpConnection: (
+    link: Readonly<Connection>,
+    address: string,
+    localDomains: readonly string[],
+  ) => Promise<void>;
+}
+
+/**
+ * Builds the connection-agnostic session state machine and its public MeshSession surface. dial is null for a session that can never (re)connect on its own -- acceptMeshSession's case, where the one connection it will ever have already exists by construction and reconnect therefore cannot apply (only the remote redialing, and being accepted again, produces a fresh connection). createMeshSession supplies dial as transport.connect so its own connect()/reconnect behaviour is unchanged from before this was factored out.
+ */
+function createSessionCore(
   identity: Readonly<IdentityPort>,
-  clock: Readonly<Clock> = { now: () => Date.now() },
-  reconnect: ReconnectPolicy | null = null,
-): MeshSession {
+  clock: Readonly<Clock>,
+  reconnect: ReconnectPolicy | null,
+  dial: ((address: string) => Promise<Connection>) | null,
+  /** Fired for every peer-advert entry as it's applied to the directory, regardless of source -- acceptMeshSession's own peerDeviceId resolution hooks into this rather than consuming the public events iterator itself, which would race with whatever the caller does with that same iterator. */
+  onPeerAdvert?: (advert: PeerAdvert) => void,
+): SessionCore {
   let connection: Connection | null = null;
   let state: ConnectionState = { status: "idle" };
   let handshake: HandshakeStatus = { status: "pending" };
@@ -266,10 +276,11 @@ export function createMeshSession(
     } else if (frame.type === "gossip") {
       for (const advert of frame.peers) {
         // Latest advert per device wins, order preserved by first insertion -- a re-advert updates in place.
-        directory.set(deviceKey(advert.device), {
+        directory.set(deviceIdToHex(advert.device), {
           device: advert.device,
           advert,
         });
+        onPeerAdvert?.(advert);
       }
     } else if (frame.type === "relay-inbound") {
       // The target-role side of a relay-connect pairing learns who dialed it only via this frame -- there is no ack frame for relay-connect itself, so an initiator simply proceeds to relay-data right after sending it.
@@ -281,17 +292,6 @@ export function createMeshSession(
     }
   }
 
-  const HEX_RADIX = 16;
-
-  function deviceKey(device: DeviceId): string {
-    // Map key for a device-id: byte-exact hex rather than any coercions that would collide distinct ids.
-    let key = "";
-    for (const byte of device) {
-      key += byte.toString(HEX_RADIX).padStart(2, "0");
-    }
-    return key;
-  }
-
   /** Establishes a relay-connect pairing to targetDevice if this session isn't already paired with it -- a no-op when it already is, whether that pairing was established by this session's own prior relay-connect (initiator role) or learned from an incoming relay-inbound (target role, replying back to whoever dialed it). relay-connect has no ack frame: the initiator proceeds to relay-data right after sending it. */
   async function ensureRelayPairing(targetDevice: DeviceId): Promise<void> {
     if (connection === null) {
@@ -299,7 +299,7 @@ export function createMeshSession(
     }
     if (
       relayPeerDevice !== null &&
-      deviceKey(relayPeerDevice) === deviceKey(targetDevice)
+      deviceIdToHex(relayPeerDevice) === deviceIdToHex(targetDevice)
     ) {
       return;
     }
@@ -389,21 +389,13 @@ export function createMeshSession(
     }
   }
 
-  async function doConnect(
+  /** Everything a connection needs once it exists, regardless of whether it was dialled (createMeshSession's own doConnect, below) or handed over already established (acceptMeshSession): send this side's handshake and self-advert, arm the handshake timeout, and start consuming frames. The two entry points differ only in how link itself came to exist and what address means for it -- a real dial target for one, a caller-chosen label for the other, since the Connection/Transport ports expose no remote-address concept of their own for an accepted connection. */
+  async function wireUpConnection(
+    link: Readonly<Connection>,
     address: string,
     localDomains: readonly string[],
   ): Promise<void> {
-    if (handshakeTimer !== null) {
-      clearTimeout(handshakeTimer);
-      handshakeTimer = null;
-    }
-    state = { status: "connecting", address };
-    emit();
-    connection = await transport.connect(address);
-    if (feedCancelled) {
-      await connection.close();
-      return;
-    }
+    connection = link;
     localHandshakeSent = localHandshake(localDomains);
     handshake = { status: "pending" };
     state = { status: "connected", address, handshake };
@@ -446,110 +438,193 @@ export function createMeshSession(
     });
   }
 
-  return {
-    events: {
-      [Symbol.asyncIterator]() {
-        return {
-          next: async (): Promise<IteratorResult<SessionEvent>> =>
-            new Promise((resolve) => {
-              const backlogEvent = eventBacklog.shift();
-              if (backlogEvent) {
-                resolve({ value: backlogEvent, done: false });
-              } else {
-                eventWaiters.push((event) => {
-                  resolve({ value: event, done: false });
-                });
-              }
-            }),
-        };
-      },
-    },
-    incomingManageRequests: {
-      [Symbol.asyncIterator]() {
-        return {
-          next: async (): Promise<IteratorResult<IncomingManageRequest>> =>
-            new Promise((resolve) => {
-              const backlogRequest = incomingBacklog.shift();
-              if (backlogRequest) {
-                resolve({ value: backlogRequest, done: false });
-              } else {
-                incomingWaiters.push((request) => {
-                  resolve({ value: request, done: false });
-                });
-              }
-            }),
-        };
-      },
-    },
-    async connect(address, localDomains): Promise<void> {
-      if (connection !== null) {
-        throw new Error(
-          "a session connects once; create a new one to reconnect",
-        );
-      }
-      attempt = 0;
-      await doConnect(address, localDomains);
-    },
-    async sendPing(): Promise<void> {
-      if (connection === null || state.status !== "connected") {
-        throw new Error("not connected");
-      }
-      const ping: Frame = { type: "ping" };
-      frameLog.push({ direction: "sent", frame: ping });
-      await connection.send(ping);
-      emit();
-    },
-    setToken(token: CapabilityToken): void {
-      currentToken = token;
-    },
-    async sendManageRequest(
-      command: ManageCommand,
-      scope: Readonly<CapabilityScope>,
-      targetDevice?: DeviceId,
-    ): Promise<ManageOutcome> {
-      if (connection === null || state.status !== "connected") {
-        throw new Error("not connected");
-      }
-      if (targetDevice !== undefined) {
-        await ensureRelayPairing(targetDevice);
-      }
-      const frame = buildManageRequest(command, scope);
-      const outcome = new Promise<ManageOutcome>((resolve, reject) => {
-        pendingManageRequests.set(frame["request-id"], { resolve, reject });
-      });
-      frameLog.push({ direction: "sent", frame });
-      await transmit(frame, targetDevice !== undefined);
-      emit();
-      return outcome;
-    },
-    async close(): Promise<void> {
-      feedCancelled = true;
-      if (handshakeTimer !== null) {
-        clearTimeout(handshakeTimer);
-        handshakeTimer = null;
-      }
-      if (reconnectTimer !== null) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
-      }
-      rejectPendingManageRequests(
-        "connection closed before a response arrived",
+  async function doConnect(
+    address: string,
+    localDomains: readonly string[],
+  ): Promise<void> {
+    if (dial === null) {
+      throw new Error(
+        "this session is already connected; there is nothing to dial",
       );
-      if (connection !== null) {
-        await connection.close();
-      }
-      if (
-        state.status === "connected" ||
-        state.status === "connecting" ||
-        state.status === "reconnecting"
-      ) {
-        state = {
-          status: "closed",
-          address: state.address,
-          reason: "closed by you",
-        };
-      }
-      emit();
+    }
+    if (handshakeTimer !== null) {
+      clearTimeout(handshakeTimer);
+      handshakeTimer = null;
+    }
+    state = { status: "connecting", address };
+    emit();
+    const link = await dial(address);
+    if (feedCancelled) {
+      await link.close();
+      return;
+    }
+    await wireUpConnection(link, address, localDomains);
+  }
+
+  return {
+    wireUpConnection,
+    session: {
+      events: {
+        [Symbol.asyncIterator]() {
+          return {
+            next: async (): Promise<IteratorResult<SessionEvent>> =>
+              new Promise((resolve) => {
+                const backlogEvent = eventBacklog.shift();
+                if (backlogEvent) {
+                  resolve({ value: backlogEvent, done: false });
+                } else {
+                  eventWaiters.push((event) => {
+                    resolve({ value: event, done: false });
+                  });
+                }
+              }),
+          };
+        },
+      },
+      incomingManageRequests: {
+        [Symbol.asyncIterator]() {
+          return {
+            next: async (): Promise<IteratorResult<IncomingManageRequest>> =>
+              new Promise((resolve) => {
+                const backlogRequest = incomingBacklog.shift();
+                if (backlogRequest) {
+                  resolve({ value: backlogRequest, done: false });
+                } else {
+                  incomingWaiters.push((request) => {
+                    resolve({ value: request, done: false });
+                  });
+                }
+              }),
+          };
+        },
+      },
+      async connect(address, localDomains): Promise<void> {
+        if (connection !== null) {
+          throw new Error(
+            "a session connects once; create a new one to reconnect",
+          );
+        }
+        attempt = 0;
+        await doConnect(address, localDomains);
+      },
+      async sendPing(): Promise<void> {
+        if (connection === null || state.status !== "connected") {
+          throw new Error("not connected");
+        }
+        const ping: Frame = { type: "ping" };
+        frameLog.push({ direction: "sent", frame: ping });
+        await connection.send(ping);
+        emit();
+      },
+      setToken(token: CapabilityToken): void {
+        currentToken = token;
+      },
+      async sendManageRequest(
+        command: ManageCommand,
+        scope: Readonly<CapabilityScope>,
+        targetDevice?: DeviceId,
+      ): Promise<ManageOutcome> {
+        if (connection === null || state.status !== "connected") {
+          throw new Error("not connected");
+        }
+        if (targetDevice !== undefined) {
+          await ensureRelayPairing(targetDevice);
+        }
+        const frame = buildManageRequest(command, scope);
+        const outcome = new Promise<ManageOutcome>((resolve, reject) => {
+          pendingManageRequests.set(frame["request-id"], { resolve, reject });
+        });
+        frameLog.push({ direction: "sent", frame });
+        await transmit(frame, targetDevice !== undefined);
+        emit();
+        return outcome;
+      },
+      async close(): Promise<void> {
+        feedCancelled = true;
+        if (handshakeTimer !== null) {
+          clearTimeout(handshakeTimer);
+          handshakeTimer = null;
+        }
+        if (reconnectTimer !== null) {
+          clearTimeout(reconnectTimer);
+          reconnectTimer = null;
+        }
+        rejectPendingManageRequests(
+          "connection closed before a response arrived",
+        );
+        if (connection !== null) {
+          await connection.close();
+        }
+        if (
+          state.status === "connected" ||
+          state.status === "connecting" ||
+          state.status === "reconnecting"
+        ) {
+          state = {
+            status: "closed",
+            address: state.address,
+            reason: "closed by you",
+          };
+        }
+        emit();
+      },
     },
   };
+}
+
+export function createMeshSession(
+  transport: Readonly<Transport>,
+  identity: Readonly<IdentityPort>,
+  clock: Readonly<Clock> = { now: () => Date.now() },
+  reconnect: ReconnectPolicy | null = null,
+): MeshSession {
+  const { session } = createSessionCore(
+    identity,
+    clock,
+    reconnect,
+    async (address) => transport.connect(address),
+  );
+  return session;
+}
+
+/** A MeshSession built over a connection that already exists (a Transport's own listen() handed it to onConnection), extended with the one thing a dial-side session can't offer: the device-id of the specific peer at the other end. Unlike createMeshSession, which may end up talking to a relay gossiping about many devices at once, an accepted connection is the agent-comms case -- exactly two peers, directly connected -- so "the peer" is well-defined here in a way it structurally isn't for the dial side. */
+export interface AcceptedMeshSession extends MeshSession {
+  /** Resolves with the device-id carried by the first peer-advert this connection's remote sends -- the same self-advertisement mechanism createMeshSession's own directory already relies on for every peer, just narrowed to "the one peer this specific connection is with" rather than accumulated into a directory of possibly many. There is no transport-level authentication behind this yet (see wire-mesh#45's own createTlsTransport item): it is only as trustworthy as the remote's own gossip, exactly the same trust level the dial-side directory already has for every entry in it. */
+  peerDeviceId: Promise<DeviceId>;
+}
+
+export interface AcceptedMeshSessionOptions {
+  /** A caller-chosen label for this connection, used only for ConnectionState's own address field -- the Connection/Transport ports expose no remote-address concept an accepted connection could report on its own (see wire-mesh#45). Defaults to a fixed placeholder since most callers have nothing more specific to offer; a transport adapter that does know the remote's address should pass it here. */
+  label?: string;
+  clock?: Readonly<Clock>;
+}
+
+/** Wires an already-accepted Connection up as a full MeshSession, mirroring exactly what createMeshSession's own dial path does once a connection exists (send handshake, send self-advert, negotiate, consume frames) -- the wire-mesh#45 prerequisite agent-comms needs, since its peers both listen and dial rather than only ever dialing the way web-console's own console UI does. Reconnect does not apply here: if this connection drops, only the remote redialing and being accepted again produces a new connection, and therefore a new session -- there is nothing on this side to retry. */
+export async function acceptMeshSession(
+  connection: Readonly<Connection>,
+  identity: Readonly<IdentityPort>,
+  localDomains: readonly string[],
+  options: Readonly<AcceptedMeshSessionOptions> = {},
+): Promise<AcceptedMeshSession> {
+  const clock = options.clock ?? { now: () => Date.now() };
+  let resolvePeerDeviceId: ((device: DeviceId) => void) | null = null;
+  const peerDeviceId = new Promise<DeviceId>((resolve) => {
+    resolvePeerDeviceId = resolve;
+  });
+  let peerDeviceIdResolved = false;
+  const { session, wireUpConnection } = createSessionCore(
+    identity,
+    clock,
+    null,
+    null,
+    (advert) => {
+      if (peerDeviceIdResolved) {
+        return;
+      }
+      peerDeviceIdResolved = true;
+      resolvePeerDeviceId?.(advert.device);
+    },
+  );
+  await wireUpConnection(connection, options.label ?? "accepted", localDomains);
+  return { ...session, peerDeviceId };
 }

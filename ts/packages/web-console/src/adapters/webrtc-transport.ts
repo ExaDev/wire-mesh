@@ -8,7 +8,7 @@ import {
   SchemaInvalidFrameError,
   decodeMessage,
   messageFromFrame,
-} from "./frame-codec.js";
+} from "@exadev/wire-mesh-core/adapters/frame-codec";
 
 export function wrapRtcDataChannel(
   channel: Readonly<RTCDataChannel>,

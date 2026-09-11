@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { encode } from "cbor2";
 import type { Frame } from "@exadev/wire-mesh-core/generated/protocol";
 import { wrapRtcDataChannel } from "../src/adapters/webrtc-transport.js";
-import { messageFromFrame } from "../src/adapters/frame-codec.js";
+import { messageFromFrame } from "@exadev/wire-mesh-core/adapters/frame-codec";
 import { FakeRtcDataChannel } from "./fake-rtc-data-channel.js";
 import { bytesFromHex } from "./hex.js";
 
