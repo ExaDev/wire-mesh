@@ -31,7 +31,15 @@ export type TokenVerdictReason =
   | "parent_invalid";
 
 export type TokenVerdict =
-  { ok: true; claims: TokenClaims } | { ok: false; reason: TokenVerdictReason };
+  | {
+      ok: true;
+      claims: TokenClaims;
+      /** The device-id at the root of this token's delegation chain: its own issuer when it carries no parent, otherwise the root of its parent's chain. Lets a caller (e.g. core/room's obligation that a chain must terminate at the path's own owner, or the verifier itself for a DM) check the chain's root with one equality comparison instead of re-walking the parent chain a second time. */
+      rootIssuer: DeviceId;
+      /** How many delegation hops this token is from its own root -- 0 for a root grant. Costs nothing extra once rootIssuer is being tracked, and makes the delegation bound observable for diagnostics. */
+      depth: number;
+    }
+  | { ok: false; reason: TokenVerdictReason };
 
 export interface VerifyCapabilityTokenOptions {
   identity: IdentityPort;
@@ -218,9 +226,24 @@ async function verifyTokenChain(
     if (parentVerdict.claims.capability !== claims.capability) {
       return { ok: false, reason: "delegation_exceeds_parent" };
     }
+    // Narrowing applies to delegations-remaining too: a parent that bounds further re-delegation must not be re-delegatable into an unbounded (or merely equal) child -- that would let any bearer of a bounded grant mint an unboundedly-redelegatable one, defeating the entire point of the claim. A parent carrying none is itself unbounded, so any child value is admissible.
+    const parentRemaining = parentVerdict.claims["delegations-remaining"];
+    if (
+      parentRemaining !== undefined &&
+      (claims["delegations-remaining"] === undefined ||
+        claims["delegations-remaining"] >= parentRemaining)
+    ) {
+      return { ok: false, reason: "delegation_exceeds_parent" };
+    }
+    return {
+      ok: true,
+      claims,
+      rootIssuer: parentVerdict.rootIssuer,
+      depth: parentVerdict.depth + 1,
+    };
   }
 
-  return { ok: true, claims };
+  return { ok: true, claims, rootIssuer: claims.issuer, depth: 0 };
 }
 
 export type RevocationEntryVerdictReason =
