@@ -571,7 +571,7 @@ observed-address-frame = { type: "observed-address", address: tstr }
 ; checked before honouring subsequent relay frames on that connection, not a
 ; constraint this frame's own fields express.
 relay-offer-frame   = { type: "relay-offer", addresses: [* tstr] }
-relay-connect-frame = { type: "relay-connect", target-device: device-id, ? direct-only: bool }
+relay-connect-frame = { type: "relay-connect", target-device: device-id }
 ; Multiplexing: a connection may hold more than one relay pairing at once (a
 ; peer fanning a message out to several members of a group, all of whom are
 ; only reachable through this same hub). `to-device` names which pairing an
