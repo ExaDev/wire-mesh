@@ -20,19 +20,29 @@ export function deviceIdToHex(device: DeviceId): string {
   return bytesToHex(device);
 }
 
-/** Parses a lowercase, 64-character device-id-hex string back into the 32-byte DeviceId it encodes. Throws on anything that isn't exactly that shape, rather than silently truncating or zero-padding a malformed input. */
-export function deviceIdFromHex(hex: string): DeviceId {
-  if (!/^[0-9a-f]{64}$/.test(hex)) {
+/** The arbitrary-length reverse of bytesToHex -- decodes a lowercase, byte-exact hex string back into the bytes it encodes. Throws on an odd-length string, a non-hex character, or a non-lowercase one, rather than silently truncating or normalising a malformed input, matching deviceIdFromHex's own fail-closed convention for the fixed-length case. */
+export function bytesFromHex(hex: string): Uint8Array {
+  if (!/^([0-9a-f]{2})*$/.test(hex)) {
     throw new Error(
-      `expected a 64-character lowercase hex string, got ${JSON.stringify(hex)}`,
+      `expected an even-length, lowercase hex string, got ${JSON.stringify(hex)}`,
     );
   }
-  const bytes = new Uint8Array(DEVICE_ID_HEX_LENGTH / HEX_BYTE_WIDTH);
+  const bytes = new Uint8Array(hex.length / HEX_BYTE_WIDTH);
   for (let i = 0; i < bytes.length; i++) {
     bytes[i] = Number.parseInt(
       hex.slice(i * HEX_BYTE_WIDTH, (i + 1) * HEX_BYTE_WIDTH),
       HEX_RADIX,
     );
   }
-  return deviceIdSchema.parse(bytes);
+  return bytes;
+}
+
+/** Parses a lowercase, 64-character device-id-hex string back into the 32-byte DeviceId it encodes. Throws on anything that isn't exactly that shape, rather than silently truncating or zero-padding a malformed input. */
+export function deviceIdFromHex(hex: string): DeviceId {
+  if (hex.length !== DEVICE_ID_HEX_LENGTH) {
+    throw new Error(
+      `expected a 64-character lowercase hex string, got ${JSON.stringify(hex)}`,
+    );
+  }
+  return deviceIdSchema.parse(bytesFromHex(hex));
 }
