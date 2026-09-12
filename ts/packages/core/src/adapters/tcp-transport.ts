@@ -47,7 +47,11 @@ function frameReader(socket: Socket): AsyncIterable<Frame> {
 
       let decoded: unknown;
       try {
-        decoded = decode(body, cdeDecodeOptions);
+        // cbor2's decode() mirrors its input's own class for nested byte-string values: fed a Buffer, it slices out Buffer instances, not plain Uint8Array -- and its own encode() then fails to recognise a Buffer as a byte string at all (it falls through to encoding it as a generic object), silently corrupting any later re-encode of a decoded byte-string field. A capability token's own signature verification does exactly that re-encode (COSE's Sig_structure, built from the token's own protected-header and payload byte strings), so decoding straight off this socket's Buffer would make every real, wire-received token fail signature verification despite carrying perfectly correct bytes. Normalising to a plain Uint8Array view first (same range, same backing memory, just the base class cbor2's encoder actually recognises) avoids the whole class of bug, matching frame-codec.ts's own `new Uint8Array(data)` normalisation for exactly this reason.
+        decoded = decode(
+          new Uint8Array(body.buffer, body.byteOffset, body.byteLength),
+          cdeDecodeOptions,
+        );
       } catch (error) {
         // socket.destroy takes an Error; the caught value is unknown-typed even though cbor2 only ever throws Errors, so it is rewrapped rather than asserted
         const connectionError =
