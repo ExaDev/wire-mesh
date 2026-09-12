@@ -26,6 +26,13 @@ lint:
     @if [ -d rust ]; then cd rust && cargo clippy --all-targets -- -D warnings && cargo fmt --check; else echo "rust/ does not exist yet"; fi
     cd ts && pnpm turbo run _lint
 
+# Typecheck ts/ (conformance/'s own typecheck already runs as part of `just conformance`;
+# rust/ has none separate from `cargo build`/`cargo clippy`). CI's ts/ Verify job runs this
+# between lint and build -- a type error caught only here, not by build or test, is exactly
+# what this recipe exists to catch locally before pushing.
+typecheck:
+    cd ts && pnpm turbo run _typecheck
+
 # Regenerate spec/protocol.cddl and validate it against an RFC 8610 parser.
 spec:
     cd spec && ./generate.sh
