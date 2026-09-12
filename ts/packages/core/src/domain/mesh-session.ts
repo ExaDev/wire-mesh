@@ -95,6 +95,8 @@ export interface MeshSession {
   sendRevocationAnnounce: (
     entries: readonly RevocationEntry[],
   ) => Promise<void>;
+  /** Re-sends this side's own self-advert with a fresh snapshot-seconds and, when given, extensions merged onto peer-advert's own open `* tstr => any` tail -- the mechanism a caller uses to keep gossiped presence status (or any other advertised fact) live over a connection's lifetime, since the initial self-advert wireUpConnection sends at connect time is otherwise never repeated. Callers own their own re-advertisement cadence (there is no timer inside MeshSession itself, matching its own DOM-free, fully unit-testable design); a caller not calling this again after connecting is exactly today's existing gossip-once-on-connect behaviour. */
+  sendGossipUpdate: (extensions?: Record<string, unknown>) => Promise<void>;
   /** Sends a manage-request and resolves with the matching manage-response's outcome, correlated by request-id. When targetDevice is given, the request is routed to that specific peer via an established relay-connect pairing (wrapped as relay-data) rather than sent directly over this session's own Connection -- relay-hub deliberately drops manage-request/manage-response frames sent to it directly, since routing between two connected peers is not the relay role's business, so a specific peer reachable only through a relay hub can only be addressed this way. Absent, this sends directly over the Connection exactly as before. When token is given, it is attached to this one request instead of whatever setToken last set -- a single session routinely needs a different token per request when its peer shares more than one scope with this side (e.g. several core/room memberships over one connection), and a session-global token can only ever be correct for one of them. Absent, this request carries setToken's own session-global token exactly as before. When timeoutMs is given, the returned promise resolves with `{ result: "error", code: "timeout" }` rather than hanging forever if no manage-response arrives in time -- a held-open request (a human approval, a not-yet-online peer) otherwise has no way for the caller to give up on it. Absent, this request waits exactly as before, with no time limit of its own. */
   sendManageRequest: (
     command: ManageCommand,
@@ -418,6 +420,21 @@ function createSessionCore(
     }
   }
 
+  /** Builds this side's own self-advert: this node's own directly-reachable addresses (wire-mesh#38), or none for a caller with nothing to offer (a browser client, which cannot accept inbound connections) -- either is an honest advert, not a stopgap. extensions merge onto peer-advert's own open `* tstr => any` tail -- the mechanism sendGossipUpdate uses to keep a gossiped fact (presence status, an accept/refuse policy, or any future domain's own) live over the connection's lifetime. */
+  function buildSelfAdvert(extensions?: Record<string, unknown>): GossipFrame {
+    return {
+      type: "gossip",
+      peers: [
+        {
+          device: identity.deviceId,
+          addresses: [...addresses],
+          "snapshot-seconds": Math.floor(clock.now() / MS_PER_SECOND),
+          ...extensions,
+        },
+      ],
+    };
+  }
+
   /** Everything a connection needs once it exists, regardless of whether it was dialled (createMeshSession's own doConnect, below) or handed over already established (acceptMeshSession): send this side's handshake and self-advert, arm the handshake timeout, and start consuming frames. The two entry points differ only in how link itself came to exist and what address means for it -- a real dial target for one, a caller-chosen label for the other, since the Connection/Transport ports expose no remote-address concept of their own for an accepted connection. */
   async function wireUpConnection(
     link: Readonly<Connection>,
@@ -431,17 +448,7 @@ function createSessionCore(
     frameLog.push({ direction: "sent", frame: localHandshakeSent });
     await connection.send(localHandshakeSent);
     emit();
-    // Self-advertisement: this node's own directly-reachable addresses (wire-mesh#38), or none for a caller with nothing to offer (a browser client, which cannot accept inbound connections) -- either is an honest advert, not a stopgap.
-    const selfAdvert: GossipFrame = {
-      type: "gossip",
-      peers: [
-        {
-          device: identity.deviceId,
-          addresses: [...addresses],
-          "snapshot-seconds": Math.floor(clock.now() / MS_PER_SECOND),
-        },
-      ],
-    };
+    const selfAdvert = buildSelfAdvert();
     frameLog.push({ direction: "sent", frame: selfAdvert });
     await connection.send(selfAdvert);
     emit();
@@ -610,6 +617,17 @@ function createSessionCore(
           type: "revocation-announce",
           entries: [...entries],
         };
+        frameLog.push({ direction: "sent", frame });
+        await transmit(frame, false);
+        emit();
+      },
+      async sendGossipUpdate(
+        extensions?: Record<string, unknown>,
+      ): Promise<void> {
+        if (connection === null || state.status !== "connected") {
+          throw new Error("not connected");
+        }
+        const frame = buildSelfAdvert(extensions);
         frameLog.push({ direction: "sent", frame });
         await transmit(frame, false);
         emit();
