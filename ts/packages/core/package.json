@@ -104,6 +104,10 @@
       "import": "./dist/domain/room-path.mjs",
       "require": "./dist/domain/room-path.cjs"
     },
+    "./domain/room-token-verification": {
+      "import": "./dist/domain/room-token-verification.mjs",
+      "require": "./dist/domain/room-token-verification.cjs"
+    },
     "./domain/tokens": {
       "import": "./dist/domain/tokens.mjs",
       "require": "./dist/domain/tokens.cjs"
