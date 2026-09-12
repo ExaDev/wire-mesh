@@ -100,6 +100,10 @@
       "import": "./dist/domain/revocation-view.mjs",
       "require": "./dist/domain/revocation-view.cjs"
     },
+    "./domain/room-path": {
+      "import": "./dist/domain/room-path.mjs",
+      "require": "./dist/domain/room-path.cjs"
+    },
     "./domain/tokens": {
       "import": "./dist/domain/tokens.mjs",
       "require": "./dist/domain/tokens.cjs"
