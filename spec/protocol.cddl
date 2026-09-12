@@ -849,10 +849,23 @@ token-claims = {
 ping-frame  = { type: "ping" }
 close-frame = { type: "close", ? reason: tstr }
 
+; The extension tail mirrors token-claims' own `* tstr => any` (tokens.cddl)
+; and is the generalised gossip-extension point named in the agent-comms
+; migration design's own P4 refinement: a node's presence status, its own
+; accept/refuse policy for a claim class (e.g. "does not accept messages
+; carrying a valid-until claim"), and any future domain's own gossiped fact
+; all ride this one open tail, added once rather than as a series of
+; separately-named fields each time a new fact needs advertising. A field
+; here is exactly as trustworthy as any other gossiped, self-asserted claim
+; in this spec (peer-advert carries no signature of its own) — a reader
+; treats an unrecognised key the same verifier-obligation way an unrecognised
+; value in an open discriminator is treated elsewhere in this spec: ignored,
+; never acted on without understanding it, never treated as an error.
 peer-advert = {
   device: device-id,
   addresses: [* tstr],      ; "host:port" strings
   snapshot-seconds: int,     ; Unix-seconds snapshot time
+  * tstr => any,
 }
 gossip-frame = { type: "gossip", peers: [* peer-advert] }
 
