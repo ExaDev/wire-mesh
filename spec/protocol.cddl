@@ -377,6 +377,22 @@ manage-ok    = { result: "ok", * tstr => any }
 manage-error = { result: "error", code: tstr, ? message: tstr }
 manage-response-frame = { type: "manage-response", request-id: uint, outcome: manage-ok / manage-error }
 
+; The generic ungated capability request/grant primitive (wire-mesh#77/#78):
+; lifts core/room's own room.join shape (an ungated ask, held open, a human
+; decides, approval mints and returns a token on the same response) out of
+; that one domain so any capability can use it, not just room:member. No
+; scope field in params -- manage-request-frame's own top-level scope
+; already carries this, and restating it here would just be a second copy
+; of the same fact that could silently disagree with the first, the same
+; reasoning room-join's own params already omit it for (spec/room.cddl).
+; Granted via capability-grant-ok, mirroring room-join-ok's own shape
+; (freshly minted token on the same response) rather than inventing a new
+; response frame; a denial is an ordinary manage-error, the same convention
+; room.join's own denial already uses.
+$manage-command-params /= capability-request
+capability-request = { verb: "capability.request", capability: tstr, * tstr => any }
+capability-grant-ok = { result: "ok", "granted-token": capability-token, * tstr => any }
+
 ; Revocation — new, not present in Cascade's frozen set. Gossiped revocation
 ; entries let a peer check a token against a shared revocation view without
 ; a synchronous lookup against the issuer for every use of the token.
