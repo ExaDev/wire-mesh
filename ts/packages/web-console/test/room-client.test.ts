@@ -7,6 +7,7 @@ import type {
   ManageCommand,
   TokenClaims,
 } from "wire-mesh-core/generated/protocol";
+import { roomJoinOkSchema } from "wire-mesh-core/generated/protocol";
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import type { Clock } from "wire-mesh-core/ports/clock";
 import type { RevocationCheck } from "wire-mesh-core/domain/tokens";
@@ -342,7 +343,9 @@ describe("createRoomRouter", () => {
       { onJoinRequest },
     );
 
-    const respond = vi.fn(async (): Promise<void> => Promise.resolve());
+    const respond = vi.fn<(outcome: ManageOutcome) => Promise<void>>(async () =>
+      Promise.resolve(),
+    );
     const incoming: IncomingManageRequest = {
       requestId: 1,
       command: { verb: ROOM_MEMBER_CAPABILITY, params: { verb: "room.join" } },
@@ -355,12 +358,7 @@ describe("createRoomRouter", () => {
       expect(respond).toHaveBeenCalledTimes(1);
     });
     expect(onJoinRequest).toHaveBeenCalledTimes(1);
-    const call = respond.mock.calls[0]?.[0] as {
-      result: string;
-      "granted-token"?: CapabilityToken;
-      members?: { device: DeviceId }[];
-    };
-    expect(call.result).toBe("ok");
+    const call = roomJoinOkSchema.parse(respond.mock.calls[0]?.[0]);
     expect(call["granted-token"]).toBeDefined();
     expect(call.members).toEqual([
       { device: owner.deviceId },
