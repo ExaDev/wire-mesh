@@ -270,6 +270,49 @@ describe("createMeshSession", () => {
     await session.close();
   });
 
+  it("sendGossipUpdate re-sends a fresh self-advert with the given extensions merged in", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/data"]);
+
+    await session.sendGossipUpdate({ presence: "idle" });
+
+    const updated = connection.sent.at(-1) as GossipFrame;
+    expect(updated).toEqual({
+      type: "gossip",
+      peers: [
+        {
+          device: testIdentityDeviceId,
+          addresses: [],
+          "snapshot-seconds": Math.floor(TEST_CLOCK_NOW_MS / MS_PER_SECOND),
+          presence: "idle",
+        },
+      ],
+    } satisfies GossipFrame);
+    await session.close();
+  });
+
+  it("sendGossipUpdate with no extensions re-sends a plain self-advert", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/data"]);
+
+    await session.sendGossipUpdate();
+
+    const updated = connection.sent.at(-1) as GossipFrame;
+    expect(updated).toEqual({
+      type: "gossip",
+      peers: [
+        {
+          device: testIdentityDeviceId,
+          addresses: [],
+          "snapshot-seconds": Math.floor(TEST_CLOCK_NOW_MS / MS_PER_SECOND),
+        },
+      ],
+    } satisfies GossipFrame);
+    await session.close();
+  });
+
   it("excludes the retired core/federation domain even when both sides offer it", async () => {
     const { transport, connection } = fakeTransport();
     const session = createMeshSession(transport, testIdentity, testClock);
