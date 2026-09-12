@@ -18,8 +18,8 @@
     "_lint": "eslint . --fix --cache --max-warnings 0"
   },
   "dependencies": {
-    "wire-mesh-core": "workspace:*",
-    "cbor2": "2.3.0"
+    "cbor2": "2.3.0",
+    "wire-mesh-core": "workspace:*"
   },
   "devDependencies": {
     "@exadev/eslint-config": "2.10.6",
@@ -31,6 +31,7 @@
     "fake-indexeddb": "6.2.5",
     "globals": "17.12.0",
     "jiti": "2.7.0",
+    "jsdom": "30.0.1",
     "prettier": "3.9.6",
     "turbo": "2.10.12",
     "typescript": "6.0.3",

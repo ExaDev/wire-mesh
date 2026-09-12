@@ -36,6 +36,10 @@ export class FakeWebSocket {
     this.dispatch("message", { data: text });
   }
 
+  emitOpen(): void {
+    this.dispatch("open");
+  }
+
   emitError(): void {
     this.dispatch("error");
   }
