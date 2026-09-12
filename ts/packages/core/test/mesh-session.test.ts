@@ -249,6 +249,27 @@ describe("createMeshSession", () => {
     await session.close();
   });
 
+  it("advertises this node's own given addresses in its self-advert", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(
+      transport,
+      testIdentity,
+      testClock,
+      null,
+      ["10.0.0.1:9000", "203.0.113.5:9000"],
+    );
+    const eventsDone = nthEvent(session, EVENTS_THROUGH_REMOTE_HANDSHAKE - 1);
+    await session.connect("ws://node", ["core/data"]);
+    await eventsDone;
+
+    const selfAdvert = connection.sent[1] as GossipFrame;
+    expect(selfAdvert.peers[0]?.addresses).toEqual([
+      "10.0.0.1:9000",
+      "203.0.113.5:9000",
+    ]);
+    await session.close();
+  });
+
   it("excludes the retired core/federation domain even when both sides offer it", async () => {
     const { transport, connection } = fakeTransport();
     const session = createMeshSession(transport, testIdentity, testClock);
@@ -919,6 +940,20 @@ describe("acceptMeshSession", () => {
     } satisfies HandshakeFrame);
     const selfAdvert = fake.sent[1] as GossipFrame;
     expect(selfAdvert.peers[0]?.device).toEqual(testIdentity.deviceId);
+    await session.close();
+  });
+
+  it("advertises this node's own given addresses in its self-advert", async () => {
+    const fake = new FakeConnection();
+    const session = await acceptMeshSession(
+      fake.connection,
+      testIdentity,
+      ["core/data"],
+      { clock: testClock, addresses: ["192.168.1.10:9000"] },
+    );
+
+    const selfAdvert = fake.sent[1] as GossipFrame;
+    expect(selfAdvert.peers[0]?.addresses).toEqual(["192.168.1.10:9000"]);
     await session.close();
   });
 

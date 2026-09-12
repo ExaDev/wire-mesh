@@ -133,6 +133,8 @@ function createSessionCore(
   dial: ((address: string) => Promise<Connection>) | null,
   /** Fired for every peer-advert entry as it's applied to the directory, regardless of source -- acceptMeshSession's own peerDeviceId resolution hooks into this rather than consuming the public events iterator itself, which would race with whatever the caller does with that same iterator. */
   onPeerAdvert?: (advert: PeerAdvert) => void,
+  /** This node's own directly-reachable "host:port" candidates (wire-mesh#38), advertised in every self-advert this session sends. Empty by default -- correct, not a stopgap, for a caller with nothing to offer (a browser client, which cannot accept inbound connections); a caller that does listen for connections passes its own address(es) here so other peers can attempt a direct connection instead of always falling back to a relay. */
+  addresses: readonly string[] = [],
 ): SessionCore {
   let connection: Connection | null = null;
   let state: ConnectionState = { status: "idle" };
@@ -428,13 +430,13 @@ function createSessionCore(
     frameLog.push({ direction: "sent", frame: localHandshakeSent });
     await connection.send(localHandshakeSent);
     emit();
-    // Self-advertisement: empty addresses is correct, not a stopgap -- relay-hub's registry looks peers up by device-id from gossip, never by address, so an honest advert with no reachable address is all a browser client (which cannot accept inbound connections) can ever offer.
+    // Self-advertisement: this node's own directly-reachable addresses (wire-mesh#38), or none for a caller with nothing to offer (a browser client, which cannot accept inbound connections) -- either is an honest advert, not a stopgap.
     const selfAdvert: GossipFrame = {
       type: "gossip",
       peers: [
         {
           device: identity.deviceId,
-          addresses: [],
+          addresses: [...addresses],
           "snapshot-seconds": Math.floor(clock.now() / MS_PER_SECOND),
         },
       ],
@@ -635,12 +637,16 @@ export function createMeshSession(
   identity: Readonly<IdentityPort>,
   clock: Readonly<Clock> = { now: () => Date.now() },
   reconnect: ReconnectPolicy | null = null,
+  /** This node's own directly-reachable "host:port" candidates (wire-mesh#38), advertised in this session's self-advert so other peers can attempt a direct connection instead of always falling back to a relay. Omit (or pass none) for a caller with nothing to offer, e.g. a browser client. */
+  addresses: readonly string[] = [],
 ): MeshSession {
   const { session } = createSessionCore(
     identity,
     clock,
     reconnect,
     async (address) => transport.connect(address),
+    undefined,
+    addresses,
   );
   return session;
 }
@@ -655,6 +661,8 @@ export interface AcceptedMeshSessionOptions {
   /** A caller-chosen label for this connection, used only for ConnectionState's own address field -- the Connection/Transport ports expose no remote-address concept an accepted connection could report on its own (see wire-mesh#45). Defaults to a fixed placeholder since most callers have nothing more specific to offer; a transport adapter that does know the remote's address should pass it here. */
   label?: string;
   clock?: Readonly<Clock>;
+  /** This node's own directly-reachable "host:port" candidates (wire-mesh#38), advertised in this session's self-advert. Omit (or pass none) for a caller with nothing to offer. */
+  addresses?: readonly string[];
 }
 
 /** Wires an already-accepted Connection up as a full MeshSession, mirroring exactly what createMeshSession's own dial path does once a connection exists (send handshake, send self-advert, negotiate, consume frames) -- the wire-mesh#45 prerequisite agent-comms needs, since its peers both listen and dial rather than only ever dialing the way web-console's own console UI does. Reconnect does not apply here: if this connection drops, only the remote redialing and being accepted again produces a new connection, and therefore a new session -- there is nothing on this side to retry. */
@@ -682,6 +690,7 @@ export async function acceptMeshSession(
       peerDeviceIdResolved = true;
       resolvePeerDeviceId?.(advert.device);
     },
+    options.addresses,
   );
   await wireUpConnection(connection, options.label ?? "accepted", localDomains);
   return { ...session, peerDeviceId };
