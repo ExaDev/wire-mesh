@@ -398,6 +398,38 @@ describe("createMeshSession", () => {
     await session.close();
   });
 
+  it("emits a session event after sending a gossip update", async () => {
+    const { transport } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    const eventsDone = nthEvent(session, EVENTS_THROUGH_REMOTE_HANDSHAKE - 1);
+    await session.connect("ws://node", ["core/data"]);
+    await eventsDone;
+
+    const sentEventDone = nthEvent(session, 1);
+    await session.sendGossipUpdate();
+    const event = (await sentEventDone) as {
+      frameLog: { direction: string; frame: { type: string } }[];
+    };
+    expect(event.frameLog.at(-1)?.direction).toBe("sent");
+    expect(event.frameLog.at(-1)?.frame.type).toBe("gossip");
+    await session.close();
+  });
+
+  it("refuses sendGossipUpdate while not connected", async () => {
+    const { transport } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await expect(session.sendGossipUpdate()).rejects.toThrow("not connected");
+  });
+
+  it("refuses sendGossipUpdate once the connection has failed and closed, not just before the first connect", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/data"]);
+    connection.fail(new Error("dropped"));
+    await nthEvent(session, EVENTS_THROUGH_FAILURE);
+    await expect(session.sendGossipUpdate()).rejects.toThrow("not connected");
+  });
+
   it("excludes the retired core/federation domain even when both sides offer it", async () => {
     const { transport, connection } = fakeTransport();
     const session = createMeshSession(transport, testIdentity, testClock);
@@ -1227,6 +1259,47 @@ describe("revocation-announce plumbing", () => {
     await session.close();
   });
 
+  it("emits a session event after sending a revocation-announce", async () => {
+    const { transport } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    const eventsDone = nthEvent(session, EVENTS_THROUGH_REMOTE_HANDSHAKE - 1);
+    await session.connect("ws://node", ["core/management"]);
+    await eventsDone;
+
+    const sentEventDone = nthEvent(session, 1);
+    await session.sendRevocationAnnounce([testEntryA]);
+    const event = (await sentEventDone) as {
+      frameLog: { direction: string; frame: { type: string } }[];
+    };
+    expect(event.frameLog.at(-1)).toEqual({
+      direction: "sent",
+      frame: {
+        type: "revocation-announce",
+        entries: [testEntryA],
+      },
+    });
+    await session.close();
+  });
+
+  it("refuses sendRevocationAnnounce while not connected", async () => {
+    const { transport } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await expect(session.sendRevocationAnnounce([testEntryA])).rejects.toThrow(
+      "not connected",
+    );
+  });
+
+  it("refuses sendRevocationAnnounce once the connection has failed and closed, not just before the first connect", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/management"]);
+    connection.fail(new Error("dropped"));
+    await nthEvent(session, EVENTS_THROUGH_FAILURE);
+    await expect(session.sendRevocationAnnounce([testEntryA])).rejects.toThrow(
+      "not connected",
+    );
+  });
+
   it("flattens an incoming revocation-announce frame's entries onto revocationAnnouncements, one item per entry", async () => {
     const { transport, connection } = fakeTransport();
     const session = createMeshSession(transport, testIdentity, testClock);
@@ -1235,8 +1308,12 @@ describe("revocation-announce plumbing", () => {
     const received: RevocationEntry[] = [];
     const receivedBoth = (async (): Promise<void> => {
       const iterator = session.revocationAnnouncements[Symbol.asyncIterator]();
-      received.push((await iterator.next()).value as RevocationEntry);
-      received.push((await iterator.next()).value as RevocationEntry);
+      const first = await iterator.next();
+      expect(first.done).toBe(false);
+      received.push(yielded(first));
+      const second = await iterator.next();
+      expect(second.done).toBe(false);
+      received.push(yielded(second));
     })();
 
     connection.push({
@@ -1246,6 +1323,27 @@ describe("revocation-announce plumbing", () => {
 
     await receivedBoth;
     expect(received).toEqual([testEntryA, testEntryB]);
+    await session.close();
+  });
+
+  it("delivers a revocation entry queued before anyone was iterating revocationAnnouncements, from the backlog", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    const eventsDone = nthEvent(session, EVENTS_THROUGH_REMOTE_HANDSHAKE - 1);
+    await session.connect("ws://node", ["core/management"]);
+    await eventsDone;
+
+    const nextEventDone = nthEvent(session, 1);
+    connection.push({
+      type: "revocation-announce",
+      entries: [testEntryA],
+    } satisfies RevocationAnnounceFrame);
+    await nextEventDone;
+
+    const iterator = session.revocationAnnouncements[Symbol.asyncIterator]();
+    const result = await iterator.next();
+    expect(result.done).toBe(false);
+    expect(yielded(result)).toEqual(testEntryA);
     await session.close();
   });
 });
