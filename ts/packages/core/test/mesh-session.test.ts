@@ -584,11 +584,14 @@ describe("createMeshSession", () => {
   });
 
   it("closes a dial that only completes after close() was already called, instead of wiring it up", async () => {
-    let resolveDial: ((connection: Connection) => void) | null = null;
+    // A plain `let` reassigned only inside the Promise executor below loses its non-null narrowing by the time it's called several `await`s later -- an object property isn't narrowed the same way a bare closed-over variable is, so this sidesteps that entirely.
+    const dialResolver: {
+      resolve: ((connection: Connection) => void) | null;
+    } = { resolve: null };
     const transport: Transport = {
       connect: async (): Promise<Connection> =>
         new Promise<Connection>((resolve) => {
-          resolveDial = resolve;
+          dialResolver.resolve = resolve;
         }),
       listen: async (): Promise<Listener> =>
         Promise.reject(new Error("client-only transport")),
@@ -599,7 +602,9 @@ describe("createMeshSession", () => {
     await eventsIterator.next(); // connecting
     await session.close();
     const lateConnection = new FakeConnection();
-    resolveDial?.(lateConnection.connection);
+    if (dialResolver.resolve === null)
+      throw new Error("expected resolveDial to be set");
+    dialResolver.resolve(lateConnection.connection);
     await connectPromise;
     expect(lateConnection.sent).toHaveLength(0);
     expect(lateConnection.isClosed).toBe(true);
