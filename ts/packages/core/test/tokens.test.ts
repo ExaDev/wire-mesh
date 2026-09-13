@@ -5,6 +5,7 @@ import { createNodeIdentity } from "../src/adapters/node-identity.js";
 import { createMemoryStorage } from "../src/adapters/memory-storage.js";
 import { createSystemClock } from "../src/adapters/system-clock.js";
 import {
+  canGrant,
   mintCapabilityToken,
   mintRevocationEntry,
   verifyCapabilityToken,
@@ -1371,6 +1372,239 @@ describe("mintCapabilityToken", () => {
       parent: rootVerdict.token,
     });
     expect(verdict).toEqual({ ok: false, reason: "delegation_exceeds_parent" });
+  });
+});
+
+describe("canGrant", () => {
+  let issuer: IdentityPort;
+  let bearerIdentity: IdentityPort;
+
+  beforeAll(async () => {
+    issuer = await generateEs256Identity();
+    bearerIdentity = await generateEs256Identity();
+  });
+
+  const now = 1_893_456_000_000;
+  const workScope: CapabilityScope = { kind: "folder", path: "/work" };
+
+  it("agrees with a real mint's own verdict: true when narrowing succeeds", async () => {
+    const rootVerdict = await mintCapabilityToken({
+      identity: issuer,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: bearerIdentity.deviceId,
+      capability: "room:member",
+      scope: { kind: "room", path: ROOM_MEMBER_ROOM_PATH },
+      expires: now + HOUR_MS,
+      delegationsRemaining: 1,
+    });
+    expect(rootVerdict.ok).toBe(true);
+    if (!rootVerdict.ok) return;
+
+    const candidate = {
+      capability: "room:member",
+      scope: { kind: "room", path: ROOM_MEMBER_ROOM_PATH } as CapabilityScope,
+      expires: now + HOUR_MS,
+      delegationsRemaining: 0,
+    };
+    expect(
+      canGrant(rootVerdict.token, bearerIdentity.deviceId, candidate, now),
+    ).toBe(true);
+
+    const delegatedVerdict = await mintCapabilityToken({
+      identity: bearerIdentity,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: (await generateEs256Identity()).deviceId,
+      ...candidate,
+      parent: rootVerdict.token,
+    });
+    expect(delegatedVerdict.ok).toBe(true);
+  });
+
+  it("agrees with a real mint's own verdict: false when the querying device does not hold the token's bearer", async () => {
+    const rootVerdict = await mintCapabilityToken({
+      identity: issuer,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: bearerIdentity.deviceId,
+      capability: "exec:pty",
+      scope: workScope,
+      expires: now + HOUR_MS,
+    });
+    expect(rootVerdict.ok).toBe(true);
+    if (!rootVerdict.ok) return;
+
+    expect(
+      canGrant(
+        rootVerdict.token,
+        issuer.deviceId,
+        {
+          capability: "exec:pty",
+          scope: workScope,
+          expires: now + HOUR_MS,
+        },
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it("agrees with a real mint's own verdict: false when the candidate's expiry exceeds the held token's", async () => {
+    const rootVerdict = await mintCapabilityToken({
+      identity: issuer,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: bearerIdentity.deviceId,
+      capability: "exec:pty",
+      scope: workScope,
+      expires: now + HOUR_MS,
+    });
+    expect(rootVerdict.ok).toBe(true);
+    if (!rootVerdict.ok) return;
+
+    expect(
+      canGrant(
+        rootVerdict.token,
+        bearerIdentity.deviceId,
+        {
+          capability: "exec:pty",
+          scope: workScope,
+          expires: now + HOUR_MS + 1,
+        },
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it("agrees with a real mint's own verdict: false when the candidate's scope does not narrow the held token's", async () => {
+    const rootVerdict = await mintCapabilityToken({
+      identity: issuer,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: bearerIdentity.deviceId,
+      capability: "exec:pty",
+      scope: workScope,
+      expires: now + HOUR_MS,
+    });
+    expect(rootVerdict.ok).toBe(true);
+    if (!rootVerdict.ok) return;
+
+    expect(
+      canGrant(
+        rootVerdict.token,
+        bearerIdentity.deviceId,
+        {
+          capability: "exec:pty",
+          scope: { kind: "folder", path: "/elsewhere" },
+          expires: now + HOUR_MS,
+        },
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it("agrees with a real mint's own verdict: false when the candidate's capability differs", async () => {
+    const rootVerdict = await mintCapabilityToken({
+      identity: issuer,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: bearerIdentity.deviceId,
+      capability: "exec:pty",
+      scope: workScope,
+      expires: now + HOUR_MS,
+    });
+    expect(rootVerdict.ok).toBe(true);
+    if (!rootVerdict.ok) return;
+
+    expect(
+      canGrant(
+        rootVerdict.token,
+        bearerIdentity.deviceId,
+        {
+          capability: "room:member",
+          scope: workScope,
+          expires: now + HOUR_MS,
+        },
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it("agrees with a real mint's own verdict: false when the candidate's delegations-remaining would not be strictly less than the held token's", async () => {
+    const rootVerdict = await mintCapabilityToken({
+      identity: issuer,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: bearerIdentity.deviceId,
+      capability: "room:member",
+      scope: { kind: "room", path: ROOM_MEMBER_ROOM_PATH },
+      expires: now + HOUR_MS,
+      delegationsRemaining: 1,
+    });
+    expect(rootVerdict.ok).toBe(true);
+    if (!rootVerdict.ok) return;
+
+    expect(
+      canGrant(
+        rootVerdict.token,
+        bearerIdentity.deviceId,
+        {
+          capability: "room:member",
+          scope: { kind: "room", path: ROOM_MEMBER_ROOM_PATH },
+          expires: now + HOUR_MS,
+          delegationsRemaining: 1,
+        },
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it("returns false for a candidate that is already expired, without needing to consult the held token at all", async () => {
+    const rootVerdict = await mintCapabilityToken({
+      identity: issuer,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: bearerIdentity.deviceId,
+      capability: "exec:pty",
+      scope: workScope,
+      expires: now + HOUR_MS,
+    });
+    expect(rootVerdict.ok).toBe(true);
+    if (!rootVerdict.ok) return;
+
+    expect(
+      canGrant(
+        rootVerdict.token,
+        bearerIdentity.deviceId,
+        {
+          capability: "exec:pty",
+          scope: workScope,
+          expires: now - 1,
+        },
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it("returns false for a malformed held token", () => {
+    const malformedToken: CapabilityToken = [
+      new Uint8Array(),
+      {},
+      null,
+      new Uint8Array(P256_SIGNATURE_BYTE_LENGTH),
+    ];
+    expect(
+      canGrant(
+        malformedToken,
+        bearerIdentity.deviceId,
+        {
+          capability: "exec:pty",
+          scope: workScope,
+          expires: now + HOUR_MS,
+        },
+        now,
+      ),
+    ).toBe(false);
   });
 });
 
