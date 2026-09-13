@@ -178,6 +178,14 @@ function multiConnectionTransport(): {
   return { transport, connections };
 }
 
+/** Narrows an IteratorResult to its yielded value, failing the test outright if the iterator has actually ended -- none of this file's own async iterators ever end, so a done:true result always indicates a broken assumption in the test itself, never legitimate data. */
+function yielded<T>(result: IteratorResult<T>): T {
+  if (result.done === true) {
+    throw new Error("expected the iterator to yield a value, got done: true");
+  }
+  return result.value;
+}
+
 /** Resolves after the session has emitted at least `count` events, returning the latest. */
 async function nthEvent(
   session: ReturnType<typeof createMeshSession>,
@@ -933,6 +941,66 @@ describe("capability tokens and manage-request plumbing", () => {
     await expect(usingSessionDefault).rejects.toThrow();
   });
 
+  it("assigns sequentially increasing request-ids to successive sendManageRequest calls", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/management"]);
+    const first = session.sendManageRequest(testCommand, testScope);
+    await Promise.resolve();
+    const firstId = (connection.sent.at(-1) as ManageRequestFrame)[
+      "request-id"
+    ];
+    const second = session.sendManageRequest(testCommand, testScope);
+    await Promise.resolve();
+    const secondId = (connection.sent.at(-1) as ManageRequestFrame)[
+      "request-id"
+    ];
+    expect(secondId).toBe(firstId + 1);
+    await session.close();
+    await expect(first).rejects.toThrow();
+    await expect(second).rejects.toThrow();
+  });
+
+  it("refuses sendManageRequest while not connected", async () => {
+    const { transport } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await expect(
+      session.sendManageRequest(testCommand, testScope),
+    ).rejects.toThrow("not connected");
+  });
+
+  it("refuses sendManageRequest once the connection has failed and closed, not just before the first connect", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/management"]);
+    connection.fail(new Error("dropped"));
+    await nthEvent(session, EVENTS_THROUGH_FAILURE);
+    await expect(
+      session.sendManageRequest(testCommand, testScope),
+    ).rejects.toThrow("not connected");
+  });
+
+  it("never times out a request when no timeoutMs is given", async () => {
+    vi.useFakeTimers();
+    try {
+      const { transport, connection } = fakeTransport();
+      const session = createMeshSession(transport, testIdentity, testClock);
+      await session.connect("ws://node", ["core/management"]);
+      const pending = session.sendManageRequest(testCommand, testScope);
+      await vi.advanceTimersByTimeAsync(1);
+      const sentRequest = connection.sent.at(-1) as ManageRequestFrame;
+      connection.push({
+        type: "manage-response",
+        "request-id": sentRequest["request-id"],
+        outcome: { result: "ok" },
+      } satisfies ManageResponseFrame);
+      await expect(pending).resolves.toEqual({ result: "ok" });
+      await session.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("resolves sendManageRequest only with the outcome of the matching manage-response", async () => {
     const { transport, connection } = fakeTransport();
     const session = createMeshSession(transport, testIdentity, testClock);
@@ -1036,12 +1104,15 @@ describe("capability tokens and manage-request plumbing", () => {
   it("surfaces an incoming manage-request on incomingManageRequests, and sends the response frame from respond()", async () => {
     const { transport, connection } = fakeTransport();
     const session = createMeshSession(transport, testIdentity, testClock);
+    const eventsDone = nthEvent(session, EVENTS_THROUGH_REMOTE_HANDSHAKE - 1);
     await session.connect("ws://node", ["core/management"]);
+    await eventsDone;
 
-    const incomingDone = (async (): Promise<IncomingManageRequest> => {
+    const incomingDone = (async (): Promise<
+      IteratorResult<IncomingManageRequest>
+    > => {
       const iterator = session.incomingManageRequests[Symbol.asyncIterator]();
-      const result = await iterator.next();
-      return result.value as IncomingManageRequest;
+      return iterator.next();
     })();
 
     connection.push({
@@ -1052,12 +1123,16 @@ describe("capability tokens and manage-request plumbing", () => {
       token: testToken,
     } satisfies ManageRequestFrame);
 
-    const incoming = await incomingDone;
+    const incomingResult = await incomingDone;
+    expect(incomingResult.done).toBe(false);
+    const incoming = yielded(incomingResult);
     expect(incoming.requestId).toBe(TEST_INCOMING_REQUEST_ID);
     expect(incoming.command).toEqual(testCommand);
     expect(incoming.scope).toEqual(testScope);
     expect(incoming.token).toEqual(testToken);
 
+    // Two events remain unconsumed: the received manage-request itself, then the sent response.
+    const responseEventDone = nthEvent(session, 2);
     await incoming.respond({ result: "ok" });
     const sentResponse = connection.sent.at(-1) as ManageResponseFrame;
     expect(sentResponse).toEqual({
@@ -1065,6 +1140,36 @@ describe("capability tokens and manage-request plumbing", () => {
       "request-id": TEST_INCOMING_REQUEST_ID,
       outcome: { result: "ok" },
     } satisfies ManageResponseFrame);
+    const responseEvent = (await responseEventDone) as {
+      frameLog: { direction: string; frame: { type: string } }[];
+    };
+    expect(responseEvent.frameLog.at(-1)).toEqual({
+      direction: "sent",
+      frame: sentResponse,
+    });
+    await session.close();
+  });
+
+  it("delivers a manage-request queued before anyone was iterating incomingManageRequests, from the backlog", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    const eventsDone = nthEvent(session, EVENTS_THROUGH_REMOTE_HANDSHAKE - 1);
+    await session.connect("ws://node", ["core/management"]);
+    await eventsDone;
+
+    const nextEventDone = nthEvent(session, 1);
+    connection.push({
+      type: "manage-request",
+      "request-id": TEST_INCOMING_REQUEST_ID,
+      command: testCommand,
+      scope: testScope,
+    } satisfies ManageRequestFrame);
+    await nextEventDone;
+
+    const iterator = session.incomingManageRequests[Symbol.asyncIterator]();
+    const result = await iterator.next();
+    expect(result.done).toBe(false);
+    expect(yielded(result).requestId).toBe(TEST_INCOMING_REQUEST_ID);
     await session.close();
   });
 });
