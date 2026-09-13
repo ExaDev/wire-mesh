@@ -467,6 +467,7 @@ describe("reconnect policy", () => {
 const TEST_TOKEN_SIGNATURE_BYTE = 3;
 const TEST_INCOMING_REQUEST_ID = 7;
 const OVERRIDE_TOKEN_BYTE = 9;
+const MANAGE_REQUEST_TIMEOUT_MS = 5000;
 
 describe("capability tokens and manage-request plumbing", () => {
   const testCommand: ManageCommand = {
@@ -610,6 +611,58 @@ describe("capability tokens and manage-request plumbing", () => {
     await expect(pending).rejects.toThrow(
       "disconnected before a response arrived",
     );
+  });
+
+  it("resolves with a timeout outcome, not a hang, when no response arrives within timeoutMs", async () => {
+    vi.useFakeTimers();
+    try {
+      const { transport } = fakeTransport();
+      const session = createMeshSession(transport, testIdentity, testClock);
+      await session.connect("ws://node", ["core/management"]);
+      const pending = session.sendManageRequest(
+        testCommand,
+        testScope,
+        undefined,
+        undefined,
+        MANAGE_REQUEST_TIMEOUT_MS,
+      );
+      await vi.advanceTimersByTimeAsync(MANAGE_REQUEST_TIMEOUT_MS);
+      await expect(pending).resolves.toEqual({
+        result: "error",
+        code: "timeout",
+      });
+      await session.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not time out a request whose response arrives before timeoutMs elapses", async () => {
+    vi.useFakeTimers();
+    try {
+      const { transport, connection } = fakeTransport();
+      const session = createMeshSession(transport, testIdentity, testClock);
+      await session.connect("ws://node", ["core/management"]);
+      const pending = session.sendManageRequest(
+        testCommand,
+        testScope,
+        undefined,
+        undefined,
+        MANAGE_REQUEST_TIMEOUT_MS,
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      const sentRequest = connection.sent.at(-1) as ManageRequestFrame;
+      connection.push({
+        type: "manage-response",
+        "request-id": sentRequest["request-id"],
+        outcome: { result: "ok" },
+      } satisfies ManageResponseFrame);
+      await expect(pending).resolves.toEqual({ result: "ok" });
+      await vi.advanceTimersByTimeAsync(MANAGE_REQUEST_TIMEOUT_MS);
+      await session.close();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("surfaces an incoming manage-request on incomingManageRequests, and sends the response frame from respond()", async () => {

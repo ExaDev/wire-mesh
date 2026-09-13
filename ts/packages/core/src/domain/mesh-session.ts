@@ -95,12 +95,13 @@ export interface MeshSession {
   sendRevocationAnnounce: (
     entries: readonly RevocationEntry[],
   ) => Promise<void>;
-  /** Sends a manage-request and resolves with the matching manage-response's outcome, correlated by request-id. When targetDevice is given, the request is routed to that specific peer via an established relay-connect pairing (wrapped as relay-data) rather than sent directly over this session's own Connection -- relay-hub deliberately drops manage-request/manage-response frames sent to it directly, since routing between two connected peers is not the relay role's business, so a specific peer reachable only through a relay hub can only be addressed this way. Absent, this sends directly over the Connection exactly as before. When token is given, it is attached to this one request instead of whatever setToken last set -- a single session routinely needs a different token per request when its peer shares more than one scope with this side (e.g. several core/room memberships over one connection), and a session-global token can only ever be correct for one of them. Absent, this request carries setToken's own session-global token exactly as before. */
+  /** Sends a manage-request and resolves with the matching manage-response's outcome, correlated by request-id. When targetDevice is given, the request is routed to that specific peer via an established relay-connect pairing (wrapped as relay-data) rather than sent directly over this session's own Connection -- relay-hub deliberately drops manage-request/manage-response frames sent to it directly, since routing between two connected peers is not the relay role's business, so a specific peer reachable only through a relay hub can only be addressed this way. Absent, this sends directly over the Connection exactly as before. When token is given, it is attached to this one request instead of whatever setToken last set -- a single session routinely needs a different token per request when its peer shares more than one scope with this side (e.g. several core/room memberships over one connection), and a session-global token can only ever be correct for one of them. Absent, this request carries setToken's own session-global token exactly as before. When timeoutMs is given, the returned promise resolves with `{ result: "error", code: "timeout" }` rather than hanging forever if no manage-response arrives in time -- a held-open request (a human approval, a not-yet-online peer) otherwise has no way for the caller to give up on it. Absent, this request waits exactly as before, with no time limit of its own. */
   sendManageRequest: (
     command: ManageCommand,
     scope: Readonly<CapabilityScope>,
     targetDevice?: DeviceId,
     token?: CapabilityToken,
+    timeoutMs?: number,
   ) => Promise<ManageOutcome>;
   close: () => Promise<void>;
 }
@@ -569,6 +570,7 @@ function createSessionCore(
         scope: Readonly<CapabilityScope>,
         targetDevice?: DeviceId,
         token?: CapabilityToken,
+        timeoutMs?: number,
       ): Promise<ManageOutcome> {
         if (connection === null || state.status !== "connected") {
           throw new Error("not connected");
@@ -577,13 +579,26 @@ function createSessionCore(
           await ensureRelayPairing(targetDevice);
         }
         const frame = buildManageRequest(command, scope, token);
+        const requestId = frame["request-id"];
         const outcome = new Promise<ManageOutcome>((resolve, reject) => {
-          pendingManageRequests.set(frame["request-id"], { resolve, reject });
+          pendingManageRequests.set(requestId, { resolve, reject });
         });
         frameLog.push({ direction: "sent", frame });
         await transmit(frame, targetDevice !== undefined);
         emit();
-        return outcome;
+        if (timeoutMs === undefined) {
+          return outcome;
+        }
+        return Promise.race([
+          outcome,
+          new Promise<ManageOutcome>((resolve) => {
+            setTimeout(() => {
+              if (pendingManageRequests.delete(requestId)) {
+                resolve({ result: "error", code: "timeout" });
+              }
+            }, timeoutMs);
+          }),
+        ]);
       },
       async sendRevocationAnnounce(
         entries: readonly RevocationEntry[],
