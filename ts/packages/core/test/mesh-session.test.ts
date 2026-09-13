@@ -186,6 +186,23 @@ function yielded<T>(result: IteratorResult<T>): T {
   return result.value;
 }
 
+const TIMEOUT_MARKER = "timeout" as const;
+const SHORT_WAIT_MS = 20;
+
+/** Races a promise against a short real-time wait, resolving to TIMEOUT_MARKER if the promise hasn't settled yet -- used to prove a promise genuinely settled *now*, from the action just taken, rather than merely settling *eventually* by some unrelated later event (e.g. a trailing session.close() emitting one final event that would otherwise silently satisfy an unconsumed waiter and mask a missing emit() call). */
+async function withinShortWait<T>(
+  promise: Readonly<Promise<T>>,
+): Promise<T | typeof TIMEOUT_MARKER> {
+  return Promise.race([
+    promise,
+    new Promise<typeof TIMEOUT_MARKER>((resolve) => {
+      setTimeout(() => {
+        resolve(TIMEOUT_MARKER);
+      }, SHORT_WAIT_MS);
+    }),
+  ]);
+}
+
 /** Resolves after the session has emitted at least `count` events, returning the latest. */
 async function nthEvent(
   session: ReturnType<typeof createMeshSession>,
@@ -405,11 +422,16 @@ describe("createMeshSession", () => {
     await session.connect("ws://node", ["core/data"]);
     await eventsDone;
 
-    const sentEventDone = nthEvent(session, 1);
+    const eventsIterator = session.events[Symbol.asyncIterator]();
     await session.sendGossipUpdate();
-    const event = (await sentEventDone) as {
-      frameLog: { direction: string; frame: { type: string } }[];
-    };
+    // Must already be available -- not merely eventually rescued by session.close()'s own trailing emit(), which would otherwise mask a missing emit() call in sendGossipUpdate.
+    const result = await withinShortWait(eventsIterator.next());
+    expect(result).not.toBe(TIMEOUT_MARKER);
+    const event = yielded(
+      result as IteratorResult<{
+        frameLog: { direction: string; frame: { type: string } }[];
+      }>,
+    );
     expect(event.frameLog.at(-1)?.direction).toBe("sent");
     expect(event.frameLog.at(-1)?.frame.type).toBe("gossip");
     await session.close();
@@ -572,13 +594,22 @@ describe("createMeshSession", () => {
         Promise.reject(new Error("client-only transport")),
     };
     const session = createMeshSession(transport, testIdentity, testClock);
+    const eventsIterator = session.events[Symbol.asyncIterator]();
     const connectPromise = session.connect("ws://node", ["core/data"]);
+    await eventsIterator.next(); // connecting
     await session.close();
     const lateConnection = new FakeConnection();
     resolveDial?.(lateConnection.connection);
     await connectPromise;
     expect(lateConnection.sent).toHaveLength(0);
     expect(lateConnection.isClosed).toBe(true);
+    const closedEvent = yielded(await eventsIterator.next()) as {
+      state: { status: string; reason?: string };
+    };
+    expect(closedEvent.state.status).toBe("closed");
+    expect((closedEvent.state as { reason: string }).reason).toBe(
+      "closed by you",
+    );
   });
 
   it("treats a clean end of the receive stream as a disconnect when still connected", async () => {
@@ -604,16 +635,7 @@ describe("createMeshSession", () => {
     for (let i = 0; i < EVENTS_THROUGH_FAILURE; i++) {
       await iterator.next();
     }
-    const SHORT_WAIT_MS = 20;
-    const TIMEOUT_MARKER = "timeout" as const;
-    const result = await Promise.race([
-      iterator.next(),
-      new Promise<typeof TIMEOUT_MARKER>((resolve) => {
-        setTimeout(() => {
-          resolve(TIMEOUT_MARKER);
-        }, SHORT_WAIT_MS);
-      }),
-    ]);
+    const result = await withinShortWait(iterator.next());
     expect(result).toBe(TIMEOUT_MARKER);
   });
 
@@ -1205,8 +1227,10 @@ describe("capability tokens and manage-request plumbing", () => {
     expect(incoming.scope).toEqual(testScope);
     expect(incoming.token).toEqual(testToken);
 
-    // Two events remain unconsumed: the received manage-request itself, then the sent response.
-    const responseEventDone = nthEvent(session, 2);
+    // Consume the "received manage-request" event that is already backlogged.
+    const eventsIterator = session.events[Symbol.asyncIterator]();
+    await eventsIterator.next();
+
     await incoming.respond({ result: "ok" });
     const sentResponse = connection.sent.at(-1) as ManageResponseFrame;
     expect(sentResponse).toEqual({
@@ -1214,9 +1238,14 @@ describe("capability tokens and manage-request plumbing", () => {
       "request-id": TEST_INCOMING_REQUEST_ID,
       outcome: { result: "ok" },
     } satisfies ManageResponseFrame);
-    const responseEvent = (await responseEventDone) as {
-      frameLog: { direction: string; frame: { type: string } }[];
-    };
+    // Must already be available -- not merely eventually rescued by session.close()'s own trailing emit(), which would otherwise mask a missing emit() call inside respond().
+    const responseResult = await withinShortWait(eventsIterator.next());
+    expect(responseResult).not.toBe(TIMEOUT_MARKER);
+    const responseEvent = yielded(
+      responseResult as IteratorResult<{
+        frameLog: { direction: string; frame: { type: string } }[];
+      }>,
+    );
     expect(responseEvent.frameLog.at(-1)).toEqual({
       direction: "sent",
       frame: sentResponse,
@@ -1286,11 +1315,16 @@ describe("revocation-announce plumbing", () => {
     await session.connect("ws://node", ["core/management"]);
     await eventsDone;
 
-    const sentEventDone = nthEvent(session, 1);
+    const eventsIterator = session.events[Symbol.asyncIterator]();
     await session.sendRevocationAnnounce([testEntryA]);
-    const event = (await sentEventDone) as {
-      frameLog: { direction: string; frame: { type: string } }[];
-    };
+    // Must already be available -- not merely eventually rescued by session.close()'s own trailing emit(), which would otherwise mask a missing emit() call in sendRevocationAnnounce.
+    const result = await withinShortWait(eventsIterator.next());
+    expect(result).not.toBe(TIMEOUT_MARKER);
+    const event = yielded(
+      result as IteratorResult<{
+        frameLog: { direction: string; frame: { type: string } }[];
+      }>,
+    );
     expect(event.frameLog.at(-1)).toEqual({
       direction: "sent",
       frame: {
