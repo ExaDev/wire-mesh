@@ -8,6 +8,7 @@
     "vite.config.ts",
     "playwright.config.ts",
     "eslint.config.ts",
-    "test/**/*.ts"
+    "test/**/*.ts",
+    "test/**/*.tsx"
   ]
 }
