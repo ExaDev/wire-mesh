@@ -26,6 +26,32 @@ import { messageFromFrame, tryDecodeFrame } from "../adapters/frame-codec.js";
 
 const MS_PER_SECOND = 1000;
 
+/** peer-advert's own three typed fields -- reserved so a `sendGossipUpdate` caller can never override the session's own device-id, address list, or freshness timestamp by supplying an extension of the same name. */
+const RESERVED_PEER_ADVERT_KEYS = new Set([
+  "device",
+  "addresses",
+  "snapshot-seconds",
+]);
+
+/** A gossip extension key must be domain-qualified as `<domain>/<field>` (lowercase kebab-case each side), per `spec/CONVENTIONS.md`'s gossip-extension-namespacing convention -- this is what stops two independent applications sharing one gossip tail from silently colliding on a bare name like "status". */
+const GOSSIP_EXTENSION_KEY_PATTERN = /^[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*$/;
+
+/** Rejects a `sendGossipUpdate` extension bag that would either shadow one of peer-advert's own mandatory fields or use a bare, non-domain-qualified key -- both are caller bugs that must fail loudly at the call site, not silently corrupt or ambiguously merge into the wire frame. */
+function validateGossipExtensions(extensions: Record<string, unknown>): void {
+  for (const key of Object.keys(extensions)) {
+    if (RESERVED_PEER_ADVERT_KEYS.has(key)) {
+      throw new Error(
+        `sendGossipUpdate extension key "${key}" collides with a mandatory peer-advert field`,
+      );
+    }
+    if (!GOSSIP_EXTENSION_KEY_PATTERN.test(key)) {
+      throw new Error(
+        `sendGossipUpdate extension key "${key}" must be domain-qualified as "<domain>/<field>" (e.g. "presence/status")`,
+      );
+    }
+  }
+}
+
 /** How long to wait for the node's handshake before calling it unanswered. A relay-only node never sends one; that is a state to display, not an error. */
 export const HANDSHAKE_TIMEOUT_MS = 3_000;
 
@@ -420,16 +446,19 @@ function createSessionCore(
     }
   }
 
-  /** Builds this side's own self-advert: this node's own directly-reachable addresses (wire-mesh#38), or none for a caller with nothing to offer (a browser client, which cannot accept inbound connections) -- either is an honest advert, not a stopgap. extensions merge onto peer-advert's own open `* tstr => any` tail -- the mechanism sendGossipUpdate uses to keep a gossiped fact (presence status, an accept/refuse policy, or any future domain's own) live over the connection's lifetime. */
+  /** Builds this side's own self-advert: this node's own directly-reachable addresses (wire-mesh#38), or none for a caller with nothing to offer (a browser client, which cannot accept inbound connections) -- either is an honest advert, not a stopgap. extensions merge onto peer-advert's own open `* tstr => any` tail -- the mechanism sendGossipUpdate uses to keep a gossiped fact (presence status, an accept/refuse policy, or any future domain's own) live over the connection's lifetime. Extensions are spread before the three mandatory fields (never after) so a caller-supplied key of the same name can never shadow them on the wire -- validateGossipExtensions already rejects that case loudly, but the field order is kept safe in its own right rather than relying solely on the guard staying in sync. */
   function buildSelfAdvert(extensions?: Record<string, unknown>): GossipFrame {
+    if (extensions !== undefined) {
+      validateGossipExtensions(extensions);
+    }
     return {
       type: "gossip",
       peers: [
         {
+          ...extensions,
           device: identity.deviceId,
           addresses: [...addresses],
           "snapshot-seconds": Math.floor(clock.now() / MS_PER_SECOND),
-          ...extensions,
         },
       ],
     };

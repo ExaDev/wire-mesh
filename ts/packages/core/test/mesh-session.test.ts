@@ -275,7 +275,7 @@ describe("createMeshSession", () => {
     const session = createMeshSession(transport, testIdentity, testClock);
     await session.connect("ws://node", ["core/data"]);
 
-    await session.sendGossipUpdate({ presence: "idle" });
+    await session.sendGossipUpdate({ "presence/status": "idle" });
 
     const updated = connection.sent.at(-1) as GossipFrame;
     expect(updated).toEqual({
@@ -285,10 +285,32 @@ describe("createMeshSession", () => {
           device: testIdentityDeviceId,
           addresses: [],
           "snapshot-seconds": Math.floor(TEST_CLOCK_NOW_MS / MS_PER_SECOND),
-          presence: "idle",
+          "presence/status": "idle",
         },
       ],
     } satisfies GossipFrame);
+    await session.close();
+  });
+
+  it("sendGossipUpdate rejects an extension key that collides with a mandatory peer-advert field", async () => {
+    const { transport } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/data"]);
+
+    await expect(
+      session.sendGossipUpdate({ device: "spoofed" }),
+    ).rejects.toThrow(/collides with a mandatory peer-advert field/);
+    await session.close();
+  });
+
+  it("sendGossipUpdate rejects a bare, non-domain-qualified extension key", async () => {
+    const { transport } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/data"]);
+
+    await expect(
+      session.sendGossipUpdate({ presence: "idle" }),
+    ).rejects.toThrow(/must be domain-qualified/);
     await session.close();
   });
 

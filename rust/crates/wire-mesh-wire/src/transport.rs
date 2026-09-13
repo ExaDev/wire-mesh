@@ -8,6 +8,7 @@ use minicbor::{Decode, Decoder, Encode, Encoder};
 use crate::error::DecodeError;
 use crate::identity::{device_id_from, DeviceId};
 use crate::strict;
+use crate::value::{CanonicalMap, CborValue, CdeKey, CdeMapBuilder};
 
 /// `ping-frame = { type: "ping" }`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -91,9 +92,12 @@ pub(crate) fn close_from(d: &mut Decoder<'_>) -> Result<CloseFrame, DecodeError>
     Ok(CloseFrame { reason })
 }
 
-/// `peer-advert = { device, addresses, snapshot-seconds }`.
+/// `peer-advert = { device, addresses, snapshot-seconds, * tstr => any }`.
 ///
-/// CDE key order: `device` (7), `addresses` (10), `snapshot-seconds` (18).
+/// CDE key order: `device` (7), `addresses` (10), `snapshot-seconds` (18),
+/// with any extension key interleaved by its own encoded-key order (see
+/// `spec/CONVENTIONS.md`'s gossip-extension-namespacing convention for the
+/// `<domain>/<field>` key shape a well-behaved extension key must use).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PeerAdvert {
     pub device: DeviceId,
@@ -101,6 +105,12 @@ pub struct PeerAdvert {
     pub addresses: Vec<String>,
     /// Unix-seconds snapshot time.
     pub snapshot_seconds: i64,
+    /// Forward-compatible extension bag (presence status, an accept/refuse
+    /// policy, or any future gossiped fact) -- an unrecognised key here is
+    /// exactly as trustworthy as any other gossiped, self-asserted claim,
+    /// per the verifier obligation `spec/transport.cddl` states directly:
+    /// ignored, never acted on without understanding it, never an error.
+    pub extra: CanonicalMap<String, CborValue>,
 }
 
 impl Encode<()> for PeerAdvert {
@@ -109,14 +119,19 @@ impl Encode<()> for PeerAdvert {
         e: &mut Encoder<W>,
         _ctx: &mut (),
     ) -> Result<(), minicbor::encode::Error<W::Error>> {
-        e.map(3)?;
-        e.str("device")?.encode(self.device)?;
-        e.str("addresses")?.array(self.addresses.len() as u64)?;
-        for address in &self.addresses {
-            e.str(address)?;
+        let mut builder = CdeMapBuilder::new();
+        builder.push("device", &self.device);
+        builder.push("addresses", &self.addresses);
+        builder.push("snapshot-seconds", &self.snapshot_seconds);
+        for (key, value) in self.extra.iter() {
+            let mut value_buf = Vec::new();
+            let mut value_enc = Encoder::new(&mut value_buf);
+            value
+                .encode(&mut value_enc, &mut ())
+                .unwrap_or_else(|_| unreachable!("Vec<u8> writes are infallible"));
+            builder.push_raw(key.encoded(), value_buf);
         }
-        e.str("snapshot-seconds")?.i64(self.snapshot_seconds)?;
-        e.ok()
+        builder.write(e)
     }
 }
 
@@ -131,6 +146,7 @@ pub(crate) fn peer_advert_from(d: &mut Decoder<'_>) -> Result<PeerAdvert, Decode
     let mut device: Option<DeviceId> = None;
     let mut addresses: Option<Vec<String>> = None;
     let mut snapshot_seconds: Option<i64> = None;
+    let mut extra = CanonicalMap::new();
     while let Some(key) = map.next_key(d)? {
         match key {
             "device" => strict::set_once(&mut device, device_id_from(d)?)?,
@@ -143,13 +159,17 @@ pub(crate) fn peer_advert_from(d: &mut Decoder<'_>) -> Result<PeerAdvert, Decode
                 addresses = Some(list);
             }
             "snapshot-seconds" => strict::set_once(&mut snapshot_seconds, strict::int_value(d)?)?,
-            other => return Err(DecodeError::UnknownKey(other.to_owned())),
+            other => {
+                let value = CborValue::decode_strict(d)?;
+                extra.insert(other.to_owned(), value)?;
+            }
         }
     }
     Ok(PeerAdvert {
         device: device.ok_or(DecodeError::MissingField("device"))?,
         addresses: addresses.ok_or(DecodeError::MissingField("addresses"))?,
         snapshot_seconds: snapshot_seconds.ok_or(DecodeError::MissingField("snapshot-seconds"))?,
+        extra,
     })
 }
 
@@ -784,6 +804,7 @@ mod tests {
             device: DeviceId([1; 32]),
             addresses: vec!["203.0.113.5:4433".to_owned()],
             snapshot_seconds: 1861833600,
+            extra: CanonicalMap::new(),
         });
         let device_at = bytes
             .windows(6)
@@ -798,6 +819,26 @@ mod tests {
             .position(|w| w == b"snapshot-seconds")
             .expect("snapshot key");
         assert!(device_at < addresses_at && addresses_at < snapshot_at);
+    }
+
+    #[test]
+    fn peer_advert_carries_extension_fields() {
+        // An unrecognised key is accepted into the open `* tstr => any` tail, the same forward-compatible-extension pattern room-notice-claims/token-claims already carry -- a TS peer's sendGossipUpdate(...) extensions must not disconnect a Rust peer.
+        round_trip(PeerAdvert {
+            device: DeviceId([3; 32]),
+            addresses: vec![],
+            snapshot_seconds: 1861920000,
+            extra: {
+                let mut extra = CanonicalMap::new();
+                extra
+                    .insert(
+                        "presence/status".to_owned(),
+                        CborValue::Text("idle".to_owned()),
+                    )
+                    .expect("insert");
+                extra
+            },
+        });
     }
 
     #[test]

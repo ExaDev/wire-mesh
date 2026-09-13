@@ -26,6 +26,16 @@ close-frame = { type: "close", ? reason: tstr }
 ; treats an unrecognised key the same verifier-obligation way an unrecognised
 ; value in an open discriminator is treated elsewhere in this spec: ignored,
 ; never acted on without understanding it, never treated as an error.
+;
+; A key here MUST be domain-qualified as "<domain>/<field>" (e.g.
+; "presence/status", not bare "status") — see spec/CONVENTIONS.md's
+; gossip-extension-namespacing convention. This is what lets two independent
+; applications advertising over the same session coexist without one's
+; extension silently shadowing the other's identically-named field. A key
+; here MUST also never repeat one of this map's own typed field names
+; (device/addresses/snapshot-seconds) — an implementation MUST reject an
+; attempt to advertise under one of those names rather than let it shadow
+; the real field.
 peer-advert = {
   device: device-id,
   addresses: [* tstr],      ; "host:port" strings
