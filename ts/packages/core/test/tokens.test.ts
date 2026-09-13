@@ -1373,6 +1373,42 @@ describe("mintCapabilityToken", () => {
     });
     expect(verdict).toEqual({ ok: false, reason: "delegation_exceeds_parent" });
   });
+
+  it("mints a second, independent root-level grant for a different bearer even though an earlier root grant this issuer minted has delegationsRemaining: 0", async () => {
+    const firstRoot = await mintCapabilityToken({
+      identity: issuer,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: bearerIdentity.deviceId,
+      capability: "room:member",
+      scope: { kind: "room", path: ROOM_MEMBER_ROOM_PATH },
+      expires: now + HOUR_MS,
+      delegationsRemaining: 0,
+    });
+    expect(firstRoot.ok).toBe(true);
+
+    // No `parent` at all -- a second, independent root-level grant for a different bearer, never checked against firstRoot's own (unrelated) delegationsRemaining.
+    const secondBearer = await generateEs256Identity();
+    const secondRoot = await mintCapabilityToken({
+      identity: issuer,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: secondBearer.deviceId,
+      capability: "room:member",
+      scope: { kind: "room", path: ROOM_MEMBER_ROOM_PATH },
+      expires: now + HOUR_MS,
+      delegationsRemaining: 0,
+    });
+    expect(secondRoot.ok).toBe(true);
+    if (!secondRoot.ok) return;
+
+    const verified = await verifyCapabilityToken(secondRoot.token, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+    expect(verified.ok).toBe(true);
+  });
 });
 
 describe("canGrant", () => {
