@@ -561,6 +561,26 @@ describe("createMeshSession", () => {
     expect(connection.isClosed).toBe(true);
   });
 
+  it("closes a dial that only completes after close() was already called, instead of wiring it up", async () => {
+    let resolveDial: ((connection: Connection) => void) | null = null;
+    const transport: Transport = {
+      connect: async (): Promise<Connection> =>
+        new Promise<Connection>((resolve) => {
+          resolveDial = resolve;
+        }),
+      listen: async (): Promise<Listener> =>
+        Promise.reject(new Error("client-only transport")),
+    };
+    const session = createMeshSession(transport, testIdentity, testClock);
+    const connectPromise = session.connect("ws://node", ["core/data"]);
+    await session.close();
+    const lateConnection = new FakeConnection();
+    resolveDial?.(lateConnection.connection);
+    await connectPromise;
+    expect(lateConnection.sent).toHaveLength(0);
+    expect(lateConnection.isClosed).toBe(true);
+  });
+
   it("treats a clean end of the receive stream as a disconnect when still connected", async () => {
     const { transport, connection } = fakeTransport();
     const session = createMeshSession(transport, testIdentity, testClock);
