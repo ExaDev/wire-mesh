@@ -6,12 +6,14 @@ import { createRoot } from "react-dom/client";
 import { MantineProvider } from "@mantine/core";
 import { createIndexedDbStorage } from "./adapters/indexeddb-storage.js";
 import { createPersistedWebCryptoIdentity } from "./adapters/web-crypto-identity.js";
+import { createMessageStore } from "./message-store.js";
 import { App } from "./App.js";
 
 const identity = await createPersistedWebCryptoIdentity(
   await createIndexedDbStorage(),
 );
 const clock = { now: () => Date.now() };
+const messageStore = createMessageStore(await createIndexedDbStorage());
 
 const container = document.getElementById("root");
 if (container === null) {
@@ -21,7 +23,7 @@ if (container === null) {
 createRoot(container).render(
   <StrictMode>
     <MantineProvider>
-      <App identity={identity} clock={clock} />
+      <App identity={identity} clock={clock} messageStore={messageStore} />
     </MantineProvider>
   </StrictMode>,
 );

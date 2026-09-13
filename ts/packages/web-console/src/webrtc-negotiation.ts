@@ -33,9 +33,9 @@ export const WEBRTC_SIGNAL_SCOPE: CapabilityScope = { kind: "node" };
 const DATA_CHANNEL_LABEL = "wire-mesh";
 
 /**
- * web-console has no revocation-gossip ingestion yet -- there is nowhere for a revocation-announce frame to land and be recorded. This is an explicit, deliberate limitation of this console specifically (not core, not the protocol): every otherwise-valid token is treated as unrevoked. A future console revision that ingests revocation-announce frames into a real store should replace this, not extend it.
+ * web-console has no revocation-gossip ingestion yet -- there is nowhere for a revocation-announce frame to land and be recorded. This is an explicit, deliberate limitation of this console specifically (not core, not the protocol): every otherwise-valid token is treated as unrevoked. A future console revision that ingests revocation-announce frames into a real store should replace this, not extend it. Exported since useRoomMessaging's own createRoomRouter needs the identical limitation for the identical reason -- there is exactly one revocation posture for the whole console, not one per domain.
  */
-const noRevocationCheck: RevocationCheck = {
+export const noRevocationCheck: RevocationCheck = {
   isRevoked: async () => Promise.resolve(false),
 };
 
