@@ -642,6 +642,28 @@ describe("createMeshSession", () => {
     );
     await session.close();
   });
+
+  it("events iterator resolves a live event, delivered after the wait began, with done: false", async () => {
+    const { transport } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    const iterator = session.events[Symbol.asyncIterator]();
+    // No event has been emitted yet, so this call registers a waiter rather than draining the backlog.
+    const pending = iterator.next();
+    await session.connect("ws://node", ["core/data"]);
+    const result = await pending;
+    expect(result.done).toBe(false);
+    await session.close();
+  });
+
+  it("events iterator resolves a backlogged event, queued before anyone was iterating, with done: false", async () => {
+    const { transport } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/data"]);
+    const iterator = session.events[Symbol.asyncIterator]();
+    const result = await iterator.next();
+    expect(result.done).toBe(false);
+    await session.close();
+  });
 });
 
 describe("reconnect policy", () => {
@@ -1483,6 +1505,32 @@ describe("acceptMeshSession", () => {
     await session.close();
   });
 
+  it("advertises no addresses in its self-advert when none are given, rather than a stray default", async () => {
+    const fake = new FakeConnection();
+    const session = await acceptMeshSession(fake.connection, testIdentity, [
+      "core/data",
+    ]);
+
+    const selfAdvert = fake.sent[1] as GossipFrame;
+    expect(selfAdvert.peers[0]?.addresses).toEqual([]);
+    await session.close();
+  });
+
+  it("labels its connection state 'accepted' when no label is given", async () => {
+    const fake = new FakeConnection();
+    const session = await acceptMeshSession(
+      fake.connection,
+      testIdentity,
+      ["core/data"],
+      { clock: testClock },
+    );
+    const event = (await nthEvent(session, 1)) as {
+      state: { address: string };
+    };
+    expect(event.state.address).toBe("accepted");
+    await session.close();
+  });
+
   it("negotiates against the remote's own handshake exactly like the dial side", async () => {
     const fake = new FakeConnection();
     const session = await acceptMeshSession(fake.connection, testIdentity, [
@@ -1535,7 +1583,9 @@ describe("acceptMeshSession", () => {
     const session = await acceptMeshSession(fake.connection, testIdentity, [
       "core/data",
     ]);
-    await expect(session.connect("ws://node", ["core/data"])).rejects.toThrow();
+    await expect(session.connect("ws://node", ["core/data"])).rejects.toThrow(
+      "connects once",
+    );
     await session.close();
   });
 
