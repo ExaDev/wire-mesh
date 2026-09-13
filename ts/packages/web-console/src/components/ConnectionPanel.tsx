@@ -53,9 +53,7 @@ function describeStatus(event: Readonly<SessionEvent>): string {
 
 function describeFrame(frame: unknown): string {
   return JSON.stringify(frame, (_key: string, value: unknown): unknown =>
-    value instanceof Uint8Array
-      ? `<${String(value.byteLength)} bytes>`
-      : value,
+    value instanceof Uint8Array ? `<${String(value.byteLength)} bytes>` : value,
   );
 }
 
