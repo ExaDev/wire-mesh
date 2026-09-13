@@ -11,6 +11,7 @@
     "noFallthroughCasesInSwitch": true,
     "noEmit": true,
     "skipLibCheck": true,
+    "jsx": "react-jsx",
     "types": ["vite/client"]
   },
   "include": ["src", "live-check"]

@@ -25,5 +25,12 @@ export default exadevConfig(
       ],
     },
   },
+  {
+    // A frame-log entry has no identity of its own -- two identical frames sent back to back are indistinguishable, so position in this append-only log is the only key available. Scoped to this one file rather than disabled project-wide, since every other list this package renders (the peer directory, room messages) does have a real key (device-id, message-id).
+    files: ["src/components/ConnectionPanel.tsx"],
+    rules: {
+      "react/no-array-index-key": "off",
+    },
+  },
   eslintPluginPrettierRecommended,
 );
