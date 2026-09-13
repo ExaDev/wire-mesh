@@ -314,6 +314,64 @@ export type MintVerdict =
   | { ok: true; token: CapabilityToken }
   | { ok: false; reason: MintRefusalReason };
 
+/** What a would-be delegation needs, to check it narrows a specific parent -- everything mintCapabilityToken itself checks a delegation against, independent of the tokenId/bearer/notBefore/signing concerns unique to actually minting one. */
+interface NarrowingCandidate {
+  capability: TokenClaims["capability"];
+  scope: TokenClaims["scope"];
+  expires: number;
+  delegationsRemaining?: number;
+}
+
+/** The narrowing arithmetic tokens.cddl's own delegation obligations require (bearer match, expiry within the parent's, scope narrows, same capability, delegations-remaining strictly less than the parent's) -- shared between mintCapabilityToken (which additionally builds and signs the resulting token) and canGrant (a pure query with no minting side effect at all), so the two can never silently drift into two different ideas of what "narrows" means. Returns the specific refusal reason, or undefined when every rule is satisfied. */
+function checkNarrowing(
+  parentClaims: Readonly<TokenClaims>,
+  granterDeviceId: DeviceId,
+  candidate: Readonly<NarrowingCandidate>,
+): MintRefusalReason | undefined {
+  if (!bytesEqual(parentClaims.bearer, granterDeviceId)) {
+    return "parent_bearer_mismatch";
+  }
+  if (candidate.expires > parentClaims.expires) {
+    return "expires_exceeds_parent";
+  }
+  if (!scopeNarrows(parentClaims.scope, candidate.scope)) {
+    return "scope_does_not_narrow";
+  }
+  if (parentClaims.capability !== candidate.capability) {
+    return "capability_mismatch";
+  }
+  const parentRemaining = parentClaims["delegations-remaining"];
+  if (
+    parentRemaining !== undefined &&
+    (candidate.delegationsRemaining === undefined ||
+      candidate.delegationsRemaining >= parentRemaining)
+  ) {
+    return "delegation_exceeds_parent";
+  }
+  return undefined;
+}
+
+/**
+ * A pure query: could deviceId, presenting heldToken as its own delegation authority, successfully mint a delegation matching candidate right now -- without attempting (and potentially failing) a real mint just to find out. Reuses mintCapabilityToken's own narrowing arithmetic via checkNarrowing, so the two can never silently drift into different ideas of what "narrows" means.
+ *
+ * Deliberately narrower than a full mint attempt in one respect: this checks only the narrowing rules tokens.cddl's own delegation obligations require (bearer match, expiry, scope, capability, delegations-remaining), the same scope mintCapabilityToken itself checks a *parent* against -- it does not verify heldToken's own signature or revocation status, exactly as mintCapabilityToken never re-verifies its own parent's signature either. A caller that also needs heldToken's cryptographic validity confirmed calls verifyCapabilityToken separately.
+ */
+export function canGrant(
+  heldToken: CapabilityToken,
+  deviceId: DeviceId,
+  candidate: Readonly<NarrowingCandidate>,
+  now: number,
+): boolean {
+  if (candidate.expires <= now) {
+    return false;
+  }
+  const heldClaims = decodeTokenClaims(heldToken);
+  if (heldClaims === undefined) {
+    return false;
+  }
+  return checkNarrowing(heldClaims, deviceId, candidate) === undefined;
+}
+
 export interface MintCapabilityTokenOptions {
   /** The issuer -- signs the token, and supplies the self-certifying issuer/issuer-key claims. */
   identity: IdentityPort;
@@ -347,25 +405,16 @@ export async function mintCapabilityToken(
     if (parentClaims === undefined) {
       return { ok: false, reason: "parent_malformed" };
     }
-    if (!bytesEqual(parentClaims.bearer, options.identity.deviceId)) {
-      return { ok: false, reason: "parent_bearer_mismatch" };
-    }
-    if (options.expires > parentClaims.expires) {
-      return { ok: false, reason: "expires_exceeds_parent" };
-    }
-    if (!scopeNarrows(parentClaims.scope, options.scope)) {
-      return { ok: false, reason: "scope_does_not_narrow" };
-    }
-    if (parentClaims.capability !== options.capability) {
-      return { ok: false, reason: "capability_mismatch" };
-    }
-    const parentRemaining = parentClaims["delegations-remaining"];
-    if (
-      parentRemaining !== undefined &&
-      (options.delegationsRemaining === undefined ||
-        options.delegationsRemaining >= parentRemaining)
-    ) {
-      return { ok: false, reason: "delegation_exceeds_parent" };
+    const refusal = checkNarrowing(parentClaims, options.identity.deviceId, {
+      capability: options.capability,
+      scope: options.scope,
+      expires: options.expires,
+      ...(options.delegationsRemaining !== undefined
+        ? { delegationsRemaining: options.delegationsRemaining }
+        : {}),
+    });
+    if (refusal !== undefined) {
+      return { ok: false, reason: refusal };
     }
     parentBytes = encodeBuf(options.parent);
   }
