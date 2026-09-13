@@ -382,8 +382,9 @@ export interface MintCapabilityTokenOptions {
   scope: TokenClaims["scope"];
   expires: number;
   notBefore?: number;
+  /** How many further delegation hops the *resulting* token itself permits below it -- unrelated to, and never a bound on, whether `identity` may mint further tokens of its own at the root level for other bearers. Those are two different facts: a token minted with `delegationsRemaining: 0` genuinely cannot itself be re-delegated (correct -- e.g. a room owner's own self-signed root grant, which should never be handed onward), but that same `0` says nothing about the issuer's own separate, ordinary authority to mint additional independent root-level grants (naming no `parent` at all) for other bearers. Root-level minting for a second bearer is never blocked by any existing token's own `delegationsRemaining`, because it uses no `parent` in the first place -- there is no narrowing check to run. Confirmed live in agent-comms' own room-membership implementation (`ExaDev/agent-comms` PR #72): each member's own join/invite grant is minted as its own independent, parent-less, root-level token precisely because the room owner's `delegationsRemaining: 0` self-grant cannot parent anything -- correct by this same reasoning, not a workaround. */
   delegationsRemaining?: number;
-  /** The issuer's own token, when this is a delegation rather than a root grant. Its claims are checked against every narrowing rule below -- mint refuses rather than producing a token verifyCapabilityToken would reject anyway. */
+  /** The issuer's own token, when this is a delegation rather than a root grant. Its claims are checked against every narrowing rule below -- mint refuses rather than producing a token verifyCapabilityToken would reject anyway. Omit entirely for a root-level grant (including a second, independent root-level grant for a different bearer under the same capability/scope this issuer already grants elsewhere) -- there is no bound on how many such root grants an issuer may mint, since none of them narrows any other. */
   parent?: CapabilityToken;
 }
 
