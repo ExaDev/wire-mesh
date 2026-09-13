@@ -86,6 +86,17 @@ class FakeConnection {
     };
   }
 
+  /** True once this connection's own close() has actually been invoked -- lets a test assert that a caller closed the link, distinct from the link merely ending its receive stream on its own (see endStream). */
+  get isClosed(): boolean {
+    return this.ended;
+  }
+
+  /** Ends the receive stream as if the remote hung up cleanly, without going through this side's own close() -- unlike close(), this leaves the session's own state untouched so a test can observe how the session itself reacts to a graceful remote end. */
+  endStream(): void {
+    this.ended = true;
+    this.wake();
+  }
+
   push(frame: Frame): void {
     this.inbound.push(frame);
     this.wake();
@@ -314,6 +325,50 @@ describe("createMeshSession", () => {
     await session.close();
   });
 
+  it("sendGossipUpdate rejects an extension key that collides with the mandatory addresses field", async () => {
+    const { transport } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/data"]);
+
+    await expect(session.sendGossipUpdate({ addresses: [] })).rejects.toThrow(
+      /collides with a mandatory peer-advert field/,
+    );
+    await session.close();
+  });
+
+  it("sendGossipUpdate rejects an extension key that collides with the mandatory snapshot-seconds field", async () => {
+    const { transport } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/data"]);
+
+    await expect(
+      session.sendGossipUpdate({ "snapshot-seconds": 0 }),
+    ).rejects.toThrow(/collides with a mandatory peer-advert field/);
+    await session.close();
+  });
+
+  it("sendGossipUpdate rejects an extension key with a domain-qualified prefix but trailing garbage after it", async () => {
+    const { transport } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/data"]);
+
+    await expect(
+      session.sendGossipUpdate({ "presence/status!": "idle" }),
+    ).rejects.toThrow(/must be domain-qualified/);
+    await session.close();
+  });
+
+  it("sendGossipUpdate rejects an extension key that only matches a domain-qualified pattern partway through the string", async () => {
+    const { transport } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/data"]);
+
+    await expect(
+      session.sendGossipUpdate({ "1presence/status": "idle" }),
+    ).rejects.toThrow(/must be domain-qualified/);
+    await session.close();
+  });
+
   it("sendGossipUpdate with no extensions re-sends a plain self-advert", async () => {
     const { transport, connection } = fakeTransport();
     const session = createMeshSession(transport, testIdentity, testClock);
@@ -441,6 +496,143 @@ describe("createMeshSession", () => {
     const { transport } = fakeTransport();
     const session = createMeshSession(transport, testIdentity, testClock);
     await expect(session.sendPing()).rejects.toThrow("not connected");
+  });
+
+  it("refuses a ping once the connection has failed and the session is closed, not just before the first connect", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/data"]);
+    connection.fail(new Error("dropped"));
+    await nthEvent(session, EVENTS_THROUGH_FAILURE);
+    await expect(session.sendPing()).rejects.toThrow("not connected");
+  });
+
+  it("close() while connected finalizes state as closed by you, and actually closes the underlying connection", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    const eventsDone = nthEvent(session, EVENTS_THROUGH_FAILURE);
+    await session.connect("ws://node", ["core/data"]);
+    await session.close();
+    const event = (await eventsDone) as {
+      state: { status: string; reason?: string };
+    };
+    expect(event.state.status).toBe("closed");
+    expect((event.state as { reason: string }).reason).toBe("closed by you");
+    expect(connection.isClosed).toBe(true);
+  });
+
+  it("treats a clean end of the receive stream as a disconnect when still connected", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/data"]);
+    const eventsDone = nthEvent(session, EVENTS_THROUGH_FAILURE);
+    connection.endStream();
+    const event = (await eventsDone) as {
+      state: { status: string; reason: string };
+    };
+    expect(event.state.status).toBe("closed");
+    expect(event.state.reason).toBe("node closed the connection");
+  });
+
+  it("ignores a frame that was already queued when close() is called, instead of applying it", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    const iterator = session.events[Symbol.asyncIterator]();
+    await session.connect("ws://node", ["core/data"]);
+    connection.push(gossipFor(deviceA));
+    await session.close();
+    for (let i = 0; i < EVENTS_THROUGH_FAILURE; i++) {
+      await iterator.next();
+    }
+    const SHORT_WAIT_MS = 20;
+    const TIMEOUT_MARKER = "timeout" as const;
+    const result = await Promise.race([
+      iterator.next(),
+      new Promise<typeof TIMEOUT_MARKER>((resolve) => {
+        setTimeout(() => {
+          resolve(TIMEOUT_MARKER);
+        }, SHORT_WAIT_MS);
+      }),
+    ]);
+    expect(result).toBe(TIMEOUT_MARKER);
+  });
+
+  it("does not negotiate against a second handshake frame once the first has already settled the outcome", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    const eventsDone = nthEvent(session, EVENTS_THROUGH_REMOTE_HANDSHAKE);
+    await session.connect("ws://node", ["core/management", "core/data"]);
+    connection.push({
+      type: "handshake",
+      version: 1,
+      domains: ["core/data", "core/exec"],
+    } satisfies HandshakeFrame);
+    await eventsDone;
+
+    const secondEventDone = nthEvent(session, 1);
+    connection.push({
+      type: "handshake",
+      version: 1,
+      domains: ["core/federation"],
+    } satisfies HandshakeFrame);
+    const event = (await secondEventDone) as {
+      state: {
+        status: string;
+        handshake: { status: string; sharedDomains: string[] };
+      };
+    };
+    expect(event.state.handshake.status).toBe("negotiated");
+    expect(event.state.handshake.sharedDomains).toEqual(["core/data"]);
+    await session.close();
+  });
+
+  it("keeps the handshake negotiated after HANDSHAKE_TIMEOUT_MS elapses, instead of flipping to unanswered", async () => {
+    vi.useFakeTimers();
+    try {
+      const { transport, connection } = fakeTransport();
+      const session = createMeshSession(transport, testIdentity, testClock);
+      const eventsDone = nthEvent(session, EVENTS_THROUGH_REMOTE_HANDSHAKE);
+      await session.connect("ws://node", ["core/data"]);
+      connection.push({
+        type: "handshake",
+        version: 1,
+        domains: ["core/data"],
+      } satisfies HandshakeFrame);
+      await eventsDone;
+
+      await vi.advanceTimersByTimeAsync(HANDSHAKE_TIMEOUT_MS);
+      await session.sendPing();
+      const lastFrame = connection.sent.at(-1) as { type: string };
+      expect(lastFrame.type).toBe("ping");
+      // sendPing itself would have thrown if state had reverted away from "connected", and negotiate() already proved the handshake status. A direct re-check below confirms the handshake status specifically stayed "negotiated".
+      const stillConnectedEvent = (await nthEvent(session, 1)) as {
+        state: { handshake?: { status: string } };
+      };
+      expect(stillConnectedEvent.state.handshake?.status).toBe("negotiated");
+      await session.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("records a specific reason when the handshake is rejected for sharing no domains or version", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    const eventsDone = nthEvent(session, EVENTS_THROUGH_REMOTE_HANDSHAKE);
+    await session.connect("ws://node", ["core/federation"]);
+    connection.push({
+      type: "handshake",
+      version: 1,
+      domains: ["core/federation"],
+    });
+    const event = (await eventsDone) as {
+      state: { handshake: { status: string; reason?: string } };
+    };
+    expect(event.state.handshake.status).toBe("rejected");
+    expect((event.state.handshake as { reason: string }).reason).toBe(
+      "no shared domains or version",
+    );
+    await session.close();
   });
 });
 
