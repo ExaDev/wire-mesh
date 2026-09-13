@@ -15,6 +15,7 @@ import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import type { Clock } from "wire-mesh-core/ports/clock";
 import { createBrowserTransport } from "./adapters/websocket-transport.js";
 import { ConnectionPanel } from "./components/ConnectionPanel.js";
+import { appShell } from "./App.css.js";
 
 export interface AppProps {
   identity: IdentityPort;
@@ -78,7 +79,7 @@ export function App({
   }
 
   return (
-    <Stack p="md" gap="lg">
+    <Stack className={appShell} p="md" gap="lg">
       <Title order={1}>wire-mesh console</Title>
       <form onSubmit={handleSubmit}>
         <Group align="flex-end" wrap="wrap">
