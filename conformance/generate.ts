@@ -264,6 +264,17 @@ const frameVectors: Vector[] = [
       },
     ],
   }),
+  vector("gossip_v1_peer_advert_with_extension", {
+    type: "gossip",
+    peers: [
+      {
+        device: deviceC,
+        addresses: [],
+        "snapshot-seconds": 1861920000,
+        "presence/status": "idle",
+      },
+    ],
+  }),
   vector("candidates_v1_host_and_relayed", {
     type: "candidates",
     candidates: [
