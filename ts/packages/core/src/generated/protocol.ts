@@ -136,6 +136,7 @@ export const manageResponseFrameSchema = z.lazy(() => z.object({
 export const capabilityRequestSchema = z.lazy(() => z.object({
   "verb": z.literal("capability.request"),
   "capability": z.string(),
+  "valid-until": z.number().int().nonnegative().optional(),
 }).catchall(z.unknown()));
 export const capabilityGrantOkSchema = z.lazy(() => z.object({
   "result": z.literal("ok"),
