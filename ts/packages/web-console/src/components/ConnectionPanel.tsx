@@ -5,6 +5,7 @@ import type {
   MeshSession,
   SessionEvent,
 } from "wire-mesh-core/domain/mesh-session";
+import type { DeviceId } from "wire-mesh-core/generated/protocol";
 import { useMeshSessionEvents } from "../hooks/use-mesh-session-events.js";
 
 const HEX_RADIX = 16;
@@ -61,12 +62,14 @@ export interface ConnectionPanelProps {
   address: string;
   session: Readonly<MeshSession>;
   onClose: () => void;
+  onMessagePeer: (device: DeviceId) => void;
 }
 
 export function ConnectionPanel({
   address,
   session,
   onClose,
+  onMessagePeer,
 }: Readonly<ConnectionPanelProps>): React.JSX.Element {
   const event = useMeshSessionEvents(session);
   const status = event === undefined ? "idle" : describeStatus(event);
@@ -110,6 +113,7 @@ export function ConnectionPanel({
               <Table.Th>device</Table.Th>
               <Table.Th>addresses</Table.Th>
               <Table.Th>snapshot (unix s)</Table.Th>
+              <Table.Th />
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -118,6 +122,16 @@ export function ConnectionPanel({
                 <Table.Td>{deviceHex(entry.device)}</Table.Td>
                 <Table.Td>{entry.advert.addresses.join(", ")}</Table.Td>
                 <Table.Td>{entry.advert["snapshot-seconds"]}</Table.Td>
+                <Table.Td>
+                  <Button
+                    size="xs"
+                    onClick={() => {
+                      onMessagePeer(entry.device);
+                    }}
+                  >
+                    Message
+                  </Button>
+                </Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>

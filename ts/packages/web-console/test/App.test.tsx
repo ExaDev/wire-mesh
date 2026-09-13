@@ -7,7 +7,9 @@ import { MantineProvider } from "@mantine/core";
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import type { Clock } from "wire-mesh-core/ports/clock";
 import { App } from "../src/App.js";
+import type { MessageStore, StoredMessage } from "../src/message-store.js";
 import { FakeWebSocket } from "./fake-websocket.js";
+import { stubMantineJsdomGlobals } from "./jsdom-mantine-polyfills.js";
 
 const DEVICE_ID_BYTE_LENGTH = 32;
 
@@ -24,31 +26,18 @@ function fakeIdentity(): IdentityPort {
 
 const fixedClock: Clock = { now: () => 0 };
 
-// jsdom has no matchMedia implementation at all -- Mantine's own MantineProvider reads it to detect the OS colour-scheme preference, so this test environment needs the standard polyfill every jsdom+Mantine test suite requires (Mantine's own docs recommend the identical shape).
-function matchMediaStub(query: string): MediaQueryList {
+function fakeMessageStore(): MessageStore {
+  const stored = new Map<string, StoredMessage[]>();
   return {
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: vi.fn<() => void>(),
-    removeListener: vi.fn<() => void>(),
-    addEventListener: vi.fn<() => void>(),
-    removeEventListener: vi.fn<() => void>(),
-    dispatchEvent: vi.fn<() => boolean>(() => true),
+    async append(roomPath, message): Promise<void> {
+      const existing = stored.get(roomPath) ?? [];
+      stored.set(roomPath, [...existing, message]);
+      return Promise.resolve();
+    },
+    async list(roomPath): Promise<StoredMessage[]> {
+      return Promise.resolve(stored.get(roomPath) ?? []);
+    },
   };
-}
-
-// jsdom also has no ResizeObserver -- Mantine's ScrollArea (which Table.ScrollContainer wraps) observes its own size to decide when scrollbars are needed. This console never needs that behaviour under test, only for it not to throw.
-class ResizeObserverStub {
-  observe(): void {
-    // no-op
-  }
-  unobserve(): void {
-    // no-op
-  }
-  disconnect(): void {
-    // no-op
-  }
 }
 
 /** Every FakeWebSocket App's own createBrowserTransport() constructs, in construction order -- tracking a `new WebSocket(url)` call site that lives entirely inside the component tree under test, not something the test itself can pass a fake into directly. */
@@ -64,7 +53,11 @@ class TrackedFakeWebSocket extends FakeWebSocket {
 function renderApp(): ReturnType<typeof render> {
   return render(
     <MantineProvider>
-      <App identity={fakeIdentity()} clock={fixedClock} />
+      <App
+        identity={fakeIdentity()}
+        clock={fixedClock}
+        messageStore={fakeMessageStore()}
+      />
     </MantineProvider>,
   );
 }
@@ -77,8 +70,7 @@ describe("App", () => {
   beforeEach(() => {
     sockets = [];
     vi.stubGlobal("WebSocket", TrackedFakeWebSocket);
-    vi.stubGlobal("matchMedia", matchMediaStub);
-    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+    stubMantineJsdomGlobals();
   });
 
   afterEach(() => {
