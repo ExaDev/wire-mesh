@@ -19,6 +19,10 @@
     },
     "_conformance-check": {
       "dependsOn": ["_build", "^_build"]
+    },
+    "_mutation": {
+      "dependsOn": ["_build", "^_build"],
+      "outputs": ["reports/**", ".stryker-tmp/**"]
     }
   }
 }

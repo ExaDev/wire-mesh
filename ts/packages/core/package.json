@@ -27,7 +27,9 @@
     "lint": "turbo run _lint",
     "_lint": "eslint . --fix --cache --max-warnings 0",
     "conformance-check": "turbo run _conformance-check",
-    "_conformance-check": "vitest run test/conformance.test.ts"
+    "_conformance-check": "vitest run test/conformance.test.ts",
+    "mutation": "turbo run _mutation",
+    "_mutation": "stryker run stryker.config.ts"
   },
   "dependencies": {
     "cbor2": "2.3.0",
@@ -41,6 +43,8 @@
     "@semantic-release/github": "12.0.9",
     "@semantic-release/npm": "13.1.5",
     "@semantic-release/release-notes-generator": "14.1.1",
+    "@stryker-mutator/core": "10.0.0",
+    "@stryker-mutator/typescript-checker": "10.0.0",
     "@types/node": "26.4.1",
     "conventional-changelog-conventionalcommits": "10.4.0",
     "eslint": "10.10.0",
