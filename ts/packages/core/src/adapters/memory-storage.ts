@@ -2,7 +2,7 @@ import type { KeyValueStorage } from "../ports/storage.js";
 
 /** An in-process KeyValueStorage backed by a Map -- for tests and single-process nodes; a real deployment substitutes a persistent adapter behind the same contract without touching anything that depends on the port. Not declared `async`: every operation is genuinely synchronous under the hood, so the contract's Promise return is satisfied directly via Promise.resolve() rather than an async function with no await in its body. */
 export function createMemoryStorage(): KeyValueStorage {
-  const store = new Map<string, Uint8Array>();
+  const store = new Map<string, Uint8Array<ArrayBuffer>>();
 
   return {
     get: async (key) => Promise.resolve(store.get(key)),
