@@ -92,6 +92,8 @@ const connections = new Map<string, Connection>();
 let nextConnectionId = 0;
 const incomingConnectionIds: string[] = [];
 const incomingWaiters: ((id: string) => void)[] = [];
+// Remote tracks received on any peer connection this session's negotiator manages -- one negotiator per harness session, so a flat list (not keyed by connection id) is enough for what the e2e test needs to prove: that media rides the same offer/answer/ICE exchange as the data channel.
+const remoteTrackKinds: string[] = [];
 
 /** A frame-log entry reduced to what scripts/live-check.mjs needs to verify the signaling exchange actually completed via the relay, independent of whether the resulting RTCPeerConnection's own ICE handshake ever reaches "connected" -- see the module-level comment on ICE's own sandbox limitation. */
 interface FrameSummaryEntry {
@@ -142,13 +144,15 @@ function requireConnection(id: string): Connection {
 declare global {
   interface Window {
     harness: {
-      /** Connects to the relay and returns this session's own device-id (a plain number array -- page.evaluate's return value must be JSON-serialisable), so the caller can hand it to the OTHER context's initiate() call as the peer to dial. */
-      connect: (address: string) => Promise<number[]>;
+      /** Connects to the relay and returns this session's own device-id (a plain number array -- page.evaluate's return value must be JSON-serialisable), so the caller can hand it to the OTHER context's initiate() call as the peer to dial. withMedia acquires a local audio+video MediaStream via getUserMedia (synthetic, under Chromium's --use-fake-device-for-media-stream flag) before connecting, so every peer connection this session's negotiator subsequently creates carries it -- omit or pass false for a data-channel-only session, exactly the pre-media-support default. */
+      connect: (address: string, withMedia?: boolean) => Promise<number[]>;
       /** Offers a WebRTC data channel to targetDevice (this session's own device-id array from another context's connect()), routed via a relay-connect pairing to that specific peer since a real relay hub drops manage-request/manage-response frames sent to it directly. */
       initiate: (targetDevice: readonly number[]) => Promise<string>;
       /** This session's frame log, reduced to a JSON-serialisable summary -- lets the driving script confirm the offer/answer/ice-candidate manage-requests actually round-tripped through the relay's real relay-data forwarding, independent of whether the underlying RTCPeerConnection's own ICE handshake ever reaches "connected". */
       frameSummary: () => FrameSummaryEntry[];
       waitForIncoming: () => Promise<string>;
+      /** The kind ("audio"/"video") of every remote track received so far on any peer connection this session's negotiator manages, in arrival order. */
+      remoteTrackKinds: () => string[];
       sendGossip: (connectionId: string, wire: WireGossip) => Promise<void>;
       receiveGossip: (connectionId: string) => Promise<WireGossip>;
       closeConnection: (connectionId: string) => Promise<void>;
@@ -157,7 +161,7 @@ declare global {
 }
 
 window.harness = {
-  async connect(address: string): Promise<number[]> {
+  async connect(address: string, withMedia = false): Promise<number[]> {
     const clock = { now: () => Date.now() };
     const identity = await createWebCryptoIdentity();
     const session = createMeshSession(
@@ -165,6 +169,14 @@ window.harness = {
       identity,
       clock,
     );
+    const localTracks = withMedia
+      ? (
+          await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: true,
+          })
+        ).getTracks()
+      : [];
     const negotiator = createWebrtcNegotiator(session, {
       identity,
       clock,
@@ -176,6 +188,10 @@ window.harness = {
         } else {
           incomingConnectionIds.push(id);
         }
+      },
+      localTracks,
+      onRemoteTrack: (event) => {
+        remoteTrackKinds.push(event.track.kind);
       },
     });
     const token = await mintSelfToken(identity, clock.now());
@@ -211,6 +227,9 @@ window.harness = {
     return new Promise((resolve) => {
       incomingWaiters.push(resolve);
     });
+  },
+  remoteTrackKinds(): string[] {
+    return [...remoteTrackKinds];
   },
   async sendGossip(connectionId: string, wire: WireGossip): Promise<void> {
     await requireConnection(connectionId).send(gossipFrameFromWire(wire));
