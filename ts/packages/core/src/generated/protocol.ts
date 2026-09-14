@@ -151,6 +151,7 @@ export const revocationClaimsSchema = z.lazy(() => z.object({
   "issuer": z.lazy(() => deviceIdSchema),
   "issuer-key": z.lazy(() => identityKeySchema),
   "revoked-at": z.number().int().nonnegative(),
+  "authorization": z.instanceof(Uint8Array).optional(),
 }));
 export const revocationEntrySchema = z.lazy(() => z.lazy(() => coseSign1Schema));
 export const revocationAnnounceFrameSchema = z.lazy(() => z.object({
