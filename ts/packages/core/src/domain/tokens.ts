@@ -16,8 +16,10 @@ import {
   conditionsListSchema,
   evaluateConditions,
   evaluateNarrowing,
+  type ConditionsContext,
   type NarrowingCandidate,
   type NarrowingSystem,
+  type TokenDelegateHandler,
 } from "./token-predicates.js";
 import { bytesEqual } from "./token-scope.js";
 
@@ -61,6 +63,10 @@ export interface VerifyCapabilityTokenOptions {
   revocation: RevocationCheck;
   /** When given, the token must bear this device -- the caller presenting a token to authorise itself, not someone else. */
   expectedBearer?: DeviceId;
+  /** Registers domain-specific delegate systems a presented token's own `conditions` entries may name, beyond the five mandatory narrowing ops (which are never reachable from `conditions` -- see evaluateConditions's own doc comment). None are registered by wire-mesh-core itself; a domain (a message TTL, #84's future revoke-authorization check) supplies its own here. A `conditions` entry naming a system absent from this map is indeterminate, and therefore fails the whole token -- fail-closed, not a silent no-op. */
+  extraPredicateResolvers?: Readonly<
+    Record<string, TokenDelegateHandler<ConditionsContext>>
+  >;
 }
 
 /** RFC 9052 §4.4 Sig_structure for a COSE_Sign1 with no external AAD: ["Signature1", protected, external_aad, payload]. */
@@ -114,6 +120,9 @@ export async function verifyCapabilityToken(
     identity: options.identity,
     clock: options.clock,
     revocation: options.revocation,
+    ...(options.extraPredicateResolvers !== undefined
+      ? { extraPredicateResolvers: options.extraPredicateResolvers }
+      : {}),
   });
   if (!verdict.ok) {
     return verdict;
@@ -196,6 +205,7 @@ async function verifyTokenChain(
       conditionsResult.data,
       claims,
       options.clock,
+      options.extraPredicateResolvers,
     );
     if (!conditionsVerdict.ok) {
       return { ok: false, reason: "conditions_not_satisfied" };
