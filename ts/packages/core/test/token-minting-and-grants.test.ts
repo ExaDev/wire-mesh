@@ -359,7 +359,7 @@ describe("canGrant", () => {
       delegationsRemaining: 0,
     };
     expect(
-      canGrant(rootVerdict.token, bearerIdentity.deviceId, candidate, now),
+      await canGrant(rootVerdict.token, bearerIdentity.deviceId, candidate, now),
     ).toBe(true);
 
     const delegatedVerdict = await mintCapabilityToken({
@@ -387,7 +387,7 @@ describe("canGrant", () => {
     if (!rootVerdict.ok) return;
 
     expect(
-      canGrant(
+      await canGrant(
         rootVerdict.token,
         issuer.deviceId,
         {
@@ -414,7 +414,7 @@ describe("canGrant", () => {
     if (!rootVerdict.ok) return;
 
     expect(
-      canGrant(
+      await canGrant(
         rootVerdict.token,
         bearerIdentity.deviceId,
         {
@@ -441,7 +441,7 @@ describe("canGrant", () => {
     if (!rootVerdict.ok) return;
 
     expect(
-      canGrant(
+      await canGrant(
         rootVerdict.token,
         bearerIdentity.deviceId,
         {
@@ -468,7 +468,7 @@ describe("canGrant", () => {
     if (!rootVerdict.ok) return;
 
     expect(
-      canGrant(
+      await canGrant(
         rootVerdict.token,
         bearerIdentity.deviceId,
         {
@@ -496,7 +496,7 @@ describe("canGrant", () => {
     if (!rootVerdict.ok) return;
 
     expect(
-      canGrant(
+      await canGrant(
         rootVerdict.token,
         bearerIdentity.deviceId,
         {
@@ -524,7 +524,7 @@ describe("canGrant", () => {
     if (!rootVerdict.ok) return;
 
     expect(
-      canGrant(
+      await canGrant(
         rootVerdict.token,
         bearerIdentity.deviceId,
         {
@@ -537,7 +537,7 @@ describe("canGrant", () => {
     ).toBe(false);
   });
 
-  it("returns false for a malformed held token", () => {
+  it("returns false for a malformed held token", async () => {
     const malformedToken: CapabilityToken = [
       new Uint8Array(),
       {},
@@ -545,7 +545,7 @@ describe("canGrant", () => {
       new Uint8Array(P256_SIGNATURE_BYTE_LENGTH),
     ];
     expect(
-      canGrant(
+      await canGrant(
         malformedToken,
         bearerIdentity.deviceId,
         {

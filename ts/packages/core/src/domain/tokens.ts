@@ -1,4 +1,5 @@
 import { cdeDecodeOptions, cdeEncodeOptions, decode, encode } from "cbor2";
+import type { PredicateNode } from "trilean";
 import {
   capabilityTokenSchema,
   revocationClaimsSchema,
@@ -11,6 +12,14 @@ import {
 } from "../generated/protocol.js";
 import type { Clock } from "../ports/clock.js";
 import type { IdentityPort } from "../ports/identity.js";
+import {
+  conditionsListSchema,
+  evaluateConditions,
+  evaluateNarrowing,
+  type NarrowingCandidate,
+  type NarrowingSystem,
+} from "./token-predicates.js";
+import { bytesEqual } from "./token-scope.js";
 
 /**
  * The revocation view a verifier consults. Contract per management.cddl: an entry counts against a token only when BOTH its token-id and its issuer match the token's own -- only a token's own issuer may revoke it, so a third party's entry for someone else's token-id must be ignored. Implementations ingest gossiped revocation-announce frames via verifyRevocationEntry (which enforces each entry's own signature and self-certification) and key the resulting claims by token-id + issuer.
@@ -29,7 +38,11 @@ export type TokenVerdictReason =
   | "content_expired"
   | "revoked"
   | "delegation_exceeds_parent"
-  | "parent_invalid";
+  | "parent_invalid"
+  /** claims.conditions is present but its bstr fails CBOR decode, or decodes to something that is not a JSON array of valid trilean PredicateNodes -- fail-closed per CONVENTIONS.md's verifier-obligations glossary, the same treatment "malformed" already gives an undecodable payload. */
+  | "conditions_invalid"
+  /** claims.conditions decoded and validated, but at least one entry did not evaluate to a definite `true` (indeterminate or false) -- the issuer's own additional restriction was not met. */
+  | "conditions_not_satisfied";
 
 export type TokenVerdict =
   | {
@@ -48,43 +61,6 @@ export interface VerifyCapabilityTokenOptions {
   revocation: RevocationCheck;
   /** When given, the token must bear this device -- the caller presenting a token to authorise itself, not someone else. */
   expectedBearer?: DeviceId;
-}
-
-function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i += 1) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
-}
-
-/** True when the path contains a "." or ".." segment. Purely lexical prefix comparison would let "/work/../org" pass under "/work" -- a path that normalises outside the parent -- so any relative segment fails the narrowing comparison wholesale: fail-closed rather than reimplementing path normalisation, consistent with how empty, case-different, and non-boundary-prefixed paths already behave. */
-function hasRelativeSegment(path: string): boolean {
-  return path.split("/").some((segment) => segment === "." || segment === "..");
-}
-
-/** True when childPath is parentPath or a descendant of it, compared on "/"-segment boundaries: "/work/sub" narrows "/work", but "/workbook" does NOT narrow "/work" despite the string prefix, because "book" continues the same segment. Paths containing "." or ".." segments never narrow anything (see hasRelativeSegment). */
-function pathNarrows(childPath: string, parentPath: string): boolean {
-  if (hasRelativeSegment(childPath) || hasRelativeSegment(parentPath)) {
-    return false;
-  }
-  if (childPath === parentPath) return true;
-  if (!childPath.startsWith(parentPath)) return false;
-  if (parentPath.endsWith("/")) return true;
-  return childPath.charAt(parentPath.length) === "/";
-}
-
-/**
- * True when childScope narrows parentScope per tokens.cddl ("each hop can only narrow authority, never widen it"): the kind must be identical (a different kind is a different kind of authority, not a narrower one), and a parent with a path requires the child to carry an equal-or-descendant path -- an absent child path means the kind's whole-scope root, which is wider than any path-narrowed parent. A parent with no path (whole-scope root) lets any child path under the same kind through. Exported for capability-grant.ts's own obligation 4 (an unsolicited push's embedded token must equal-or-root the enclosing request's own scope), which is exactly this same narrowing relation applied outside a delegation chain.
- */
-export function scopeNarrows(
-  parent: TokenClaims["scope"],
-  child: TokenClaims["scope"],
-): boolean {
-  if (parent.kind !== child.kind) return false;
-  if (parent.path === undefined) return true;
-  if (child.path === undefined) return false;
-  return pathNarrows(child.path, parent.path);
 }
 
 /** RFC 9052 §4.4 Sig_structure for a COSE_Sign1 with no external AAD: ["Signature1", protected, external_aad, payload]. */
@@ -204,6 +180,28 @@ async function verifyTokenChain(
     return { ok: false, reason: "revoked" };
   }
 
+  // claims.conditions is strictly additive to the narrowing checks below -- it is decoded and evaluated here, uniformly for both root and delegated tokens, entirely independent of whether claims.parent is present. See tokens.cddl's own comment on the field and CONVENTIONS.md's verifier-obligations glossary entry for the fail-closed contract this enforces.
+  if (claims.conditions !== undefined) {
+    let decodedConditions: unknown;
+    try {
+      decodedConditions = decode(claims.conditions, cdeDecodeOptions);
+    } catch {
+      return { ok: false, reason: "conditions_invalid" };
+    }
+    const conditionsResult = conditionsListSchema.safeParse(decodedConditions);
+    if (!conditionsResult.success) {
+      return { ok: false, reason: "conditions_invalid" };
+    }
+    const conditionsVerdict = await evaluateConditions(
+      conditionsResult.data,
+      claims,
+      options.clock,
+    );
+    if (!conditionsVerdict.ok) {
+      return { ok: false, reason: "conditions_not_satisfied" };
+    }
+  }
+
   if (claims.parent !== undefined) {
     let decodedParent: unknown;
     try {
@@ -219,25 +217,20 @@ async function verifyTokenChain(
     if (!parentVerdict.ok) {
       return { ok: false, reason: "parent_invalid" };
     }
-    if (!bytesEqual(parentVerdict.claims.bearer, claims.issuer)) {
-      return { ok: false, reason: "delegation_exceeds_parent" };
-    }
-    if (claims.expires > parentVerdict.claims.expires) {
-      return { ok: false, reason: "delegation_exceeds_parent" };
-    }
-    if (!scopeNarrows(parentVerdict.claims.scope, claims.scope)) {
-      return { ok: false, reason: "delegation_exceeds_parent" };
-    }
-    if (parentVerdict.claims.capability !== claims.capability) {
-      return { ok: false, reason: "delegation_exceeds_parent" };
-    }
-    // Narrowing applies to delegations-remaining too: a parent that bounds further re-delegation must not be re-delegatable into an unbounded (or merely equal) child -- that would let any bearer of a bounded grant mint an unboundedly-redelegatable one, defeating the entire point of the claim. A parent carrying none is itself unbounded, so any child value is admissible.
-    const parentRemaining = parentVerdict.claims["delegations-remaining"];
-    if (
-      parentRemaining !== undefined &&
-      (claims["delegations-remaining"] === undefined ||
-        claims["delegations-remaining"] >= parentRemaining)
-    ) {
+    const candidate: NarrowingCandidate = {
+      capability: claims.capability,
+      scope: claims.scope,
+      expires: claims.expires,
+      ...(claims["delegations-remaining"] !== undefined
+        ? { delegationsRemaining: claims["delegations-remaining"] }
+        : {}),
+    };
+    const failedSystem = await evaluateNarrowing(
+      parentVerdict.claims,
+      claims.issuer,
+      candidate,
+    );
+    if (failedSystem !== undefined) {
       return { ok: false, reason: "delegation_exceeds_parent" };
     }
     return {
@@ -319,54 +312,47 @@ export type MintVerdict =
   | { ok: true; token: CapabilityToken }
   | { ok: false; reason: MintRefusalReason };
 
-/** What a would-be delegation needs, to check it narrows a specific parent -- everything mintCapabilityToken itself checks a delegation against, independent of the tokenId/bearer/notBefore/signing concerns unique to actually minting one. */
-interface NarrowingCandidate {
-  capability: TokenClaims["capability"];
-  scope: TokenClaims["scope"];
-  expires: number;
-  delegationsRemaining?: number;
-}
+/** Maps evaluateNarrowing's own NarrowingSystem (the first predicate op that did not hold) to mintCapabilityToken's five distinct refusal reasons -- verifyTokenChain collapses every narrowing failure to a single "delegation_exceeds_parent", but mint has always reported which specific rule was violated, since a caller building the candidate itself benefits from knowing exactly what to fix. */
+const NARROWING_SYSTEM_TO_MINT_REFUSAL: Record<
+  NarrowingSystem,
+  MintRefusalReason
+> = {
+  "bearer-is": "parent_bearer_mismatch",
+  "expires-at": "expires_exceeds_parent",
+  "scope-narrows": "scope_does_not_narrow",
+  "capability-is": "capability_mismatch",
+  "depth-remaining": "delegation_exceeds_parent",
+};
 
-/** The narrowing arithmetic tokens.cddl's own delegation obligations require (bearer match, expiry within the parent's, scope narrows, same capability, delegations-remaining strictly less than the parent's) -- shared between mintCapabilityToken (which additionally builds and signs the resulting token) and canGrant (a pure query with no minting side effect at all), so the two can never silently drift into two different ideas of what "narrows" means. Returns the specific refusal reason, or undefined when every rule is satisfied. */
-function checkNarrowing(
+/** The narrowing arithmetic tokens.cddl's own delegation obligations require (bearer match, expiry within the parent's, scope narrows, same capability, delegations-remaining strictly less than the parent's) -- shared between mintCapabilityToken (which additionally builds and signs the resulting token) and canGrant (a pure query with no minting side effect at all), so the two can never silently drift into two different ideas of what "narrows" means. Delegates the actual check to evaluateNarrowing (token-predicates.ts), the same generic evaluator verifyTokenChain's own delegation-chain walk uses, so mint and verify share one implementation of each of the five checks rather than two hardcoded copies. Returns the specific refusal reason, or undefined when every rule is satisfied. */
+async function checkNarrowing(
   parentClaims: Readonly<TokenClaims>,
   granterDeviceId: DeviceId,
   candidate: Readonly<NarrowingCandidate>,
-): MintRefusalReason | undefined {
-  if (!bytesEqual(parentClaims.bearer, granterDeviceId)) {
-    return "parent_bearer_mismatch";
-  }
-  if (candidate.expires > parentClaims.expires) {
-    return "expires_exceeds_parent";
-  }
-  if (!scopeNarrows(parentClaims.scope, candidate.scope)) {
-    return "scope_does_not_narrow";
-  }
-  if (parentClaims.capability !== candidate.capability) {
-    return "capability_mismatch";
-  }
-  const parentRemaining = parentClaims["delegations-remaining"];
-  if (
-    parentRemaining !== undefined &&
-    (candidate.delegationsRemaining === undefined ||
-      candidate.delegationsRemaining >= parentRemaining)
-  ) {
-    return "delegation_exceeds_parent";
-  }
-  return undefined;
+): Promise<MintRefusalReason | undefined> {
+  const failedSystem = await evaluateNarrowing(
+    parentClaims,
+    granterDeviceId,
+    candidate,
+  );
+  return failedSystem === undefined
+    ? undefined
+    : NARROWING_SYSTEM_TO_MINT_REFUSAL[failedSystem];
 }
 
 /**
  * A pure query: could deviceId, presenting heldToken as its own delegation authority, successfully mint a delegation matching candidate right now -- without attempting (and potentially failing) a real mint just to find out. Reuses mintCapabilityToken's own narrowing arithmetic via checkNarrowing, so the two can never silently drift into different ideas of what "narrows" means.
  *
  * Deliberately narrower than a full mint attempt in one respect: this checks only the narrowing rules tokens.cddl's own delegation obligations require (bearer match, expiry, scope, capability, delegations-remaining), the same scope mintCapabilityToken itself checks a *parent* against -- it does not verify heldToken's own signature or revocation status, exactly as mintCapabilityToken never re-verifies its own parent's signature either. A caller that also needs heldToken's cryptographic validity confirmed calls verifyCapabilityToken separately.
+ *
+ * Async as of the predicate-list evaluator (issue #85): checkNarrowing now routes through trilean's own evaluatePredicate, which is asynchronous throughout -- there is no synchronous path through a real evaluator call, so this is a genuine, deliberate breaking change to what was previously a synchronous pure function. No existing consumer of wire-mesh-core calls canGrant (confirmed against agent-comms, the only other repo depending on this package), so there is nothing to migrate.
  */
-export function canGrant(
+export async function canGrant(
   heldToken: CapabilityToken,
   deviceId: DeviceId,
   candidate: Readonly<NarrowingCandidate>,
   now: number,
-): boolean {
+): Promise<boolean> {
   if (candidate.expires <= now) {
     return false;
   }
@@ -374,7 +360,7 @@ export function canGrant(
   if (heldClaims === undefined) {
     return false;
   }
-  return checkNarrowing(heldClaims, deviceId, candidate) === undefined;
+  return (await checkNarrowing(heldClaims, deviceId, candidate)) === undefined;
 }
 
 export interface MintCapabilityTokenOptions {
@@ -391,6 +377,8 @@ export interface MintCapabilityTokenOptions {
   delegationsRemaining?: number;
   /** The issuer's own token, when this is a delegation rather than a root grant. Its claims are checked against every narrowing rule below -- mint refuses rather than producing a token verifyCapabilityToken would reject anyway. Omit entirely for a root-level grant (including a second, independent root-level grant for a different bearer under the same capability/scope this issuer already grants elsewhere) -- there is no bound on how many such root grants an issuer may mint, since none of them narrows any other. */
   parent?: CapabilityToken;
+  /** Additional, issuer-chosen restrictions beyond the five mandatory narrowing checks (issue #85) -- CBOR-encoded into claims.conditions verbatim, evaluated by every verifier via evaluateConditions. Strictly additive: has no bearing on narrowing, which mint enforces separately above regardless of what's given here. Not re-validated against trilean's own schema before encoding -- the TS type already guarantees a well-formed PredicateNode[] at this call site, unlike the bytes a verifier decodes from an untrusted wire token, which always are. */
+  conditions?: PredicateNode[];
 }
 
 /**
@@ -411,14 +399,18 @@ export async function mintCapabilityToken(
     if (parentClaims === undefined) {
       return { ok: false, reason: "parent_malformed" };
     }
-    const refusal = checkNarrowing(parentClaims, options.identity.deviceId, {
-      capability: options.capability,
-      scope: options.scope,
-      expires: options.expires,
-      ...(options.delegationsRemaining !== undefined
-        ? { delegationsRemaining: options.delegationsRemaining }
-        : {}),
-    });
+    const refusal = await checkNarrowing(
+      parentClaims,
+      options.identity.deviceId,
+      {
+        capability: options.capability,
+        scope: options.scope,
+        expires: options.expires,
+        ...(options.delegationsRemaining !== undefined
+          ? { delegationsRemaining: options.delegationsRemaining }
+          : {}),
+      },
+    );
     if (refusal !== undefined) {
       return { ok: false, reason: refusal };
     }
@@ -439,6 +431,9 @@ export async function mintCapabilityToken(
     ...(parentBytes !== undefined ? { parent: parentBytes } : {}),
     ...(options.delegationsRemaining !== undefined
       ? { "delegations-remaining": options.delegationsRemaining }
+      : {}),
+    ...(options.conditions !== undefined
+      ? { conditions: encodeBuf(options.conditions) }
       : {}),
   };
 

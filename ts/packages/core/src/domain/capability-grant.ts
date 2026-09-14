@@ -18,11 +18,8 @@ import type {
 } from "./mesh-session.js";
 import type { Clock } from "../ports/clock.js";
 import type { IdentityPort } from "../ports/identity.js";
-import {
-  scopeNarrows,
-  verifyCapabilityToken,
-  type RevocationCheck,
-} from "./tokens.js";
+import { scopeNarrows } from "./token-scope.js";
+import { verifyCapabilityToken, type RevocationCheck } from "./tokens.js";
 
 /**
  * Builds a capability-grant command per management.cddl. The outer `manage-command.verb` is the capability string itself, the identical convention capability-request.ts's own buildCapabilityRequestCommand already establishes -- a receiver's per-capability handler is how it knows which grant this push is even for. `params.verb` is the fixed "capability.grant" marker. No scope or invitee field: manage-request-frame's own top-level scope already carries the former, and the request's own destination already carries the latter -- naming either a second time inside params could only ever disagree with the fact it duplicates.
