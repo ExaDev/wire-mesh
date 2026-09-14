@@ -164,6 +164,13 @@ function createSessionCore(
   onPeerAdvert?: (advert: PeerAdvert) => void,
   /** This node's own directly-reachable "host:port" candidates (wire-mesh#38), advertised in every self-advert this session sends. Empty by default -- correct, not a stopgap, for a caller with nothing to offer (a browser client, which cannot accept inbound connections); a caller that does listen for connections passes its own address(es) here so other peers can attempt a direct connection instead of always falling back to a relay. */
   addresses: readonly string[] = [],
+  /** Fired once per frame received on this session's own connection, right alongside (never instead of) applyFrame's own handling (wire-mesh#102) -- the mechanism an "ordinary opted-in node relays for peers it's already talking to" uses: a shared RelayHub instance's own handleFrame, bound to this connection, observes the identical frame stream a session's own manage-request handling already consumes, with no second, competing for-await loop over the same connection.receive(). Awaited in sequence with applyFrame, not fire-and-forget: a thrown error here propagates the same way any other frame-processing failure already does, rather than being silently swallowed. */
+  onFrame?: (
+    connection: Readonly<Connection>,
+    frame: Frame,
+  ) => void | Promise<void>,
+  /** Fired once this session's own connection.receive() stream ends, regardless of whether the session itself goes on to reconnect with a fresh connection -- the counterpart hook a RelayHub's own forgetConnection needs, since its registry and pairing state is keyed by this exact Connection instance and must be cleaned up when it specifically ends, not when the session as a whole gives up. */
+  onSessionEnd?: (connection: Readonly<Connection>) => void,
 ): SessionCore {
   let connection: Connection | null = null;
   let state: ConnectionState = { status: "idle" };
@@ -439,8 +446,10 @@ function createSessionCore(
         return;
       }
       applyFrame(frame);
+      await onFrame?.(link, frame);
       emit();
     }
+    onSessionEnd?.(link);
     if (state.status === "connected") {
       handleDisconnect("node closed the connection", address, localDomains);
     }
@@ -725,6 +734,13 @@ export interface AcceptedMeshSessionOptions {
   clock?: Readonly<Clock>;
   /** This node's own directly-reachable "host:port" candidates (wire-mesh#38), advertised in this session's self-advert. Omit (or pass none) for a caller with nothing to offer. */
   addresses?: readonly string[];
+  /** Observes every frame this session receives, alongside (never instead of) its own manage-request/gossip/handshake handling (wire-mesh#102) -- the integration point an "ordinary opted-in node relays for peers it's already talking to" uses: pass a shared RelayHub instance's own handleFrame, bound to this connection, and it sees the identical frame stream this session's own applyFrame already consumes, with no second for-await loop racing over the same connection.receive(). A dedicated wire-mesh-node/cloudflare-hub deployment, which never runs a MeshSession at all, is unaffected -- this is additive, opt-in, and irrelevant to that case. */
+  onFrame?: (
+    connection: Readonly<Connection>,
+    frame: Frame,
+  ) => void | Promise<void>;
+  /** Fired once this session's own connection.receive() stream ends -- the counterpart a RelayHub's own forgetConnection needs, since its registry is keyed by this exact Connection and must be cleaned up when it specifically ends. */
+  onSessionEnd?: (connection: Readonly<Connection>) => void;
 }
 
 /** Wires an already-accepted Connection up as a full MeshSession, mirroring exactly what createMeshSession's own dial path does once a connection exists (send handshake, send self-advert, negotiate, consume frames) -- the wire-mesh#45 prerequisite agent-comms needs, since its peers both listen and dial rather than only ever dialing the way web-console's own console UI does. Reconnect does not apply here: if this connection drops, only the remote redialing and being accepted again produces a new connection, and therefore a new session -- there is nothing on this side to retry. */
@@ -753,6 +769,8 @@ export async function acceptMeshSession(
       resolvePeerDeviceId?.(advert.device);
     },
     options.addresses,
+    options.onFrame,
+    options.onSessionEnd,
   );
   await wireUpConnection(connection, options.label ?? "accepted", localDomains);
   return { ...session, peerDeviceId };

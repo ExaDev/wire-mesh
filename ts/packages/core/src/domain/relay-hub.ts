@@ -16,8 +16,14 @@ interface Registration {
 }
 
 export interface RelayHub {
-  /** Drives one accepted connection until it closes: registers gossip-advertised devices, re-broadcasts each gossip frame to every other connected client and replies to the gossiping connection with a catch-up frame of every other already-known device, answers relay-connect by pairing and notifying the target, and forwards relay-data within established pairings. Resolves when the connection's frame stream ends. */
+  /** Drives one accepted connection until it closes: registers gossip-advertised devices, re-broadcasts each gossip frame to every other connected client and replies to the gossiping connection with a catch-up frame of every other already-known device, answers relay-connect by pairing and notifying the target, and forwards relay-data within established pairings. Resolves when the connection's frame stream ends. Internally just registerConnection followed by a loop of onFrame calls and a final onDisconnect -- kept as its own method since a dedicated hub deployment (wire-mesh-node/cloudflare-hub) has nothing else driving the connection and wants the whole lifecycle in one call. */
   handleConnection: (connection: Readonly<Connection>) => Promise<void>;
+  /** Registers a connection with this hub without taking over its own frame-consumption loop (wire-mesh#102) -- the entry point an "ordinary opted-in node relays for peers it's already talking to" uses, alongside onFrame/onDisconnect below, to let a MeshSession's own single connection.receive() loop drive this hub rather than running a second, competing one. Must be called once, before the first onFrame call for this connection, so gossip fan-out (which forwards to every OTHER registered connection) already sees it. */
+  registerConnection: (connection: Readonly<Connection>) => void;
+  /** Observes one frame on an already-registered connection -- the same per-frame logic handleConnection's own loop calls internally, exposed directly so a caller with its own frame-consumption loop can drive it without a second for-await over the same connection.receive(). */
+  onFrame: (connection: Readonly<Connection>, frame: Frame) => Promise<void>;
+  /** Cleans up all registry and pairing state for one connection once its own frame stream has ended -- the onSessionEnd counterpart registerConnection/onFrame needs for the shared-consumption case, since this hub's registry is keyed by Connection and has no other way to learn a connection is gone. */
+  onDisconnect: (connection: Readonly<Connection>) => void;
   /** Drops all registry and pairing state -- used by tests and by transport teardown. */
   stop: () => void;
 }
@@ -206,6 +212,11 @@ export function createRelayHub(): RelayHub {
         forgetConnection(connection);
       }
     },
+    registerConnection(connection) {
+      connections.add(connection);
+    },
+    onFrame: handleFrame,
+    onDisconnect: forgetConnection,
     stop() {
       connections.clear();
       devices.clear();
