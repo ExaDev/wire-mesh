@@ -19,7 +19,6 @@ import {
   buildCapabilityRequestCommand,
   createCapabilityRequestHandler,
   requestCapability,
-  type CapabilityGrantDecision,
   type CapabilityGrantRequestEvent,
 } from "../src/domain/capability-request.js";
 
@@ -28,10 +27,7 @@ const HOUR_MS = 3_600_000;
 const NOW_MS = 1_893_456_000_000;
 const TEST_CAPABILITY = "room:member";
 const TEST_SCOPE: CapabilityScope = { kind: "room", path: "some-room" };
-
-function buf(bytes: Uint8Array | ArrayLike<number>): Uint8Array<ArrayBuffer> {
-  return Uint8Array.from(bytes);
-}
+const REQUESTER_TIMEOUT_MS = 5_000;
 
 async function generateEs256Identity(): Promise<IdentityPort> {
   const keyPair = await webcrypto.subtle.generateKey(
@@ -58,7 +54,7 @@ function fakeSession(): MeshSession {
 
 function fakeIncoming(
   command: ManageCommand,
-  scope: CapabilityScope = TEST_SCOPE,
+  scope: Readonly<CapabilityScope> = TEST_SCOPE,
 ): { incoming: IncomingManageRequest; respond: ReturnType<typeof vi.fn> } {
   const respond = vi.fn(async (): Promise<void> => Promise.resolve());
   const incoming: IncomingManageRequest = {
@@ -104,7 +100,11 @@ describe("requestCapability", () => {
       "granted-token": grantedToken,
     });
 
-    const result = await requestCapability(session, TEST_CAPABILITY, TEST_SCOPE);
+    const result = await requestCapability(
+      session,
+      TEST_CAPABILITY,
+      TEST_SCOPE,
+    );
 
     expect(result["granted-token"]).toEqual(grantedToken);
     expect(session.sendManageRequest).toHaveBeenCalledTimes(1);
@@ -131,11 +131,17 @@ describe("requestCapability", () => {
       "granted-token": [new Uint8Array(0), {}, null, new Uint8Array(0)],
     });
 
-    await requestCapability(session, TEST_CAPABILITY, TEST_SCOPE, undefined, 5_000);
+    await requestCapability(
+      session,
+      TEST_CAPABILITY,
+      TEST_SCOPE,
+      undefined,
+      REQUESTER_TIMEOUT_MS,
+    );
 
     const [, , , , timeoutMs] = vi.mocked(session.sendManageRequest).mock
       .calls[0] as [unknown, unknown, unknown, unknown, number | undefined];
-    expect(timeoutMs).toBe(5_000);
+    expect(timeoutMs).toBe(REQUESTER_TIMEOUT_MS);
   });
 
   it("throws with the refusal code when the request is refused", async () => {
@@ -198,7 +204,10 @@ describe("createCapabilityRequestHandler", () => {
 
     await handle(incoming);
 
-    expect(respond).toHaveBeenCalledWith({ result: "error", code: "malformed" });
+    expect(respond).toHaveBeenCalledWith({
+      result: "error",
+      code: "malformed",
+    });
     expect(onRequest).not.toHaveBeenCalled();
   });
 
@@ -366,11 +375,11 @@ describe("createCapabilityRequestHandler", () => {
 
     await handle(incoming);
 
-    expect(seen).toBeDefined();
-    expect(deviceIdToHex(seen?.requesterDevice as DeviceId)).toBe(
+    if (seen === undefined) throw new Error("onRequest never fired");
+    expect(deviceIdToHex(seen.requesterDevice)).toBe(
       deviceIdToHex(bearer.deviceId),
     );
-    expect(seen?.scope).toEqual(TEST_SCOPE);
+    expect(seen.scope).toEqual(TEST_SCOPE);
   });
 });
 
@@ -419,9 +428,3 @@ describe("round trip: requestCapability against createCapabilityRequestHandler",
     ).rejects.toThrow(/denied/);
   });
 });
-
-const _decisionShapeCheck: CapabilityGrantDecision = {
-  kind: "reject",
-  reason: "type-only sanity check",
-};
-void _decisionShapeCheck;
