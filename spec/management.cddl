@@ -121,8 +121,12 @@ capability-grant = { verb: "capability.grant", "granted-token": capability-token
 ; capability-token, the same embedded-token idiom `token-claims.parent` and
 ; `room-notice-claims.token` already use. Reuses the ordinary
 ; capability-token narrowing/`delegations-remaining`/`expires` machinery
-; entirely unchanged: `"revoke"` is just another capability string, so
-; `mintCapabilityToken`/`canGrant` need no special-casing for it.
+; entirely unchanged: `manage:revoke` (spec/registry/core-capabilities.md) is
+; just another capability string, so `mintCapabilityToken`/`canGrant` need no
+; special-casing for it. (A bare `"revoke"` verb, as first sketched in the
+; issue that proposed this, does not itself satisfy `core-capability`'s own
+; `subsystem:action` grammar in tokens.cddl -- `manage:revoke` follows the
+; same registered-verb convention every other core capability here does.)
 ;
 ; A verifier obligation, additive to the issuer-match rule above — a
 ; revocation-entry counts against a token when EITHER holds, not only the
@@ -132,7 +136,7 @@ capability-grant = { verb: "capability.grant", "granted-token": capability-token
 ; with `expectedBearer` set to THIS revocation-entry's own `issuer` — this
 ; is what proves the authorization was actually granted to the party
 ; submitting the revocation, not merely referenced from someone else's. The
-; verified token's own `capability` MUST equal `"revoke"`, and its own
+; verified token's own `capability` MUST equal `manage:revoke`, and its own
 ; `scope` MUST narrow (`tokens.cddl`'s own scope-narrowing relation) the
 ; scope of the token this entry is attempting to revoke. An `authorization`
 ; that fails any of this makes the entry no more valid than if the field

@@ -50,9 +50,9 @@ describe("createRevocationView", () => {
 
     const entries = await view.entriesFor(tokenId);
     expect(entries).toHaveLength(1);
-    expect(equalBytes(entries[0]?.issuer ?? new Uint8Array(), issuer.deviceId)).toBe(
-      true,
-    );
+    expect(
+      equalBytes(entries[0]?.issuer ?? new Uint8Array(), issuer.deviceId),
+    ).toBe(true);
   });
 
   it("still returns a third party's own recorded revocation-entry for someone else's token-id -- filtering by issuer is the caller's (verifyTokenChain's) obligation, not the store's", async () => {

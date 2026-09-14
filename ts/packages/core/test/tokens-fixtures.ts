@@ -110,7 +110,7 @@ export interface TokenSeed {
   parent?: Uint8Array<ArrayBuffer>;
   delegationsRemaining?: number;
   validUntil?: number;
-  /** Defaults to "exec:pty", the value every pre-existing test relies on implicitly. Overridable so a test can mint a "revoke"-capability authorization token without needing a second signing helper. */
+  /** Defaults to "exec:pty", the value every pre-existing test relies on implicitly. Overridable so a test can mint a manage:revoke-capability authorization token without needing a second signing helper. */
   capability?: CapabilityVerb;
 }
 
