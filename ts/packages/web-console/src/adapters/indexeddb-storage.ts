@@ -13,7 +13,7 @@ const PREFIX_UPPER_BOUND_SUFFIX = "\uFFFF";
 
 interface StoredRecord {
   key: string;
-  value: Uint8Array;
+  value: Uint8Array<ArrayBuffer>;
 }
 
 function isStoredRecord(value: unknown): value is StoredRecord {
