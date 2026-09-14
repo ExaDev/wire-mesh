@@ -19,6 +19,12 @@ const SAME_MACHINE_WEBRTC_ARGS = [
   "--allow-loopback-in-peer-connection",
 ];
 
+// --use-fake-device-for-media-stream generates synthetic audio/video instead of touching a real camera/mic (there is none in CI, and a real one would make this test's pass/fail depend on the host's own hardware); --use-fake-ui-for-media-stream auto-grants the getUserMedia permission prompt that would otherwise block headlessly forever.
+const FAKE_MEDIA_ARGS = [
+  "--use-fake-device-for-media-stream",
+  "--use-fake-ui-for-media-stream",
+];
+
 const NEGOTIATION_TIMEOUT_MS = 15_000;
 const POLL_INTERVAL_MS = 200;
 // The relay only registers a gossiped device once its own receive loop processes it -- session.connect() resolving over a real socket only means the self-advert bytes left this process, not that the relay's registry has them yet (the same real-socket timing gap ts/packages/node/test/relay-end-to-end.test.ts's own settle delay documents).
@@ -39,10 +45,11 @@ interface FrameSummaryEntry {
 declare global {
   interface Window {
     harness: {
-      connect: (address: string) => Promise<number[]>;
+      connect: (address: string, withMedia?: boolean) => Promise<number[]>;
       initiate: (targetDevice: readonly number[]) => Promise<string>;
       frameSummary: () => FrameSummaryEntry[];
       waitForIncoming: () => Promise<string>;
+      remoteTrackKinds: () => string[];
       sendGossip: (
         connectionId: string,
         wire: {
@@ -88,12 +95,21 @@ async function pollUntil<T>(
 }
 
 /** A genuinely separate Chromium process, launched independently rather than as a second context inside a shared Browser, simulating one device -- separate storage/IndexedDB/identity, and no shared browser process either. */
-async function launchDeviceBrowser(): Promise<Browser> {
-  return chromium.launch({ args: SAME_MACHINE_WEBRTC_ARGS });
+async function launchDeviceBrowser(
+  extraArgs: readonly string[] = [],
+): Promise<Browser> {
+  return chromium.launch({ args: [...SAME_MACHINE_WEBRTC_ARGS, ...extraArgs] });
 }
 
-async function newDevicePage(browser: Readonly<Browser>): Promise<Page> {
+async function newDevicePage(
+  browser: Readonly<Browser>,
+  grantMediaPermissions = false,
+): Promise<Page> {
   const context = await browser.newContext();
+  // --use-fake-ui-for-media-stream auto-accepts Chromium's own native getUserMedia prompt, but Playwright's separate Permissions-API-level gate still needs an explicit grant for the origin, or getUserMedia rejects before that prompt is ever reached.
+  if (grantMediaPermissions) {
+    await context.grantPermissions(["camera", "microphone"]);
+  }
   const page = await context.newPage();
   page.on("pageerror", (error) => {
     throw error;
@@ -282,4 +298,112 @@ async function runNegotiationTest(
     async (connectionId) => window.harness.closeConnection(connectionId),
     bConnectionId,
   );
+}
+
+test("two independent browser instances exchange real audio and video tracks over the same offer/answer/ICE exchange as the data channel", async ({
+  baseURL,
+}) => {
+  test.setTimeout(TEST_TIMEOUT_MS);
+  const harnessUrl = baseURL ?? "http://localhost:8798/live-check/harness.html";
+
+  const browserA = await launchDeviceBrowser(FAKE_MEDIA_ARGS);
+  const browserB = await launchDeviceBrowser(FAKE_MEDIA_ARGS);
+  try {
+    await runMediaNegotiationTest(browserA, browserB, harnessUrl);
+  } finally {
+    await Promise.all([browserA.close(), browserB.close()]);
+  }
+});
+
+async function runMediaNegotiationTest(
+  browserA: Readonly<Browser>,
+  browserB: Readonly<Browser>,
+  harnessUrl: string,
+): Promise<void> {
+  const pageA = await newDevicePage(browserA, true);
+  const pageB = await newDevicePage(browserB, true);
+
+  await pageA.goto(harnessUrl);
+  await pageB.goto(harnessUrl);
+
+  const deviceA = await pageA.evaluate(
+    async (address) => window.harness.connect(address, true),
+    RELAY_ADDRESS,
+  );
+  const deviceB = await pageB.evaluate(
+    async (address) => window.harness.connect(address, true),
+    RELAY_ADDRESS,
+  );
+
+  expect(deviceA).not.toEqual(deviceB);
+
+  await new Promise((resolve) => {
+    setTimeout(resolve, GOSSIP_SETTLE_MS);
+  });
+
+  const bIncoming = pageB.evaluate(async () =>
+    window.harness.waitForIncoming(),
+  );
+  const initiatePromise = pageA.evaluate(
+    async (targetDevice) => window.harness.initiate(targetDevice),
+    deviceB,
+  );
+  let initiateRejection: unknown;
+  initiatePromise.then(
+    () => undefined,
+    (error: unknown) => {
+      initiateRejection = error;
+    },
+  );
+
+  // Same best-effort posture as the data-channel test above: whether the resulting RTCPeerConnection's own ICE handshake reaches "connected" -- required for any track to actually arrive -- depends on a host property outside this test's control (see the module comment). A genuine signaling rejection (as opposed to ICE simply not completing) is still a real failure and must fail the test.
+  const dataChannelRace = await Promise.race([
+    Promise.all([initiatePromise, bIncoming]).then(() => ({
+      ok: true as const,
+    })),
+    new Promise<{ ok: false }>((resolve) => {
+      setTimeout(() => {
+        resolve({ ok: false });
+      }, NEGOTIATION_TIMEOUT_MS);
+    }),
+  ]);
+
+  if (initiateRejection !== undefined) {
+    throw initiateRejection instanceof Error
+      ? initiateRejection
+      : new Error(JSON.stringify(initiateRejection));
+  }
+
+  test.info().annotations.push({
+    type: dataChannelRace.ok
+      ? "webrtc-media-negotiated"
+      : "webrtc-media-not-negotiated",
+    description: dataChannelRace.ok
+      ? "RTCPeerConnection reached open in this environment"
+      : "ICE did not complete in this environment (see module comment) -- media wiring cannot be proven end-to-end here",
+  });
+
+  if (!dataChannelRace.ok) {
+    return;
+  }
+
+  const [kindsA, kindsB] = await pollUntil(
+    async () => {
+      const currentKindsA = await pageA.evaluate(() =>
+        window.harness.remoteTrackKinds(),
+      );
+      const currentKindsB = await pageB.evaluate(() =>
+        window.harness.remoteTrackKinds(),
+      );
+      const bothHaveBothKinds = [currentKindsA, currentKindsB].every(
+        (kinds) => kinds.includes("audio") && kinds.includes("video"),
+      );
+      return bothHaveBothKinds ? [currentKindsA, currentKindsB] : undefined;
+    },
+    NEGOTIATION_TIMEOUT_MS,
+    "both sides to receive the peer's audio and video tracks",
+  );
+
+  expect(kindsA).toEqual(expect.arrayContaining(["audio", "video"]));
+  expect(kindsB).toEqual(expect.arrayContaining(["audio", "video"]));
 }

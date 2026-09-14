@@ -44,6 +44,10 @@ export interface WebrtcNegotiatorOptions {
   clock: Clock;
   /** Called once for each incoming, authorized offer, with the resulting Connection once its data channel opens. */
   onIncomingConnection: (connection: Readonly<Connection>) => void;
+  /** Local media tracks added to every peer connection this negotiator creates, offering or answering alike -- core/webrtc's signaling carries raw SDP opaquely, so the identical offer/answer/ICE exchange already used for the data channel carries these with no wire change (see wire-mesh#35). Omit (or pass none) for a data-channel-only negotiator, exactly today's existing behaviour. */
+  localTracks?: readonly MediaStreamTrack[];
+  /** Fired for every remote track received on any peer connection this negotiator manages, offering or answering alike. */
+  onRemoteTrack?: (event: Readonly<RTCTrackEvent>) => void;
 }
 
 export interface WebrtcNegotiator {
@@ -177,6 +181,19 @@ export async function authorizeIncomingOffer(
   );
 }
 
+/** Adds every local track (if any) and wires up the remote-track listener (if given) on a freshly-constructed peer connection -- shared between initiate() and handleIncomingOffer() so both roles carry media identically, matching how they already share the data-channel/ICE-candidate wiring pattern. A no-op call (neither option given) is exactly today's data-channel-only behaviour. */
+function wireMediaTracks(
+  pc: Readonly<RTCPeerConnection>,
+  options: Readonly<WebrtcNegotiatorOptions>,
+): void {
+  for (const track of options.localTracks ?? []) {
+    pc.addTrack(track);
+  }
+  if (options.onRemoteTrack !== undefined) {
+    pc.addEventListener("track", options.onRemoteTrack);
+  }
+}
+
 // The caller must set channel.binaryType = "arraybuffer" itself before calling this, exactly like wrapRtcDataChannel's own contract -- this function never mutates the channel it is handed.
 function wireOpenChannel(
   channel: Readonly<RTCDataChannel>,
@@ -235,6 +252,7 @@ export function createWebrtcNegotiator(
     // No ICE servers configured -- host candidates alone are enough for the same-LAN scenario this feature exists for; a caller needing cross-network NAT traversal would thread STUN/TURN servers in here, deliberately not built since nothing in this plan calls for it.
     const pc = new RTCPeerConnection();
     peerConnections.set(negotiationId, pc);
+    wireMediaTracks(pc, options);
     pc.addEventListener("icecandidate", (event) => {
       void sendIceCandidate(negotiationId, event.candidate);
     });
@@ -304,6 +322,7 @@ export function createWebrtcNegotiator(
       // No ICE servers configured -- see the matching comment in handleIncomingOffer.
       const pc = new RTCPeerConnection();
       peerConnections.set(negotiationId, pc);
+      wireMediaTracks(pc, options);
       pc.addEventListener("icecandidate", (event) => {
         void sendIceCandidate(negotiationId, event.candidate);
       });
