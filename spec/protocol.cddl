@@ -672,7 +672,7 @@ room-notice = cose-sign1   ; payload = bstr .cbor room-notice-claims
 ; (never a bare token-id reference), so a reader with no other context can
 ; verify posting authority from the notice alone.
 ;
-; Five verifier obligations, beyond token-claims' own (signature, expiry,
+; Six verifier obligations, beyond token-claims' own (signature, expiry,
 ; not-before, revocation, delegations-remaining):
 ;
 ; 1. sha256(poster-key.public-key) MUST equal poster -- the same
