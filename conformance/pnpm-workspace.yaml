@@ -1,0 +1,3 @@
+minimumReleaseAgeExclude:
+  - '@exadev/eslint-config'
+saveExact: true
