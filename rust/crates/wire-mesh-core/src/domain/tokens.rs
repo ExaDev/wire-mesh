@@ -1,7 +1,4 @@
-//! Capability-token verification: signature against the embedded issuer
-//! key, the self-certifying device-id check, expiry and not-before
-//! windows, revocation of every link in the chain, and delegation's
-//! narrowing-only rule.
+// ! Capability-token verification: signature against the embedded issuer ! key, the self-certifying device-id check, expiry, not-before, and ! valid-until windows, revocation of every link in the chain, and ! delegation's narrowing-only rule.
 //!
 //! Every check here is a verifier obligation the CDDL deliberately cannot
 //! express (see `tokens.cddl`'s prose): a token is self-certifying — no
@@ -44,6 +41,14 @@ pub enum TokenRejection {
     NotYetValid {
         token_id: Vec<u8>,
         not_before: u64,
+        now: u64,
+    },
+    /// A link's own content/action has outlived its `valid-until`, even
+    /// though the token's `expires` (authorisation to present it) has not
+    /// yet elapsed.
+    ContentExpired {
+        token_id: Vec<u8>,
+        valid_until: u64,
         now: u64,
     },
     /// This link's token-id is revoked by its own issuer.
@@ -92,6 +97,15 @@ impl core::fmt::Display for TokenRejection {
             } => write!(
                 f,
                 "token {} not valid before {not_before} (now {now})",
+                hex_prefix(token_id)
+            ),
+            TokenRejection::ContentExpired {
+                token_id,
+                valid_until,
+                now,
+            } => write!(
+                f,
+                "token {}'s content expired at {valid_until} (now {now})",
                 hex_prefix(token_id)
             ),
             TokenRejection::Revoked { token_id } => write!(
@@ -168,7 +182,8 @@ impl TokenVerdict {
 /// 3. the link's own token-id is checked against the revocation view —
 ///    revoking one ancestor revokes everything delegated beneath it, so
 ///    the sweep covers every ancestor, not just the leaf,
-/// 4. the link's expiry and not-before windows hold at `clock.now()`,
+/// 4. the link's expiry, not-before, and valid-until windows hold at
+///    `clock.now()`,
 /// 5. against the link *below* it: the parent's bearer is the child's
 ///    issuer, the capability verb is unchanged, the child's scope lies
 ///    within the parent's, and the child's expiry does not exceed the
@@ -258,6 +273,15 @@ pub async fn verify_capability_token(
                 return TokenVerdict::Invalid(TokenRejection::NotYetValid {
                     token_id: claims.token_id,
                     not_before,
+                    now,
+                });
+            }
+        }
+        if let Some(valid_until) = claims.valid_until {
+            if valid_until <= now {
+                return TokenVerdict::Invalid(TokenRejection::ContentExpired {
+                    token_id: claims.token_id,
+                    valid_until,
                     now,
                 });
             }
@@ -377,6 +401,7 @@ mod tests {
             },
             expires: NOW + 60_000,
             not_before: None,
+            valid_until: None,
             parent: None,
             extra: CanonicalMap::new(),
         }
@@ -515,6 +540,47 @@ mod tests {
             verdict,
             TokenVerdict::Invalid(TokenRejection::NotYetValid { .. })
         ));
+    }
+
+    #[tokio::test]
+    async fn valid_until_window() {
+        let issuer = NodeIdentity::generate_ed25519();
+
+        // The token itself hasn't expired, but its content has -- rejected with a distinct reason from an ordinary expired token.
+        let mut content_expired = claims_for(&issuer, DeviceId([0xAA; 32]));
+        content_expired.valid_until = Some(NOW - 1);
+        let verdict = verify(
+            &issuer,
+            &RevocationView::new(),
+            &mint(&issuer, &content_expired).await,
+        )
+        .await;
+        assert!(matches!(
+            verdict,
+            TokenVerdict::Invalid(TokenRejection::ContentExpired { .. })
+        ));
+
+        // Still in the future: accepted.
+        let mut still_valid = claims_for(&issuer, DeviceId([0xAA; 32]));
+        still_valid.valid_until = Some(NOW + 1);
+        let verdict = verify(
+            &issuer,
+            &RevocationView::new(),
+            &mint(&issuer, &still_valid).await,
+        )
+        .await;
+        assert!(verdict.is_valid());
+
+        // Absent means unbounded -- claims_for's own default already omits it, and expiry_and_not_before_windows' own "accepts" path above already covers that a claim with no valid-until at all verifies; this asserts it explicitly against the same fixture used here.
+        let unbounded = claims_for(&issuer, DeviceId([0xAA; 32]));
+        assert_eq!(unbounded.valid_until, None);
+        let verdict = verify(
+            &issuer,
+            &RevocationView::new(),
+            &mint(&issuer, &unbounded).await,
+        )
+        .await;
+        assert!(verdict.is_valid());
     }
 
     #[tokio::test]

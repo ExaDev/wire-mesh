@@ -463,8 +463,8 @@ pub type CapabilityToken = CoseSign1;
 /// CDE key order over the full key set (typed fields plus the open `* tstr
 /// => any` tail) is computed by the encoder: `scope` (6 encoded bytes),
 /// `bearer`/`issuer`/`parent` (7), `expires` (8), `token-id` (9),
-/// `capability`/`issuer-key`/`not-before` (11), with any extension claim
-/// interleaved by its own encoded length.
+/// `capability`/`issuer-key`/`not-before`/`valid-until` (11), with any
+/// extension claim interleaved by its own encoded length.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TokenClaims {
     pub token_id: Vec<u8>,
@@ -476,6 +476,10 @@ pub struct TokenClaims {
     /// Unix ms.
     pub expires: u64,
     pub not_before: Option<u64>,
+    /// Unix ms; bounds the lifetime of the authorised content/action
+    /// itself, independent of and in addition to `expires` (authorisation
+    /// to present the token). Absent means unbounded.
+    pub valid_until: Option<u64>,
     /// `bstr .cbor capability-token` — a fully self-contained nested
     /// COSE_Sign1 of the parent token, opaque at this layer.
     pub parent: Option<Vec<u8>>,
@@ -522,6 +526,9 @@ impl Encode<()> for TokenClaims {
         if let Some(not_before) = self.not_before {
             builder.push("not-before", &not_before);
         }
+        if let Some(valid_until) = self.valid_until {
+            builder.push("valid-until", &valid_until);
+        }
         if let Some(parent) = &self.parent {
             builder.push_bytes("parent", parent);
         }
@@ -553,6 +560,7 @@ pub(crate) fn token_claims_from(d: &mut Decoder<'_>) -> Result<TokenClaims, Deco
     let mut scope: Option<CapabilityScope> = None;
     let mut expires: Option<u64> = None;
     let mut not_before: Option<u64> = None;
+    let mut valid_until: Option<u64> = None;
     let mut parent: Option<Vec<u8>> = None;
     let mut extra = CanonicalMap::new();
     while let Some(key) = map.next_key(d)? {
@@ -567,6 +575,7 @@ pub(crate) fn token_claims_from(d: &mut Decoder<'_>) -> Result<TokenClaims, Deco
             "scope" => strict::set_once(&mut scope, scope_from(d)?)?,
             "expires" => strict::set_once(&mut expires, strict::uint_value(d)?)?,
             "not-before" => strict::set_once(&mut not_before, strict::uint_value(d)?)?,
+            "valid-until" => strict::set_once(&mut valid_until, strict::uint_value(d)?)?,
             "parent" => strict::set_once(&mut parent, strict::bytes_value(d)?)?,
             other => {
                 let value = CborValue::decode_strict(d)?;
@@ -583,6 +592,7 @@ pub(crate) fn token_claims_from(d: &mut Decoder<'_>) -> Result<TokenClaims, Deco
         scope: scope.ok_or(DecodeError::MissingField("scope"))?,
         expires: expires.ok_or(DecodeError::MissingField("expires"))?,
         not_before,
+        valid_until,
         parent,
         extra,
     })
@@ -832,6 +842,7 @@ mod tests {
             },
             expires: 42,
             not_before: None,
+            valid_until: None,
             parent: None,
             extra,
         };
