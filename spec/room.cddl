@@ -223,6 +223,14 @@ room-notice = cose-sign1   ; payload = bstr .cbor room-notice-claims
 ;    genuinely disagree about a notice's validity depending on when they
 ;    joined; this is not closable without a trusted clock or sequencer,
 ;    neither of which this design has, deliberately.
+; 6. An optional `? valid-until` bounds the notice's own displayable
+;    validity, independent of and in addition to obligation 5's
+;    revocation-based invalidity -- a notice becomes invalid because its
+;    poster's authority was revoked, OR because its own stated lifetime
+;    elapsed, whichever comes first. Unlike obligation 5, this check is
+;    closable: it is a signed timestamp compared against the reader's own
+;    local clock, not dependent on when a revocation happened to arrive.
+;    Checked at read time, not at post time.
 room-notice-claims = {
   room: room-path,
   poster: device-id,
@@ -233,6 +241,7 @@ room-notice-claims = {
   "content-type": tstr,
   content: bstr,
   ? refs: [* message-ref],
+  ? "valid-until": uint,        ; Unix ms -- see obligation 6
   * tstr => any,                ; forward-compatible extension claims, the same tail token-claims already carries
 }
 
