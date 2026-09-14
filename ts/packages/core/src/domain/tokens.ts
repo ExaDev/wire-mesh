@@ -75,9 +75,9 @@ function pathNarrows(childPath: string, parentPath: string): boolean {
 }
 
 /**
- * True when childScope narrows parentScope per tokens.cddl ("each hop can only narrow authority, never widen it"): the kind must be identical (a different kind is a different kind of authority, not a narrower one), and a parent with a path requires the child to carry an equal-or-descendant path -- an absent child path means the kind's whole-scope root, which is wider than any path-narrowed parent. A parent with no path (whole-scope root) lets any child path under the same kind through.
+ * True when childScope narrows parentScope per tokens.cddl ("each hop can only narrow authority, never widen it"): the kind must be identical (a different kind is a different kind of authority, not a narrower one), and a parent with a path requires the child to carry an equal-or-descendant path -- an absent child path means the kind's whole-scope root, which is wider than any path-narrowed parent. A parent with no path (whole-scope root) lets any child path under the same kind through. Exported for capability-grant.ts's own obligation 4 (an unsolicited push's embedded token must equal-or-root the enclosing request's own scope), which is exactly this same narrowing relation applied outside a delegation chain.
  */
-function scopeNarrows(
+export function scopeNarrows(
   parent: TokenClaims["scope"],
   child: TokenClaims["scope"],
 ): boolean {
