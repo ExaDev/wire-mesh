@@ -655,6 +655,14 @@ room-notice = cose-sign1   ; payload = bstr .cbor room-notice-claims
 ;    genuinely disagree about a notice's validity depending on when they
 ;    joined; this is not closable without a trusted clock or sequencer,
 ;    neither of which this design has, deliberately.
+; 6. An optional `? valid-until` bounds the notice's own displayable
+;    validity, independent of and in addition to obligation 5's
+;    revocation-based invalidity -- a notice becomes invalid because its
+;    poster's authority was revoked, OR because its own stated lifetime
+;    elapsed, whichever comes first. Unlike obligation 5, this check is
+;    closable: it is a signed timestamp compared against the reader's own
+;    local clock, not dependent on when a revocation happened to arrive.
+;    Checked at read time, not at post time.
 room-notice-claims = {
   room: room-path,
   poster: device-id,
@@ -665,6 +673,7 @@ room-notice-claims = {
   "content-type": tstr,
   content: bstr,
   ? refs: [* message-ref],
+  ? "valid-until": uint,        ; Unix ms -- see obligation 6
   * tstr => any,                ; forward-compatible extension claims, the same tail token-claims already carries
 }
 
@@ -821,6 +830,7 @@ token-claims = {
   ? not-before: uint,
   ? parent: bstr,               ; bstr .cbor capability-token — a fully self-contained, nested COSE_Sign1 of the parent token; the recursive delegation chain. A verifier walking this chain MUST also check every ancestor's own token-id against the revocation view (management.cddl's revocation-entry) -- revoking one ancestor revokes everything delegated beneath it, not just a leaf's own token-id.
   ? "delegations-remaining": uint,
+  ? "valid-until": uint,        ; Unix ms; bounds the lifetime of the authorised CONTENT/ACTION, distinct from `expires` (authorisation to present the token itself). A verifier MUST additionally reject when now > valid-until, independent of expires/revocation. Absent means unbounded, matching delegations-remaining's own absent-means-unbounded precedent -- no migration needed for existing tokens.
   * tstr => any,                ; forward-compatible extension claims
 }
 
