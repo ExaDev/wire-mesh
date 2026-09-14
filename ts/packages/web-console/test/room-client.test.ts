@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { cdeEncodeOptions, encode } from "cbor2";
+import { cdeDecodeOptions, cdeEncodeOptions, decode, encode } from "cbor2";
 import type {
   CapabilityScope,
   CapabilityToken,
@@ -7,7 +7,10 @@ import type {
   ManageCommand,
   TokenClaims,
 } from "wire-mesh-core/generated/protocol";
-import { roomJoinOkSchema } from "wire-mesh-core/generated/protocol";
+import {
+  roomJoinOkSchema,
+  tokenClaimsSchema,
+} from "wire-mesh-core/generated/protocol";
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import type { Clock } from "wire-mesh-core/ports/clock";
 import type { RevocationCheck } from "wire-mesh-core/domain/tokens";
@@ -23,9 +26,12 @@ import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js"
 import {
   buildRoomSendCommand,
   createRoomRouter,
+  mintRoomInviteGrant,
   requestToJoin,
+  sendRoomInvite,
   sendRoomMessage,
   type IncomingRoomMessage,
+  type RoomInviteEvent,
   type RoomJoinRequestEvent,
 } from "../src/room-client.js";
 
@@ -205,6 +211,55 @@ describe("requestToJoin", () => {
     });
 
     await expect(requestToJoin(session, ROOM_PATH)).rejects.toThrow(/denied/);
+  });
+});
+
+describe("mintRoomInviteGrant", () => {
+  it("mints a token bearing invitee, scoped to roomPath under room:member", async () => {
+    const owner = await createWebCryptoIdentity();
+    const invitee = await createWebCryptoIdentity();
+
+    const token = await mintRoomInviteGrant(
+      owner,
+      fixedClock(NOW_MS),
+      ROOM_PATH,
+      invitee.deviceId,
+      NOW_MS + HOUR_MS,
+    );
+
+    const payload = token[2];
+    if (payload === null) throw new Error("expected a payload");
+    const claims = tokenClaimsSchema.parse(decode(payload, cdeDecodeOptions));
+    expect(deviceIdToHex(claims.bearer)).toBe(deviceIdToHex(invitee.deviceId));
+    expect(claims.capability).toBe(ROOM_MEMBER_CAPABILITY);
+    expect(claims.scope).toEqual({ kind: "room", path: ROOM_PATH });
+    expect(claims.expires).toBe(NOW_MS + HOUR_MS);
+  });
+});
+
+describe("sendRoomInvite", () => {
+  it("pushes the given token scoped to roomPath under room:member", async () => {
+    const { session } = fakeSession();
+    const token: CapabilityToken = [
+      new Uint8Array(0),
+      {},
+      null,
+      new Uint8Array(0),
+    ];
+    vi.mocked(session.sendManageRequest).mockResolvedValue({ result: "ok" });
+
+    const outcome = await sendRoomInvite(session, ROOM_PATH, token);
+
+    expect(outcome).toEqual({ result: "ok" });
+    expect(session.sendManageRequest).toHaveBeenCalledTimes(1);
+    const [command, scope, targetDevice] = vi.mocked(session.sendManageRequest)
+      .mock.calls[0] as [ManageCommand, CapabilityScope, DeviceId | undefined];
+    expect(command).toEqual({
+      verb: ROOM_MEMBER_CAPABILITY,
+      params: { verb: "capability.grant", "granted-token": token },
+    } satisfies ManageCommand);
+    expect(scope).toEqual({ kind: "room", path: ROOM_PATH });
+    expect(targetDevice).toBeUndefined();
   });
 });
 
@@ -404,6 +459,154 @@ describe("createRoomRouter", () => {
         result: "error",
         code: "denied",
         message: "not now",
+      });
+    });
+  });
+
+  it("delivers a validly verified room.invite to onRoomInvite, and responds ok", async () => {
+    const owner = await createWebCryptoIdentity();
+    const invitee = await createWebCryptoIdentity();
+    const roomPath = ownerNamedRoomPath(
+      deviceIdToHex(owner.deviceId),
+      "general",
+    );
+    const grantedToken = await mintRoomInviteGrant(
+      owner,
+      fixedClock(NOW_MS),
+      roomPath,
+      invitee.deviceId,
+      NOW_MS + HOUR_MS,
+    );
+    const { session, push } = fakeSession();
+    const onRoomInvite = vi.fn<(event: Readonly<RoomInviteEvent>) => void>();
+    createRoomRouter(
+      session,
+      {
+        identity: invitee,
+        clock: fixedClock(NOW_MS),
+        revocation: neverRevoked,
+        peerDevice: owner.deviceId,
+      },
+      { onRoomInvite },
+    );
+
+    const respond = vi.fn(async (): Promise<void> => Promise.resolve());
+    const incoming: IncomingManageRequest = {
+      requestId: 3,
+      command: {
+        verb: ROOM_MEMBER_CAPABILITY,
+        params: { verb: "capability.grant", "granted-token": grantedToken },
+      },
+      scope: { kind: "room", path: roomPath },
+      respond,
+    };
+    push(incoming);
+
+    await vi.waitFor(() => {
+      expect(respond).toHaveBeenCalledWith({ result: "ok" });
+    });
+    expect(onRoomInvite).toHaveBeenCalledTimes(1);
+    expect(onRoomInvite).toHaveBeenCalledWith({
+      roomPath,
+      granterDevice: owner.deviceId,
+      token: grantedToken,
+    });
+  });
+
+  it("refuses a room.invite carrying a token bearing someone else, and never calls onRoomInvite", async () => {
+    const owner = await createWebCryptoIdentity();
+    const invitee = await createWebCryptoIdentity();
+    const someoneElse = await createWebCryptoIdentity();
+    const roomPath = ownerNamedRoomPath(
+      deviceIdToHex(owner.deviceId),
+      "general",
+    );
+    const misdirectedToken = await mintRoomInviteGrant(
+      owner,
+      fixedClock(NOW_MS),
+      roomPath,
+      someoneElse.deviceId,
+      NOW_MS + HOUR_MS,
+    );
+    const { session, push } = fakeSession();
+    const onRoomInvite = vi.fn<(event: Readonly<RoomInviteEvent>) => void>();
+    createRoomRouter(
+      session,
+      {
+        identity: invitee,
+        clock: fixedClock(NOW_MS),
+        revocation: neverRevoked,
+        peerDevice: owner.deviceId,
+      },
+      { onRoomInvite },
+    );
+
+    const respond = vi.fn(async (): Promise<void> => Promise.resolve());
+    const incoming: IncomingManageRequest = {
+      requestId: 4,
+      command: {
+        verb: ROOM_MEMBER_CAPABILITY,
+        params: {
+          verb: "capability.grant",
+          "granted-token": misdirectedToken,
+        },
+      },
+      scope: { kind: "room", path: roomPath },
+      respond,
+    };
+    push(incoming);
+
+    await vi.waitFor(() => {
+      expect(respond).toHaveBeenCalledWith({
+        result: "error",
+        code: "bearer_mismatch",
+      });
+    });
+    expect(onRoomInvite).not.toHaveBeenCalled();
+  });
+
+  it("refuses a room.invite when this router has no onRoomInvite handler registered", async () => {
+    const owner = await createWebCryptoIdentity();
+    const invitee = await createWebCryptoIdentity();
+    const roomPath = ownerNamedRoomPath(
+      deviceIdToHex(owner.deviceId),
+      "general",
+    );
+    const grantedToken = await mintRoomInviteGrant(
+      owner,
+      fixedClock(NOW_MS),
+      roomPath,
+      invitee.deviceId,
+      NOW_MS + HOUR_MS,
+    );
+    const { session, push } = fakeSession();
+    createRoomRouter(
+      session,
+      {
+        identity: invitee,
+        clock: fixedClock(NOW_MS),
+        revocation: neverRevoked,
+        peerDevice: owner.deviceId,
+      },
+      {},
+    );
+
+    const respond = vi.fn(async (): Promise<void> => Promise.resolve());
+    const incoming: IncomingManageRequest = {
+      requestId: 5,
+      command: {
+        verb: ROOM_MEMBER_CAPABILITY,
+        params: { verb: "capability.grant", "granted-token": grantedToken },
+      },
+      scope: { kind: "room", path: roomPath },
+      respond,
+    };
+    push(incoming);
+
+    await vi.waitFor(() => {
+      expect(respond).toHaveBeenCalledWith({
+        result: "error",
+        code: "unsupported_verb",
       });
     });
   });
