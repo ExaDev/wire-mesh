@@ -9,13 +9,15 @@ import type {
   TokenDelegateHandler,
 } from "../src/domain/token-predicates.js";
 import type { IdentityPort } from "../src/ports/identity.js";
-import type {
-  CapabilityScope,
-  CapabilityToken,
-  TokenClaims,
+import {
+  tokenClaimsSchema,
+  type CapabilityScope,
+  type CapabilityToken,
+  type TokenClaims,
 } from "../src/generated/protocol.js";
 import {
   HOUR_MS,
+  buf,
   encodeBuf,
   fixedClock,
   generateEs256Identity,
@@ -41,7 +43,7 @@ async function signTokenWithRawConditions(
     capability: "exec:pty",
     scope: seed.scope,
     expires: seed.expires,
-    conditions: conditionsBytes,
+    conditions: buf(conditionsBytes),
   };
   const payload = encodeBuf(claims);
   const protectedHeader = encodeBuf({});
@@ -86,7 +88,7 @@ describe("token-claims.conditions -- the generic predicate-list evaluator", () =
     if (!minted.ok) return;
     expect(minted.token[2]).not.toBeNull();
     if (minted.token[2] === null) return;
-    const decodedClaims = decode(minted.token[2]);
+    const decodedClaims = tokenClaimsSchema.parse(decode(minted.token[2]));
     expect(decodedClaims.conditions).toBeUndefined();
 
     const verdict = await verifyCapabilityToken(minted.token, {
