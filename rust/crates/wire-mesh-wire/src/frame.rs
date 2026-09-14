@@ -1,6 +1,6 @@
 //! `frame.cddl` — the top-level `$frame-variant` socket as one Rust enum.
 //!
-//! Exactly 21 variants, no federation frames: the federation link protocol
+//! Exactly 24 variants, no federation frames: the federation link protocol
 //! is retired (`spec/federation.cddl` defines no rules) and `core/federation`
 //! is a reserved domain name that must never be advertised or negotiated —
 //! enforced at handshake validation, not here, because no federation frame
@@ -16,6 +16,9 @@
 
 use minicbor::{Decode, Decoder, Encode, Encoder};
 
+use crate::bulk::{
+    bulk_ack_from, bulk_data_from, bulk_end_from, BulkAckFrame, BulkDataFrame, BulkEndFrame,
+};
 use crate::data::{
     data_entries_from, data_have_from, data_request_from, DataEntriesFrame, DataHaveFrame,
     DataRequestFrame,
@@ -67,6 +70,9 @@ pub enum Frame {
     DataHave(DataHaveFrame),
     DataRequest(DataRequestFrame),
     DataEntries(DataEntriesFrame),
+    BulkData(BulkDataFrame),
+    BulkAck(BulkAckFrame),
+    BulkEnd(BulkEndFrame),
 }
 
 impl Frame {
@@ -94,6 +100,9 @@ impl Frame {
             Frame::DataHave(_) => DataHaveFrame::TYPE,
             Frame::DataRequest(_) => DataRequestFrame::TYPE,
             Frame::DataEntries(_) => DataEntriesFrame::TYPE,
+            Frame::BulkData(_) => BulkDataFrame::TYPE,
+            Frame::BulkAck(_) => BulkAckFrame::TYPE,
+            Frame::BulkEnd(_) => BulkEndFrame::TYPE,
         }
     }
 
@@ -182,6 +191,9 @@ impl Encode<()> for Frame {
             Frame::DataHave(f) => f.encode(e, &mut ()),
             Frame::DataRequest(f) => f.encode(e, &mut ()),
             Frame::DataEntries(f) => f.encode(e, &mut ()),
+            Frame::BulkData(f) => f.encode(e, &mut ()),
+            Frame::BulkAck(f) => f.encode(e, &mut ()),
+            Frame::BulkEnd(f) => f.encode(e, &mut ()),
         }
     }
 }
@@ -234,6 +246,9 @@ pub(crate) fn frame_from(d: &mut Decoder<'_>) -> Result<Frame, DecodeError> {
         DataHaveFrame::TYPE => Ok(Frame::DataHave(data_have_from(d)?)),
         DataRequestFrame::TYPE => Ok(Frame::DataRequest(data_request_from(d)?)),
         DataEntriesFrame::TYPE => Ok(Frame::DataEntries(data_entries_from(d)?)),
+        BulkDataFrame::TYPE => Ok(Frame::BulkData(bulk_data_from(d)?)),
+        BulkAckFrame::TYPE => Ok(Frame::BulkAck(bulk_ack_from(d)?)),
+        BulkEndFrame::TYPE => Ok(Frame::BulkEnd(bulk_end_from(d)?)),
         other => Err(DecodeError::BadLiteral {
             expected: "a known frame type",
             found: other.to_owned(),
@@ -283,6 +298,9 @@ mod tests {
             Frame::DataHave(DataHaveFrame { peer: crate::identity::DeviceId([1; 32]), head_seq: 0 }),
             Frame::DataRequest(DataRequestFrame { peer: crate::identity::DeviceId([1; 32]), from_seq: 0 }),
             Frame::DataEntries(DataEntriesFrame { peer: crate::identity::DeviceId([1; 32]), from_seq: 0, entries: vec![] }),
+            Frame::BulkData(BulkDataFrame { transfer_id: vec![1; crate::bulk::TRANSFER_ID_BYTE_LENGTH], seq: 0, bytes: vec![] }),
+            Frame::BulkAck(BulkAckFrame { transfer_id: vec![1; crate::bulk::TRANSFER_ID_BYTE_LENGTH], ack_seq: 0, window: 1 }),
+            Frame::BulkEnd(BulkEndFrame { transfer_id: vec![1; crate::bulk::TRANSFER_ID_BYTE_LENGTH], digest: vec![] }),
         ];
         let expected_kinds = [
             "handshake",
@@ -306,6 +324,9 @@ mod tests {
             "data-have",
             "data-request",
             "data-entries",
+            "bulk-data",
+            "bulk-ack",
+            "bulk-end",
         ];
         for (frame, kind) in frames.iter().zip(expected_kinds) {
             assert_eq!(frame.kind(), kind);
@@ -314,8 +335,8 @@ mod tests {
             assert_eq!(&back, frame, "round trip of {kind}");
             assert_eq!(back.kind(), kind);
         }
-        // 21 variants, exactly, no federation.
-        assert_eq!(frames.len(), 21);
+        // 24 variants, exactly, no federation.
+        assert_eq!(frames.len(), 24);
     }
 
     #[test]

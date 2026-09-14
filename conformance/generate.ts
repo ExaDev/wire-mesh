@@ -556,6 +556,23 @@ const frameVectors: Vector[] = [
     "from-seq": 100,
     entries: [hex("aabbcc"), hex("ddeeff00")],
   }),
+  vector("bulk_data_v1_chunk", {
+    type: "bulk-data",
+    "transfer-id": hex("aa".repeat(TOKEN_ID_BYTE_LENGTH)), // transfer-id is the identical opaque-16-byte convention token-id already uses
+    seq: 3,
+    bytes: hex("68656c6c6f0a"), // "hello\n"
+  }),
+  vector("bulk_ack_v1", {
+    type: "bulk-ack",
+    "transfer-id": hex("aa".repeat(TOKEN_ID_BYTE_LENGTH)),
+    "ack-seq": 3,
+    window: 65536,
+  }),
+  vector("bulk_end_v1", {
+    type: "bulk-end",
+    "transfer-id": hex("aa".repeat(TOKEN_ID_BYTE_LENGTH)),
+    digest: hex("cd".repeat(SHA256_BYTE_LENGTH)), // digest is a SHA-256 hash, the same 32-byte length device-id derivation already uses
+  }),
 ];
 
 // -----------------------------------------------------------------------
