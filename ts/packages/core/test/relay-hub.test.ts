@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { DeviceId, Frame } from "../src/generated/protocol.js";
+import type { DeviceId, Frame, PeerAdvert } from "../src/generated/protocol.js";
 import type { Connection } from "../src/ports/transport.js";
 import { createRelayHub } from "../src/domain/relay-hub.js";
 import { deviceIdFromFillHex, bytesFromHex } from "./hex.js";
@@ -89,17 +89,21 @@ class FakeConnection {
   }
 }
 
-function gossipFor(device: DeviceId): Frame {
+function peerAdvertFor(device: DeviceId): PeerAdvert {
   return {
-    type: "gossip",
-    peers: [
-      {
-        device,
-        addresses: ["203.0.113.5:4433"],
-        "snapshot-seconds": 1861833600,
-      },
-    ],
+    device,
+    addresses: ["203.0.113.5:4433"],
+    "snapshot-seconds": 1861833600,
   };
+}
+
+function gossipFor(device: DeviceId): Frame {
+  return { type: "gossip", peers: [peerAdvertFor(device)] };
+}
+
+/** A gossip-frame bundling several peer-adverts at once -- the exact shape relay-hub's own catch-up mechanism sends back to a gossiping connection, listing every other currently-known device in one frame rather than one frame per device. */
+function gossipForMany(...devices: DeviceId[]): Frame {
+  return { type: "gossip", peers: devices.map(peerAdvertFor) };
 }
 
 /** A Connection whose receive() stream delivers pushed frames until rejectNow(), then rejects -- the mid-stream hostile-input failure the real adapter produces for undecodable bytes. */
@@ -173,8 +177,9 @@ describe("createRelayHub", () => {
     a.push({ type: "relay-connect", "target-device": deviceB });
     await tick();
 
-    // b also receives a's gossip forwarded to it before the relay-inbound (see the dedicated gossip-forwarding tests below for that behaviour in isolation).
+    // b also receives a's gossip forwarded to it, then a catch-up frame triggered by b's own gossip (the only other known device at that point is a's, so it's a single-peer catch-up) before the relay-inbound (see the dedicated gossip-forwarding tests below for that behaviour in isolation).
     expect(b.sent).toEqual([
+      gossipFor(deviceA),
       gossipFor(deviceA),
       { type: "relay-inbound", "source-device": deviceA },
     ]);
@@ -201,13 +206,15 @@ describe("createRelayHub", () => {
     b.push({ type: "relay-data", payload: relayPayload });
     await tick();
 
-    // b received a's gossip forwarded, then relay-inbound (from the connect), then a's relay-data; a received b's gossip forwarded, then b's relay-data
+    // b received a's gossip forwarded, then its own catch-up (a is the only other known device), then relay-inbound (from the connect), then a's relay-data; a received the mirror image from b's gossip.
     expect(b.sent).toEqual([
+      gossipFor(deviceA),
       gossipFor(deviceA),
       { type: "relay-inbound", "source-device": deviceA },
       { type: "relay-data", payload: relayPayload, "from-device": deviceA },
     ]);
     expect(a.sent).toEqual([
+      gossipFor(deviceB),
       gossipFor(deviceB),
       { type: "relay-data", payload: relayPayload, "from-device": deviceB },
     ]);
@@ -270,9 +277,9 @@ describe("createRelayHub", () => {
     a.push({ type: "relay-connect", "target-device": deviceB });
     await tick();
 
-    // Each side also received the other's gossip forwarded to it before b disconnected; the unresolved relay-connect (b's registration is now gone) sends nothing further to either.
-    expect(a.sent).toEqual([gossipFor(deviceB)]);
-    expect(b.sent).toEqual([gossipFor(deviceA)]);
+    // Each side also received the other's gossip forwarded to it, plus its own single-peer catch-up, before b disconnected; the unresolved relay-connect (b's registration is now gone) sends nothing further to either.
+    expect(a.sent).toEqual([gossipFor(deviceB), gossipFor(deviceB)]);
+    expect(b.sent).toEqual([gossipFor(deviceA), gossipFor(deviceA)]);
     await a.end();
     await aHandling;
   });
@@ -294,13 +301,18 @@ describe("createRelayHub", () => {
     dialer.push({ type: "relay-connect", "target-device": deviceB });
     await tick();
 
-    // fresh and old each also receive each other's and the dialer's gossip forwarded to them.
+    // fresh and old each also receive each other's and the dialer's gossip forwarded to them, plus their own catch-up. fresh's own catch-up excludes deviceB (fresh's own re-gossip already re-registered it to itself by the time the catch-up is built), leaving only deviceA; old's catch-up runs after both fresh's and dialer's registrations have landed, so it combines both -- deviceB now pointing at fresh, not old itself.
     expect(fresh.sent).toEqual([
       gossipFor(deviceB),
       gossipFor(deviceA),
+      gossipFor(deviceA),
       { type: "relay-inbound", "source-device": deviceA },
     ]);
-    expect(old.sent).toEqual([gossipFor(deviceB), gossipFor(deviceA)]);
+    expect(old.sent).toEqual([
+      gossipFor(deviceB),
+      gossipFor(deviceA),
+      gossipForMany(deviceB, deviceA),
+    ]);
     await Promise.all([old.end(), fresh.end(), dialer.end()]);
     await Promise.all(handling);
   });
@@ -317,8 +329,9 @@ describe("createRelayHub", () => {
     a.push({ type: "relay-connect", "target-device": deviceB });
     await tick();
 
-    // b also received a's gossip forwarded to it before the relay-connect paired and notified it.
+    // b also received a's gossip forwarded to it, then its own catch-up (a is the only other known device), before the relay-connect paired and notified it.
     expect(b.sent).toEqual([
+      gossipFor(deviceA),
       gossipFor(deviceA),
       { type: "relay-inbound", "source-device": deviceA },
     ]);
@@ -333,8 +346,8 @@ describe("createRelayHub", () => {
     await tick();
     c.push({ type: "relay-connect", "target-device": deviceA });
     await tick();
-    // a's single entry is from b's original gossip forwarded to it during the initial exchange (both connections were already registered by then); a's own connection is torn down before c ever gossips, so c's re-gossip of deviceB never reaches it.
-    expect(a.sent).toEqual([gossipFor(deviceB)]);
+    // a's two entries are b's original gossip forwarded to it, plus a's own catch-up, both from the initial exchange (both connections were already registered by then); a's own connection is torn down before c ever gossips, so c's re-gossip of deviceB never reaches it.
+    expect(a.sent).toEqual([gossipFor(deviceB), gossipFor(deviceB)]);
     await c.end();
     await cHandling;
     await b.end();
@@ -363,15 +376,17 @@ describe("createRelayHub", () => {
     a.push({ type: "relay-connect", "target-device": deviceC });
     await tick();
 
-    // b and c each also received the other two connections' gossip forwarded to them (own device excluded) before the relay-inbound.
+    // b and c each also received the other two connections' gossip forwarded to them (own device excluded), then their own combined catch-up, before the relay-inbound.
     expect(b.sent).toEqual([
       gossipFor(deviceA),
       gossipFor(deviceC),
+      gossipForMany(deviceA, deviceC),
       { type: "relay-inbound", "source-device": deviceA },
     ]);
     expect(c.sent).toEqual([
       gossipFor(deviceA),
       gossipFor(deviceB),
+      gossipForMany(deviceA, deviceB),
       { type: "relay-inbound", "source-device": deviceA },
     ]);
 
@@ -381,6 +396,7 @@ describe("createRelayHub", () => {
     expect(a.sent).toEqual([
       gossipFor(deviceB),
       gossipFor(deviceC),
+      gossipForMany(deviceB, deviceC),
       { type: "relay-data", payload: relayPayload, "from-device": deviceB },
     ]);
 
@@ -390,6 +406,7 @@ describe("createRelayHub", () => {
     expect(a.sent).toEqual([
       gossipFor(deviceB),
       gossipFor(deviceC),
+      gossipForMany(deviceB, deviceC),
       { type: "relay-data", payload: relayPayload, "from-device": deviceB },
       { type: "relay-data", payload: relayPayload, "from-device": deviceC },
     ]);
@@ -409,12 +426,14 @@ describe("createRelayHub", () => {
     expect(b.sent).toEqual([
       gossipFor(deviceA),
       gossipFor(deviceC),
+      gossipForMany(deviceA, deviceC),
       { type: "relay-inbound", "source-device": deviceA },
       { type: "relay-data", payload: relayPayload, "from-device": deviceA },
     ]);
     expect(c.sent).toEqual([
       gossipFor(deviceA),
       gossipFor(deviceB),
+      gossipForMany(deviceA, deviceB),
       { type: "relay-inbound", "source-device": deviceA },
       { type: "relay-data", payload: relayPayload, "from-device": deviceA },
     ]);
@@ -443,20 +462,22 @@ describe("createRelayHub", () => {
     // x dials a: a becomes the target of x -> a
     x.push({ type: "relay-connect", "target-device": deviceA });
     await tick();
-    // a also received x's and b's gossip forwarded to it before the relay-inbound.
+    // a also received x's and b's gossip forwarded to it, then its own combined catch-up, before the relay-inbound.
     expect(a.sent).toEqual([
       gossipFor(deviceX),
       gossipFor(deviceB),
+      gossipForMany(deviceX, deviceB),
       { type: "relay-inbound", "source-device": deviceX },
     ]);
 
     // a now also initiates its own pipe to b -- the x <-> a pairing stays live alongside the new a <-> b one
     a.push({ type: "relay-connect", "target-device": deviceB });
     await tick();
-    // b also received x's and a's gossip forwarded to it before the relay-inbound.
+    // b also received x's and a's gossip forwarded to it, then its own combined catch-up, before the relay-inbound.
     expect(b.sent).toEqual([
       gossipFor(deviceX),
       gossipFor(deviceA),
+      gossipForMany(deviceX, deviceA),
       { type: "relay-inbound", "source-device": deviceA },
     ]);
 
@@ -466,6 +487,7 @@ describe("createRelayHub", () => {
     expect(a.sent).toEqual([
       gossipFor(deviceX),
       gossipFor(deviceB),
+      gossipForMany(deviceX, deviceB),
       { type: "relay-inbound", "source-device": deviceX },
       { type: "relay-data", payload: relayPayload, "from-device": deviceX },
     ]);
@@ -481,6 +503,7 @@ describe("createRelayHub", () => {
     expect(a.sent).toEqual([
       gossipFor(deviceX),
       gossipFor(deviceB),
+      gossipForMany(deviceX, deviceB),
       { type: "relay-inbound", "source-device": deviceX },
       { type: "relay-data", payload: relayPayload, "from-device": deviceX },
       { type: "relay-data", payload: relayPayload, "from-device": deviceB },
@@ -488,6 +511,7 @@ describe("createRelayHub", () => {
     expect(b.sent).toEqual([
       gossipFor(deviceX),
       gossipFor(deviceA),
+      gossipForMany(deviceX, deviceA),
       { type: "relay-inbound", "source-device": deviceA },
       { type: "relay-data", payload: relayPayload, "from-device": deviceA },
     ]);
@@ -516,20 +540,22 @@ describe("createRelayHub", () => {
     // b dials y: b becomes the initiator of b -> y
     b.push({ type: "relay-connect", "target-device": deviceY });
     await tick();
-    // y also received a's and b's gossip forwarded to it before the relay-inbound.
+    // y also received a's and b's gossip forwarded to it, then its own combined catch-up, before the relay-inbound.
     expect(y.sent).toEqual([
       gossipFor(deviceA),
       gossipFor(deviceB),
+      gossipForMany(deviceA, deviceB),
       { type: "relay-inbound", "source-device": deviceB },
     ]);
 
     // a now dials b -- the b <-> y pairing stays live alongside the new a <-> b one
     a.push({ type: "relay-connect", "target-device": deviceB });
     await tick();
-    // b also received a's and y's gossip forwarded to it before the relay-inbound.
+    // b also received a's and y's gossip forwarded to it, then its own combined catch-up, before the relay-inbound.
     expect(b.sent).toEqual([
       gossipFor(deviceA),
       gossipFor(deviceY),
+      gossipForMany(deviceA, deviceY),
       { type: "relay-inbound", "source-device": deviceA },
     ]);
 
@@ -539,6 +565,7 @@ describe("createRelayHub", () => {
     expect(b.sent).toEqual([
       gossipFor(deviceA),
       gossipFor(deviceY),
+      gossipForMany(deviceA, deviceY),
       { type: "relay-inbound", "source-device": deviceA },
       { type: "relay-data", payload: relayPayload, "from-device": deviceY },
     ]);
@@ -554,11 +581,13 @@ describe("createRelayHub", () => {
     expect(a.sent).toEqual([
       gossipFor(deviceB),
       gossipFor(deviceY),
+      gossipForMany(deviceB, deviceY),
       { type: "relay-data", payload: relayPayload, "from-device": deviceB },
     ]);
     expect(b.sent).toEqual([
       gossipFor(deviceA),
       gossipFor(deviceY),
+      gossipForMany(deviceA, deviceY),
       { type: "relay-inbound", "source-device": deviceA },
       { type: "relay-data", payload: relayPayload, "from-device": deviceY },
       { type: "relay-data", payload: relayPayload, "from-device": deviceA },
@@ -614,11 +643,12 @@ describe("createRelayHub", () => {
     d.push({ type: "relay-data", payload: relayPayload });
     await tick();
 
-    // Each target also received the other two targets' (and a's) gossip forwarded to it, own device excluded, before the relay-inbound.
+    // Each target also received the other two targets' (and a's) gossip forwarded to it, own device excluded, then its own combined catch-up, before the relay-inbound.
     expect(b.sent).toEqual([
       gossipFor(deviceA),
       gossipFor(deviceC),
       gossipFor(deviceD),
+      gossipForMany(deviceA, deviceC, deviceD),
       { type: "relay-inbound", "source-device": deviceA },
       { type: "relay-data", payload: relayPayload, "from-device": deviceA },
     ]);
@@ -626,6 +656,7 @@ describe("createRelayHub", () => {
       gossipFor(deviceA),
       gossipFor(deviceB),
       gossipFor(deviceD),
+      gossipForMany(deviceA, deviceB, deviceD),
       { type: "relay-inbound", "source-device": deviceA },
       { type: "relay-data", payload: relayPayload, "from-device": deviceA },
     ]);
@@ -633,6 +664,7 @@ describe("createRelayHub", () => {
       gossipFor(deviceA),
       gossipFor(deviceB),
       gossipFor(deviceC),
+      gossipForMany(deviceA, deviceB, deviceC),
       { type: "relay-inbound", "source-device": deviceA },
       { type: "relay-data", payload: relayPayload, "from-device": deviceA },
     ]);
@@ -640,6 +672,7 @@ describe("createRelayHub", () => {
       gossipFor(deviceB),
       gossipFor(deviceC),
       gossipFor(deviceD),
+      gossipForMany(deviceB, deviceC, deviceD),
       { type: "relay-data", payload: relayPayload, "from-device": deviceB },
       { type: "relay-data", payload: relayPayload, "from-device": deviceC },
       { type: "relay-data", payload: relayPayload, "from-device": deviceD },
@@ -735,5 +768,50 @@ describe("createRelayHub", () => {
 
     await Promise.all([a.end(), dead.end(), alive.end()]);
     await Promise.all(handling);
+  });
+
+  it("catches up a connection that joins the hub after another has already gossiped and settled -- forwarding alone would miss this, since a client gossips its own self-advert exactly once, at connect time, and never repeats it", async () => {
+    const hub = createRelayHub();
+    const a = new FakeConnection();
+    const aHandling = hub.handleConnection(a.connection);
+
+    // a gossips and fully settles before b even connects to the hub -- forwarding alone could never reach b, since a's advert is never re-sent and b's connection didn't exist yet to receive the forward.
+    a.push(gossipFor(deviceA));
+    await tick();
+
+    const b = new FakeConnection();
+    const bHandling = hub.handleConnection(b.connection);
+    b.push(gossipFor(deviceB));
+    await tick();
+
+    // b's own catch-up, triggered by its own gossip, delivers a's advert even though a never gossiped again.
+    expect(b.sent).toEqual([gossipFor(deviceA)]);
+    await Promise.all([a.end(), b.end()]);
+    await Promise.all([aHandling, bHandling]);
+  });
+
+  it("bundles every other already-known device into a single catch-up frame when the gossiping connection joins after they're already known, excluding its own device", async () => {
+    const hub = createRelayHub();
+    const a = new FakeConnection();
+    const b = new FakeConnection();
+    const handling = [
+      hub.handleConnection(a.connection),
+      hub.handleConnection(b.connection),
+    ];
+
+    a.push(gossipFor(deviceA));
+    b.push(gossipFor(deviceB));
+    await tick();
+
+    const c = new FakeConnection();
+    const deviceC = deviceIdFromFillHex("44");
+    const cHandling = hub.handleConnection(c.connection);
+    c.push(gossipFor(deviceC));
+    await tick();
+
+    // c's catch-up bundles both already-known devices into one frame, never c's own.
+    expect(c.sent).toEqual([gossipForMany(deviceA, deviceB)]);
+    await Promise.all([a.end(), b.end(), c.end()]);
+    await Promise.all([...handling, cHandling]);
   });
 });

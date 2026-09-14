@@ -1,7 +1,5 @@
 // A real, checked-in end-to-end test for the actual console UI's room-messaging flow (wire-mesh#101) -- webrtc.spec.ts already proves the raw WebRTC/relay signaling works against a bare test harness page; this drives the real production App/ConnectionPanel/RoomPanel components instead, the way a person actually uses the console: two independent browser instances, each its own persisted identity, connect to a real relay, one clicks "Message" on the other's directory row, the other approves the resulting request, a message is sent, and it renders on the receiving side -- with no manually copy-pasted token anywhere in the flow.
 //
-// Currently skipped: confirmed directly (running this exact test) that relay-hub never forwards a received gossip peer-advert to any other connected client -- it only registers the device internally for its own relay-connect target lookups (relay-hub.ts's handleFrame, the "gossip" branch). Two consoles connected to the same wire-mesh-node relay therefore never populate each other's Peer directory at all; webrtc.spec.ts's own harness only works around this by exchanging device-ids directly between the two Playwright page contexts in the test process, not something a real end user's UI can do. Filed as wire-mesh#110, blocking this issue (#101). Unskip once #110 lands -- this test should then pass unmodified, since it drives the real UI throughout and never depends on the workaround the harness test uses.
-//
 // The RoomPanel this test drives into existence only ever appears once negotiator.initiate()'s real WebRTC offer/answer/ICE exchange actually reaches a connected data channel -- the same host-network caveat webrtc.spec.ts's own module comment documents (ICE may not reach "connected" on a host whose only routable interface refuses to hairpin a loopback UDP packet, independent of Chromium/WebRTC). This test asserts directory visibility (which only needs the relay's WebSocket signaling, not ICE) unconditionally, then races the RoomPanel's appearance against a generous timeout and skips the rest of the flow gracefully -- with an annotation, not a failure -- if this specific environment can't complete ICE, exactly mirroring webrtc.spec.ts's own data-channel-open race.
 
 import {
@@ -49,7 +47,7 @@ async function connectConsole(
   await page.getByRole("button", { name: "Connect" }).click();
 }
 
-test.skip("two independent console instances see each other, message, approve, and render the reply through the real UI (blocked by wire-mesh#110)", async () => {
+test("two independent console instances see each other, message, approve, and render the reply through the real UI", async () => {
   test.setTimeout(TEST_TIMEOUT_MS);
   const appUrl = new URL(
     APP_URL_PATH,
