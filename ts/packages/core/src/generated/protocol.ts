@@ -266,6 +266,7 @@ export const tokenClaimsSchema = z.lazy(() => z.object({
   "parent": z.instanceof(Uint8Array).optional(),
   "delegations-remaining": z.number().int().nonnegative().optional(),
   "valid-until": z.number().int().nonnegative().optional(),
+  "conditions": z.instanceof(Uint8Array).optional(),
 }).catchall(z.unknown()));
 export const pingFrameSchema = z.lazy(() => z.object({
   "type": z.literal("ping"),
