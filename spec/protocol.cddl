@@ -1,3 +1,106 @@
+; core/bulk — resumable, flow-controlled bulk transfer (wire-mesh#34/#123).
+; A genuinely new domain, not a composition of streaming.cddl +
+; data-domain.cddl: stream-ack-frame's credit accounting is keyed by
+; stream-session, whose own doc-comment scopes it to one connection, and
+; reusing it for durable flow control would silently violate that
+; documented contract; data-entries-frame's sequence space is keyed only
+; by peer with durability explicitly "opportunistic" per its own comment —
+; bulk transfer needs the opposite: a receiver's ack-seq is a hard
+; durability guarantee, a materially different obligation from either.
+;
+; Two roles, two capabilities, matching the direction each manage-command
+; actually flows: the sender opens a transfer (bulk.open, sender to
+; receiver — "may I push this to you", gated by bulk:write) and the
+; receiver drives resumption (bulk.resume, receiver to sender — "please
+; continue sending from here", gated by bulk:read, since only the
+; receiver's own durable state knows what is actually missing, the same
+; reasoning data-request-frame's own receiver-driven design already
+; follows). bulk.cancel may originate from either side, under whichever
+; capability that side already holds for this transfer.
+;
+; seq/ack-seq are durable per transfer-id, not per-connection — a chunk
+; keeps its seq no matter which connection eventually carries it, and
+; bulk.resume on a fresh connection is the entire reconnection mechanism;
+; connection-level reconnection itself needs no new machinery here, riding
+; whatever ReconnectPolicy a session already uses.
+;
+; Resolved open questions (wire-mesh#34's own body left these open):
+;
+; - Chunk-size negotiation: deliberately NOT a wire field. Chunking
+;   granularity is the sender's own implementation detail, the same as
+;   stream-data-frame's own bytes field carries no size hint either — a
+;   receiver's own resource limits are a deployment/implementation policy
+;   question, not a protocol one, mirroring data-domain.cddl's own
+;   "retention is policy, not protocol" precedent for the identical class
+;   of question.
+; - transfer-id/issuer pairing: transfer-id stays a bare, globally-unique
+;   16-byte value, the same convention token-id/notice-id already use,
+;   not namespaced by issuer in the CDDL shape itself. The real protection
+;   is a verifier obligation instead (see below): a device-match check,
+;   not a wire-level pairing field.
+; - Token/capability expiry mid-transfer: no special mechanism needed.
+;   bulk.open and bulk.resume are each independently, ordinarily
+;   token-checked as manage-commands, exactly like every other verb in
+;   this spec; bulk-data/bulk-ack/bulk-end frames are not manage-requests
+;   and carry no per-frame token check of their own, the same way
+;   stream-data-frame's own per-chunk frames carry none either — an
+;   already-open transfer is not retroactively invalidated by its
+;   opening token later expiring, only starting or resuming with an
+;   already-expired one is refused.
+;
+; Verifier obligations:
+;
+; 1. A receiver MUST have durably persisted every chunk up to and
+;    including the ack-seq it advertises in a bulk-ack-frame before
+;    advertising it. An ack not backed by durable storage silently loses
+;    data on the next resume, since the sender trusts it as "safe to
+;    never retransmit below this point".
+; 2. A sender MUST refuse a bulk.resume whose requesting peer device-id
+;    does not match the device the corresponding bulk.open was originally
+;    addressed to — this is the real protection the "transfer-id/issuer
+;    pairing" open question above resolves to: without it, any other
+;    equally-authorized peer under the same bulk:read scope could hijack
+;    an in-flight transfer by learning or guessing its transfer-id.
+; 3. bulk-end-frame's digest MUST be verified by the receiver against its
+;    own durably-persisted chunks before treating the transfer as
+;    genuinely complete; a mismatch means the transfer is corrupt, not
+;    finished, regardless of what seq range was received.
+
+transfer-id = bstr .size 16
+
+bulk-open = {
+  verb: "bulk.open",
+  "transfer-id": transfer-id,
+  ? "total-size": uint,
+  ? "content-type": tstr,
+  * tstr => any,
+}
+; ack-seq: where the receiver wants the sender to resume from (the highest
+; contiguous sequence it has already durably persisted) — the entire
+; reconnection mechanism; no separate bulk.open is sent again for an
+; already-open transfer.
+bulk-resume = { verb: "bulk.resume", "transfer-id": transfer-id, "ack-seq": uint, * tstr => any }
+bulk-cancel = { verb: "bulk.cancel", "transfer-id": transfer-id, ? reason: tstr, * tstr => any }
+$manage-command-params /= bulk-open / bulk-resume / bulk-cancel
+
+; Chunk payload frames, riding the connection directly rather than
+; manage-request-frame — the same "control travels as manage-command,
+; bulk data travels as its own frame kind" split streaming.cddl already
+; establishes for stream-data-frame vs. pty.spawn.
+bulk-data-frame = { type: "bulk-data", "transfer-id": transfer-id, seq: uint, bytes: bstr }
+; A receiver sends this proactively once it accepts a bulk.open (with
+; ack-seq: 0, or its own already-known progress on a resumed transfer),
+; giving the sender its initial credit window through the same mechanism
+; used for every subsequent ack, rather than a one-off field duplicated
+; into a bespoke bulk-open response shape.
+bulk-ack-frame  = { type: "bulk-ack", "transfer-id": transfer-id, "ack-seq": uint, window: uint }
+; Sent exactly once, by the sender, once every chunk of the underlying
+; source has been transmitted — "the durable capture is fully delivered",
+; deliberately independent of any other domain's own lifecycle frame
+; (e.g. a core/exec stream-end-frame signalling "the process exited"),
+; the same distinction the worked example in wire-mesh#34's own body
+; draws between the two.
+bulk-end-frame  = { type: "bulk-end", "transfer-id": transfer-id, digest: bstr }
 ; core/data — the opaque, per-application data domain. Generalises Cascade's
 ; own oplog: each peer's own log is a single-writer, append-only sequence,
 ; so two peers' logs never block-conflict, and distributing them between
@@ -276,6 +379,9 @@ $frame-variant /= stream-end-frame
 $frame-variant /= data-have-frame
 $frame-variant /= data-request-frame
 $frame-variant /= data-entries-frame
+$frame-variant /= bulk-data-frame
+$frame-variant /= bulk-ack-frame
+$frame-variant /= bulk-end-frame
 
 frame = $frame-variant
 ; Handshake and the domain registry.
@@ -299,7 +405,7 @@ domain-id = core-domain-name / namespaced-domain-id / private-use-domain-id
 ; "core/federation" is retired: no frames are defined for it (see
 ; federation.cddl) and a peer must never advertise or negotiate it; the
 ; string itself stays reserved rather than becoming available for reuse.
-core-domain-name = "core/management" / "core/exec" / "core/data" / "core/federation" / "core/webrtc" / "core/room"
+core-domain-name = "core/management" / "core/exec" / "core/data" / "core/federation" / "core/webrtc" / "core/room" / "core/bulk"
 
 ; "<registrant>/<local-name>", where uniqueness comes from the registrant
 ; segment being a DNS name the registrant already owns — the same trick URNs
