@@ -48,13 +48,20 @@
 ;   opening token later expiring, only starting or resuming with an
 ;   already-expired one is refused.
 ;
+; ack-seq counts chunks, not indices: it is the number of chunks durably
+; persisted so far (equivalently, the seq the sender should send next),
+; never "the highest index accepted" — the latter has no way to express
+; "nothing received yet" under uint's non-negative constraint without an
+; awkward sentinel, where the count-based reading makes ack-seq: 0 on the
+; very first post-accept bulk-ack-frame mean exactly what it says.
+;
 ; Verifier obligations:
 ;
-; 1. A receiver MUST have durably persisted every chunk up to and
-;    including the ack-seq it advertises in a bulk-ack-frame before
-;    advertising it. An ack not backed by durable storage silently loses
-;    data on the next resume, since the sender trusts it as "safe to
-;    never retransmit below this point".
+; 1. A receiver MUST have durably persisted exactly the first ack-seq
+;    chunks (seq 0 through ack-seq - 1) before advertising that ack-seq
+;    in a bulk-ack-frame. An ack not backed by durable storage silently
+;    loses data on the next resume, since the sender trusts it as "safe
+;    to never retransmit below this point".
 ; 2. A sender MUST refuse a bulk.resume whose requesting peer device-id
 ;    does not match the device the corresponding bulk.open was originally
 ;    addressed to — this is the real protection the "transfer-id/issuer
@@ -75,10 +82,10 @@ bulk-open = {
   ? "content-type": tstr,
   * tstr => any,
 }
-; ack-seq: where the receiver wants the sender to resume from (the highest
-; contiguous sequence it has already durably persisted) — the entire
-; reconnection mechanism; no separate bulk.open is sent again for an
-; already-open transfer.
+; ack-seq: where the receiver wants the sender to resume from (the count
+; of chunks it has already durably persisted, per ack-seq's own
+; count-based semantics above) — the entire reconnection mechanism; no
+; separate bulk.open is sent again for an already-open transfer.
 bulk-resume = { verb: "bulk.resume", "transfer-id": transfer-id, "ack-seq": uint, * tstr => any }
 bulk-cancel = { verb: "bulk.cancel", "transfer-id": transfer-id, ? reason: tstr, * tstr => any }
 $manage-command-params /= bulk-open / bulk-resume / bulk-cancel
