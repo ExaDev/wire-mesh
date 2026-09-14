@@ -35,5 +35,8 @@ $frame-variant /= stream-end-frame
 $frame-variant /= data-have-frame
 $frame-variant /= data-request-frame
 $frame-variant /= data-entries-frame
+$frame-variant /= bulk-data-frame
+$frame-variant /= bulk-ack-frame
+$frame-variant /= bulk-end-frame
 
 frame = $frame-variant
