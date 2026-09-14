@@ -110,6 +110,7 @@ export interface TokenSeed {
   expires: number;
   parent?: Uint8Array<ArrayBuffer>;
   delegationsRemaining?: number;
+  validUntil?: number;
 }
 
 /** Builds and signs one capability token as `identity` -- explicit field-by-field construction rather than spreading a partial claims object, since TokenClaims' own `.catchall(z.unknown())` index signature (the spec's forward-compatible extension-field pattern) makes a spread-based `Omit<TokenClaims, ...>` lose the specific field types. Deliberately does none of mintCapabilityToken's own narrowing checks -- tests exercising verifyCapabilityToken's own enforcement need to construct chains mint would refuse to produce. */
@@ -128,6 +129,9 @@ export async function signToken(
     ...(seed.parent !== undefined ? { parent: seed.parent } : {}),
     ...(seed.delegationsRemaining !== undefined
       ? { "delegations-remaining": seed.delegationsRemaining }
+      : {}),
+    ...(seed.validUntil !== undefined
+      ? { "valid-until": seed.validUntil }
       : {}),
   };
 

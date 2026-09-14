@@ -211,6 +211,7 @@ export const roomNoticeClaimsSchema = z.lazy(() => z.object({
   "content-type": z.string(),
   "content": z.instanceof(Uint8Array),
   "refs": z.array(z.lazy(() => messageRefSchema)).optional(),
+  "valid-until": z.number().int().nonnegative().optional(),
 }).catchall(z.unknown()));
 export const streamSessionSchema = z.lazy(() => z.number().int().nonnegative());
 export const streamDataFrameSchema = z.lazy(() => z.object({
@@ -260,6 +261,7 @@ export const tokenClaimsSchema = z.lazy(() => z.object({
   "not-before": z.number().int().nonnegative().optional(),
   "parent": z.instanceof(Uint8Array).optional(),
   "delegations-remaining": z.number().int().nonnegative().optional(),
+  "valid-until": z.number().int().nonnegative().optional(),
 }).catchall(z.unknown()));
 export const pingFrameSchema = z.lazy(() => z.object({
   "type": z.literal("ping"),

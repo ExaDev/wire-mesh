@@ -26,6 +26,7 @@ export type TokenVerdictReason =
   | "bearer_mismatch"
   | "expired"
   | "not_yet_valid"
+  | "content_expired"
   | "revoked"
   | "delegation_exceeds_parent"
   | "parent_invalid";
@@ -193,6 +194,10 @@ async function verifyTokenChain(
   }
   if (claims["not-before"] !== undefined && claims["not-before"] > now) {
     return { ok: false, reason: "not_yet_valid" };
+  }
+  const validUntil = claims["valid-until"];
+  if (validUntil !== undefined && validUntil <= now) {
+    return { ok: false, reason: "content_expired" };
   }
 
   if (await options.revocation.isRevoked(claims["token-id"], claims.issuer)) {
