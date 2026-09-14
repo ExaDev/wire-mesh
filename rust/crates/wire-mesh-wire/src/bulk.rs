@@ -83,7 +83,10 @@ pub(crate) fn bulk_data_from(d: &mut Decoder<'_>) -> Result<BulkDataFrame, Decod
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BulkAckFrame {
     pub transfer_id: Vec<u8>,
-    /// Highest contiguous sequence the receiver has durably persisted.
+    /// The count of chunks durably persisted so far (equivalently, the
+    /// seq the sender should send next) -- not "the highest index
+    /// accepted", which has no way to express "nothing received yet"
+    /// under uint's non-negative constraint.
     pub ack_seq: u64,
     /// Credit, in bytes, the receiver will accept past `ack_seq`.
     pub window: u64,
