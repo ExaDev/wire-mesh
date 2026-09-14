@@ -359,7 +359,12 @@ describe("canGrant", () => {
       delegationsRemaining: 0,
     };
     expect(
-      await canGrant(rootVerdict.token, bearerIdentity.deviceId, candidate, now),
+      await canGrant(
+        rootVerdict.token,
+        bearerIdentity.deviceId,
+        candidate,
+        now,
+      ),
     ).toBe(true);
 
     const delegatedVerdict = await mintCapabilityToken({

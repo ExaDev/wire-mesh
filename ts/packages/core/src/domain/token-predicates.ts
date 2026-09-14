@@ -11,8 +11,9 @@ import type { DeviceId, TokenClaims } from "../generated/protocol.js";
 import type { Clock } from "../ports/clock.js";
 import { bytesEqual, scopeNarrows } from "./token-scope.js";
 
-/** The wire shape of `token-claims.conditions` once CBOR-decoded: trilean's own PredicateNodeSchema is the single source of truth for what a condition entry may contain, re-validated here rather than trusted from a CDDL-generated shadow schema (see tokens.cddl's own comment on why `conditions` is an opaque bstr, not a native CDDL type) -- a token from an untrusted peer must pass trilean's real schema before any of its conditions are evaluated. */
-export const conditionsListSchema = z.array(PredicateNodeSchema);
+/** The wire shape of `token-claims.conditions` once CBOR-decoded: trilean's own PredicateNodeSchema is the single source of truth for what a condition entry may contain, re-validated here rather than trusted from a CDDL-generated shadow schema (see tokens.cddl's own comment on why `conditions` is an opaque bstr, not a native CDDL type) -- a token from an untrusted peer must pass trilean's real schema before any of its conditions are evaluated. Explicitly annotated: trilean's PredicateNodeSchema is a deeply recursive z.lazy() type whose inferred shape is too large for tsdown's declaration-file generator to serialise (TS7056) without this. */
+export const conditionsListSchema: z.ZodType<PredicateNode[]> =
+  z.array(PredicateNodeSchema);
 
 /**
  * tokens.cddl's mandated core predicate-op vocabulary (issue #85): the five narrowing checks a verifier previously enforced as five hardcoded `if`s, now expressed as `delegate` systems every conforming verifier registers a handler for. Order matches the historical check order in verifyTokenChain/checkNarrowing, preserved so a caller mapping a failing system to its own reason vocabulary (MintRefusalReason's five distinct values; verifyTokenChain's single collapsed "delegation_exceeds_parent") sees the same check run first that always ran first.
