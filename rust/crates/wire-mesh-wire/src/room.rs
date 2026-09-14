@@ -89,6 +89,14 @@ pub struct RoomNoticeClaims {
     pub content_type: String,
     pub content: Vec<u8>,
     pub refs: Option<Vec<MessageRef>>,
+    /// Unix ms; bounds the displayable lifetime of this notice's own
+    /// content, independent of and in addition to the embedded `token`'s
+    /// own `expires`/`valid-until` (authorisation to post at all).
+    /// Checked at read time, not at post time. Absent means unbounded.
+    /// Kept as a first-class, typed field specifically so it can never
+    /// fall into `extra` and be silently dropped the way `token-claims`'
+    /// own `valid-until` once did before that gap was found and fixed.
+    pub valid_until: Option<u64>,
     pub extra: CanonicalMap<String, CborValue>,
 }
 
@@ -139,6 +147,9 @@ impl Encode<()> for RoomNoticeClaims {
             }
             builder.push_raw("refs".encoded(), buf);
         }
+        if let Some(valid_until) = self.valid_until {
+            builder.push("valid-until", &valid_until);
+        }
         for (key, value) in self.extra.iter() {
             let mut value_buf = Vec::new();
             let mut value_enc = Encoder::new(&mut value_buf);
@@ -168,6 +179,7 @@ fn room_notice_claims_from(d: &mut Decoder<'_>) -> Result<RoomNoticeClaims, Deco
     let mut content_type: Option<String> = None;
     let mut content: Option<Vec<u8>> = None;
     let mut refs: Option<Vec<MessageRef>> = None;
+    let mut valid_until: Option<u64> = None;
     let mut extra = CanonicalMap::new();
     while let Some(key) = map.next_key(d)? {
         match key {
@@ -189,6 +201,7 @@ fn room_notice_claims_from(d: &mut Decoder<'_>) -> Result<RoomNoticeClaims, Deco
                 }
                 refs = Some(list);
             }
+            "valid-until" => strict::set_once(&mut valid_until, strict::uint_value(d)?)?,
             other => {
                 let value = CborValue::decode_strict(d)?;
                 extra.insert(other.to_owned(), value)?;
@@ -205,6 +218,7 @@ fn room_notice_claims_from(d: &mut Decoder<'_>) -> Result<RoomNoticeClaims, Deco
         content_type: content_type.ok_or(DecodeError::MissingField("content-type"))?,
         content: content.ok_or(DecodeError::MissingField("content"))?,
         refs,
+        valid_until,
         extra,
     })
 }
@@ -241,11 +255,36 @@ mod tests {
                 id: vec![0xa0; 16],
                 relation: "reply".to_owned(),
             }]),
+            valid_until: None,
             extra: CanonicalMap::new(),
         };
         let bytes = claims.encode_to_vec();
         let back = RoomNoticeClaims::decode_bytes(&bytes).expect("decode");
         assert_eq!(back, claims);
+    }
+
+    #[test]
+    fn room_notice_claims_round_trips_with_valid_until() {
+        let claims = RoomNoticeClaims {
+            room: format!("{}/general", "11".repeat(32)),
+            poster: DeviceId([0x22; 32]),
+            poster_key: IdentityKey {
+                alg: -7,
+                public_key: vec![0xcc; 65],
+            },
+            token: sample_token(),
+            notice_id: vec![0xa1; 16],
+            posted_at: 1861920000000,
+            content_type: "text/plain".to_owned(),
+            content: b"this offer expires soon".to_vec(),
+            refs: None,
+            valid_until: Some(1861923600000),
+            extra: CanonicalMap::new(),
+        };
+        let bytes = claims.encode_to_vec();
+        let back = RoomNoticeClaims::decode_bytes(&bytes).expect("decode");
+        assert_eq!(back, claims);
+        assert_eq!(back.valid_until, Some(1861923600000));
     }
 
     #[test]
@@ -263,6 +302,7 @@ mod tests {
             content_type: "text/plain".to_owned(),
             content: b"hello".to_vec(),
             refs: None,
+            valid_until: None,
             extra: CanonicalMap::new(),
         };
         let bytes = claims.encode_to_vec();
@@ -308,6 +348,7 @@ mod tests {
             content_type: "text/plain".to_owned(),
             content: b"hello".to_vec(),
             refs: None,
+            valid_until: None,
             extra: {
                 let mut extra = CanonicalMap::new();
                 extra
