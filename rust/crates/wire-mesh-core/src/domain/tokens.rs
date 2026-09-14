@@ -5,11 +5,17 @@
 //! prior contact with the issuer is needed, only the token itself — and
 //! delegation can only narrow authority, never widen it.
 
+use wire_mesh_wire::management::RevocationClaims;
 use wire_mesh_wire::tokens::{CapabilityVerb, CoseSign1, TokenClaims};
 
 use crate::domain::cose::sig_structure;
 use crate::domain::revocation::RevocationView;
 use crate::ports::{Clock, CoreError, Identity};
+
+/// The capability a `revocation-claims.authorization` token must carry to
+/// delegate revoke authority outside a token's own issuing chain
+/// (wire-mesh#84, `spec/registry/core-capabilities.md`).
+const REVOKE_CAPABILITY: &str = "manage:revoke";
 
 /// A hard bound on delegation-chain walking. Honest chains are short; the
 /// bound exists so a maliciously nested token cannot make a verifier
@@ -184,6 +190,58 @@ impl TokenVerdict {
     }
 }
 
+/// Does one recorded revocation-claims entry actually revoke `target`, per
+/// `management.cddl`'s own additive obligation (wire-mesh#84)? Valid when
+/// EITHER the entry's own issuer equals the target token's own issuer (the
+/// original, unconditional rule — only a token's own issuer may revoke it),
+/// OR the entry carries an `authorization` that independently verifies as
+/// an ordinary capability-token — bearing `target`, proving the
+/// authorization was actually granted to the party submitting this
+/// revocation, not merely referenced from someone else's — whose own
+/// `capability` is [`REVOKE_CAPABILITY`] and whose own `scope` narrows
+/// `target`'s scope. An authorization that fails any part of this (wrong
+/// capability, scope doesn't narrow, fails ordinary verification — expired,
+/// revoked, bad signature, wrong bearer) makes the entry no more valid than
+/// if `authorization` were absent; it never falls back to weakening the
+/// issuer-match rule.
+///
+/// The recursive call into [`verify_capability_token`] is boxed: an async
+/// fn whose own body calls itself produces a self-referential (infinite-
+/// size) future type unless the recursive call is boxed at the call site —
+/// this is that box, not a stylistic choice.
+async fn revocation_entry_grants_revoke(
+    entry: &RevocationClaims,
+    target: &TokenClaims,
+    identity: &dyn Identity,
+    clock: &dyn Clock,
+    revocations: &RevocationView,
+) -> bool {
+    if entry.issuer == target.issuer {
+        return true;
+    }
+    let Some(authorization_bytes) = &entry.authorization else {
+        return false;
+    };
+    let Ok(authorization_token) = CoseSign1::decode_bytes(authorization_bytes) else {
+        return false;
+    };
+    let verdict = Box::pin(verify_capability_token(
+        identity,
+        clock,
+        revocations,
+        &authorization_token,
+    ))
+    .await;
+    match verdict {
+        TokenVerdict::Valid { claims, .. } => {
+            claims.bearer == entry.issuer
+                && claims.capability.0 == REVOKE_CAPABILITY
+                && target.scope.is_within(&claims.scope)
+        }
+        TokenVerdict::Invalid(_) => false,
+    }
+}
+
 /// Verify a capability token, walking its whole delegation chain.
 ///
 /// For every link from the presented token up to its root:
@@ -194,7 +252,10 @@ impl TokenVerdict {
 /// 2. `sha256(issuer-key.public-key)` equals the claimed issuer device-id,
 /// 3. the link's own token-id is checked against the revocation view —
 ///    revoking one ancestor revokes everything delegated beneath it, so
-///    the sweep covers every ancestor, not just the leaf,
+///    the sweep covers every ancestor, not just the leaf; an entry counts
+///    when its own issuer matches this link's issuer, OR when it carries a
+///    verified delegated `manage:revoke` authorization
+///    ([`revocation_entry_grants_revoke`], wire-mesh#84),
 /// 4. the link's expiry, not-before, and valid-until windows hold at
 ///    `clock.now()`,
 /// 5. against the link *below* it: the parent's bearer is the child's
@@ -265,13 +326,13 @@ pub async fn verify_capability_token(
             return TokenVerdict::Invalid(TokenRejection::IssuerMismatch);
         }
 
-        // management.cddl's obligation: every ancestor's own token-id is
-        // swept against the view, matched with its own issuer (only a
-        // token's own issuer may revoke it).
-        if revocations.is_revoked(&claims.token_id, &claims.issuer) {
-            return TokenVerdict::Invalid(TokenRejection::Revoked {
-                token_id: claims.token_id,
-            });
+        // management.cddl's obligation: every ancestor's own token-id is swept against the view, checking each recorded entry via revocation_entry_grants_revoke (issuer-match, or a verified delegated manage:revoke authorization -- wire-mesh#84).
+        for entry in revocations.entries_for(&claims.token_id) {
+            if revocation_entry_grants_revoke(entry, &claims, identity, clock, revocations).await {
+                return TokenVerdict::Invalid(TokenRejection::Revoked {
+                    token_id: claims.token_id,
+                });
+            }
         }
 
         if claims.expires <= now {
@@ -426,6 +487,30 @@ mod tests {
         }
     }
 
+    /// A root-level authorization token, held by `bearer`, for `capability` over `scope` -- used to build both a genuine `manage:revoke` delegation and the negative-case variants (wrong capability, non-narrowing scope) the authorization-branch tests below exercise.
+    fn authorization_claims_for(
+        issuer: &NodeIdentity,
+        bearer: DeviceId,
+        capability: &str,
+        scope: CapabilityScope,
+        expires: u64,
+    ) -> TokenClaims {
+        TokenClaims {
+            token_id: vec![0x02; 16],
+            issuer: *issuer.device_id(),
+            issuer_key: issuer.identity_key().clone(),
+            bearer,
+            capability: CapabilityVerb(capability.to_owned()),
+            scope,
+            expires,
+            not_before: None,
+            valid_until: None,
+            conditions: None,
+            parent: None,
+            extra: CanonicalMap::new(),
+        }
+    }
+
     async fn mint(issuer: &NodeIdentity, claims: &TokenClaims) -> CoseSign1 {
         issuer
             .mint_cose_sign1(&claims.encode_to_vec())
@@ -434,11 +519,20 @@ mod tests {
     }
 
     async fn mint_revocation(by: &NodeIdentity, token_id: Vec<u8>) -> RevocationEntry {
+        mint_revocation_with_authorization(by, token_id, None).await
+    }
+
+    async fn mint_revocation_with_authorization(
+        by: &NodeIdentity,
+        token_id: Vec<u8>,
+        authorization: Option<Vec<u8>>,
+    ) -> RevocationEntry {
         let claims = RevocationClaims {
             token_id,
             issuer: *by.device_id(),
             issuer_key: by.identity_key().clone(),
             revoked_at: NOW,
+            authorization,
         };
         RevocationEntry(
             by.mint_cose_sign1(&claims.encode_to_vec())
@@ -849,6 +943,314 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn revoke_authorization_held_outside_the_issuing_chain_revokes_the_token() {
+        let issuer = NodeIdentity::generate_ed25519();
+        let bearer = DeviceId([0xAA; 32]);
+        let security_team_member = NodeIdentity::generate_ed25519();
+        let target_claims = claims_for(&issuer, bearer);
+        let target = mint(&issuer, &target_claims).await;
+        let authorization_claims = authorization_claims_for(
+            &issuer,
+            *security_team_member.device_id(),
+            REVOKE_CAPABILITY,
+            target_claims.scope.clone(),
+            NOW + 60_000,
+        );
+        let authorization = mint(&issuer, &authorization_claims).await;
+        let mut view = RevocationView::new();
+        view.verify_and_insert(
+            &mint_revocation_with_authorization(
+                &security_team_member,
+                target_claims.token_id.clone(),
+                Some(authorization.encode_to_vec()),
+            )
+            .await,
+            &security_team_member,
+        )
+        .await
+        .expect("entry verifies");
+        assert!(matches!(
+            verify(&issuer, &view, &target).await,
+            TokenVerdict::Invalid(TokenRejection::Revoked { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn revoke_authorization_scoped_broader_than_the_target_still_covers_it() {
+        let issuer = NodeIdentity::generate_ed25519();
+        let bearer = DeviceId([0xAA; 32]);
+        let security_team_member = NodeIdentity::generate_ed25519();
+        let target_claims = claims_for(&issuer, bearer);
+        let target = mint(&issuer, &target_claims).await;
+        // Whole-kind root: no path at all, wider than the target's own /work.
+        let authorization_claims = authorization_claims_for(
+            &issuer,
+            *security_team_member.device_id(),
+            REVOKE_CAPABILITY,
+            CapabilityScope {
+                kind: "folder".to_owned(),
+                path: None,
+            },
+            NOW + 60_000,
+        );
+        let authorization = mint(&issuer, &authorization_claims).await;
+        let mut view = RevocationView::new();
+        view.verify_and_insert(
+            &mint_revocation_with_authorization(
+                &security_team_member,
+                target_claims.token_id.clone(),
+                Some(authorization.encode_to_vec()),
+            )
+            .await,
+            &security_team_member,
+        )
+        .await
+        .expect("entry verifies");
+        assert!(matches!(
+            verify(&issuer, &view, &target).await,
+            TokenVerdict::Invalid(TokenRejection::Revoked { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn authorization_with_the_wrong_capability_does_not_revoke() {
+        let issuer = NodeIdentity::generate_ed25519();
+        let bearer = DeviceId([0xAA; 32]);
+        let security_team_member = NodeIdentity::generate_ed25519();
+        let target_claims = claims_for(&issuer, bearer);
+        let target = mint(&issuer, &target_claims).await;
+        let wrong_capability_authorization = mint(
+            &issuer,
+            &authorization_claims_for(
+                &issuer,
+                *security_team_member.device_id(),
+                "exec:pty",
+                target_claims.scope.clone(),
+                NOW + 60_000,
+            ),
+        )
+        .await;
+        let mut view = RevocationView::new();
+        view.verify_and_insert(
+            &mint_revocation_with_authorization(
+                &security_team_member,
+                target_claims.token_id.clone(),
+                Some(wrong_capability_authorization.encode_to_vec()),
+            )
+            .await,
+            &security_team_member,
+        )
+        .await
+        .expect("entry verifies");
+        assert!(verify(&issuer, &view, &target).await.is_valid());
+    }
+
+    #[tokio::test]
+    async fn authorization_whose_scope_does_not_narrow_the_target_does_not_revoke() {
+        let issuer = NodeIdentity::generate_ed25519();
+        let bearer = DeviceId([0xAA; 32]);
+        let security_team_member = NodeIdentity::generate_ed25519();
+        let target_claims = claims_for(&issuer, bearer);
+        let target = mint(&issuer, &target_claims).await;
+        let unrelated_scope_authorization = mint(
+            &issuer,
+            &authorization_claims_for(
+                &issuer,
+                *security_team_member.device_id(),
+                REVOKE_CAPABILITY,
+                CapabilityScope {
+                    kind: "folder".to_owned(),
+                    path: Some("/other".to_owned()),
+                },
+                NOW + 60_000,
+            ),
+        )
+        .await;
+        let mut view = RevocationView::new();
+        view.verify_and_insert(
+            &mint_revocation_with_authorization(
+                &security_team_member,
+                target_claims.token_id.clone(),
+                Some(unrelated_scope_authorization.encode_to_vec()),
+            )
+            .await,
+            &security_team_member,
+        )
+        .await
+        .expect("entry verifies");
+        assert!(verify(&issuer, &view, &target).await.is_valid());
+    }
+
+    #[tokio::test]
+    async fn authorization_held_by_someone_else_does_not_revoke() {
+        // The authorization is genuinely valid, but held by security_team_member -- someone_else_entirely is submitting the revocation and citing it anyway.
+        let issuer = NodeIdentity::generate_ed25519();
+        let bearer = DeviceId([0xAA; 32]);
+        let security_team_member = NodeIdentity::generate_ed25519();
+        let someone_else_entirely = NodeIdentity::generate_ed25519();
+        let target_claims = claims_for(&issuer, bearer);
+        let target = mint(&issuer, &target_claims).await;
+        let authorization_held_by_someone_else = mint(
+            &issuer,
+            &authorization_claims_for(
+                &issuer,
+                *security_team_member.device_id(),
+                REVOKE_CAPABILITY,
+                target_claims.scope.clone(),
+                NOW + 60_000,
+            ),
+        )
+        .await;
+        let mut view = RevocationView::new();
+        view.verify_and_insert(
+            &mint_revocation_with_authorization(
+                &someone_else_entirely,
+                target_claims.token_id.clone(),
+                Some(authorization_held_by_someone_else.encode_to_vec()),
+            )
+            .await,
+            &someone_else_entirely,
+        )
+        .await
+        .expect("entry verifies");
+        assert!(verify(&issuer, &view, &target).await.is_valid());
+    }
+
+    #[tokio::test]
+    async fn an_expired_authorization_does_not_revoke() {
+        let issuer = NodeIdentity::generate_ed25519();
+        let bearer = DeviceId([0xAA; 32]);
+        let security_team_member = NodeIdentity::generate_ed25519();
+        let target_claims = claims_for(&issuer, bearer);
+        let target = mint(&issuer, &target_claims).await;
+        let expired_authorization = mint(
+            &issuer,
+            &authorization_claims_for(
+                &issuer,
+                *security_team_member.device_id(),
+                REVOKE_CAPABILITY,
+                target_claims.scope.clone(),
+                NOW - 1,
+            ),
+        )
+        .await;
+        let mut view = RevocationView::new();
+        view.verify_and_insert(
+            &mint_revocation_with_authorization(
+                &security_team_member,
+                target_claims.token_id.clone(),
+                Some(expired_authorization.encode_to_vec()),
+            )
+            .await,
+            &security_team_member,
+        )
+        .await
+        .expect("entry verifies");
+        assert!(verify(&issuer, &view, &target).await.is_valid());
+    }
+
+    #[tokio::test]
+    async fn an_authorization_that_is_itself_revoked_does_not_revoke() {
+        let issuer = NodeIdentity::generate_ed25519();
+        let bearer = DeviceId([0xAA; 32]);
+        let security_team_member = NodeIdentity::generate_ed25519();
+        let target_claims = claims_for(&issuer, bearer);
+        let target = mint(&issuer, &target_claims).await;
+        let authorization_claims = authorization_claims_for(
+            &issuer,
+            *security_team_member.device_id(),
+            REVOKE_CAPABILITY,
+            target_claims.scope.clone(),
+            NOW + 60_000,
+        );
+        let authorization = mint(&issuer, &authorization_claims).await;
+        let mut view = RevocationView::new();
+        view.verify_and_insert(
+            &mint_revocation_with_authorization(
+                &security_team_member,
+                target_claims.token_id.clone(),
+                Some(authorization.encode_to_vec()),
+            )
+            .await,
+            &security_team_member,
+        )
+        .await
+        .expect("entry verifies");
+        // The authorization token's own token-id is separately revoked by its own issuer.
+        view.verify_and_insert(
+            &mint_revocation(&issuer, authorization_claims.token_id.clone()).await,
+            &issuer,
+        )
+        .await
+        .expect("entry verifies");
+        assert!(verify(&issuer, &view, &target).await.is_valid());
+    }
+
+    #[tokio::test]
+    async fn malformed_authorization_bytes_do_not_revoke() {
+        let issuer = NodeIdentity::generate_ed25519();
+        let bearer = DeviceId([0xAA; 32]);
+        let security_team_member = NodeIdentity::generate_ed25519();
+        let target_claims = claims_for(&issuer, bearer);
+        let target = mint(&issuer, &target_claims).await;
+        let mut view = RevocationView::new();
+        view.verify_and_insert(
+            &mint_revocation_with_authorization(
+                &security_team_member,
+                target_claims.token_id.clone(),
+                Some(vec![0xff]),
+            )
+            .await,
+            &security_team_member,
+        )
+        .await
+        .expect("entry verifies");
+        assert!(verify(&issuer, &view, &target).await.is_valid());
+    }
+
+    #[tokio::test]
+    async fn the_direct_issuer_match_path_is_unaffected_by_an_unrelated_failing_authorization() {
+        let issuer = NodeIdentity::generate_ed25519();
+        let bearer = DeviceId([0xAA; 32]);
+        let security_team_member = NodeIdentity::generate_ed25519();
+        let target_claims = claims_for(&issuer, bearer);
+        let target = mint(&issuer, &target_claims).await;
+        let wrong_capability_authorization = mint(
+            &issuer,
+            &authorization_claims_for(
+                &issuer,
+                *security_team_member.device_id(),
+                "exec:pty",
+                target_claims.scope.clone(),
+                NOW + 60_000,
+            ),
+        )
+        .await;
+        let mut view = RevocationView::new();
+        view.verify_and_insert(
+            &mint_revocation_with_authorization(
+                &security_team_member,
+                target_claims.token_id.clone(),
+                Some(wrong_capability_authorization.encode_to_vec()),
+            )
+            .await,
+            &security_team_member,
+        )
+        .await
+        .expect("entry verifies");
+        view.verify_and_insert(
+            &mint_revocation(&issuer, target_claims.token_id.clone()).await,
+            &issuer,
+        )
+        .await
+        .expect("entry verifies");
+        assert!(matches!(
+            verify(&issuer, &view, &target).await,
+            TokenVerdict::Invalid(TokenRejection::Revoked { .. })
+        ));
+    }
+
+    #[tokio::test]
     async fn forged_revocation_is_rejected_at_admission() {
         // Claims naming the real issuer's key, but signed by an attacker.
         let parent = NodeIdentity::generate_ed25519();
@@ -858,6 +1260,7 @@ mod tests {
             issuer: *parent.device_id(),
             issuer_key: parent.identity_key().clone(),
             revoked_at: NOW,
+            authorization: None,
         };
         let entry = RevocationEntry(
             attacker

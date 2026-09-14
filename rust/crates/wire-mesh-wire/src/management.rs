@@ -431,15 +431,17 @@ pub(crate) fn manage_response_from(
     })
 }
 
-/// `revocation-claims = { token-id, issuer, issuer-key, revoked-at }`.
+/// `revocation-claims = { token-id, issuer, issuer-key, revoked-at, ?
+/// authorization }`.
 ///
 /// Self-certifying like token-claims: issuer-key travels inside the signed
 /// payload, so a verifier checks `sha256(issuer-key.public-key) == issuer`
 /// with no prior contact with the issuer. A bare unsigned
 /// `{token-id, revoked-at}` would let any peer falsely announce any other
 /// peer's token revoked — the denial-of-service vector the signed shape
-/// closes. CDE key order: `issuer` (7), `token-id` (9), `issuer-key` (11),
-/// `revoked-at` (11; bytewise after `issuer-key`).
+/// closes. CDE key order (computed by [`CdeMapBuilder`], not hand-written
+/// here): `issuer` (7), `token-id` (9), `issuer-key` (11), `revoked-at` (11;
+/// bytewise after `issuer-key`), `authorization` (14).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RevocationClaims {
     pub token_id: Vec<u8>,
@@ -447,6 +449,14 @@ pub struct RevocationClaims {
     pub issuer_key: IdentityKey,
     /// Unix ms.
     pub revoked_at: u64,
+    /// `bstr .cbor capability-token` — a fully self-contained nested
+    /// COSE_Sign1, opaque at this layer, proving THIS entry's own `issuer`
+    /// holds a currently-valid `manage:revoke` capability over a scope the
+    /// target token's own scope narrows into (wire-mesh#84). Additive to
+    /// the unconditional issuer-match rule above, never a replacement for
+    /// it — see management.cddl's own comment on the field for the full
+    /// verifier obligation this carries.
+    pub authorization: Option<Vec<u8>>,
 }
 
 impl RevocationClaims {
@@ -473,12 +483,15 @@ impl Encode<()> for RevocationClaims {
         e: &mut Encoder<W>,
         _ctx: &mut (),
     ) -> Result<(), minicbor::encode::Error<W::Error>> {
-        e.map(4)?;
-        e.str("issuer")?.encode(self.issuer)?;
-        e.str("token-id")?.bytes(&self.token_id)?;
-        e.str("issuer-key")?.encode(&self.issuer_key)?;
-        e.str("revoked-at")?.u64(self.revoked_at)?;
-        e.ok()
+        let mut builder = CdeMapBuilder::new();
+        builder.push("issuer", &self.issuer);
+        builder.push_bytes("token-id", &self.token_id);
+        builder.push("issuer-key", &self.issuer_key);
+        builder.push("revoked-at", &self.revoked_at);
+        if let Some(authorization) = &self.authorization {
+            builder.push_bytes("authorization", authorization);
+        }
+        builder.write(e)
     }
 }
 
@@ -494,6 +507,7 @@ pub(crate) fn revocation_claims_from(d: &mut Decoder<'_>) -> Result<RevocationCl
     let mut issuer: Option<DeviceId> = None;
     let mut issuer_key: Option<IdentityKey> = None;
     let mut revoked_at: Option<u64> = None;
+    let mut authorization: Option<Vec<u8>> = None;
     while let Some(key) = map.next_key(d)? {
         match key {
             "token-id" => strict::set_once(&mut token_id, strict::bytes_value(d)?)?,
@@ -502,6 +516,7 @@ pub(crate) fn revocation_claims_from(d: &mut Decoder<'_>) -> Result<RevocationCl
                 strict::set_once(&mut issuer_key, crate::identity::identity_key_from(d)?)?
             }
             "revoked-at" => strict::set_once(&mut revoked_at, strict::uint_value(d)?)?,
+            "authorization" => strict::set_once(&mut authorization, strict::bytes_value(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
@@ -510,6 +525,7 @@ pub(crate) fn revocation_claims_from(d: &mut Decoder<'_>) -> Result<RevocationCl
         issuer: issuer.ok_or(DecodeError::MissingField("issuer"))?,
         issuer_key: issuer_key.ok_or(DecodeError::MissingField("issuer-key"))?,
         revoked_at: revoked_at.ok_or(DecodeError::MissingField("revoked-at"))?,
+        authorization,
     })
 }
 
@@ -773,6 +789,7 @@ mod tests {
                 public_key: vec![3; 65],
             },
             revoked_at: 42,
+            authorization: None,
         };
         let bytes = claims.encode_to_vec();
         assert_eq!(
@@ -805,5 +822,43 @@ mod tests {
         let back: RevocationAnnounceFrame = minicbor::decode(&frame_bytes).expect("decode");
         assert_eq!(back, frame);
         assert_eq!(back.entries[0].decode_claims().expect("claims"), claims);
+    }
+
+    #[test]
+    fn revocation_claims_authorization_field_round_trips_and_sorts_last() {
+        let claims = RevocationClaims {
+            token_id: vec![1; 16],
+            issuer: DeviceId([2; 32]),
+            issuer_key: IdentityKey {
+                alg: -7,
+                public_key: vec![3; 65],
+            },
+            revoked_at: 42,
+            authorization: Some(vec![9; 20]),
+        };
+        let bytes = claims.encode_to_vec();
+        assert_eq!(
+            RevocationClaims::decode_bytes(&bytes).expect("decode"),
+            claims
+        );
+        // "authorization" (14 encoded bytes) is longer than every other key here, so CDE key order places it last regardless of struct field order.
+        let order: Vec<usize> = [
+            "issuer",
+            "token-id",
+            "issuer-key",
+            "revoked-at",
+            "authorization",
+        ]
+        .iter()
+        .map(|k| {
+            bytes
+                .windows(k.len())
+                .position(|w| w == k.as_bytes())
+                .expect("key present")
+        })
+        .collect();
+        let mut sorted = order.clone();
+        sorted.sort_unstable();
+        assert_eq!(order, sorted);
     }
 }
