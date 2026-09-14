@@ -15,6 +15,8 @@ export default defineConfig({
   testDir: "./test/e2e",
   timeout: 30_000,
   fullyParallel: false,
+  // Every spec file in this directory shares the one relay-hub process started below (a deliberate CI-cost optimisation, not a simulation of unrelated concurrent users) -- webrtc.spec.ts and room-messaging.spec.ts each gossip their own devices onto it. relay-hub now forwards and catches up gossip between every currently-connected client (wire-mesh#110), so two spec files running in separate workers at once would see each other's devices too, breaking room-messaging.spec.ts's own "exactly one other Message button" assumption. `fullyParallel: false` alone only serialises tests *within* one file; `workers: 1` is what actually keeps different spec files from running against the shared hub at the same time.
+  workers: 1,
   retries: 0,
   reporter: "list",
   webServer: [
