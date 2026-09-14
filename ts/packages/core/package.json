@@ -86,6 +86,10 @@
       "import": "./dist/adapters/tls-transport.mjs",
       "require": "./dist/adapters/tls-transport.cjs"
     },
+    "./domain/bulk": {
+      "import": "./dist/domain/bulk.mjs",
+      "require": "./dist/domain/bulk.cjs"
+    },
     "./domain/capability-grant": {
       "import": "./dist/domain/capability-grant.mjs",
       "require": "./dist/domain/capability-grant.cjs"
@@ -121,6 +125,10 @@
     "./domain/revocation-view": {
       "import": "./dist/domain/revocation-view.mjs",
       "require": "./dist/domain/revocation-view.cjs"
+    },
+    "./domain/room": {
+      "import": "./dist/domain/room.mjs",
+      "require": "./dist/domain/room.cjs"
     },
     "./domain/room-path": {
       "import": "./dist/domain/room-path.mjs",
