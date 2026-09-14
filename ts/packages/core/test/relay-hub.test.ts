@@ -102,7 +102,7 @@ function gossipFor(device: DeviceId): Frame {
 }
 
 /** A gossip-frame bundling several peer-adverts at once -- the exact shape relay-hub's own catch-up mechanism sends back to a gossiping connection, listing every other currently-known device in one frame rather than one frame per device. */
-function gossipForMany(...devices: DeviceId[]): Frame {
+function gossipForMany(...devices: readonly DeviceId[]): Frame {
   return { type: "gossip", peers: devices.map(peerAdvertFor) };
 }
 
