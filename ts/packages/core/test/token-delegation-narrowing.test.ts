@@ -81,6 +81,52 @@ describe("verifyCapabilityToken - delegation narrowing", () => {
     expect(verdict.ok).toBe(true);
   });
 
+  it("rejects a delegated token signed by a device other than its parent's own bearer", async () => {
+    const rootExpiry = now + 2 * HOUR_MS;
+    const root = await signToken(issuer, {
+      tokenId: nextTokenId(),
+      bearer: bearerDeviceId,
+      scope: workScope,
+      expires: rootExpiry,
+    });
+
+    // Signed by `issuer`, not `bearerIdentity` -- the root's bearer is bearerIdentity, so only bearerIdentity may delegate from it. This is the bearer-is narrowing check's own failure path at verify time (mint's equivalent is covered by "refuses to mint a delegation the issuer's own device does not hold the parent's bearer for" in token-minting-and-grants.test.ts, which never previously had a verify-side counterpart).
+    const delegate = await generateEs256Identity();
+    const claims: TokenClaims = {
+      "token-id": nextTokenId(),
+      issuer: issuer.deviceId,
+      "issuer-key": issuer.identityKey,
+      bearer: delegate.deviceId,
+      capability: "exec:pty",
+      scope: { kind: "folder", path: "/work/subdir" },
+      expires: now + HOUR_MS,
+      parent: encodeBuf(root),
+    };
+    const payload = encodeBuf(claims);
+    const protectedHeader = encodeBuf({});
+    const toBeSigned = encodeBuf([
+      "Signature1",
+      protectedHeader,
+      new Uint8Array(0),
+      payload,
+    ]);
+    const signature = await issuer.sign(toBeSigned);
+    const delegated: CapabilityToken = [
+      protectedHeader,
+      {},
+      payload,
+      signature,
+    ];
+
+    const verdict = await verifyCapabilityToken(delegated, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: "delegation_exceeds_parent" });
+  });
+
   it("rejects a delegated token whose expiry exceeds its parent's", async () => {
     const rootExpiry = now + HOUR_MS;
     const root = await signToken(issuer, {
