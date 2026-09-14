@@ -64,6 +64,14 @@ pub enum TokenRejection {
     InvalidClaims(String),
     /// The chain exceeds [`MAX_CHAIN_DEPTH`].
     ChainTooDeep,
+    /// A link carries a `conditions` field, but this implementation has no
+    /// predicate evaluator to check it against -- refused rather than
+    /// silently ignored, since an unchecked `conditions` entry could carry
+    /// a restriction the issuer intended to narrow the token's validity
+    /// with (see tokens.cddl's own comment on the field). Track full Rust
+    /// predicate-evaluator parity separately; this is the fail-closed
+    /// stopgap until it lands.
+    ConditionsUnsupported { token_id: Vec<u8> },
 }
 
 impl core::fmt::Display for TokenRejection {
@@ -121,6 +129,11 @@ impl core::fmt::Display for TokenRejection {
             TokenRejection::ChainTooDeep => {
                 write!(f, "delegation chain deeper than {MAX_CHAIN_DEPTH}")
             }
+            TokenRejection::ConditionsUnsupported { token_id } => write!(
+                f,
+                "token {} carries a conditions field this verifier cannot evaluate",
+                hex_prefix(token_id)
+            ),
         }
     }
 }
@@ -286,6 +299,11 @@ pub async fn verify_capability_token(
                 });
             }
         }
+        if claims.conditions.is_some() {
+            return TokenVerdict::Invalid(TokenRejection::ConditionsUnsupported {
+                token_id: claims.token_id,
+            });
+        }
 
         // Narrowing against the link below, checked from the parent's
         // side of the relationship.
@@ -402,6 +420,7 @@ mod tests {
             expires: NOW + 60_000,
             not_before: None,
             valid_until: None,
+            conditions: None,
             parent: None,
             extra: CanonicalMap::new(),
         }
@@ -578,6 +597,35 @@ mod tests {
             &issuer,
             &RevocationView::new(),
             &mint(&issuer, &unbounded).await,
+        )
+        .await;
+        assert!(verdict.is_valid());
+    }
+
+    #[tokio::test]
+    async fn conditions_field_is_refused_not_silently_ignored() {
+        // This implementation has no predicate evaluator (issue #85's TS-side evaluator has no Rust port yet): a token carrying `conditions` must be refused, not accepted as if the field weren't there -- the same fail-closed treatment an unrecognised discriminator already gets, and the mistake `valid-until` itself once made when it was still falling into `extra` unenforced.
+        let issuer = NodeIdentity::generate_ed25519();
+        let mut with_conditions = claims_for(&issuer, DeviceId([0xAA; 32]));
+        with_conditions.conditions = Some(vec![0x80]); // bstr content is irrelevant -- presence alone must refuse
+        let verdict = verify(
+            &issuer,
+            &RevocationView::new(),
+            &mint(&issuer, &with_conditions).await,
+        )
+        .await;
+        assert!(matches!(
+            verdict,
+            TokenVerdict::Invalid(TokenRejection::ConditionsUnsupported { .. })
+        ));
+
+        // Absent conditions verifies exactly as before this field existed.
+        let without_conditions = claims_for(&issuer, DeviceId([0xAA; 32]));
+        assert_eq!(without_conditions.conditions, None);
+        let verdict = verify(
+            &issuer,
+            &RevocationView::new(),
+            &mint(&issuer, &without_conditions).await,
         )
         .await;
         assert!(verdict.is_valid());
