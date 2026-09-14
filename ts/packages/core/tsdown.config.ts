@@ -9,6 +9,7 @@ export default defineConfig({
     "src/ports/storage.ts",
     "src/ports/identity.ts",
     "src/ports/clock.ts",
+    "src/domain/capability-grant.ts",
     "src/domain/capability-request.ts",
     "src/domain/device-id.ts",
     "src/domain/handshake.ts",
