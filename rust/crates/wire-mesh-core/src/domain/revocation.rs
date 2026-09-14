@@ -2,12 +2,24 @@
 //! against a shared revocation view without a synchronous lookup against
 //! the issuer for every use of the token.
 //!
-//! Two verifier obligations from `management.cddl` live here:
+//! This view is a dumb store: it verifies and records entries, keyed by
+//! token-id alone (a token-id can legitimately carry entries from more
+//! than one issuer -- the token's own issuer, and/or any number of parties
+//! holding a delegated `manage:revoke` authorization over it,
+//! wire-mesh#84), and hands every recorded entry back via
+//! [`RevocationView::entries_for`] unfiltered. The actual verifier
+//! obligation lives in [`crate::domain::tokens::verify_capability_token`],
+//! which already holds the `Identity`/`Clock` needed to verify a nested
+//! `authorization` token and the target token's own scope needed to check
+//! it narrows into -- none of which this store, built ahead of time, has
+//! access to. Two verifier obligations from `management.cddl`:
 //!
-//! - An entry's `revocation-claims.issuer` must match the *token's own*
-//!   issuer — only a token's own issuer may revoke it. A signature from
-//!   some other key proves only that someone else wants the token gone.
-//!   This is enforced by keying the view on `(token-id, issuer)` pairs.
+//! - An entry counts against a token when EITHER its own
+//!   `revocation-claims.issuer` matches the *token's own* issuer, OR its
+//!   optional `authorization` decodes and independently verifies as an
+//!   ordinary capability-token -- held by this entry's own issuer, bearing
+//!   `manage:revoke`, over a scope the target token's own scope narrows
+//!   into.
 //! - A verifier walking a token's parent chain must check *every*
 //!   ancestor's own token-id against the view, not just the leaf's —
 //!   revoking one ancestor thereby revokes everything delegated beneath
@@ -16,8 +28,7 @@
 
 use std::collections::BTreeMap;
 
-use wire_mesh_wire::identity::DeviceId;
-use wire_mesh_wire::management::RevocationEntry;
+use wire_mesh_wire::management::{RevocationClaims, RevocationEntry};
 
 use crate::domain::cose::sig_structure;
 use crate::ports::{CoreError, Identity};
@@ -65,7 +76,8 @@ impl From<wire_mesh_wire::DecodeError> for RevocationError {
     }
 }
 
-/// The local revocation view: verified `(token-id, issuer)` pairs.
+/// The local revocation view: every verified revocation-claims, keyed by
+/// token-id.
 ///
 /// Build it by admitting gossiped entries through [`RevocationView::verify_and_insert`]
 /// (which checks each entry's own signature and self-certification) or, on
@@ -74,7 +86,7 @@ impl From<wire_mesh_wire::DecodeError> for RevocationError {
 /// same way, before being trusted.
 #[derive(Debug, Clone, Default)]
 pub struct RevocationView {
-    entries: BTreeMap<(Vec<u8>, [u8; 32]), u64>,
+    entries: BTreeMap<Vec<u8>, Vec<RevocationClaims>>,
 }
 
 impl RevocationView {
@@ -85,7 +97,12 @@ impl RevocationView {
     /// Verify a gossiped entry — signature over the revocation-claims per
     /// the Sig_structure convention, and the self-certifying
     /// `sha256(issuer-key.public-key) == issuer` check — and admit it to
-    /// the view. Re-inserting an existing entry is a no-op.
+    /// the view. Re-admitting an entry from an issuer already recorded for
+    /// this token-id replaces the stored claims only when the new
+    /// `revoked-at` is at least as recent, mirroring the previous
+    /// timestamp-only dedup this view used before it started keeping full
+    /// claims (rather than just a revoked-at, needed now to also carry a
+    /// possibly-updated `authorization`).
     pub async fn verify_and_insert(
         &mut self,
         entry: &RevocationEntry,
@@ -105,22 +122,31 @@ impl RevocationView {
         if identity.derive_device_id(&claims.issuer_key.public_key) != claims.issuer {
             return Err(RevocationError::IssuerMismatch);
         }
-        self.entries
-            .entry((claims.token_id.clone(), claims.issuer.0))
-            .and_modify(|at| *at = (*at).max(claims.revoked_at))
-            .or_insert(claims.revoked_at);
+        let bucket = self.entries.entry(claims.token_id.clone()).or_default();
+        match bucket
+            .iter_mut()
+            .find(|existing| existing.issuer == claims.issuer)
+        {
+            Some(existing) => {
+                if claims.revoked_at >= existing.revoked_at {
+                    *existing = claims;
+                }
+            }
+            None => bucket.push(claims),
+        }
         Ok(())
     }
 
-    /// Is the token identified by `token_id`, issued by `issuer`, revoked?
-    /// The issuer must be *the token's own* issuer: only a token's own
-    /// issuer may revoke it, so a different issuer's entry never matches.
-    pub fn is_revoked(&self, token_id: &[u8], issuer: &DeviceId) -> bool {
-        self.entries.contains_key(&(token_id.to_vec(), issuer.0))
+    /// Every recorded, already-signature-verified revocation-claims for
+    /// `token_id`, across every issuer that has ever submitted one —
+    /// unfiltered by this store. The caller (`verify_capability_token`)
+    /// decides which entries actually apply.
+    pub fn entries_for(&self, token_id: &[u8]) -> &[RevocationClaims] {
+        self.entries.get(token_id).map(Vec::as_slice).unwrap_or(&[])
     }
 
     pub fn len(&self) -> usize {
-        self.entries.len()
+        self.entries.values().map(Vec::len).sum()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -132,7 +158,6 @@ impl RevocationView {
 mod tests {
     use super::*;
     use crate::adapters::node_identity::NodeIdentity;
-    use wire_mesh_wire::management::RevocationClaims;
 
     #[tokio::test]
     async fn non_self_certifying_entry_is_rejected_at_admission() {
@@ -144,6 +169,7 @@ mod tests {
             issuer: *stranger.device_id(),
             issuer_key: issuer.identity_key().clone(),
             revoked_at: 42,
+            authorization: None,
         };
         let entry = RevocationEntry(
             issuer
@@ -158,7 +184,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn admitted_entries_match_only_their_own_issuer() {
+    async fn admitted_entries_are_returned_by_entries_for_regardless_of_issuer() {
         let issuer = NodeIdentity::generate_ed25519();
         let other = NodeIdentity::generate_ed25519();
         let mut view = RevocationView::new();
@@ -171,6 +197,7 @@ mod tests {
                             issuer: *issuer.device_id(),
                             issuer_key: issuer.identity_key().clone(),
                             revoked_at: 42,
+                            authorization: None,
                         }
                         .encode_to_vec(),
                     )
@@ -181,9 +208,42 @@ mod tests {
         )
         .await
         .expect("verifies");
-        // Same token-id, wrong issuer: not revoked by this view.
-        assert!(view.is_revoked(&[1; 16], issuer.device_id()));
-        assert!(!view.is_revoked(&[1; 16], other.device_id()));
-        assert!(!view.is_revoked(&[2; 16], issuer.device_id()));
+        // entries_for returns everything recorded for the token-id, unfiltered by issuer -- filtering by which issuer actually counts is verify_capability_token's own job, not this store's.
+        let entries = view.entries_for(&[1; 16]);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].issuer, *issuer.device_id());
+        assert_ne!(entries[0].issuer, *other.device_id());
+        assert!(view.entries_for(&[2; 16]).is_empty());
+    }
+
+    #[tokio::test]
+    async fn re_admitting_an_entry_from_the_same_issuer_updates_rather_than_duplicates() {
+        let issuer = NodeIdentity::generate_ed25519();
+        let mut view = RevocationView::new();
+        for revoked_at in [10, 42] {
+            view.verify_and_insert(
+                &RevocationEntry(
+                    issuer
+                        .mint_cose_sign1(
+                            &RevocationClaims {
+                                token_id: vec![1; 16],
+                                issuer: *issuer.device_id(),
+                                issuer_key: issuer.identity_key().clone(),
+                                revoked_at,
+                                authorization: None,
+                            }
+                            .encode_to_vec(),
+                        )
+                        .await
+                        .expect("mint"),
+                ),
+                &issuer,
+            )
+            .await
+            .expect("verifies");
+        }
+        let entries = view.entries_for(&[1; 16]);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].revoked_at, 42);
     }
 }
