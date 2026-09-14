@@ -85,6 +85,10 @@
       "import": "./dist/adapters/tls-transport.mjs",
       "require": "./dist/adapters/tls-transport.cjs"
     },
+    "./domain/capability-request": {
+      "import": "./dist/domain/capability-request.mjs",
+      "require": "./dist/domain/capability-request.cjs"
+    },
     "./domain/device-id": {
       "import": "./dist/domain/device-id.mjs",
       "require": "./dist/domain/device-id.cjs"
