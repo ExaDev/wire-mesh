@@ -814,4 +814,87 @@ describe("createRelayHub", () => {
     await Promise.all([a.end(), b.end(), c.end()]);
     await Promise.all([...handling, cHandling]);
   });
+
+  describe("registerConnection/onFrame/onDisconnect (wire-mesh#102)", () => {
+    it("forwards gossip between two connections driven manually via onFrame, identically to handleConnection's own loop", async () => {
+      const hub = createRelayHub();
+      const a = new FakeConnection();
+      const b = new FakeConnection();
+      const aConn = a.connection;
+      const bConn = b.connection;
+      hub.registerConnection(aConn);
+      hub.registerConnection(bConn);
+
+      await hub.onFrame(aConn, gossipFor(deviceA));
+      await hub.onFrame(bConn, gossipFor(deviceB));
+
+      // a's own gossip forwards to b (nothing else known yet, so no catch-up to a); b's own gossip forwards to a, and b's own catch-up (devices other than b, i.e. A) replays right after -- the same two-frame shape "forgets a device"/"bundles every other" already exercise via handleConnection's own loop.
+      expect(a.sent).toEqual([gossipFor(deviceB)]);
+      expect(b.sent).toEqual([gossipFor(deviceA), gossipFor(deviceA)]);
+    });
+
+    it("pairs a relay-connect initiator with a target across two manually-driven connections", async () => {
+      const hub = createRelayHub();
+      const a = new FakeConnection();
+      const b = new FakeConnection();
+      const aConn = a.connection;
+      const bConn = b.connection;
+      hub.registerConnection(aConn);
+      hub.registerConnection(bConn);
+      await hub.onFrame(aConn, gossipFor(deviceA));
+      await hub.onFrame(bConn, gossipFor(deviceB));
+
+      await hub.onFrame(aConn, {
+        type: "relay-connect",
+        "target-device": deviceB,
+      });
+
+      expect(b.sent).toContainEqual({
+        type: "relay-inbound",
+        "source-device": deviceA,
+      });
+    });
+
+    it("onDisconnect cleans up registry state the same way handleConnection's own finally block does, so a later relay-connect to the disconnected device is ignored", async () => {
+      const hub = createRelayHub();
+      const a = new FakeConnection();
+      const b = new FakeConnection();
+      const aConn = a.connection;
+      const bConn = b.connection;
+      hub.registerConnection(aConn);
+      hub.registerConnection(bConn);
+      await hub.onFrame(bConn, gossipFor(deviceB));
+      await hub.onFrame(aConn, gossipFor(deviceA));
+      const sentToABeforeDisconnect = [...a.sent];
+
+      hub.onDisconnect(bConn);
+
+      await hub.onFrame(aConn, {
+        type: "relay-connect",
+        "target-device": deviceB,
+      });
+
+      // b's own registration is gone: the unresolved relay-connect sends nothing further to a beyond whatever it had already received before the disconnect.
+      expect(a.sent).toEqual(sentToABeforeDisconnect);
+    });
+
+    it("handleConnection itself is unchanged: it still registers, consumes, and cleans up exactly as before, now expressed as registerConnection + a loop over onFrame + onDisconnect internally", async () => {
+      const hub = createRelayHub();
+      const a = new FakeConnection();
+      const b = new FakeConnection();
+      const handling = [
+        hub.handleConnection(a.connection),
+        hub.handleConnection(b.connection),
+      ];
+      a.push(gossipFor(deviceA));
+      await tick();
+      b.push(gossipFor(deviceB));
+      await tick();
+
+      expect(a.sent).toEqual([gossipFor(deviceB)]);
+      expect(b.sent).toEqual([gossipFor(deviceA), gossipFor(deviceA)]);
+      await Promise.all([a.end(), b.end()]);
+      await Promise.all(handling);
+    });
+  });
 });
