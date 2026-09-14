@@ -1,6 +1,8 @@
 // The hub's relay role, expressed purely against core's Transport port and the generated frame schemas -- no Worker-specific or WebSocket-specific type appears here, so the same logic runs under the TCP adapter in tests or any future transport. A connection's device-id is learned from its own gossiped peer-advert (the only spec frame that carries a device-id over a plain connection; TLS-cert identity extraction is deliberately out of scope for the WebSocket-ingress first pass, noted in the README). Registry semantics: last gossip wins for a device-id, and a mapping is only removed on disconnect if it still points at the connection that registered it, so a re-announcement by a newer connection isn't clobbered by an older one leaving.
 //
 // Multiplexing: a connection may hold more than one relay pairing at once (a peer fanning a message out to several members of a group, all of whom are only reachable through this same hub). Pairings are therefore a symmetric adjacency map keyed by *connection*, not resolved through the device registry at forward time -- device-ids here are gossip-asserted, not certificate-verified, and re-resolving through the registry per frame would let a pairing silently re-attach to whichever connection most recently claimed a device-id, a spoofing vector. Keying by connection preserves the existing behaviour that an established pairing survives its peer's device mapping moving to a fresher connection, and dies only with the connection itself. `relay-data-frame`'s `to-device`/`from-device` fields disambiguate which pairing a frame belongs to now that a connection can hold several; a connection with exactly one pairing may omit `to-device`, which every legacy peer already does, so an unaddressed frame under multiplexing routes to the most recently established pairing -- the same "last one wins" semantics the old single-pairing hub already had.
+//
+// Gossip forwarding (wire-mesh#110): every `gossip-frame` this hub receives is re-broadcast, unmodified, to every *other* currently-connected client (never back to the sender) -- unconditionally, on every frame, with no dedup against a previously-seen advert. This is deliberately not the same "never touches payload" blindness `relay-data` gets: the hub already parses a gossip frame's `peers` to populate its own device registry above, so forwarding it is extending existing, already-established visibility, not opening a new blind spot -- `relay-data`'s ciphertext payload stays untouched and unforwarded-to-third-parties, which is the invariant that actually matters for end-to-end confidentiality. Unconditional (no per-advert or per-recipient cache) is a deliberate choice, not an oversight: `peer-advert.snapshot-seconds`/`addresses` are meant to keep propagating on every re-gossip (a liveness heartbeat, an address change), so suppressing a "duplicate" would silently stop legitimate freshness updates from reaching other clients. Loop-safety needs no extra bookkeeping either: this hub only ever re-broadcasts to its own directly-connected clients (a star topology, one hop), and nothing here re-gossips a frame it received back onto the wire on its own initiative, so there is no path for a forwarded frame to cycle back through this hub a second time. A forward that fails (the target connection has died) is swallowed per-recipient so one dead peer never aborts delivery to the rest of the fan-out, or the sending connection's own frame processing -- that peer's own `handleConnection` loop notices the same death independently via its `receive()` stream and cleans up through the ordinary disconnect path.
 
 import type { DeviceId, Frame } from "../generated/protocol.js";
 import type { Connection } from "../ports/transport.js";
@@ -11,7 +13,7 @@ interface Registration {
 }
 
 export interface RelayHub {
-  /** Drives one accepted connection until it closes: registers gossip-advertised devices, answers relay-connect by pairing and notifying the target, and forwards relay-data within established pairings. Resolves when the connection's frame stream ends. */
+  /** Drives one accepted connection until it closes: registers gossip-advertised devices and re-broadcasts each gossip frame to every other connected client, answers relay-connect by pairing and notifying the target, and forwards relay-data within established pairings. Resolves when the connection's frame stream ends. */
   handleConnection: (connection: Readonly<Connection>) => Promise<void>;
   /** Drops all registry and pairing state -- used by tests and by transport teardown. */
   stop: () => void;
@@ -29,6 +31,8 @@ function deviceKey(device: Uint8Array): string {
 }
 
 export function createRelayHub(): RelayHub {
+  // Every currently-connected client, independent of whether it has gossiped a device yet -- the fan-out set for gossip re-broadcast (see module header). Not derivable from `devices`/`connectionDevice`, since a connection that hasn't gossiped anything of its own still needs to receive other clients' adverts.
+  const connections = new Set<Readonly<Connection>>();
   const devices = new Map<string, Registration>();
   // The connection each gossip-registered device is currently reachable over -- maintained alongside `devices` so relay-data forwarding never needs the linear scan `deviceOf` used to do, which would otherwise run once per forwarded frame instead of once per relay-connect.
   const connectionDevice = new Map<Readonly<Connection>, DeviceId>();
@@ -68,6 +72,7 @@ export function createRelayHub(): RelayHub {
   }
 
   function forgetConnection(connection: Readonly<Connection>): void {
+    connections.delete(connection);
     for (const [key, registration] of devices) {
       if (registration.connection === connection) {
         devices.delete(key);
@@ -108,6 +113,17 @@ export function createRelayHub(): RelayHub {
         if (registration.connection === connection) {
           connectionDevice.set(connection, registration.device);
           break;
+        }
+      }
+      // Re-broadcast, unmodified, to every other currently-connected client -- see module header for why this is unconditional, undeduplicated, and loop-safe. A per-recipient send failure is swallowed so one dead peer never aborts the rest of the fan-out or this connection's own frame processing.
+      for (const other of connections) {
+        if (other === connection) {
+          continue;
+        }
+        try {
+          await other.send(frame);
+        } catch {
+          // That peer's own connection has died; its own handleConnection loop will discover this independently via its receive() stream and clean up through the ordinary disconnect path.
         }
       }
       return;
@@ -165,17 +181,19 @@ export function createRelayHub(): RelayHub {
 
   return {
     async handleConnection(connection) {
+      connections.add(connection);
       try {
         for await (const frame of connection.receive()) {
           await handleFrame(connection, frame);
         }
       } catch {
-        // A rejecting receive iteration is the connection-level failure signal (the adapter already closed the socket for undecodable bytes or a non-binary message), and a failed peer.send inside handleFrame means that peer's connection died mid-forward -- both are disconnects, not errors to surface, and the entry point voids its caller anyway. Cleanup below runs identically to a clean end.
+        // A rejecting receive iteration is the connection-level failure signal (the adapter already closed the socket for undecodable bytes or a non-binary message), and a failed relay-data peer.send inside handleFrame means that peer's connection died mid-forward (gossip's own per-recipient sends are caught individually above and never reach here) -- both are disconnects, not errors to surface, and the entry point voids its caller anyway. Cleanup below runs identically to a clean end.
       } finally {
         forgetConnection(connection);
       }
     },
     stop() {
+      connections.clear();
       devices.clear();
       connectionDevice.clear();
       pairings.clear();
