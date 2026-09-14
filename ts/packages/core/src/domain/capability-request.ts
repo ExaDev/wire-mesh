@@ -13,10 +13,7 @@ import {
   type DeviceId,
   type ManageCommand,
 } from "../generated/protocol.js";
-import type {
-  IncomingManageRequest,
-  MeshSession,
-} from "./mesh-session.js";
+import type { IncomingManageRequest, MeshSession } from "./mesh-session.js";
 import type { Clock } from "../ports/clock.js";
 import type { IdentityPort } from "../ports/identity.js";
 import { mintCapabilityToken } from "./tokens.js";
