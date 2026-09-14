@@ -49,7 +49,7 @@ function fixedClock(atMs: number): Clock {
 }
 
 const neverRevoked: RevocationCheck = {
-  isRevoked: async () => Promise.resolve(false),
+  entriesFor: async () => Promise.resolve([]),
 };
 
 let issuedTokenIds = 0;
@@ -366,11 +366,19 @@ describe("createCapabilityGrantHandler", () => {
     const recipient = await generateEs256Identity();
     const revokedTokenId = nextTokenId();
     const revocation: RevocationCheck = {
-      isRevoked: async (tokenId, issuer) =>
+      entriesFor: async (tokenId) =>
         Promise.resolve(
-          deviceIdToHex(issuer) === deviceIdToHex(granter.deviceId) &&
-            tokenId.length === revokedTokenId.length &&
-            tokenId.every((byte, index) => byte === revokedTokenId[index]),
+          tokenId.length === revokedTokenId.length &&
+            tokenId.every((byte, index) => byte === revokedTokenId[index])
+            ? [
+                {
+                  "token-id": revokedTokenId,
+                  issuer: granter.deviceId,
+                  "issuer-key": granter.identityKey,
+                  "revoked-at": NOW_MS,
+                },
+              ]
+            : [],
         ),
     };
     const onGrant = vi.fn<(event: Readonly<CapabilityGrantEvent>) => void>();

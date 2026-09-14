@@ -21,13 +21,13 @@ import {
   type NarrowingSystem,
   type TokenDelegateHandler,
 } from "./token-predicates.js";
-import { bytesEqual } from "./token-scope.js";
+import { bytesEqual, scopeNarrows } from "./token-scope.js";
 
 /**
- * The revocation view a verifier consults. Contract per management.cddl: an entry counts against a token only when BOTH its token-id and its issuer match the token's own -- only a token's own issuer may revoke it, so a third party's entry for someone else's token-id must be ignored. Implementations ingest gossiped revocation-announce frames via verifyRevocationEntry (which enforces each entry's own signature and self-certification) and key the resulting claims by token-id + issuer.
+ * The revocation view a verifier consults. Returns every recorded, already-signature-verified revocation-claims for tokenId, across every issuer that has ever submitted one -- unfiltered by the store itself. The actual verifier obligation (an entry counts against a token when its own issuer matches the token's own issuer, OR its optional `authorization` grants delegated revoke authority -- management.cddl) is checked by the caller (verifyTokenChain), not here, since that check needs the target token's own scope plus identity/clock to verify a nested authorization token, none of which a store constructed ahead of time has access to. Implementations ingest gossiped revocation-announce frames via verifyRevocationEntry (which enforces each entry's own signature and self-certification) and key the resulting claims by token-id alone -- a token-id can legitimately carry multiple recorded entries from different issuers.
  */
 export interface RevocationCheck {
-  isRevoked: (tokenId: Uint8Array, issuer: DeviceId) => Promise<boolean>;
+  entriesFor: (tokenId: Uint8Array) => Promise<readonly RevocationClaims[]>;
 }
 
 export type TokenVerdictReason =
@@ -136,6 +136,43 @@ export async function verifyCapabilityToken(
   return verdict;
 }
 
+/**
+ * Does one recorded revocation-claims entry actually revoke targetClaims, per management.cddl's own additive obligation? Valid when EITHER the entry's own issuer equals the target token's own issuer (the original, unconditional rule -- only a token's own issuer may revoke it), OR the entry carries an `authorization` that independently verifies as an ordinary capability-token -- with `expectedBearer` set to THIS entry's own `issuer`, proving the authorization was actually granted to the party submitting this revocation, not merely referenced from someone else's -- whose own `capability` is `"revoke"` and whose own `scope` narrows targetClaims' scope. An authorization that fails any part of this (wrong capability, scope doesn't narrow, fails ordinary verification -- expired, revoked, bad signature, bearer mismatch) makes the entry no more valid than if `authorization` were absent; it never falls back to weakening the issuer-match rule.
+ */
+async function revocationEntryGrantsRevoke(
+  entry: RevocationClaims,
+  targetClaims: Readonly<TokenClaims>,
+  options: Omit<VerifyCapabilityTokenOptions, "expectedBearer">,
+): Promise<boolean> {
+  if (bytesEqual(entry.issuer, targetClaims.issuer)) {
+    return true;
+  }
+  if (entry.authorization === undefined) {
+    return false;
+  }
+  let decodedAuthorization: unknown;
+  try {
+    decodedAuthorization = decode(entry.authorization, cdeDecodeOptions);
+  } catch {
+    return false;
+  }
+  const authorizationResult = capabilityTokenSchema.safeParse(
+    decodedAuthorization,
+  );
+  if (!authorizationResult.success) {
+    return false;
+  }
+  const authorizationVerdict = await verifyCapabilityToken(
+    authorizationResult.data,
+    { ...options, expectedBearer: entry.issuer },
+  );
+  return (
+    authorizationVerdict.ok &&
+    authorizationVerdict.claims.capability === "revoke" &&
+    scopeNarrows(authorizationVerdict.claims.scope, targetClaims.scope)
+  );
+}
+
 async function verifyTokenChain(
   token: CapabilityToken,
   options: Omit<VerifyCapabilityTokenOptions, "expectedBearer">,
@@ -185,8 +222,13 @@ async function verifyTokenChain(
     return { ok: false, reason: "content_expired" };
   }
 
-  if (await options.revocation.isRevoked(claims["token-id"], claims.issuer)) {
-    return { ok: false, reason: "revoked" };
+  const revocationEntries = await options.revocation.entriesFor(
+    claims["token-id"],
+  );
+  for (const entry of revocationEntries) {
+    if (await revocationEntryGrantsRevoke(entry, claims, options)) {
+      return { ok: false, reason: "revoked" };
+    }
   }
 
   // claims.conditions is strictly additive to the narrowing checks below -- it is decoded and evaluated here, uniformly for both root and delegated tokens, entirely independent of whether claims.parent is present. See tokens.cddl's own comment on the field and CONVENTIONS.md's verifier-obligations glossary entry for the fail-closed contract this enforces.

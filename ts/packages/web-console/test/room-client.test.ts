@@ -92,7 +92,7 @@ function fixedClock(atMs: number): Clock {
 }
 
 const neverRevoked: RevocationCheck = {
-  isRevoked: async () => Promise.resolve(false),
+  entriesFor: async () => Promise.resolve([]),
 };
 
 describe("buildRoomSendCommand", () => {
