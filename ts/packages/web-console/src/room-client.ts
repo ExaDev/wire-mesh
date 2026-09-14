@@ -12,7 +12,12 @@ import type {
   ManageOutcome,
   MeshSession,
 } from "wire-mesh-core/domain/mesh-session";
-import type { VerifyCapabilityTokenOptions } from "wire-mesh-core/domain/tokens";
+import {
+  mintCapabilityToken,
+  type VerifyCapabilityTokenOptions,
+} from "wire-mesh-core/domain/tokens";
+import type { IdentityPort } from "wire-mesh-core/ports/identity";
+import type { Clock } from "wire-mesh-core/ports/clock";
 import {
   ROOM_MEMBER_CAPABILITY,
   verifyRoomToken,
@@ -23,11 +28,24 @@ import {
   type CapabilityGrantDecision,
   type CapabilityGrantRequestEvent,
 } from "wire-mesh-core/domain/capability-request";
+import {
+  createCapabilityGrantHandler,
+  sendCapabilityGrant,
+  type CapabilityGrantEvent,
+} from "wire-mesh-core/domain/capability-grant";
 
 const MESSAGE_ID_BYTE_LENGTH = 16;
 
 function randomMessageId(): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(MESSAGE_ID_BYTE_LENGTH);
+  crypto.getRandomValues(bytes);
+  return bytes;
+}
+
+const TOKEN_ID_BYTE_LENGTH = 16;
+
+function randomTokenId(): Uint8Array<ArrayBuffer> {
+  const bytes = new Uint8Array(TOKEN_ID_BYTE_LENGTH);
   crypto.getRandomValues(bytes);
   return bytes;
 }
@@ -103,6 +121,53 @@ export async function requestToJoin(
   };
 }
 
+/**
+ * Mints a fresh room:member grant for invitee, ready to hand to sendRoomInvite -- the room-specific specialization of the generic mintCapabilityToken, the same way requestToJoin/handleRoomJoin already specialize capability-request.ts's own generic primitives to core/room. There is no equivalent minting call already living in this file to mirror (the accept path's own minting moved into capability-request.ts's createCapabilityRequestHandler when #78 generalized room.join, so room-client.ts itself no longer calls mintCapabilityToken anywhere else): capability-grant is a push of an ALREADY-minted token, so unlike the pull side, minting has to happen here, on the inviter's own side, before there is anything to send at all.
+ */
+export async function mintRoomInviteGrant(
+  identity: Readonly<IdentityPort>,
+  clock: Readonly<Clock>,
+  roomPath: string,
+  invitee: DeviceId,
+  expires: number,
+  delegationsRemaining?: number,
+): Promise<CapabilityToken> {
+  const verdict = await mintCapabilityToken({
+    identity,
+    clock,
+    tokenId: randomTokenId(),
+    bearer: invitee,
+    capability: ROOM_MEMBER_CAPABILITY,
+    scope: { kind: "room", path: roomPath },
+    expires,
+    ...(delegationsRemaining !== undefined ? { delegationsRemaining } : {}),
+  });
+  if (!verdict.ok) {
+    throw new Error(
+      `failed to mint an invite grant for ${roomPath} (${verdict.reason})`,
+    );
+  }
+  return verdict.token;
+}
+
+/**
+ * Sends room.invite, now a thin wrapper over capability-grant.ts's own generic sendCapabilityGrant (core/room's room:member grant is the reference specialization of that primitive, the push counterpart to requestToJoin's own pull-side wrapper over requestCapability) -- core/room's own room.invite is deliberately ungated the same way room.join is: the owner already IS the room's own authority to invite, with no capability check on this request itself, security living entirely in grantedToken's own verification on the receiving end (capability-grant.ts's four obligations). Resolves with the raw manage-response outcome: `{result:"ok"}` once the invitee's own side has validated the pushed token, an ordinary manage-error otherwise -- never a human "no" (an invitee wanting to decline surfaces that as its own room.leave, per agent-comms' existing room.invite/room_invite/decline design, not a wire-level rejection of the push itself).
+ */
+export async function sendRoomInvite(
+  session: Readonly<MeshSession>,
+  roomPath: string,
+  grantedToken: CapabilityToken,
+  targetDevice?: DeviceId,
+): Promise<ManageOutcome> {
+  return sendCapabilityGrant(
+    session,
+    ROOM_MEMBER_CAPABILITY,
+    grantedToken,
+    { kind: "room", path: roomPath },
+    targetDevice,
+  );
+}
+
 export interface IncomingRoomMessage {
   roomPath: string;
   text: string;
@@ -126,6 +191,14 @@ export interface RoomJoinRequestEvent {
   decide: (decision: Readonly<RoomJoinDecision>) => Promise<void>;
 }
 
+export interface RoomInviteEvent {
+  roomPath: string;
+  /** The peer device-id that pushed this invite -- the room's owner, or whoever else was entrusted to invite on its behalf. */
+  granterDevice: DeviceId;
+  /** The freshly verified room:member token this invite carried -- already confirmed to independently pass every ordinary token obligation, name this side as its own bearer, and scope-match roomPath (capability-grant.ts's own four obligations). Ready to use exactly as requestToJoin's own RoomJoinResult.token is; there is no decide() here, unlike RoomJoinRequestEvent, since core/room's own room.invite carries no approval round-trip to answer. */
+  token: CapabilityToken;
+}
+
 export interface RoomRouterOptions extends VerifyCapabilityTokenOptions {
   /** The device-id authenticated as this session's own peer -- MeshSession exposes no way for this module to learn it independently (see webrtc-negotiation.ts's own authorizeIncomingOffer for the same limitation on a pathless scope); the caller already knows this by the time room-client machinery attaches to a session (it just negotiated or accepted the very connection the session runs over). */
   peerDevice: DeviceId;
@@ -140,6 +213,8 @@ export interface RoomRouterHandlers {
   onMessage?: (message: Readonly<IncomingRoomMessage>) => void;
   /** Called for an incoming, deliberately ungated room.join, for a human to accept or reject via the given event's own decide(). */
   onJoinRequest?: (event: Readonly<RoomJoinRequestEvent>) => void;
+  /** Called for an incoming, verified room.invite -- there is no decision to make (unlike onJoinRequest): by the time this fires, capability-grant.ts's own handler has already responded ok on the wire, so this is purely a notification for the domain to act on (persist the token, surface a UI notice, etc.). Omit for a router that only ever handles room.send/room.join -- an incoming room.invite is then refused with `unsupported_verb`, the same precondition handleRoomJoin already applies to onJoinRequest. */
+  onRoomInvite?: (event: Readonly<RoomInviteEvent>) => void;
 }
 
 /**
@@ -253,6 +328,42 @@ export function createRoomRouter(
     await handleCapabilityGrantRequest(incoming);
   }
 
+  const handleCapabilityGrant = createCapabilityGrantHandler({
+    capability: ROOM_MEMBER_CAPABILITY,
+    identity: options.identity,
+    clock: options.clock,
+    revocation: options.revocation,
+    granterDevice: options.peerDevice,
+    onGrant(event: Readonly<CapabilityGrantEvent>): void {
+      const roomPath = event.scope.path;
+      const onRoomInvite = handlers.onRoomInvite;
+      // Both unreachable in practice -- handleRoomInvite below already refuses (missing_scope_path/unsupported_verb, matching this router's own pre-rewiring codes exactly) before ever calling this handler when either precondition fails. Kept because CapabilityGrantEvent's own scope/handlers types don't encode either precondition structurally, so TS cannot narrow across this callback boundary on its own -- the same reasoning adaptRoomJoinDecision's own onRequest callback above already documents for the identical shape of guard.
+      if (roomPath === undefined || onRoomInvite === undefined) {
+        return;
+      }
+      onRoomInvite({
+        roomPath,
+        granterDevice: event.granterDevice,
+        token: event.grantedToken,
+      });
+    },
+  });
+
+  async function handleRoomInvite(
+    incoming: Readonly<IncomingManageRequest>,
+  ): Promise<void> {
+    const roomPath = incoming.scope.path;
+    if (roomPath === undefined) {
+      await incoming.respond({ result: "error", code: "missing_scope_path" });
+      return;
+    }
+    if (handlers.onRoomInvite === undefined) {
+      await incoming.respond({ result: "error", code: "unsupported_verb" });
+      return;
+    }
+    await handleCapabilityGrant(incoming);
+  }
+
   void (async () => {
     for await (const incoming of session.incomingManageRequests) {
       if (incoming.command.verb !== ROOM_MEMBER_CAPABILITY) {
@@ -266,6 +377,8 @@ export function createRoomRouter(
         await handleRoomSend(incoming, params);
       } else if (params.verb === "capability.request") {
         await handleRoomJoin(incoming);
+      } else if (params.verb === "capability.grant") {
+        await handleRoomInvite(incoming);
       }
     }
   })();
