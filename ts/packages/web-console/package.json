@@ -27,7 +27,7 @@
     "wire-mesh-core": "workspace:*"
   },
   "devDependencies": {
-    "@exadev/eslint-config": "2.10.6",
+    "@exadev/eslint-config": "2.12.1",
     "@playwright/test": "1.63.0",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",

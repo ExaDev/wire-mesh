@@ -22,13 +22,13 @@
     "_lint": "eslint . --fix --cache --max-warnings 0"
   },
   "dependencies": {
-    "wire-mesh-core": "workspace:*",
     "cbor2": "2.3.0",
+    "wire-mesh-core": "workspace:*",
     "ws": "8.21.3"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
-    "@exadev/eslint-config": "2.10.6",
+    "@exadev/eslint-config": "2.12.1",
     "@types/node": "26.4.1",
     "@types/ws": "8.18.1",
     "eslint": "10.10.0",
