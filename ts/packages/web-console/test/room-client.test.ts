@@ -21,7 +21,6 @@ import { deviceIdToHex } from "wire-mesh-core/domain/device-id";
 import { ownerNamedRoomPath } from "wire-mesh-core/domain/room-path";
 import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
 import {
-  buildRoomJoinCommand,
   buildRoomSendCommand,
   createRoomRouter,
   requestToJoin,
@@ -90,7 +89,7 @@ const neverRevoked: RevocationCheck = {
   isRevoked: async () => Promise.resolve(false),
 };
 
-describe("buildRoomSendCommand / buildRoomJoinCommand", () => {
+describe("buildRoomSendCommand", () => {
   it("builds a room.send command carrying the room:member capability, message-id, sent-at, and text", () => {
     const messageId = nextTokenId();
     expect(buildRoomSendCommand("hello", messageId, NOW_MS)).toEqual({
@@ -101,13 +100,6 @@ describe("buildRoomSendCommand / buildRoomJoinCommand", () => {
         "sent-at": NOW_MS,
         text: "hello",
       },
-    } satisfies ManageCommand);
-  });
-
-  it("builds an ungated room.join command", () => {
-    expect(buildRoomJoinCommand()).toEqual({
-      verb: ROOM_MEMBER_CAPABILITY,
-      params: { verb: "room.join" },
     } satisfies ManageCommand);
   });
 });
@@ -348,7 +340,13 @@ describe("createRoomRouter", () => {
     );
     const incoming: IncomingManageRequest = {
       requestId: 1,
-      command: { verb: ROOM_MEMBER_CAPABILITY, params: { verb: "room.join" } },
+      command: {
+        verb: ROOM_MEMBER_CAPABILITY,
+        params: {
+          verb: "capability.request",
+          capability: ROOM_MEMBER_CAPABILITY,
+        },
+      },
       scope: { kind: "room", path: ROOM_PATH },
       respond,
     };
@@ -389,7 +387,13 @@ describe("createRoomRouter", () => {
     const respond = vi.fn(async (): Promise<void> => Promise.resolve());
     const incoming: IncomingManageRequest = {
       requestId: 2,
-      command: { verb: ROOM_MEMBER_CAPABILITY, params: { verb: "room.join" } },
+      command: {
+        verb: ROOM_MEMBER_CAPABILITY,
+        params: {
+          verb: "capability.request",
+          capability: ROOM_MEMBER_CAPABILITY,
+        },
+      },
       scope: { kind: "room", path: ROOM_PATH },
       respond,
     };

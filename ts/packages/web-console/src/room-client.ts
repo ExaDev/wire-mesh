@@ -13,11 +13,16 @@ import type {
   MeshSession,
 } from "wire-mesh-core/domain/mesh-session";
 import type { VerifyCapabilityTokenOptions } from "wire-mesh-core/domain/tokens";
-import { mintCapabilityToken } from "wire-mesh-core/domain/tokens";
 import {
   ROOM_MEMBER_CAPABILITY,
   verifyRoomToken,
 } from "wire-mesh-core/domain/room-token-verification";
+import {
+  createCapabilityRequestHandler,
+  requestCapability,
+  type CapabilityGrantDecision,
+  type CapabilityGrantRequestEvent,
+} from "wire-mesh-core/domain/capability-request";
 
 const MESSAGE_ID_BYTE_LENGTH = 16;
 
@@ -26,6 +31,13 @@ function randomMessageId(): Uint8Array<ArrayBuffer> {
   crypto.getRandomValues(bytes);
   return bytes;
 }
+
+/** How long an incoming room.join may sit awaiting a human's accept/reject before this side auto-responds with a real manage-error timeout rather than leaving the joiner's own requestToJoin hanging indefinitely -- the same generous, human-approval-window reasoning agent-comms' own PENDING_CONNECTION_TIMEOUT_MINUTES uses for its equivalent connect_request decision. Overridable per RoomRouterOptions.joinRequestTimeoutMs for a caller with its own policy (e.g. a test needing a short window). */
+const DEFAULT_JOIN_REQUEST_TIMEOUT_MINUTES = 5;
+const SECONDS_PER_MINUTE = 60;
+const MS_PER_SECOND = 1000;
+const DEFAULT_JOIN_REQUEST_TIMEOUT_MS =
+  DEFAULT_JOIN_REQUEST_TIMEOUT_MINUTES * SECONDS_PER_MINUTE * MS_PER_SECOND;
 
 export function buildRoomSendCommand(
   text: string,
@@ -41,10 +53,6 @@ export function buildRoomSendCommand(
       text,
     },
   };
-}
-
-export function buildRoomJoinCommand(): ManageCommand {
-  return { verb: ROOM_MEMBER_CAPABILITY, params: { verb: "room.join" } };
 }
 
 /**
@@ -72,21 +80,19 @@ export interface RoomJoinResult {
 }
 
 /**
- * Sends the deliberately ungated room.join (no token field at all -- core/room's own design puts access control entirely in the receiving owner's human approval, not a capability check on this request). Resolves with the freshly granted token and the room's current member list on approval; rejects on denial (an ordinary manage-error) or a malformed response.
+ * Sends the deliberately ungated room.join, now a thin wrapper over capability-request.ts's own generic requestCapability (core/room's room:member grant is the reference specialization of that primitive -- see its own module comment) -- core/room's own design puts access control entirely in the receiving owner's human approval, not a capability check on this request, which is exactly what requestCapability's own ungated ask already provides for any capability. Resolves with the freshly granted token and the room's current member list on approval (parsed back out of the generic grant response's own open extension tail via roomJoinOkSchema); rejects on denial (an ordinary manage-error) or a malformed response.
  */
 export async function requestToJoin(
   session: Readonly<MeshSession>,
   roomPath: string,
   targetDevice?: DeviceId,
 ): Promise<RoomJoinResult> {
-  const outcome = await session.sendManageRequest(
-    buildRoomJoinCommand(),
+  const outcome = await requestCapability(
+    session,
+    ROOM_MEMBER_CAPABILITY,
     { kind: "room", path: roomPath },
     targetDevice,
   );
-  if (outcome.result !== "ok") {
-    throw new Error(`room.join for ${roomPath} was refused (${outcome.code})`);
-  }
   const parsed = roomJoinOkSchema.safeParse(outcome);
   if (!parsed.success) {
     throw new Error(`room.join response for ${roomPath} was malformed`);
@@ -125,6 +131,8 @@ export interface RoomRouterOptions extends VerifyCapabilityTokenOptions {
   peerDevice: DeviceId;
   /** This room's own current member list, reported back to a joiner on approval (room-join-ok's own members field) -- the caller's own room-membership record, not something this module tracks. Only consulted for an incoming room.join; omit if this router only ever handles room.send. */
   currentMembers?: () => readonly DeviceId[];
+  /** Overrides DEFAULT_JOIN_REQUEST_TIMEOUT_MS -- how long an incoming room.join may sit awaiting a human decision before this side auto-responds with a timeout manage-error (capability-request.ts's own receiver-side timeout, wire-mesh#81). */
+  joinRequestTimeoutMs?: number;
 }
 
 export interface RoomRouterHandlers {
@@ -176,6 +184,60 @@ export function createRoomRouter(
     handlers.onMessage?.({ roomPath, text, messageId, sentAt });
   }
 
+  /**
+   * The room-specific adapter between RoomJoinRequestEvent's own decide() (the public shape handlers.onJoinRequest already speaks -- unchanged so no consumer of this router needs to change) and capability-request.ts's generic CapabilityGrantDecision: a reject passes straight through, and an accept computes this room's own member-list extension field (room-join-ok's `members`) before handing off to the generic event's own decide(), which does the actual minting and responding.
+   */
+  function adaptRoomJoinDecision(
+    event: Readonly<CapabilityGrantRequestEvent>,
+  ): (decision: Readonly<RoomJoinDecision>) => Promise<void> {
+    return async (decision: Readonly<RoomJoinDecision>): Promise<void> => {
+      if (decision.kind === "reject") {
+        const generic: CapabilityGrantDecision = {
+          kind: "reject",
+          ...(decision.reason !== undefined ? { reason: decision.reason } : {}),
+        };
+        await event.decide(generic);
+        return;
+      }
+      const members = [
+        ...(options.currentMembers?.() ?? []),
+        options.peerDevice,
+      ].map((device) => ({ device }));
+      const generic: CapabilityGrantDecision = {
+        kind: "accept",
+        capability: decision.capability,
+        expires: decision.expires,
+        ...(decision.delegationsRemaining !== undefined
+          ? { delegationsRemaining: decision.delegationsRemaining }
+          : {}),
+        extensions: { members },
+      };
+      await event.decide(generic);
+    };
+  }
+
+  const handleCapabilityGrantRequest = createCapabilityRequestHandler({
+    capability: ROOM_MEMBER_CAPABILITY,
+    identity: options.identity,
+    clock: options.clock,
+    bearerDevice: options.peerDevice,
+    timeoutMs: options.joinRequestTimeoutMs ?? DEFAULT_JOIN_REQUEST_TIMEOUT_MS,
+    onRequest(event: Readonly<CapabilityGrantRequestEvent>): void {
+      const roomPath = event.scope.path;
+      const onJoinRequest = handlers.onJoinRequest;
+      // Both unreachable in practice -- handleRoomJoin below already refuses (missing_scope_path/unsupported_verb, matching this router's own pre-rewiring codes exactly) before ever calling this handler when either precondition fails. Kept because CapabilityGrantRequestEvent's own scope/handlers types don't encode either precondition structurally, so TS cannot narrow across this callback boundary on its own.
+      if (roomPath === undefined || onJoinRequest === undefined) {
+        void event.decide({ kind: "reject", reason: "unsupported verb" });
+        return;
+      }
+      onJoinRequest({
+        roomPath,
+        requesterDevice: event.requesterDevice,
+        decide: adaptRoomJoinDecision(event),
+      });
+    },
+  });
+
   async function handleRoomJoin(
     incoming: Readonly<IncomingManageRequest>,
   ): Promise<void> {
@@ -188,47 +250,7 @@ export function createRoomRouter(
       await incoming.respond({ result: "error", code: "unsupported_verb" });
       return;
     }
-    handlers.onJoinRequest({
-      roomPath,
-      requesterDevice: options.peerDevice,
-      async decide(decision: Readonly<RoomJoinDecision>): Promise<void> {
-        if (decision.kind === "reject") {
-          await incoming.respond({
-            result: "error",
-            code: "denied",
-            ...(decision.reason !== undefined
-              ? { message: decision.reason }
-              : {}),
-          });
-          return;
-        }
-        const verdict = await mintCapabilityToken({
-          identity: options.identity,
-          clock: options.clock,
-          tokenId: randomMessageId(),
-          bearer: options.peerDevice,
-          capability: decision.capability,
-          scope: { kind: "room", path: roomPath },
-          expires: decision.expires,
-          ...(decision.delegationsRemaining !== undefined
-            ? { delegationsRemaining: decision.delegationsRemaining }
-            : {}),
-        });
-        if (!verdict.ok) {
-          await incoming.respond({ result: "error", code: "mint_failed" });
-          return;
-        }
-        const members = [
-          ...(options.currentMembers?.() ?? []),
-          options.peerDevice,
-        ].map((device) => ({ device }));
-        await incoming.respond({
-          result: "ok",
-          "granted-token": verdict.token,
-          members,
-        });
-      },
-    });
+    await handleCapabilityGrantRequest(incoming);
   }
 
   void (async () => {
@@ -242,7 +264,7 @@ export function createRoomRouter(
       }
       if (params.verb === "room.send") {
         await handleRoomSend(incoming, params);
-      } else if (params.verb === "room.join") {
+      } else if (params.verb === "capability.request") {
         await handleRoomJoin(incoming);
       }
     }
