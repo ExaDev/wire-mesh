@@ -133,7 +133,10 @@ describe("createRelayHub over the real wrapWebSocket adapter", () => {
     );
     await tick();
 
+    // wsB also received a's gossip forwarded, then its own catch-up (a is the only other known device), before the relay-inbound -- see wire-mesh-core's relay-hub.test.ts for this behaviour in isolation.
     expect(decodeSent(wsB)).toEqual([
+      gossipFor(deviceA),
+      gossipFor(deviceA),
       { type: "relay-inbound", "source-device": deviceA },
     ]);
 
@@ -150,10 +153,14 @@ describe("createRelayHub over the real wrapWebSocket adapter", () => {
     await tick();
 
     expect(decodeSent(wsB)).toEqual([
+      gossipFor(deviceA),
+      gossipFor(deviceA),
       { type: "relay-inbound", "source-device": deviceA },
       { type: "relay-data", payload: relayPayload, "from-device": deviceA },
     ]);
     expect(decodeSent(wsA)).toEqual([
+      gossipFor(deviceB),
+      gossipFor(deviceB),
       { type: "relay-data", payload: relayPayload, "from-device": deviceB },
     ]);
 
@@ -192,7 +199,11 @@ describe("createRelayHub over the real wrapWebSocket adapter", () => {
       ),
     );
     await tick();
+    // b's gossip forward from a, its own catch-up, and c's re-gossip of deviceA (forwarded now that c has taken over the device-id a's disconnect freed up) all precede the relay-inbound.
     expect(b.sent).toEqual([
+      gossipFor(deviceA),
+      gossipFor(deviceA),
+      gossipFor(deviceA),
       { type: "relay-inbound", "source-device": deviceA },
     ]);
 
