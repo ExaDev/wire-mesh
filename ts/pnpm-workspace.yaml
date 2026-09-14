@@ -1,5 +1,12 @@
 packages:
   - "packages/*"
+overrides:
+  conventional-changelog-writer: "^9.2.0"
+# Left disallowed, matching this workspace's existing behaviour under pnpm 10 (which only ever warned "Ignored build scripts" for these three and installed successfully without running them).
+allowBuilds:
+  esbuild: false
+  sharp: false
+  workerd: false
 minimumReleaseAgeExclude:
   - '@exadev/eslint-config'
 
