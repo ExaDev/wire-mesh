@@ -462,18 +462,44 @@ capability-grant = { verb: "capability.grant", "granted-token": capability-token
 ;
 ; A verifier MUST check revocation-claims.issuer against the *token's own*
 ; issuer field, not merely that some signature verifies — only a token's
-; own issuer may revoke it. A verifier walking a token's parent chain (see
-; tokens.cddl's `parent` field) MUST check every ancestor's own token-id
-; against the revocation view, not only the leaf token's: revoking one
-; ancestor thereby revokes every token delegated beneath it, without
-; needing to individually re-revoke each descendant. Both are verifier
-; obligations, not something CDDL itself can enforce, the same way
-; delegation's narrowing rule is.
+; own issuer, or a party holding a currently-valid delegated `authorization`
+; from that issuer (below), may revoke it. A verifier walking a token's
+; parent chain (see tokens.cddl's `parent` field) MUST check every
+; ancestor's own token-id against the revocation view, not only the leaf
+; token's: revoking one ancestor thereby revokes every token delegated
+; beneath it, without needing to individually re-revoke each descendant.
+; Both are verifier obligations, not something CDDL itself can enforce, the
+; same way delegation's narrowing rule is.
+;
+; Delegated revoke authority (wire-mesh#84) — `authorization`, when present,
+; lets a party outside a token's own issuing chain exercise revoke authority
+; over it, e.g. a security-team member who never personally minted the
+; grant they need to pull. It is a fully self-contained, nested COSE_Sign1
+; capability-token, the same embedded-token idiom `token-claims.parent` and
+; `room-notice-claims.token` already use. Reuses the ordinary
+; capability-token narrowing/`delegations-remaining`/`expires` machinery
+; entirely unchanged: `"revoke"` is just another capability string, so
+; `mintCapabilityToken`/`canGrant` need no special-casing for it.
+;
+; A verifier obligation, additive to the issuer-match rule above — a
+; revocation-entry counts against a token when EITHER holds, not only the
+; issuer-match: `authorization`, when present, MUST be decoded and
+; independently verified as an ordinary capability-token (signature,
+; expiry, not-before, valid-until, revocation, full ancestor-chain walk),
+; with `expectedBearer` set to THIS revocation-entry's own `issuer` — this
+; is what proves the authorization was actually granted to the party
+; submitting the revocation, not merely referenced from someone else's. The
+; verified token's own `capability` MUST equal `"revoke"`, and its own
+; `scope` MUST narrow (`tokens.cddl`'s own scope-narrowing relation) the
+; scope of the token this entry is attempting to revoke. An `authorization`
+; that fails any of this makes the entry no more valid than if the field
+; were absent — it does NOT fall back to weakening the issuer-match rule.
 revocation-claims = {
   token-id: bstr,
   issuer: device-id,
   issuer-key: identity-key,   ; verifier checks sha256(issuer-key.public-key) == issuer
   revoked-at: uint,
+  ? authorization: bstr,      ; bstr .cbor capability-token — see the comment above for the full verifier obligation this carries
 }
 revocation-entry = cose-sign1   ; payload = bstr .cbor revocation-claims
 revocation-announce-frame = { type: "revocation-announce", entries: [* revocation-entry] }
