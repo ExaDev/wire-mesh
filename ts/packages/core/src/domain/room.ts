@@ -5,6 +5,8 @@
 import { cdeDecodeOptions, cdeEncodeOptions, decode, encode } from "cbor2";
 import {
   roomNoticeClaimsSchema,
+  type CapabilityToken,
+  type MessageRef,
   type RoomNotice,
   type RoomNoticeClaims,
   type RoomPath,
@@ -16,6 +18,19 @@ import {
   verifyRoomToken,
   type RoomTokenVerdictReason,
 } from "./room-token-verification.js";
+
+function buf(bytes: Uint8Array | ArrayLike<number>): Uint8Array<ArrayBuffer> {
+  return Uint8Array.from(bytes);
+}
+
+function encodeBuf(value: unknown): Uint8Array<ArrayBuffer> {
+  return buf(encode(value, cdeEncodeOptions));
+}
+
+/** The COSE protected header a room-notice signs over: label 1 (alg) and label 4 (kid, the poster's own device-id) -- the identical shape tokens.ts's own protectedHeaderFor uses for capability-token/revocation-entry envelopes, reimplemented here rather than imported since tokens.ts does not export it (matching sig1ToBeSigned's own precedent below). verifyRoomNotice never inspects this header's own decoded content -- it only needs the same bytes fed back into its own signature check -- but a real, kid-bearing header keeps a room-notice's wire shape consistent with every other signed envelope in this spec, rather than the empty header a merely-self-consistent test fixture can get away with. */
+function protectedHeaderFor(identity: IdentityPort): Uint8Array<ArrayBuffer> {
+  return encodeBuf({ 1: identity.identityKey.alg, 4: identity.deviceId });
+}
 
 /**
  * RFC 9052 §4.4 Sig_structure for a COSE_Sign1 with no external AAD -- identical in shape to tokens.ts's own private helper of the same name, but reimplemented here rather than imported, since tokens.ts does not export it. Worth consolidating into a shared cose.ts once a third caller needs the identical helper, but two independent five-line copies is not yet a real duplication problem on its own.
@@ -160,4 +175,46 @@ export function compareRoomNotices(
   const posterOrder = compareBytes(a.poster, b.poster);
   if (posterOrder !== 0) return posterOrder;
   return compareBytes(a["notice-id"], b["notice-id"]);
+}
+
+export interface CreateRoomNoticeOptions {
+  identity: IdentityPort;
+  clock: Clock;
+  room: RoomPath;
+  /** The poster's own room:member token, embedded in full -- a reader checks token-claims.bearer against this notice's own signed poster field (see verifyRoomNotice's own obligation 2), so there is no live connection for the bearer binding to ride on the way a real room.send has. */
+  token: CapabilityToken;
+  /** Caller-supplied, matching mintCapabilityToken's own tokenId/mintRevocationEntry's own tokenId convention -- this module has no opinion on how a noticeId is generated (random bytes, a counter, anything else), only that it is unique enough for compareRoomNotices' own cross-author tiebreak to work. */
+  noticeId: Uint8Array<ArrayBuffer>;
+  contentType: string;
+  content: Uint8Array<ArrayBuffer>;
+  refs?: readonly MessageRef[];
+  validUntil?: number;
+}
+
+/**
+ * Mints one self-certifying room-notice as `identity` -- the counterpart to verifyRoomNotice above, producing exactly what it accepts. `posted-at` is always stamped from the injected clock, never caller-supplied, matching obligation 4's own requirement that a poster's own log stay non-decreasing: a caller backdating its own posted-at would be indistinguishable from a clock bug at mint time, so this function simply doesn't expose the field to override.
+ */
+export async function createRoomNotice(
+  options: Readonly<CreateRoomNoticeOptions>,
+): Promise<RoomNotice> {
+  const claims: RoomNoticeClaims = {
+    room: options.room,
+    poster: options.identity.deviceId,
+    "poster-key": options.identity.identityKey,
+    token: options.token,
+    "notice-id": options.noticeId,
+    "posted-at": options.clock.now(),
+    "content-type": options.contentType,
+    content: options.content,
+    ...(options.refs !== undefined ? { refs: [...options.refs] } : {}),
+    ...(options.validUntil !== undefined
+      ? { "valid-until": options.validUntil }
+      : {}),
+  };
+  const payload = encodeBuf(claims);
+  const protectedHeader = protectedHeaderFor(options.identity);
+  const signature = await options.identity.sign(
+    sig1ToBeSigned(protectedHeader, payload),
+  );
+  return [protectedHeader, {}, payload, signature];
 }
