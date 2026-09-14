@@ -652,6 +652,45 @@
         ]
       },
       "wire_hex": "a464706565725820111111111111111111111111111111111111111111111111111111111111111164747970656c646174612d656e747269657367656e74726965738243aabbcc44ddeeff006866726f6d2d7365711864"
+    },
+    {
+      "name": "bulk_data_v1_chunk",
+      "message": {
+        "type": "bulk-data",
+        "transfer-id": {
+          "hex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "seq": 3,
+        "bytes": {
+          "hex": "68656c6c6f0a"
+        }
+      },
+      "wire_hex": "a4637365710364747970656962756c6b2d646174616562797465734668656c6c6f0a6b7472616e736665722d696450aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "name": "bulk_ack_v1",
+      "message": {
+        "type": "bulk-ack",
+        "transfer-id": {
+          "hex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "ack-seq": 3,
+        "window": 65536
+      },
+      "wire_hex": "a464747970656862756c6b2d61636b6677696e646f771a000100006761636b2d736571036b7472616e736665722d696450aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "name": "bulk_end_v1",
+      "message": {
+        "type": "bulk-end",
+        "transfer-id": {
+          "hex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "digest": {
+          "hex": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+        }
+      },
+      "wire_hex": "a364747970656862756c6b2d656e64666469676573745820cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd6b7472616e736665722d696450aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }
   ]
 }

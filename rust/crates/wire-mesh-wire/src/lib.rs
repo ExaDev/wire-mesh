@@ -26,6 +26,7 @@
 
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
+pub mod bulk;
 pub mod data;
 pub mod discovery;
 pub mod error;
