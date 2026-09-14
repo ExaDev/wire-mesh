@@ -12,6 +12,10 @@ function buf(bytes: Uint8Array | ArrayLike<number>): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(bytes);
 }
 
+function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
+  return a.length === b.length && a.every((byte, i) => byte === b[i]);
+}
+
 async function generateEs256Identity(): Promise<IdentityPort> {
   const keyPair = await webcrypto.subtle.generateKey(
     { name: "ECDSA", namedCurve: "P-256" },
@@ -25,14 +29,13 @@ async function generateEs256Identity(): Promise<IdentityPort> {
 }
 
 describe("createRevocationView", () => {
-  it("reports nothing revoked before any entry has been recorded", async () => {
+  it("reports nothing recorded before any entry has been recorded", async () => {
     const view = createRevocationView();
-    const issuer = await generateEs256Identity();
-    const revoked = await view.isRevoked(buf([1]), issuer.deviceId);
-    expect(revoked).toBe(false);
+    const entries = await view.entriesFor(buf([1]));
+    expect(entries).toEqual([]);
   });
 
-  it("reports a token revoked once its issuer's own revocation-entry has been recorded", async () => {
+  it("returns the recorded revocation-claims once its issuer's own revocation-entry has been recorded", async () => {
     const view = createRevocationView();
     const issuer = await generateEs256Identity();
     const tokenId = buf([1]);
@@ -45,11 +48,14 @@ describe("createRevocationView", () => {
     const recordVerdict = await view.record(entry, { identity: issuer });
     expect(recordVerdict.ok).toBe(true);
 
-    const revoked = await view.isRevoked(tokenId, issuer.deviceId);
-    expect(revoked).toBe(true);
+    const entries = await view.entriesFor(tokenId);
+    expect(entries).toHaveLength(1);
+    expect(equalBytes(entries[0]?.issuer ?? new Uint8Array(), issuer.deviceId)).toBe(
+      true,
+    );
   });
 
-  it("does not treat a third party's revocation-entry as revoking someone else's token with the same token-id", async () => {
+  it("still returns a third party's own recorded revocation-entry for someone else's token-id -- filtering by issuer is the caller's (verifyTokenChain's) obligation, not the store's", async () => {
     const view = createRevocationView();
     const actualIssuer = await generateEs256Identity();
     const impostor = await generateEs256Identity();
@@ -63,11 +69,17 @@ describe("createRevocationView", () => {
     const recordVerdict = await view.record(entry, { identity: impostor });
     expect(recordVerdict.ok).toBe(true);
 
-    const revoked = await view.isRevoked(tokenId, actualIssuer.deviceId);
-    expect(revoked).toBe(false);
+    const entries = await view.entriesFor(tokenId);
+    expect(entries).toHaveLength(1);
+    expect(
+      equalBytes(entries[0]?.issuer ?? new Uint8Array(), actualIssuer.deviceId),
+    ).toBe(false);
+    expect(
+      equalBytes(entries[0]?.issuer ?? new Uint8Array(), impostor.deviceId),
+    ).toBe(true);
   });
 
-  it("does not treat a revocation-entry for a different token-id as revoking this one", async () => {
+  it("does not return a revocation-entry for a different token-id", async () => {
     const view = createRevocationView();
     const issuer = await generateEs256Identity();
     const entry = await mintRevocationEntry({
@@ -78,11 +90,11 @@ describe("createRevocationView", () => {
 
     await view.record(entry, { identity: issuer });
 
-    const revoked = await view.isRevoked(buf([2]), issuer.deviceId);
-    expect(revoked).toBe(false);
+    const entries = await view.entriesFor(buf([2]));
+    expect(entries).toEqual([]);
   });
 
-  it("refuses to record an entry whose signature does not verify, and does not let it revoke anything", async () => {
+  it("refuses to record an entry whose signature does not verify, and does not let it appear in entriesFor", async () => {
     const view = createRevocationView();
     const issuer = await generateEs256Identity();
     const tokenId = buf([1]);
@@ -106,8 +118,8 @@ describe("createRevocationView", () => {
     });
     expect(recordVerdict.ok).toBe(false);
 
-    const revoked = await view.isRevoked(tokenId, issuer.deviceId);
-    expect(revoked).toBe(false);
+    const entries = await view.entriesFor(tokenId);
+    expect(entries).toEqual([]);
   });
 
   it("keeps recording additional entries independently, so an earlier one is not overwritten", async () => {
@@ -132,7 +144,33 @@ describe("createRevocationView", () => {
       { identity: issuer },
     );
 
-    expect(await view.isRevoked(firstTokenId, issuer.deviceId)).toBe(true);
-    expect(await view.isRevoked(secondTokenId, issuer.deviceId)).toBe(true);
+    expect(await view.entriesFor(firstTokenId)).toHaveLength(1);
+    expect(await view.entriesFor(secondTokenId)).toHaveLength(1);
+  });
+
+  it("records multiple entries for the same token-id from different issuers, returning both", async () => {
+    const view = createRevocationView();
+    const originalIssuer = await generateEs256Identity();
+    const delegatedRevoker = await generateEs256Identity();
+    const tokenId = buf([1]);
+    await view.record(
+      await mintRevocationEntry({
+        identity: originalIssuer,
+        tokenId,
+        revokedAt: 1000,
+      }),
+      { identity: originalIssuer },
+    );
+    await view.record(
+      await mintRevocationEntry({
+        identity: delegatedRevoker,
+        tokenId,
+        revokedAt: 2000,
+      }),
+      { identity: delegatedRevoker },
+    );
+
+    const entries = await view.entriesFor(tokenId);
+    expect(entries).toHaveLength(2);
   });
 });

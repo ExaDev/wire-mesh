@@ -6,6 +6,7 @@ import type { Clock } from "../src/ports/clock.js";
 import type {
   CapabilityScope,
   CapabilityToken,
+  CapabilityVerb,
   DeviceId,
   RevocationClaims,
   RevocationEntry,
@@ -61,21 +62,17 @@ export function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 export const neverRevoked: RevocationCheck = {
-  isRevoked: async () => Promise.resolve(false),
+  entriesFor: async () => Promise.resolve([]),
 };
 
-/** A RevocationCheck over an explicit set of already-verified revocation claims, applying the port's own contract: an entry only counts against a token when BOTH its token-id and its issuer match the token's own -- a revocation signed by some third party must not revoke someone else's token. */
+/** A RevocationCheck over an explicit set of already-verified revocation claims, returning every entry recorded for the given token-id, unfiltered -- matching the port's own contract that the actual obligation check (issuer-match, or a verified delegated authorization) is the caller's (verifyTokenChain's) job, not the store's. */
 export function revocationView(
   entries: readonly RevocationClaims[],
 ): RevocationCheck {
   return {
-    isRevoked: async (tokenId, issuer) =>
+    entriesFor: async (tokenId) =>
       Promise.resolve(
-        entries.some(
-          (entry) =>
-            equalBytes(entry["token-id"], tokenId) &&
-            equalBytes(entry.issuer, issuer),
-        ),
+        entries.filter((entry) => equalBytes(entry["token-id"], tokenId)),
       ),
   };
 }
@@ -84,12 +81,14 @@ export function revocationView(
 export async function signRevocationEntry(
   identity: IdentityPort,
   tokenId: Uint8Array<ArrayBuffer>,
+  authorization?: Uint8Array<ArrayBuffer>,
 ): Promise<RevocationEntry> {
   const claims: RevocationClaims = {
     "token-id": tokenId,
     issuer: identity.deviceId,
     "issuer-key": identity.identityKey,
     "revoked-at": 0,
+    ...(authorization !== undefined ? { authorization } : {}),
   };
   const payload = encodeBuf(claims);
   const protectedHeader = encodeBuf({});
@@ -111,6 +110,8 @@ export interface TokenSeed {
   parent?: Uint8Array<ArrayBuffer>;
   delegationsRemaining?: number;
   validUntil?: number;
+  /** Defaults to "exec:pty", the value every pre-existing test relies on implicitly. Overridable so a test can mint a "revoke"-capability authorization token without needing a second signing helper. */
+  capability?: CapabilityVerb;
 }
 
 /** Builds and signs one capability token as `identity` -- explicit field-by-field construction rather than spreading a partial claims object, since TokenClaims' own `.catchall(z.unknown())` index signature (the spec's forward-compatible extension-field pattern) makes a spread-based `Omit<TokenClaims, ...>` lose the specific field types. Deliberately does none of mintCapabilityToken's own narrowing checks -- tests exercising verifyCapabilityToken's own enforcement need to construct chains mint would refuse to produce. */
@@ -123,7 +124,7 @@ export async function signToken(
     issuer: identity.deviceId,
     "issuer-key": identity.identityKey,
     bearer: seed.bearer,
-    capability: "exec:pty",
+    capability: seed.capability ?? "exec:pty",
     scope: seed.scope,
     expires: seed.expires,
     ...(seed.parent !== undefined ? { parent: seed.parent } : {}),
