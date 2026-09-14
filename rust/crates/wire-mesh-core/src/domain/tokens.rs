@@ -5,6 +5,7 @@
 //! prior contact with the issuer is needed, only the token itself — and
 //! delegation can only narrow authority, never widen it.
 
+use wire_mesh_wire::identity::DeviceId;
 use wire_mesh_wire::management::RevocationClaims;
 use wire_mesh_wire::tokens::{CapabilityVerb, CoseSign1, TokenClaims};
 
@@ -78,6 +79,13 @@ pub enum TokenRejection {
     /// predicate-evaluator parity separately; this is the fail-closed
     /// stopgap until it lands.
     ConditionsUnsupported { token_id: Vec<u8> },
+    /// The presented (leaf) token's own `bearer` does not equal the
+    /// `expected_bearer` the caller gave -- the peer presenting this
+    /// token to authorise itself is not the device the token actually
+    /// names. Never checked against an ancestor: in any valid chain the
+    /// parent's bearer is the child's issuer (already enforced
+    /// structurally), so this only ever applies to the leaf.
+    BearerMismatch,
 }
 
 impl core::fmt::Display for TokenRejection {
@@ -140,6 +148,10 @@ impl core::fmt::Display for TokenRejection {
                 "token {} carries a conditions field this verifier cannot evaluate",
                 hex_prefix(token_id)
             ),
+            TokenRejection::BearerMismatch => write!(
+                f,
+                "the presented token's own bearer does not match the expected bearer"
+            ),
         }
     }
 }
@@ -180,6 +192,13 @@ pub enum TokenVerdict {
     Valid {
         claims: Box<TokenClaims>,
         effective_expires: u64,
+        /// The device-id at the root of this token's delegation chain: its
+        /// own issuer when it carries no parent, otherwise the root of its
+        /// parent's chain. Lets a caller (core/room's own obligation that a
+        /// chain must terminate at the path's own owner, or the verifier
+        /// itself for a DM) check the chain's root with one comparison
+        /// instead of re-walking the parent chain a second time.
+        root_issuer: DeviceId,
     },
     Invalid(TokenRejection),
 }
@@ -230,6 +249,7 @@ async fn revocation_entry_grants_revoke(
         clock,
         revocations,
         &authorization_token,
+        None,
     ))
     .await;
     match verdict {
@@ -267,6 +287,8 @@ pub async fn verify_capability_token(
     clock: &dyn Clock,
     revocations: &RevocationView,
     token: &CoseSign1,
+    // When given, the presented (leaf) token must bear this device -- the caller presenting a token to authorise itself, not someone else. Checked once the whole chain has verified, against the leaf claims only: in any valid chain the parent's bearer is already structurally enforced to equal the child's issuer, so consulting this during the recursive walk would wrongly fail every ancestor.
+    expected_bearer: Option<DeviceId>,
 ) -> TokenVerdict {
     let now = clock.now_unix_ms();
     let mut current = token.clone();
@@ -407,15 +429,24 @@ pub async fn verify_capability_token(
                 }
             }
             None => {
+                let root_issuer = claims.issuer;
                 return match leaf {
-                    Some(claims) => TokenVerdict::Valid {
-                        claims: Box::new(claims),
-                        effective_expires,
-                    },
+                    Some(claims) => {
+                        if let Some(expected) = expected_bearer {
+                            if claims.bearer != expected {
+                                return TokenVerdict::Invalid(TokenRejection::BearerMismatch);
+                            }
+                        }
+                        TokenVerdict::Valid {
+                            claims: Box::new(claims),
+                            effective_expires,
+                            root_issuer,
+                        }
+                    }
                     None => {
                         TokenVerdict::Invalid(TokenRejection::Malformed("empty chain".to_owned()))
                     }
-                }
+                };
             }
         }
     }
@@ -452,7 +483,6 @@ mod tests {
     use super::*;
     use crate::adapters::node_identity::NodeIdentity;
     use crate::domain::revocation::RevocationView;
-    use wire_mesh_wire::identity::DeviceId;
     use wire_mesh_wire::management::{RevocationClaims, RevocationEntry};
     use wire_mesh_wire::tokens::{CapabilityScope, CapabilityVerb};
     use wire_mesh_wire::value::CanonicalMap;
@@ -546,7 +576,7 @@ mod tests {
         revocations: &RevocationView,
         token: &CoseSign1,
     ) -> TokenVerdict {
-        verify_capability_token(identity, &FixedClock(NOW), revocations, token).await
+        verify_capability_token(identity, &FixedClock(NOW), revocations, token, None).await
     }
 
     /// A two-link chain: `parent_identity` grants the whole `/work` scope
@@ -588,6 +618,7 @@ mod tests {
                 TokenVerdict::Valid {
                     claims: verified,
                     effective_expires,
+                    ..
                 } => {
                     assert_eq!(verified.token_id, claims.token_id);
                     assert_eq!(*effective_expires, claims.expires);
@@ -769,6 +800,70 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn root_token_reports_its_own_issuer_as_the_chain_root() {
+        let issuer = NodeIdentity::generate_ed25519();
+        let claims = claims_for(&issuer, DeviceId([0xAA; 32]));
+        let token = mint(&issuer, &claims).await;
+        let verdict = verify(&issuer, &RevocationView::new(), &token).await;
+        match verdict {
+            TokenVerdict::Valid { root_issuer, .. } => {
+                assert_eq!(root_issuer, *issuer.device_id());
+            }
+            other => panic!("expected Valid, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_delegated_token_reports_the_root_ancestors_issuer_not_its_own() {
+        let root = NodeIdentity::generate_ed25519();
+        let (_, child_token, _) = mint_delegated(&root, |_| {}).await;
+        let verdict = verify(&root, &RevocationView::new(), &child_token).await;
+        match verdict {
+            TokenVerdict::Valid { root_issuer, .. } => {
+                assert_eq!(root_issuer, *root.device_id());
+            }
+            other => panic!("expected Valid, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_token_matching_the_expected_bearer_still_verifies() {
+        let issuer = NodeIdentity::generate_ed25519();
+        let bearer = DeviceId([0xAA; 32]);
+        let claims = claims_for(&issuer, bearer);
+        let token = mint(&issuer, &claims).await;
+        let verdict = verify_capability_token(
+            &issuer,
+            &FixedClock(NOW),
+            &RevocationView::new(),
+            &token,
+            Some(bearer),
+        )
+        .await;
+        assert!(matches!(verdict, TokenVerdict::Valid { .. }));
+    }
+
+    #[tokio::test]
+    async fn a_token_presented_by_someone_other_than_its_own_bearer_is_rejected() {
+        let issuer = NodeIdentity::generate_ed25519();
+        let bearer = DeviceId([0xAA; 32]);
+        let claims = claims_for(&issuer, bearer);
+        let token = mint(&issuer, &claims).await;
+        let verdict = verify_capability_token(
+            &issuer,
+            &FixedClock(NOW),
+            &RevocationView::new(),
+            &token,
+            Some(DeviceId([0xBB; 32])),
+        )
+        .await;
+        assert!(matches!(
+            verdict,
+            TokenVerdict::Invalid(TokenRejection::BearerMismatch)
+        ));
+    }
+
+    #[tokio::test]
     async fn delegation_narrowing_happy_path_clamps_effective_expiry() {
         let parent = NodeIdentity::generate_ed25519();
         let (_, child_token, child_claims) = mint_delegated(&parent, |_| {}).await;
@@ -777,6 +872,7 @@ mod tests {
             TokenVerdict::Valid {
                 claims,
                 effective_expires,
+                ..
             } => {
                 assert_eq!(claims.token_id, child_claims.token_id);
                 assert_eq!(
