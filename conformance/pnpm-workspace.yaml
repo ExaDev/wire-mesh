@@ -1,3 +1,6 @@
+# Left disallowed, matching this package's existing behaviour under pnpm 10 (which only ever warned "Ignored build scripts" for esbuild and installed successfully without running it).
+allowBuilds:
+  esbuild: false
 minimumReleaseAgeExclude:
   - '@exadev/eslint-config'
 saveExact: true
