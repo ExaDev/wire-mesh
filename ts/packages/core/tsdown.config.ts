@@ -16,6 +16,7 @@ export default defineConfig({
     "src/domain/handshake.ts",
     "src/domain/mesh-session.ts",
     "src/domain/relay-hub.ts",
+    "src/domain/relay-use-gate.ts",
     "src/domain/room-path.ts",
     "src/domain/room-token-verification.ts",
     "src/domain/tokens.ts",
