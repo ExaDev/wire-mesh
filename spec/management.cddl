@@ -39,6 +39,7 @@ manage-response-frame = { type: "manage-response", request-id: uint, outcome: ma
 ; it once expired rather than keep holding or forwarding it. Reuses the
 ; same message/token-lifetime concept the plan's own section E already
 ; names as its own open item, rather than inventing a second TTL field.
+; The outer manage-command.verb for a capability-request MUST be the capability string itself -- the same value as this map's own `capability` field below -- never a generic literal: routing by capability (the same pattern room.send/room.join already share under one shared room:member outer verb) is how a receiver's own per-capability handler knows which grant this ask is even for.
 $manage-command-params /= capability-request
 capability-request = { verb: "capability.request", capability: tstr, ? valid-until: uint, * tstr => any }
 capability-grant-ok = { result: "ok", "granted-token": capability-token, * tstr => any }
