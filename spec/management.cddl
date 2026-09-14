@@ -44,6 +44,52 @@ $manage-command-params /= capability-request
 capability-request = { verb: "capability.request", capability: tstr, ? valid-until: uint, * tstr => any }
 capability-grant-ok = { result: "ok", "granted-token": capability-token, * tstr => any }
 
+; The generic unsolicited push-grant counterpart to capability-request
+; (wire-mesh#117): lifts core/room's own room.invite shape (the owner mints
+; a token unprompted and delivers it in the request itself, since there is
+; no approval round-trip to carry a grant back) out of that one domain the
+; same way capability-request already lifted room.join's own pull half. No
+; scope field in params, for the identical reason capability-request already
+; omits one: manage-request-frame's own top-level scope already carries it.
+; No invitee field either -- the recipient is already the request's own
+; destination, so naming it a second time inside params could only ever
+; disagree with who the request was actually sent to. The outer
+; manage-command.verb MUST be the target capability itself, matching
+; capability-request's own convention (a receiver's per-capability handler
+; is how it knows which grant this push is even for).
+;
+; Verification is entirely the receiving side's own job; there is no
+; protocol-level approval round trip -- a receiver responds manage-error
+; only for a validation failure (malformed, the token itself doesn't
+; verify), never a human "no" (an application MAY still surface the grant
+; to a human before treating it as active, but that is application policy,
+; not a wire obligation, mirroring room.invite's own existing design). Four
+; verifier obligations:
+;
+; 1. granted-token.bearer MUST equal the verifying party's own device-id --
+;    never a relay-asserted hint. An unsolicited push names its own
+;    recipient by who it was actually sent to, not by a claim inside the
+;    payload, so a token bearing anyone else's device-id was misdirected
+;    (or malicious) and must be refused, exactly as agent-comms' own
+;    existing room.invite handling already checks the pushed token against
+;    its own local identity rather than the sender's.
+; 2. granted-token.capability MUST equal the outer manage-command.verb, the
+;    same "outer verb is the capability" convention capability-request
+;    already established.
+; 3. granted-token MUST independently pass every ordinary
+;    verifyCapabilityToken obligation (signature, expiry, valid-until,
+;    not-before, revocation, full ancestor-chain walk) -- a recipient
+;    verifies an unsolicited grant exactly as it would any other token, not
+;    merely because it arrived wrapped in this verb.
+; 4. granted-token.scope MUST equal, or be an acceptable root for, the
+;    enclosing manage-request-frame's own top-level scope -- the same
+;    equal-or-root relation tokens.cddl's own delegation narrowing already
+;    defines, applied here to check the pushed token against the scope the
+;    request claims to act on rather than against a parent in a delegation
+;    chain.
+$manage-command-params /= capability-grant
+capability-grant = { verb: "capability.grant", "granted-token": capability-token, * tstr => any }
+
 ; Revocation — new, not present in Cascade's frozen set. Gossiped revocation
 ; entries let a peer check a token against a shared revocation view without
 ; a synchronous lookup against the issuer for every use of the token.

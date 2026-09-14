@@ -30,7 +30,7 @@ export const handleClaimsSchema = z.lazy(() => z.object({
 export const handleRecordSchema = z.lazy(() => z.lazy(() => coseSign1Schema));
 export const manageCommandParamsSchema = z.lazy(() => z.union([z.union([z.lazy(() => ptySpawnSchema), z.lazy(() => ptyWriteSchema), z.lazy(() => ptyResizeSchema), z.lazy(() => ptyKillSchema), z.lazy(() => procSpawnSchema), z.lazy(() => procSignalSchema), z.lazy(() => procKillSchema), z.lazy(() => execListSchema)]), z.object({
 
-}).catchall(z.unknown()), z.lazy(() => capabilityRequestSchema), z.union([z.lazy(() => roomSendSchema), z.lazy(() => roomReadSchema), z.lazy(() => roomLeaveSchema), z.lazy(() => roomMembersSchema)]), z.union([z.lazy(() => roomJoinSchema), z.lazy(() => roomInviteSchema)]), z.union([z.lazy(() => webrtcOfferSchema), z.lazy(() => webrtcAnswerSchema), z.lazy(() => webrtcIceCandidateSchema)])]));
+}).catchall(z.unknown()), z.lazy(() => capabilityRequestSchema), z.lazy(() => capabilityGrantSchema), z.union([z.lazy(() => roomSendSchema), z.lazy(() => roomReadSchema), z.lazy(() => roomLeaveSchema), z.lazy(() => roomMembersSchema)]), z.union([z.lazy(() => roomJoinSchema), z.lazy(() => roomInviteSchema)]), z.union([z.lazy(() => webrtcOfferSchema), z.lazy(() => webrtcAnswerSchema), z.lazy(() => webrtcIceCandidateSchema)])]));
 export const ptySpawnSchema = z.lazy(() => z.object({
   "verb": z.literal("pty.spawn"),
   "shell": z.string().optional(),
@@ -140,6 +140,10 @@ export const capabilityRequestSchema = z.lazy(() => z.object({
 }).catchall(z.unknown()));
 export const capabilityGrantOkSchema = z.lazy(() => z.object({
   "result": z.literal("ok"),
+  "granted-token": z.lazy(() => capabilityTokenSchema),
+}).catchall(z.unknown()));
+export const capabilityGrantSchema = z.lazy(() => z.object({
+  "verb": z.literal("capability.grant"),
   "granted-token": z.lazy(() => capabilityTokenSchema),
 }).catchall(z.unknown()));
 export const revocationClaimsSchema = z.lazy(() => z.object({
@@ -377,6 +381,7 @@ export type ManageError = z.infer<typeof manageErrorSchema>;
 export type ManageResponseFrame = z.infer<typeof manageResponseFrameSchema>;
 export type CapabilityRequest = z.infer<typeof capabilityRequestSchema>;
 export type CapabilityGrantOk = z.infer<typeof capabilityGrantOkSchema>;
+export type CapabilityGrant = z.infer<typeof capabilityGrantSchema>;
 export type RevocationClaims = z.infer<typeof revocationClaimsSchema>;
 export type RevocationEntry = z.infer<typeof revocationEntrySchema>;
 export type RevocationAnnounceFrame = z.infer<typeof revocationAnnounceFrameSchema>;
