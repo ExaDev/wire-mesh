@@ -137,7 +137,7 @@ export async function verifyCapabilityToken(
 }
 
 /**
- * Does one recorded revocation-claims entry actually revoke targetClaims, per management.cddl's own additive obligation? Valid when EITHER the entry's own issuer equals the target token's own issuer (the original, unconditional rule -- only a token's own issuer may revoke it), OR the entry carries an `authorization` that independently verifies as an ordinary capability-token -- with `expectedBearer` set to THIS entry's own `issuer`, proving the authorization was actually granted to the party submitting this revocation, not merely referenced from someone else's -- whose own `capability` is `"revoke"` and whose own `scope` narrows targetClaims' scope. An authorization that fails any part of this (wrong capability, scope doesn't narrow, fails ordinary verification -- expired, revoked, bad signature, bearer mismatch) makes the entry no more valid than if `authorization` were absent; it never falls back to weakening the issuer-match rule.
+ * Does one recorded revocation-claims entry actually revoke targetClaims, per management.cddl's own additive obligation? Valid when EITHER the entry's own issuer equals the target token's own issuer (the original, unconditional rule -- only a token's own issuer may revoke it), OR the entry carries an `authorization` that independently verifies as an ordinary capability-token -- with `expectedBearer` set to THIS entry's own `issuer`, proving the authorization was actually granted to the party submitting this revocation, not merely referenced from someone else's -- whose own `capability` is `manage:revoke` (spec/registry/core-capabilities.md) and whose own `scope` narrows targetClaims' scope. An authorization that fails any part of this (wrong capability, scope doesn't narrow, fails ordinary verification -- expired, revoked, bad signature, bearer mismatch) makes the entry no more valid than if `authorization` were absent; it never falls back to weakening the issuer-match rule.
  */
 async function revocationEntryGrantsRevoke(
   entry: RevocationClaims,
@@ -156,9 +156,8 @@ async function revocationEntryGrantsRevoke(
   } catch {
     return false;
   }
-  const authorizationResult = capabilityTokenSchema.safeParse(
-    decodedAuthorization,
-  );
+  const authorizationResult =
+    capabilityTokenSchema.safeParse(decodedAuthorization);
   if (!authorizationResult.success) {
     return false;
   }
@@ -168,7 +167,7 @@ async function revocationEntryGrantsRevoke(
   );
   return (
     authorizationVerdict.ok &&
-    authorizationVerdict.claims.capability === "revoke" &&
+    authorizationVerdict.claims.capability === "manage:revoke" &&
     scopeNarrows(authorizationVerdict.claims.scope, targetClaims.scope)
   );
 }
