@@ -95,6 +95,59 @@ describe("verifyCapabilityToken", () => {
     expect(verdict).toEqual({ ok: false, reason: "expired" });
   });
 
+  it("rejects a token whose content has passed its valid-until, even though the token itself hasn't expired", async () => {
+    const token = await signToken(issuer, {
+      tokenId: nextTokenId(),
+      bearer: bearerDeviceId,
+      scope: workScope,
+      expires: now + HOUR_MS,
+      validUntil: now - 1,
+    });
+
+    const verdict = await verifyCapabilityToken(token, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: "content_expired" });
+  });
+
+  it("accepts a token whose valid-until is still in the future", async () => {
+    const token = await signToken(issuer, {
+      tokenId: nextTokenId(),
+      bearer: bearerDeviceId,
+      scope: workScope,
+      expires: now + HOUR_MS,
+      validUntil: now + 1,
+    });
+
+    const verdict = await verifyCapabilityToken(token, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict.ok).toBe(true);
+  });
+
+  it("accepts a token with no valid-until claim at all -- absent means unbounded", async () => {
+    const token = await signToken(issuer, {
+      tokenId: nextTokenId(),
+      bearer: bearerDeviceId,
+      scope: workScope,
+      expires: now + HOUR_MS,
+    });
+
+    const verdict = await verifyCapabilityToken(token, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+
+    expect(verdict.ok).toBe(true);
+  });
+
   it("rejects a token revoked by its own issuer's entry", async () => {
     const tokenId = nextTokenId();
     const token = await signToken(issuer, {
