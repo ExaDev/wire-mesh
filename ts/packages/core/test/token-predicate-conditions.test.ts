@@ -229,6 +229,74 @@ describe("token-claims.conditions -- the generic predicate-list evaluator", () =
     expect(verdict).toEqual({ ok: false, reason: "conditions_not_satisfied" });
   });
 
+  it("fails closed rather than throwing when a condition's delegate system names an inherited Object.prototype property", async () => {
+    // "constructor" resolves to Object on a plain {} extraHandlers table with no own-property guard -- a peer choosing this system name over ABOVE_THRESHOLD's own, deliberately unregistered name is exactly the attack Codex's own review flagged: a bare `extraHandlers[system]` lookup treats an inherited prototype member as a real handler, and invoking it throws instead of producing a verdict.
+    const minted = await mintCapabilityToken({
+      identity: issuer,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: issuer.deviceId,
+      capability: "exec:pty",
+      scope: workScope,
+      expires: now + HOUR_MS,
+      conditions: [
+        {
+          kind: "compare",
+          op: "eq",
+          left: {
+            kind: "delegate",
+            system: "constructor",
+            payload: { value: 10, threshold: 5 },
+          },
+          right: { kind: "booleanLiteral", value: true },
+        },
+      ],
+    });
+    expect(minted.ok).toBe(true);
+    if (!minted.ok) return;
+
+    const verdict = await verifyCapabilityToken(minted.token, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+    expect(verdict).toEqual({ ok: false, reason: "conditions_not_satisfied" });
+  });
+
+  it("fails closed rather than throwing when a condition's delegate system is __proto__ itself", async () => {
+    // extraHandlers["__proto__"] on a plain {} returns Object.prototype -- not a function, so invoking it (`extra(payload, context)`) throws "extra is not a function" rather than returning a verdict, crashing the whole verification call instead of refusing the token.
+    const minted = await mintCapabilityToken({
+      identity: issuer,
+      clock: fixedClock(now),
+      tokenId: nextTokenId(),
+      bearer: issuer.deviceId,
+      capability: "exec:pty",
+      scope: workScope,
+      expires: now + HOUR_MS,
+      conditions: [
+        {
+          kind: "compare",
+          op: "eq",
+          left: {
+            kind: "delegate",
+            system: "__proto__",
+            payload: {},
+          },
+          right: { kind: "booleanLiteral", value: true },
+        },
+      ],
+    });
+    expect(minted.ok).toBe(true);
+    if (!minted.ok) return;
+
+    const verdict = await verifyCapabilityToken(minted.token, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+    expect(verdict).toEqual({ ok: false, reason: "conditions_not_satisfied" });
+  });
+
   it("rejects a validly-signed token whose conditions bstr does not decode as CBOR", async () => {
     const token = await signTokenWithRawConditions(issuer, INVALID_CBOR_BYTES, {
       tokenId: nextTokenId(),

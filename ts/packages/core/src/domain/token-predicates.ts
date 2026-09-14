@@ -197,9 +197,16 @@ export async function evaluateConditions(
     resolveLookup: unusedResolveLookup,
     resolveCollection: unusedResolveCollection,
     resolveDelegate: async (system, payload) => {
-      const extra = extraHandlers[system];
-      if (extra === undefined) return { found: false };
-      return extra(payload, context);
+      // Object.hasOwn guards against a peer-chosen system name (e.g. "__proto__", "constructor", "toString") resolving to an inherited Object.prototype member instead of undefined -- a bare extraHandlers[system] lookup on a plain object would treat that inherited value as a real handler, and "__proto__" specifically isn't even callable, so invoking it throws rather than producing a verdict. The try/catch below is defence in depth for the same fail-closed requirement, covering a genuinely registered handler that throws for its own reasons -- hostile or malformed input to a condition evaluator must always produce a verdict, never propagate an exception, matching verifyTokenChain's own documented convention.
+      const handler = Object.hasOwn(extraHandlers, system)
+        ? extraHandlers[system]
+        : undefined;
+      if (handler === undefined) return { found: false };
+      try {
+        return await handler(payload, context);
+      } catch {
+        return { found: false };
+      }
     },
   };
   for (const node of nodes) {
