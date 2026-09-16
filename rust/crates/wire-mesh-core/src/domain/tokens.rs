@@ -71,14 +71,12 @@ pub enum TokenRejection {
     InvalidClaims(String),
     /// The chain exceeds [`MAX_CHAIN_DEPTH`].
     ChainTooDeep,
-    /// A link carries a `conditions` field, but this implementation has no
-    /// predicate evaluator to check it against -- refused rather than
-    /// silently ignored, since an unchecked `conditions` entry could carry
-    /// a restriction the issuer intended to narrow the token's validity
-    /// with (see tokens.cddl's own comment on the field). Track full Rust
-    /// predicate-evaluator parity separately; this is the fail-closed
-    /// stopgap until it lands.
-    ConditionsUnsupported { token_id: Vec<u8> },
+    /// A link's own `conditions` predicate list evaluated to something
+    /// other than a definite `true` for every entry -- either a predicate
+    /// genuinely did not hold, or it named a node kind or `delegate`
+    /// system this verifier has no support for, which fails closed the
+    /// same way (see `domain::predicates`' own module doc comment).
+    ConditionsNotSatisfied { token_id: Vec<u8> },
     /// The presented (leaf) token's own `bearer` does not equal the
     /// `expected_bearer` the caller gave -- the peer presenting this
     /// token to authorise itself is not the device the token actually
@@ -143,9 +141,9 @@ impl core::fmt::Display for TokenRejection {
             TokenRejection::ChainTooDeep => {
                 write!(f, "delegation chain deeper than {MAX_CHAIN_DEPTH}")
             }
-            TokenRejection::ConditionsUnsupported { token_id } => write!(
+            TokenRejection::ConditionsNotSatisfied { token_id } => write!(
                 f,
-                "token {} carries a conditions field this verifier cannot evaluate",
+                "token {}'s conditions were not satisfied",
                 hex_prefix(token_id)
             ),
             TokenRejection::BearerMismatch => write!(
@@ -382,10 +380,16 @@ pub async fn verify_capability_token(
                 });
             }
         }
-        if claims.conditions.is_some() {
-            return TokenVerdict::Invalid(TokenRejection::ConditionsUnsupported {
-                token_id: claims.token_id,
-            });
+        if let Some(conditions_bytes) = &claims.conditions {
+            let nodes = match crate::domain::predicates::decode_conditions(conditions_bytes) {
+                Ok(nodes) => nodes,
+                Err(e) => return TokenVerdict::Invalid(TokenRejection::Malformed(e.to_string())),
+            };
+            if !crate::domain::predicates::evaluate_conditions(&nodes) {
+                return TokenVerdict::Invalid(TokenRejection::ConditionsNotSatisfied {
+                    token_id: claims.token_id,
+                });
+            }
         }
 
         // Narrowing against the link below, checked from the parent's
@@ -727,24 +731,51 @@ mod tests {
         assert!(verdict.is_valid());
     }
 
+    /// Encodes `[value1: bool, value2: bool]` as `{kind:"compare", op:"eq",
+    /// left:{kind:"booleanLiteral", value: value1}, right:{kind:"booleanLiteral", value:
+    /// value2}}` wrapped in a one-element conditions array -- the exact shape
+    /// `delegateIsTrue` in `token-predicates.ts` builds, minus the `delegate` operand (a
+    /// `delegate` with no registered system always resolves indeterminate on both languages,
+    /// so it adds nothing to these particular assertions).
+    /// Map keys are written in RFC 8949 4.2.1 core deterministic order (shortest encoded key
+    /// first, then bytewise), which `CborValue::decode_strict` enforces on every map at every
+    /// depth: for `{kind, op, left, right}` that is `op` (shortest), then `kind`/`left` (tied
+    /// length, `kind` sorts first bytewise), then `right` (longest).
+    fn boolean_eq_condition_bytes(value1: bool, value2: bool) -> Vec<u8> {
+        let mut buf = Vec::new();
+        {
+            let mut e = minicbor::Encoder::new(&mut buf);
+            e.array(1).unwrap();
+            e.map(4).unwrap();
+            e.str("op").unwrap().str("eq").unwrap();
+            e.str("kind").unwrap().str("compare").unwrap();
+            e.str("left").unwrap();
+            e.map(2).unwrap();
+            e.str("kind").unwrap().str("booleanLiteral").unwrap();
+            e.str("value").unwrap().bool(value1).unwrap();
+            e.str("right").unwrap();
+            e.map(2).unwrap();
+            e.str("kind").unwrap().str("booleanLiteral").unwrap();
+            e.str("value").unwrap().bool(value2).unwrap();
+        }
+        buf
+    }
+
     #[tokio::test]
-    async fn conditions_field_is_refused_not_silently_ignored() {
-        // This implementation has no predicate evaluator (issue #85's TS-side evaluator has no Rust port yet): a token carrying `conditions` must be refused, not accepted as if the field weren't there -- the same fail-closed treatment an unrecognised discriminator already gets, and the mistake `valid-until` itself once made when it was still falling into `extra` unenforced.
+    async fn empty_conditions_array_verifies_exactly_as_absent() {
+        // `token-predicates.ts`'s own `evaluateConditions`: an empty list (or absent field) is
+        // trivially satisfied, no extra restriction at all.
         let issuer = NodeIdentity::generate_ed25519();
-        let mut with_conditions = claims_for(&issuer, DeviceId([0xAA; 32]));
-        with_conditions.conditions = Some(vec![0x80]); // bstr content is irrelevant -- presence alone must refuse
+        let mut with_empty_conditions = claims_for(&issuer, DeviceId([0xAA; 32]));
+        with_empty_conditions.conditions = Some(vec![0x80]); // bstr content: an empty CBOR array
         let verdict = verify(
             &issuer,
             &RevocationView::new(),
-            &mint(&issuer, &with_conditions).await,
+            &mint(&issuer, &with_empty_conditions).await,
         )
         .await;
-        assert!(matches!(
-            verdict,
-            TokenVerdict::Invalid(TokenRejection::ConditionsUnsupported { .. })
-        ));
+        assert!(verdict.is_valid());
 
-        // Absent conditions verifies exactly as before this field existed.
         let without_conditions = claims_for(&issuer, DeviceId([0xAA; 32]));
         assert_eq!(without_conditions.conditions, None);
         let verdict = verify(
@@ -754,6 +785,120 @@ mod tests {
         )
         .await;
         assert!(verdict.is_valid());
+    }
+
+    #[tokio::test]
+    async fn conditions_that_hold_verify_successfully() {
+        let issuer = NodeIdentity::generate_ed25519();
+        let mut claims = claims_for(&issuer, DeviceId([0xAA; 32]));
+        claims.conditions = Some(boolean_eq_condition_bytes(true, true));
+        let verdict = verify(
+            &issuer,
+            &RevocationView::new(),
+            &mint(&issuer, &claims).await,
+        )
+        .await;
+        assert!(verdict.is_valid());
+    }
+
+    #[tokio::test]
+    async fn a_condition_that_does_not_hold_is_refused() {
+        let issuer = NodeIdentity::generate_ed25519();
+        let mut claims = claims_for(&issuer, DeviceId([0xAA; 32]));
+        claims.conditions = Some(boolean_eq_condition_bytes(true, false));
+        let verdict = verify(
+            &issuer,
+            &RevocationView::new(),
+            &mint(&issuer, &claims).await,
+        )
+        .await;
+        assert!(matches!(
+            verdict,
+            TokenVerdict::Invalid(TokenRejection::ConditionsNotSatisfied { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn an_unrecognised_predicate_kind_fails_closed_not_silently_ignored() {
+        // A legal trilean PredicateNode kind (`and`, here) this verifier has no support for
+        // must refuse the token, not evaluate as if the condition were absent -- the same
+        // fail-closed treatment an unrecognised discriminator already gets elsewhere in this
+        // spec, and the exact mistake `valid-until` itself once made while still falling into
+        // `extra`, unenforced.
+        let mut buf = Vec::new();
+        {
+            let mut e = minicbor::Encoder::new(&mut buf);
+            e.array(1).unwrap();
+            e.map(1).unwrap();
+            e.str("kind").unwrap().str("and").unwrap();
+        }
+        let issuer = NodeIdentity::generate_ed25519();
+        let mut claims = claims_for(&issuer, DeviceId([0xAA; 32]));
+        claims.conditions = Some(buf);
+        let verdict = verify(
+            &issuer,
+            &RevocationView::new(),
+            &mint(&issuer, &claims).await,
+        )
+        .await;
+        assert!(matches!(
+            verdict,
+            TokenVerdict::Invalid(TokenRejection::ConditionsNotSatisfied { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_delegate_condition_with_no_registered_system_fails_closed() {
+        // Mirrors `token-predicates.ts`'s own current `extraHandlers: {}` default: no system is
+        // registered on either language's side yet, so a `delegate` condition always resolves
+        // indeterminate -- fail-closed, not treated as satisfied.
+        let mut buf = Vec::new();
+        {
+            let mut e = minicbor::Encoder::new(&mut buf);
+            e.array(1).unwrap();
+            e.map(4).unwrap();
+            e.str("op").unwrap().str("eq").unwrap();
+            e.str("kind").unwrap().str("compare").unwrap();
+            e.str("left").unwrap();
+            e.map(3).unwrap();
+            e.str("kind").unwrap().str("delegate").unwrap();
+            e.str("system").unwrap().str("some-future-system").unwrap();
+            e.str("payload").unwrap().null().unwrap();
+            e.str("right").unwrap();
+            e.map(2).unwrap();
+            e.str("kind").unwrap().str("booleanLiteral").unwrap();
+            e.str("value").unwrap().bool(true).unwrap();
+        }
+        let issuer = NodeIdentity::generate_ed25519();
+        let mut claims = claims_for(&issuer, DeviceId([0xAA; 32]));
+        claims.conditions = Some(buf);
+        let verdict = verify(
+            &issuer,
+            &RevocationView::new(),
+            &mint(&issuer, &claims).await,
+        )
+        .await;
+        assert!(matches!(
+            verdict,
+            TokenVerdict::Invalid(TokenRejection::ConditionsNotSatisfied { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn malformed_conditions_bytes_are_rejected_as_malformed() {
+        let issuer = NodeIdentity::generate_ed25519();
+        let mut claims = claims_for(&issuer, DeviceId([0xAA; 32]));
+        claims.conditions = Some(vec![0xa1]); // a map head with no following key/value: not a conditions array at all
+        let verdict = verify(
+            &issuer,
+            &RevocationView::new(),
+            &mint(&issuer, &claims).await,
+        )
+        .await;
+        assert!(matches!(
+            verdict,
+            TokenVerdict::Invalid(TokenRejection::Malformed(_))
+        ));
     }
 
     #[tokio::test]

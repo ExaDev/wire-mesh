@@ -2,6 +2,7 @@
 
 pub mod cose;
 pub mod handshake;
+pub mod predicates;
 pub mod revocation;
 pub mod room;
 pub mod room_path;
