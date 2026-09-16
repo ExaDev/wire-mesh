@@ -1,10 +1,10 @@
 // Live-runtime verification: drives the hub end to end against a real `wrangler dev` workerd process -- two genuine WebSocket clients exchanging gossip, relay-connect, and relay-data through the Durable Object. This is the check `wrangler deploy --dry-run` (the CI gate) cannot make: bundling executes nothing, and the original plain-Worker entry passed dry-run while never relaying a frame on the real runtime.
 //
-// Usage: start the dev server in one terminal (`pnpm dev`, serving on :8787), then `node scripts/live-check.mjs`. Exits non-zero naming the failing step.
+// Usage: start the dev server in one terminal (`pnpm dev`, serving on :8787), then `node scripts/live-check.mjs` for local, or `node scripts/live-check.mjs wss://<deployed-host>/` against a real deployment (e.g. the mesh.exadev.io hub). Exits non-zero naming the failing step.
 
 import { encode, decode, cdeEncodeOptions, cdeDecodeOptions } from "cbor2";
 
-const HUB_URL = "ws://localhost:8787/";
+const HUB_URL = process.argv[2] ?? "ws://localhost:8787/";
 const SHA256_BYTE_LENGTH = 32;
 const CONNECT_TIMEOUT_MS = 5000;
 const FRAME_TIMEOUT_MS = 3000;
