@@ -15,6 +15,7 @@ export default defineConfig({
     "src/domain/data-sync.ts",
     "src/domain/device-id.ts",
     "src/domain/grant-candidates.ts",
+    "src/domain/group-key.ts",
     "src/domain/handshake.ts",
     "src/domain/mesh-session.ts",
     "src/domain/relay-hub.ts",
