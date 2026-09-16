@@ -635,6 +635,7 @@ dependencies = [
  "async-trait",
  "ed25519-dalek",
  "futures-core",
+ "minicbor",
  "p256",
  "rand",
  "sha2",
