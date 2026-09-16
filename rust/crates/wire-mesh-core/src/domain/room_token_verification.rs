@@ -44,7 +44,17 @@ pub enum RoomTokenRejection {
 /// The verdict on a presented `room:member` token.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RoomTokenVerdict {
-    Valid { claims: Box<TokenClaims> },
+    Valid {
+        claims: Box<TokenClaims>,
+        /// The chain's own certified root issuer-key -- for a named room,
+        /// exactly the room's rightful owner (obligation 1 just confirmed
+        /// the chain terminates there); for a DM, the verifying identity's
+        /// own key. Lets a caller (e.g. room.rekey's handler) derive an
+        /// ECDH shared secret against the room's real owner with no
+        /// separate live-sender identity check -- the same field the TS
+        /// verdict carries.
+        root_issuer_key: wire_mesh_wire::identity::IdentityKey,
+    },
     Invalid(RoomTokenRejection),
 }
 
@@ -76,12 +86,13 @@ pub async fn verify_room_token(
 ) -> RoomTokenVerdict {
     let verdict =
         verify_capability_token(identity, clock, revocations, token, Some(expected_bearer)).await;
-    let (claims, root_issuer) = match verdict {
+    let (claims, root_issuer, root_issuer_key) = match verdict {
         crate::domain::tokens::TokenVerdict::Valid {
             claims,
             root_issuer,
+            root_issuer_key,
             ..
-        } => (claims, root_issuer),
+        } => (claims, root_issuer, root_issuer_key),
         crate::domain::tokens::TokenVerdict::Invalid(rejection) => {
             return RoomTokenVerdict::Invalid(RoomTokenRejection::Token(rejection));
         }
@@ -105,7 +116,10 @@ pub async fn verify_room_token(
         return RoomTokenVerdict::Invalid(RoomTokenRejection::WrongChainRoot);
     }
 
-    RoomTokenVerdict::Valid { claims }
+    RoomTokenVerdict::Valid {
+        claims,
+        root_issuer_key,
+    }
 }
 
 #[cfg(test)]
@@ -190,7 +204,18 @@ mod tests {
         )
         .await;
 
-        assert!(matches!(verdict, RoomTokenVerdict::Valid { .. }));
+        // The chain's certified root is exactly the room's rightful owner -- obligation 1
+        // just confirmed it -- and threading its issuer-key up is what lets room.rekey's
+        // Rust handler derive an ECDH shared secret against it with no separate
+        // live-sender identity check (the same property the TS verdict carries).
+        match verdict {
+            RoomTokenVerdict::Valid {
+                root_issuer_key, ..
+            } => {
+                assert_eq!(&root_issuer_key, owner.identity_key());
+            }
+            other => panic!("expected Valid, got {other:?}"),
+        }
     }
 
     #[tokio::test]
