@@ -17,6 +17,7 @@ import { nextNoticeId } from "./room-notice-fixtures.js";
 const NOW_MS = 1_893_456_000_000;
 const EXPIRES_MS = NOW_MS + HOUR_MS;
 const VALID_UNTIL_MS = NOW_MS + HOUR_MS;
+const KEY_EPOCH = 1;
 
 async function mintRoomMemberToken(
   issuer: IdentityPort,
@@ -139,6 +140,7 @@ describe("createRoomNotice", () => {
       content: new TextEncoder().encode("hi"),
       refs: [{ id: priorNoticeId, relation: "reply" }],
       validUntil: VALID_UNTIL_MS,
+      keyEpoch: KEY_EPOCH,
     });
 
     const verdict = await verifyRoomNotice(notice, {
@@ -151,6 +153,7 @@ describe("createRoomNotice", () => {
       { id: priorNoticeId, relation: "reply" },
     ]);
     expect(verdict.claims["valid-until"]).toBe(VALID_UNTIL_MS);
+    expect(verdict.claims["key-epoch"]).toBe(KEY_EPOCH);
   });
 
   it("omits refs and valid-until entirely when not given, rather than stray undefined keys", async () => {
@@ -179,5 +182,6 @@ describe("createRoomNotice", () => {
     if (!verdict.ok) throw new Error(`unexpected: ${verdict.reason}`);
     expect("refs" in verdict.claims).toBe(false);
     expect("valid-until" in verdict.claims).toBe(false);
+    expect("key-epoch" in verdict.claims).toBe(false);
   });
 });
