@@ -124,6 +124,48 @@ describe("wrapNodeWebSocket", () => {
   });
 });
 
+describe("connect with a URL-form address", () => {
+  it("accepts the listener's address prefixed with ws://, connecting to the same place the host:port form reaches", async () => {
+    const serverTransport = createNodeWebSocketTransport();
+    const received: Frame[] = [];
+    const listener = await serverTransport.listen(
+      "127.0.0.1:0",
+      (connection) => {
+        void (async () => {
+          for await (const frame of connection.receive()) {
+            received.push(frame);
+          }
+        })();
+      },
+    );
+
+    const clientTransport = createNodeWebSocketTransport();
+    const client = await clientTransport.connect(`ws://${listener.address}`);
+    await client.send(ping);
+
+    await new Promise<void>((resolve) => {
+      const check = (): void => {
+        if (received.length > 0) {
+          resolve();
+          return;
+        }
+        setTimeout(check, POLL_INTERVAL_MS);
+      };
+      check();
+    });
+    expect(received).toEqual([ping]);
+
+    await client.close();
+    await listener.close();
+  });
+
+  it("rejects an address that is neither host:port nor a ws/wss URL", async () => {
+    const transport = createNodeWebSocketTransport();
+    await expect(transport.connect("not a address")).rejects.toThrow();
+    await expect(transport.connect("ftp://example.com")).rejects.toThrow();
+  });
+});
+
 describe("createNodeWebSocketTransport, a real loopback round trip", () => {
   it("listens on an OS-assigned port and exchanges a frame with a real connect()", async () => {
     const serverTransport = createNodeWebSocketTransport();
