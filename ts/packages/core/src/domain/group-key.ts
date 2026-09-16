@@ -152,3 +152,28 @@ export async function decryptNoticeContent(
 ): Promise<Uint8Array<ArrayBuffer>> {
   return aesGcmDecrypt(await importContentKey(contentKey), ciphertext);
 }
+
+/** The literal content-type suffix marking a room-notice's content as AES-256-GCM-encrypted under a room.rekey epoch's content key (room.cddl's own key-epoch obligation comment) -- the same suffix convention MIME structured syntaxes like `application/jose+json` already use, so a reader without the key still learns the notice's true underlying kind. */
+export const ENCRYPTED_CONTENT_TYPE_SUFFIX = "+aes256gcm";
+
+/** The notice's own TRUE content-type, with the encryption suffix appended -- never a separate generic sentinel, so the true type stays visible without decrypting anything. Idempotent: an already-suffixed type is returned unchanged. */
+export function encryptedContentType(plaintextContentType_: string): string {
+  return isEncryptedContentType(plaintextContentType_)
+    ? plaintextContentType_
+    : `${plaintextContentType_}${ENCRYPTED_CONTENT_TYPE_SUFFIX}`;
+}
+
+/** Strips the encryption suffix back off, recovering the plaintext content-type the sender originally had. A content-type carrying no suffix is returned unchanged. */
+export function plaintextContentType(encryptedContentType_: string): string {
+  return isEncryptedContentType(encryptedContentType_)
+    ? encryptedContentType_.slice(
+        0,
+        encryptedContentType_.length - ENCRYPTED_CONTENT_TYPE_SUFFIX.length,
+      )
+    : encryptedContentType_;
+}
+
+/** Whether a content-type names encrypted content (and therefore that the notice carrying it MUST also name its key-epoch -- room.cddl obligation 7). */
+export function isEncryptedContentType(contentType: string): boolean {
+  return contentType.endsWith(ENCRYPTED_CONTENT_TYPE_SUFFIX);
+}

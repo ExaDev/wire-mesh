@@ -1,3 +1,4 @@
+import { encryptedContentType } from "../src/domain/group-key.js";
 import { describe, expect, it } from "vitest";
 import { createRoomNotice, verifyRoomNotice } from "../src/domain/room.js";
 import { createRevocationView } from "../src/domain/revocation-view.js";
@@ -136,10 +137,13 @@ describe("createRoomNotice", () => {
       room: roomPath,
       token,
       noticeId: nextNoticeId(),
-      contentType: "text/plain",
       content: new TextEncoder().encode("hi"),
       refs: [{ id: priorNoticeId, relation: "reply" }],
       validUntil: VALID_UNTIL_MS,
+      // An encrypted notice: content-type carries the +aes256gcm suffix (room.cddl
+      // obligation 7), so key-epoch must be present alongside it -- the pairing
+      // verifyRoomNotice's key_epoch_mismatch check requires.
+      contentType: encryptedContentType("text/plain"),
       keyEpoch: KEY_EPOCH,
     });
 

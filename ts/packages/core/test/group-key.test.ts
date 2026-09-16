@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  encryptedContentType,
+  isEncryptedContentType,
+  plaintextContentType,
   decryptNoticeContent,
   deriveWrappingKey,
   encryptNoticeContent,
@@ -155,5 +158,30 @@ describe("encryptNoticeContent / decryptNoticeContent", () => {
     const ciphertext = await encryptNoticeContent(contentKey, plaintext);
 
     await expect(decryptNoticeContent(wrongKey, ciphertext)).rejects.toThrow();
+  });
+});
+
+describe("encrypted content-type suffix", () => {
+  it("appends the suffix to a plaintext content-type", () => {
+    expect(encryptedContentType("text/plain")).toBe("text/plain+aes256gcm");
+  });
+
+  it("is idempotent -- an already-encrypted content-type is returned unchanged, not double-suffixed", () => {
+    expect(encryptedContentType("text/plain+aes256gcm")).toBe(
+      "text/plain+aes256gcm",
+    );
+  });
+
+  it("round-trips: stripping recovers the original plaintext content-type", () => {
+    expect(plaintextContentType("text/plain+aes256gcm")).toBe("text/plain");
+  });
+
+  it("strips nothing from a plaintext content-type", () => {
+    expect(plaintextContentType("text/plain")).toBe("text/plain");
+  });
+
+  it("identifies an encrypted content-type without stripping", () => {
+    expect(isEncryptedContentType("text/plain+aes256gcm")).toBe(true);
+    expect(isEncryptedContentType("text/plain")).toBe(false);
   });
 });

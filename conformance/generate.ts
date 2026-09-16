@@ -215,7 +215,7 @@ const roomNoticeForwardVector = vector(
   roomNoticeForward,
 );
 
-// wire-mesh#141: an encrypted notice names the room.rekey epoch its content is wrapped under via the optional key-epoch claim, present if and only if content-type names an encrypted content-type -- the field this file freezes is the byte shape, not real ciphertext (content stays a structural placeholder, the same scope this file's own header comment already states for signature/key bytes).
+// wire-mesh#141: an encrypted notice names the room.rekey epoch its content is wrapped under via the optional key-epoch claim, present if and only if content-type names an encrypted content-type -- content-type itself is the notice's TRUE content-type with the literal suffix +aes256gcm appended (room.cddl's own obligation 7 comment), never a separate generic sentinel, so a reader without the key still learns the notice's general kind. The field this file freezes is the byte shape, not real ciphertext (content stays a structural placeholder, the same scope this file's own header comment already states for signature/key bytes).
 const roomNoticeEncryptedClaims: JsonWire = {
   room: `${deviceAHex}/general`,
   poster: deviceB,
@@ -223,7 +223,7 @@ const roomNoticeEncryptedClaims: JsonWire = {
   token: roomMemberRootToken,
   "notice-id": hex("a3".repeat(NOTICE_ID_BYTE_LENGTH)),
   "posted-at": 1861920200000,
-  "content-type": "application/x-room-notice-encrypted",
+  "content-type": "text/plain+aes256gcm",
   content: hex("deadbeef"), // structural placeholder for an AES-256-GCM ciphertext, not real crypto -- see this file's own header comment
   "key-epoch": 1,
 };
