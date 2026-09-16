@@ -9,6 +9,7 @@ pub mod revocation;
 pub mod room;
 pub mod room_path;
 pub mod room_token_verification;
+pub mod shard_manifest;
 pub mod tokens;
 
 pub use handshake::{negotiate, NegotiationResult, SUPPORTED_PROTOCOL_VERSION};
