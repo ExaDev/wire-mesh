@@ -17,6 +17,7 @@ export default defineConfig({
     "src/domain/grant-candidates.ts",
     "src/domain/group-key.ts",
     "src/domain/handshake.ts",
+    "src/domain/notice-board.ts",
     "src/domain/mesh-session.ts",
     "src/domain/relay-hub.ts",
     "src/domain/relay-use-gate.ts",
