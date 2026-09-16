@@ -786,6 +786,14 @@ room-invite = { verb: "room.invite", invitee: device-id, token: capability-token
 ; readability is an explicit, named per-room policy choice, not a fixed
 ; protocol decision, mirroring how room.type already varies per room.
 ;
+; The verifier obligation the array type alone cannot express: entry i
+; (0-indexed) of an array wrapped-key is the wrapping of epoch i+1's
+; content-encryption key -- i.e. the array covers epochs 1..key-epoch
+; inclusive, in order, with no gaps. This is safe because key-epoch is
+; REQUIRED to increase by exactly 1 on every room.rekey (never skipped, see
+; below), so position alone unambiguously identifies which epoch an entry
+; is for with no extra per-entry field needed.
+;
 ; A kicked member's own already-held wrapped keys for epochs up to and
 ; including their own membership are NOT revoked or invalidated by this
 ; message -- they already have the plaintext (or can derive it); rotation
@@ -793,7 +801,7 @@ room-invite = { verb: "room.invite", invitee: device-id, token: capability-token
 $manage-command-params /= room-rekey
 room-rekey = {
   verb: "room.rekey",
-  "key-epoch": uint,               ; monotonically increasing per room, never reused
+  "key-epoch": uint,               ; increases by exactly 1 on every room.rekey for this room, starting at 1 -- never skipped, never reused (see the array-ordering obligation above)
   "wrapped-key": bstr / [* bstr],  ; ECIES(recipient's own identity-key, cek) -- see above
   * tstr => any,
 }

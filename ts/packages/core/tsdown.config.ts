@@ -22,6 +22,7 @@ export default defineConfig({
     "src/domain/relay-use-gate.ts",
     "src/domain/room.ts",
     "src/domain/room-path.ts",
+    "src/domain/room-rekey.ts",
     "src/domain/room-token-verification.ts",
     "src/domain/tokens.ts",
     "src/domain/revocation-view.ts",
