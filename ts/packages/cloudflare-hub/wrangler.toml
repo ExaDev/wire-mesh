@@ -1,7 +1,16 @@
 # A reference deployment of a wire-mesh hub node on Cloudflare Workers -- see README.md for what is implemented versus deferred. `wrangler deploy --dry-run --outdir=dist` (the package's _build task) validates the bundle without any Cloudflare credentials, which is what CI runs; a real deploy needs `wrangler deploy` with an authenticated account and is deliberately not part of this package's CI. The hub state lives in one named Durable Object instance -- see src/worker.ts for why a plain Worker cannot host it.
 name = "wire-mesh-hub"
+account_id = "71ead1d40a4edda71baa7722524ba3b4"  # the ExaDev account, explicit so a non-interactive deploy never lands in the wrong one
 main = "src/worker.ts"
 compatibility_date = "2026-09-01"
+
+# mesh.exadev.io: a Workers custom domain -- Cloudflare attaches and manages the
+# DNS record itself via the Workers API, so deploying needs no separate DNS-record
+# permission. The ExaDev team's agents (agent-comms, via wss://) use this hub as
+# their cross-machine meeting point (ExaDev/wire-mesh#154, ExaDev/agent-comms#149).
+routes = [
+  { pattern = "mesh.exadev.io", custom_domain = true },
+]
 
 [durable_objects]
 bindings = [{ name = "HUB", class_name = "RelayHubDurableObject" }]
