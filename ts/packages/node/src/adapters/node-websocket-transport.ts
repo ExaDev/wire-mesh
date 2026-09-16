@@ -19,6 +19,11 @@ const CLOSE_NORMAL = 1000;
 const CLOSE_PROTOCOL_ERROR = 1002;
 const HTTP_NOT_FOUND = 404;
 
+function hostPortToWsUrl(address: string): string {
+  const { host, port } = parseAddress(address);
+  return `ws://${host}:${String(port)}`;
+}
+
 function parseAddress(address: string): { host: string; port: number } {
   const lastColon = address.lastIndexOf(":");
   if (lastColon === -1) {
@@ -175,9 +180,19 @@ export function createNodeWebSocketTransport(
 ): Transport {
   return {
     async connect(address): Promise<Connection> {
-      const { host, port } = parseAddress(address);
+      // A URL-form address is used verbatim (wss:// included, so a client
+      // can dial a TLS-fronted hub such as a Workers custom domain); the
+      // bare host:port form keeps its plain-ws behaviour, matching what
+      // listen() itself serves.
+      const url = /^wss?:\/\/./.test(address);
+      if (!url && !/^[^/]+:\d+$/.test(address)) {
+        throw new Error(
+          `expected "host:port" or a ws:// / wss:// URL, got "${address}"`,
+        );
+      }
+      const target = url ? address : hostPortToWsUrl(address);
       return new Promise((resolve, reject) => {
-        const ws = new WebSocket(`ws://${host}:${String(port)}`);
+        const ws = new WebSocket(target);
         ws.once("open", () => {
           resolve(wrapNodeWebSocket(ws));
         });
