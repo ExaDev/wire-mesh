@@ -5,7 +5,7 @@ import { frameSchema, type Frame } from "wire-mesh-core/generated/protocol";
 import type { Connection } from "wire-mesh-core/ports/transport";
 
 // RFC 6455 close codes, named rather than bare: 1000 normal closure, 1002 protocol error.
-const CLOSE_NORMAL = 1000;
+export const CLOSE_NORMAL = 1000;
 export const CLOSE_PROTOCOL_ERROR = 1002;
 
 export function messageFromFrame(frame: Frame): Uint8Array<ArrayBuffer> {
