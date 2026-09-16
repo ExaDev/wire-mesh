@@ -70,6 +70,10 @@
       "import": "./dist/adapters/memory-storage.mjs",
       "require": "./dist/adapters/memory-storage.cjs"
     },
+    "./adapters/node-fs-storage": {
+      "import": "./dist/adapters/node-fs-storage.mjs",
+      "require": "./dist/adapters/node-fs-storage.cjs"
+    },
     "./adapters/node-identity": {
       "import": "./dist/adapters/node-identity.mjs",
       "require": "./dist/adapters/node-identity.cjs"
@@ -97,6 +101,10 @@
     "./domain/capability-request": {
       "import": "./dist/domain/capability-request.mjs",
       "require": "./dist/domain/capability-request.cjs"
+    },
+    "./domain/data-sync": {
+      "import": "./dist/domain/data-sync.mjs",
+      "require": "./dist/domain/data-sync.cjs"
     },
     "./domain/device-id": {
       "import": "./dist/domain/device-id.mjs",
