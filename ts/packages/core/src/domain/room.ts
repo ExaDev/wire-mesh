@@ -189,6 +189,8 @@ export interface CreateRoomNoticeOptions {
   content: Uint8Array<ArrayBuffer>;
   refs?: readonly MessageRef[];
   validUntil?: number;
+  /** Which room.rekey epoch content is encrypted under (wire-mesh#141), present iff content-type names an encrypted content-type -- see room-notice-claims' own obligation 7 comment in room.cddl. This function does not itself encrypt content: the caller encrypts via group-key.ts's encryptNoticeContent beforehand and passes the resulting ciphertext as content, exactly as it would pass any other opaque bytes. */
+  keyEpoch?: number;
 }
 
 /**
@@ -209,6 +211,9 @@ export async function createRoomNotice(
     ...(options.refs !== undefined ? { refs: [...options.refs] } : {}),
     ...(options.validUntil !== undefined
       ? { "valid-until": options.validUntil }
+      : {}),
+    ...(options.keyEpoch !== undefined
+      ? { "key-epoch": options.keyEpoch }
       : {}),
   };
   const payload = encodeBuf(claims);
