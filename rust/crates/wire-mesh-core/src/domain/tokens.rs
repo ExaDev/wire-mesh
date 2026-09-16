@@ -5,7 +5,7 @@
 //! prior contact with the issuer is needed, only the token itself — and
 //! delegation can only narrow authority, never widen it.
 
-use wire_mesh_wire::identity::DeviceId;
+use wire_mesh_wire::identity::{DeviceId, IdentityKey};
 use wire_mesh_wire::management::RevocationClaims;
 use wire_mesh_wire::tokens::{CapabilityVerb, CoseSign1, TokenClaims};
 
@@ -197,6 +197,13 @@ pub enum TokenVerdict {
         /// itself for a DM) check the chain's root with one comparison
         /// instead of re-walking the parent chain a second time.
         root_issuer: DeviceId,
+        /// The root ancestor's own self-certifying issuer-key -- already
+        /// decoded during the walk, just threaded up rather than
+        /// re-derived. Lets a caller compute an ECDH shared secret against
+        /// the chain's root (e.g. room.rekey's own sender, for a named
+        /// room whose token chain terminates at the owner) without a
+        /// separate, out-of-band way to learn that issuer's public key.
+        root_issuer_key: IdentityKey,
     },
     Invalid(TokenRejection),
 }
@@ -434,6 +441,7 @@ pub async fn verify_capability_token(
             }
             None => {
                 let root_issuer = claims.issuer;
+                let root_issuer_key = claims.issuer_key.clone();
                 return match leaf {
                     Some(claims) => {
                         if let Some(expected) = expected_bearer {
@@ -445,6 +453,7 @@ pub async fn verify_capability_token(
                             claims: Box::new(claims),
                             effective_expires,
                             root_issuer,
+                            root_issuer_key,
                         }
                     }
                     None => {
@@ -951,8 +960,13 @@ mod tests {
         let token = mint(&issuer, &claims).await;
         let verdict = verify(&issuer, &RevocationView::new(), &token).await;
         match verdict {
-            TokenVerdict::Valid { root_issuer, .. } => {
+            TokenVerdict::Valid {
+                root_issuer,
+                root_issuer_key,
+                ..
+            } => {
                 assert_eq!(root_issuer, *issuer.device_id());
+                assert_eq!(&root_issuer_key, issuer.identity_key());
             }
             other => panic!("expected Valid, got {other:?}"),
         }
@@ -964,8 +978,13 @@ mod tests {
         let (_, child_token, _) = mint_delegated(&root, |_| {}).await;
         let verdict = verify(&root, &RevocationView::new(), &child_token).await;
         match verdict {
-            TokenVerdict::Valid { root_issuer, .. } => {
+            TokenVerdict::Valid {
+                root_issuer,
+                root_issuer_key,
+                ..
+            } => {
                 assert_eq!(root_issuer, *root.device_id());
+                assert_eq!(&root_issuer_key, root.identity_key());
             }
             other => panic!("expected Valid, got {other:?}"),
         }
