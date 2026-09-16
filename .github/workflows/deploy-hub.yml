@@ -1,0 +1,53 @@
+# Deploys cloudflare-hub (the mesh.exadev.io relay hub Worker) on every merge to main that touches it. Skips cleanly -- green, not red -- until the repo carries the CLOUDFLARE_API_TOKEN secret, so the workflow can land before the secret does.
+#
+# To enable deploys: add a Cloudflare API token with the "Workers Scripts:Edit" permission (Cloudflare dashboard -> My Profile -> API Tokens -> Create Token; scoping it to this one account is fine) as the repository secret CLOUDFLARE_API_TOKEN, and the account id as CLOUDFLARE_ACCOUNT_ID (71ead1d40a4edda71baa7722524ba3b4).
+
+name: Deploy hub
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ts/packages/cloudflare-hub/**"
+      - "ts/packages/core/src/**"
+      - "ts/packages/core/test/**"
+      - ".github/workflows/deploy-hub.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-hub
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.repository == 'ExaDev/wire-mesh' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: "pnpm"
+          cache-dependency-path: "ts/pnpm-lock.yaml"
+      - name: Install ts/ workspace
+        run: pnpm install --frozen-lockfile
+        working-directory: ts
+      # The hub bundles wire-mesh-core: build it first so wrangler packs real output, not a stale or missing dist.
+      - name: Build wire-mesh-core
+        run: pnpm turbo run _build --filter=wire-mesh-core --force
+        working-directory: ts
+      - name: Deploy
+        if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: ts/packages/cloudflare-hub
+      - name: Skipped (secret not configured)
+        if: ${{ secrets.CLOUDFLARE_API_TOKEN == '' }}
+        run: echo 'CLOUDFLARE_API_TOKEN secret not set -- deploy skipped. Add it as a repo secret to enable automatic hub deploys.'
+      - name: Verify the deployment answers
+        run: |
+          sleep 5
+          curl -fsS https://mesh.exadev.io/ | grep -q '"ok":true'

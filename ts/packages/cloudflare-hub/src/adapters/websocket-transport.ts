@@ -6,7 +6,7 @@ import type { Connection } from "wire-mesh-core/ports/transport";
 
 // RFC 6455 close codes, named rather than bare: 1000 normal closure, 1002 protocol error.
 const CLOSE_NORMAL = 1000;
-const CLOSE_PROTOCOL_ERROR = 1002;
+export const CLOSE_PROTOCOL_ERROR = 1002;
 
 export function messageFromFrame(frame: Frame): Uint8Array<ArrayBuffer> {
   // A fresh whole-buffer copy rather than cbor2's own return value: the WebSocket send signatures require a view over a plain ArrayBuffer, and the copy also matches the fresh-buffer discipline the identity adapters apply to anything crossing a runtime boundary.
@@ -14,15 +14,15 @@ export function messageFromFrame(frame: Frame): Uint8Array<ArrayBuffer> {
 }
 
 /** A frame that fails schema validation, caught separately from a decode failure so it can be dropped without disconnecting the peer. */
-class SchemaInvalidFrameError extends Error {
+export class SchemaInvalidFrameError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "SchemaInvalidFrameError";
   }
 }
 
-/** Decodes one message, distinguishing a decode failure (connection-level) from a schema failure (drop this frame, keep the connection) -- mirroring the TCP adapter's split between the two. */
-function decodeMessage(data: Readonly<ArrayBuffer>): Frame {
+/** Decodes one message, distinguishing a decode failure (connection-level) from a schema failure (drop this frame, keep the connection) -- mirroring the TCP adapter's split between the two. Exported for the Durable Object's hibernation handlers, which apply the identical split per inbound message. */
+export function decodeMessage(data: Readonly<ArrayBuffer>): Frame {
   let decoded: unknown;
   try {
     decoded = decode(new Uint8Array(data), cdeDecodeOptions);
