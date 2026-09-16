@@ -564,6 +564,8 @@ describe("verifyCapabilityToken - delegation narrowing", () => {
     if (!verdict.ok) return;
     expect(verdict.rootIssuer).toEqual(issuer.deviceId);
     expect(verdict.depth).toBe(1);
+    // rootIssuerKey lets a caller derive an ECDH shared secret against the chain's own root issuer (room.rekey's own sender, for a named room) without needing separate, out-of-band knowledge of that issuer's public key -- the root ancestor's own self-certifying issuer-key, already decoded during the walk, just needs threading up to the caller.
+    expect(verdict.rootIssuerKey).toEqual(issuer.identityKey);
   });
 
   it("reports depth 0 and itself as the root for a root grant with no parent", async () => {
@@ -584,6 +586,7 @@ describe("verifyCapabilityToken - delegation narrowing", () => {
     if (!verdict.ok) return;
     expect(verdict.rootIssuer).toEqual(issuer.deviceId);
     expect(verdict.depth).toBe(0);
+    expect(verdict.rootIssuerKey).toEqual(issuer.identityKey);
   });
 
   async function delegateUnderRootRoot(

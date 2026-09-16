@@ -6,6 +6,7 @@ import {
   tokenClaimsSchema,
   type CapabilityToken,
   type DeviceId,
+  type IdentityKey,
   type RevocationClaims,
   type RevocationEntry,
   type TokenClaims,
@@ -52,6 +53,8 @@ export type TokenVerdict =
       claims: TokenClaims;
       /** The device-id at the root of this token's delegation chain: its own issuer when it carries no parent, otherwise the root of its parent's chain. Lets a caller (e.g. core/room's obligation that a chain must terminate at the path's own owner, or the verifier itself for a DM) check the chain's root with one equality comparison instead of re-walking the parent chain a second time. */
       rootIssuer: DeviceId;
+      /** The root ancestor's own self-certifying issuer-key -- already decoded during the walk (every TokenClaims carries its own issuer-key), just threaded up rather than re-derived. Lets a caller compute an ECDH shared secret against the chain's root (e.g. room.rekey's own sender, for a named room whose token chain terminates at the owner) without a separate, out-of-band way to learn that issuer's public key. */
+      rootIssuerKey: IdentityKey;
       /** How many delegation hops this token is from its own root -- 0 for a root grant. Costs nothing extra once rootIssuer is being tracked, and makes the delegation bound observable for diagnostics. */
       depth: number;
     }
@@ -288,11 +291,18 @@ async function verifyTokenChain(
       ok: true,
       claims,
       rootIssuer: parentVerdict.rootIssuer,
+      rootIssuerKey: parentVerdict.rootIssuerKey,
       depth: parentVerdict.depth + 1,
     };
   }
 
-  return { ok: true, claims, rootIssuer: claims.issuer, depth: 0 };
+  return {
+    ok: true,
+    claims,
+    rootIssuer: claims.issuer,
+    rootIssuerKey: claims["issuer-key"],
+    depth: 0,
+  };
 }
 
 export type RevocationEntryVerdictReason =
