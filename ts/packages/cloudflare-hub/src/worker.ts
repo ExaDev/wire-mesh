@@ -9,6 +9,7 @@ import { createRelayHub, type RelayHub } from "wire-mesh-core/domain/relay-hub";
 import type { Connection } from "wire-mesh-core/ports/transport";
 import type { Frame } from "wire-mesh-core/generated/protocol";
 import {
+  CLOSE_NORMAL,
   CLOSE_PROTOCOL_ERROR,
   SchemaInvalidFrameError,
   decodeMessage,
@@ -26,11 +27,13 @@ export function healthResponse(): Response {
 /** A send-only Connection over a hibernating server socket -- the receive half is the runtime's webSocketMessage handler, not a JS stream, so only send/close exist here. */
 function sendOnlyConnection(serverSocket: Readonly<WebSocket>): Connection {
   return {
-    send: async (frame: Frame) => {
+    async send(frame: Frame): Promise<void> {
       serverSocket.send(messageFromFrame(frame));
+      return Promise.resolve();
     },
-    close: async () => {
-      serverSocket.close(1000, "hub closing connection");
+    async close(): Promise<void> {
+      serverSocket.close(CLOSE_NORMAL, "hub closing connection");
+      return Promise.resolve();
     },
     receive: () => {
       // Unreachable in the hibernation shape: nothing calls receive() on a connection registered for event-driven operation.
@@ -68,7 +71,7 @@ export class RelayHubDurableObject extends DurableObject<unknown> {
   }
 
   async webSocketMessage(
-    serverSocket: WebSocket,
+    serverSocket: Readonly<WebSocket>,
     message: string | ArrayBuffer,
   ): Promise<void> {
     if (!(message instanceof ArrayBuffer)) {
@@ -94,11 +97,11 @@ export class RelayHubDurableObject extends DurableObject<unknown> {
     await this.hub.onFrame(connection, frame);
   }
 
-  async webSocketClose(serverSocket: WebSocket): Promise<void> {
+  webSocketClose(serverSocket: Readonly<WebSocket>): void {
     this.forget(serverSocket);
   }
 
-  async webSocketError(serverSocket: WebSocket): Promise<void> {
+  webSocketError(serverSocket: Readonly<WebSocket>): void {
     this.forget(serverSocket);
   }
 
