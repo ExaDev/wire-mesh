@@ -26,6 +26,7 @@ export default defineConfig({
     "src/domain/room-path.ts",
     "src/domain/room-rekey.ts",
     "src/domain/room-token-verification.ts",
+    "src/domain/shard-manifest.ts",
     "src/domain/tokens.ts",
     "src/domain/revocation-view.ts",
     "src/adapters/frame-codec.ts",
