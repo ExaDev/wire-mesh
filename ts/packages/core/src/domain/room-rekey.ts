@@ -109,6 +109,10 @@ export function createRoomRekeyHandler(
       revocation: options.revocation,
       expectedBearer: options.identity.deviceId,
       roomPath,
+      // The rekey-scoped DM root rule -- see VerifyRoomTokenOptions's own
+      // dmRootPolicy doc comment for why this caller may accept either path
+      // participant where room.send never may.
+      dmRootPolicy: "either-participant",
     });
     if (!verdict.ok) {
       await incoming.respond({ result: "error", code: verdict.reason });

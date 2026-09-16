@@ -42,6 +42,21 @@ export interface VerifyRoomTokenOptions extends Omit<
   expectedBearer: DeviceId;
   /** The room path this request claims to act on (obligation 3) -- must equal the token's own scope.path, and its own shape determines the chain root obligation 1 requires. */
   roomPath: string;
+  /**
+   * Whose root a DM token's chain may terminate at. "self" (the default) is
+   * the room.send-grade rule: the verifier itself, never either named
+   * participant directly, since a DM token minted by anyone else would let a
+   * sender self-issue authority to message a stranger unsolicited.
+   * "either-participant" relaxes it to EITHER device named in the DM path --
+   * valid only where the caller's own security does not rest on the root rule
+   * itself. room.rekey is that caller: in a DM each participant's own held
+   * token chains to the OTHER side (I approve your join, minting a grant
+   * rooted at me, held by you), so the strict rule can never pass, and the
+   * handler's actual binding is the ECDH unwrap -- a forged rekey needs the
+   * root's private key to produce unwrappable ciphertext -- not the root
+   * check. A root outside the path is refused under either policy.
+   */
+  dmRootPolicy?: "self" | "either-participant";
 }
 
 /**
@@ -69,11 +84,19 @@ export async function verifyRoomToken(
   }
 
   const parsed = parseRoomPath(options.roomPath);
-  const expectedRootHex =
-    parsed.kind === "owner-named"
-      ? parsed.owner
-      : deviceIdToHex(options.identity.deviceId);
-  if (deviceIdToHex(verdict.rootIssuer) !== expectedRootHex) {
+  const rootHex = deviceIdToHex(verdict.rootIssuer);
+  if (parsed.kind === "owner-named") {
+    if (rootHex !== parsed.owner) {
+      return { ok: false, reason: "wrong_chain_root" };
+    }
+  } else if (options.dmRootPolicy === "either-participant") {
+    if (
+      rootHex !== parsed.participants[0] &&
+      rootHex !== parsed.participants[1]
+    ) {
+      return { ok: false, reason: "wrong_chain_root" };
+    }
+  } else if (rootHex !== deviceIdToHex(options.identity.deviceId)) {
     return { ok: false, reason: "wrong_chain_root" };
   }
 
