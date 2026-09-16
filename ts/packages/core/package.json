@@ -162,6 +162,10 @@
       "import": "./dist/domain/room-token-verification.mjs",
       "require": "./dist/domain/room-token-verification.cjs"
     },
+    "./domain/shard-manifest": {
+      "import": "./dist/domain/shard-manifest.mjs",
+      "require": "./dist/domain/shard-manifest.cjs"
+    },
     "./domain/tokens": {
       "import": "./dist/domain/tokens.mjs",
       "require": "./dist/domain/tokens.cjs"
