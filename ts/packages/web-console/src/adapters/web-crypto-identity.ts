@@ -146,6 +146,23 @@ async function identityFromStoredEnvelope(
   };
   const deviceId = await deriveDeviceId(envelope.publicKeyRaw);
 
+  // The same scalar imported a second time under ECDH for room.rekey's
+  // deriveSharedSecret -- possible here precisely because the persisted
+  // envelope already re-imports from JWK (the one-time export happened at
+  // generation), so no additional extractability is granted. The source
+  // JWK's own alg/key_ops describe its ECDSA usage; strip both (importKey
+  // validates requested usage against key_ops when present) and re-declare
+  // deriveBits, which is all ECDH needs from the curve point.
+  const ecdhJwk: JsonWebKey = { ...envelope.privateJwk, key_ops: ["deriveBits"] };
+  delete ecdhJwk.alg;
+  const ecdhPrivateKey = await crypto.subtle.importKey(
+    "jwk",
+    ecdhJwk,
+    { name: "ECDH", namedCurve: "P-256" },
+    false,
+    ["deriveBits"],
+  );
+
   return {
     deviceId,
     identityKey,
@@ -159,6 +176,27 @@ async function identityFromStoredEnvelope(
     },
     verify: verifyWithPublicKey,
     deriveDeviceId,
+    async deriveSharedSecret(peerKey) {
+      if (peerKey.alg !== ES256) {
+        throw new Error(
+          `ECDH is only defined for an ES256 peer identity-key, got alg ${String(peerKey.alg)}`,
+        );
+      }
+      const peerPublicKey = await crypto.subtle.importKey(
+        "raw",
+        toBufferSource(peerKey["public-key"]),
+        { name: "ECDH", namedCurve: "P-256" },
+        false,
+        [],
+      );
+      const SHARED_SECRET_BIT_LENGTH = 256; // P-256's own field size
+      const bits = await crypto.subtle.deriveBits(
+        { name: "ECDH", public: peerPublicKey },
+        ecdhPrivateKey,
+        SHARED_SECRET_BIT_LENGTH,
+      );
+      return new Uint8Array(bits);
+    },
   };
 }
 
