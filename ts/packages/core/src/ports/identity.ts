@@ -16,4 +16,8 @@ export interface IdentityPort {
   ) => Promise<boolean>;
   /** Derives the device-id an arbitrary public key would produce (SHA-256 of the raw public-key bytes -- never a certificate's own DER encoding, the bug both Cascade and agent-comms had to fix). Used to check a token's self-certifying issuer-key against its claimed issuer, not just the local node's own identity. */
   deriveDeviceId: (publicKey: Uint8Array) => Promise<DeviceId>;
+  /** Derives a raw ECDH shared secret against a peer's identity-key, the asymmetric half of room.rekey's own ECIES key-wrapping construction (wire-mesh#141) -- HKDF and AES-256-GCM, the symmetric half, need no port since they operate on plain bytes already in hand, with no platform-specific key custody involved. Optional, not a method every implementation must throw from: ECDH is only defined here for an ES256 (P-256) identity-key, so an Ed25519-only identity genuinely cannot support it, the same "some identities can do this, some can't" reality `sign`'s own two-algorithm dispatch already reflects. A caller that needs this and finds it absent must fail closed, never substitute a different construction. Returns the raw shared-secret bytes, NOT yet an encryption key -- always pass through HKDF first, never use ECDH output directly as a symmetric key. */
+  deriveSharedSecret?: (
+    peerKey: IdentityKey,
+  ) => Promise<Uint8Array<ArrayBuffer>>;
 }
