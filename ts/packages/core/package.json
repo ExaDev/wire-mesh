@@ -110,6 +110,10 @@
       "import": "./dist/domain/device-id.mjs",
       "require": "./dist/domain/device-id.cjs"
     },
+    "./domain/erasure-coding": {
+      "import": "./dist/domain/erasure-coding.mjs",
+      "require": "./dist/domain/erasure-coding.cjs"
+    },
     "./domain/grant-candidates": {
       "import": "./dist/domain/grant-candidates.mjs",
       "require": "./dist/domain/grant-candidates.cjs"
