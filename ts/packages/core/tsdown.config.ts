@@ -13,6 +13,7 @@ export default defineConfig({
     "src/domain/capability-grant.ts",
     "src/domain/capability-request.ts",
     "src/domain/data-sync.ts",
+    "src/domain/erasure-coding.ts",
     "src/domain/device-id.ts",
     "src/domain/grant-candidates.ts",
     "src/domain/group-key.ts",
