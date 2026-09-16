@@ -144,6 +144,38 @@ room-join   = { verb: "room.join", * tstr => any }
 ; invited but hand it nothing it can actually act on.
 room-invite = { verb: "room.invite", invitee: device-id, token: capability-token, * tstr => any }
 
+; Distributes (or rotates) a room's symmetric content-encryption key
+; (wire-mesh#141), sent directed (manage-request/manage-response, the same
+; per-recipient delivery room.notify already established) to every CURRENT
+; member at the moment a room opts into encryption, and to every REMAINING
+; member on rotation (a kick, or an owner-initiated rekey). MUST be sent by
+; whoever currently holds the room's admission/kick authority -- not a new
+; capability, the same room:member grant room.join/kickFromRoom already
+; gate on.
+;
+; wrapped-key is ECIES (ECDH over the recipient's own already-published
+; identity-key, HKDF, AES-256-GCM) -- no separate encryption key needs
+; distributing, trusting, or revoking as its own concept. A bare bstr grants
+; only the CURRENT epoch (the default, "members-at-the-time" policy: a
+; joining member cannot read pre-join history); an array grants every named
+; historical epoch in the same admission-time message (the "full history"
+; policy a room may choose instead) -- see room-notice-claims' own
+; key-epoch field below for how a reader locates the right one. Historical
+; readability is an explicit, named per-room policy choice, not a fixed
+; protocol decision, mirroring how room.type already varies per room.
+;
+; A kicked member's own already-held wrapped keys for epochs up to and
+; including their own membership are NOT revoked or invalidated by this
+; message -- they already have the plaintext (or can derive it); rotation
+; protects only future content, never attempts retroactive erasure.
+$manage-command-params /= room-rekey
+room-rekey = {
+  verb: "room.rekey",
+  "key-epoch": uint,               ; monotonically increasing per room, never reused
+  "wrapped-key": bstr / [* bstr],  ; ECIES(recipient's own identity-key, cek) -- see above
+  * tstr => any,
+}
+
 ; One member as it appears in a room-members-ok/room-join-ok member list --
 ; deliberately minimal (core/room itself has no notion of a display name or
 ; any other application metadata), with the same open tail as everything
@@ -231,6 +263,14 @@ room-notice = cose-sign1   ; payload = bstr .cbor room-notice-claims
 ;    closable: it is a signed timestamp compared against the reader's own
 ;    local clock, not dependent on when a revocation happened to arrive.
 ;    Checked at read time, not at post time.
+; 7. An optional `? key-epoch` (wire-mesh#141) names which room.rekey epoch
+;    `content` is encrypted under, present if and only if `content-type`
+;    names an encrypted content-type -- a reader without that epoch's own
+;    wrapped-key (never gossiped or distributed, only ever sent directed
+;    via room.rekey) cannot decrypt, but can still verify every other
+;    obligation above unchanged: encryption is layered on top of this
+;    envelope's own signing as encrypt-then-sign, so `content`'s own
+;    interpretation is the only thing this field affects.
 room-notice-claims = {
   room: room-path,
   poster: device-id,
@@ -242,6 +282,7 @@ room-notice-claims = {
   content: bstr,
   ? refs: [* message-ref],
   ? "valid-until": uint,        ; Unix ms -- see obligation 6
+  ? "key-epoch": uint,          ; see obligation 7
   * tstr => any,                ; forward-compatible extension claims, the same tail token-claims already carries
 }
 
