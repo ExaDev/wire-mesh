@@ -147,7 +147,10 @@ describe("createPersistedWebCryptoIdentity", () => {
     });
     const a = await createPersistedWebCryptoIdentity(storageA);
     const b = await createPersistedWebCryptoIdentity(storageB);
-    if (a.deriveSharedSecret === undefined || b.deriveSharedSecret === undefined) {
+    if (
+      a.deriveSharedSecret === undefined ||
+      b.deriveSharedSecret === undefined
+    ) {
       throw new Error("a persisted identity must expose deriveSharedSecret");
     }
 

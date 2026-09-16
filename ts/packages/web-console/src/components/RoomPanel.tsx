@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   Alert,
   Button,
+  Divider,
   Group,
   ScrollArea,
   Stack,
@@ -11,6 +12,7 @@ import {
   TextInput,
 } from "@mantine/core";
 import type { RoomSessionView } from "../hooks/use-room-messaging.js";
+import { NoticesView } from "./NoticesView.js";
 
 // How long an approved room:member grant lasts before the recipient must request-to-join again -- a session-length default, not a protocol requirement; re-requesting is cheap (an ordinary ungated room.join) so erring short over long costs little.
 const HOURS_PER_DAY = 24;
@@ -23,13 +25,16 @@ const ROOM_TOKEN_LIFETIME_MS =
 export interface RoomPanelProps {
   view: Readonly<RoomSessionView>;
   onSend: (text: string) => Promise<void>;
+  onPostNotice: (text: string) => Promise<void>;
 }
 
 export function RoomPanel({
   view,
   onSend,
+  onPostNotice,
 }: Readonly<RoomPanelProps>): React.JSX.Element {
   const [draft, setDraft] = useState("");
+  const [noticeDraft, setNoticeDraft] = useState("");
   const [error, setError] = useState<string | undefined>(undefined);
 
   function handleSend(): void {
@@ -45,6 +50,23 @@ export function RoomPanel({
       .catch((sendError: unknown) => {
         setError(
           sendError instanceof Error ? sendError.message : String(sendError),
+        );
+      });
+  }
+
+  async function handlePostNotice(): Promise<void> {
+    const text = noticeDraft.trim();
+    if (text === "") {
+      return Promise.resolve();
+    }
+    setError(undefined);
+    return onPostNotice(text)
+      .then(() => {
+        setNoticeDraft("");
+      })
+      .catch((postError: unknown) => {
+        setError(
+          postError instanceof Error ? postError.message : String(postError),
         );
       });
   }
@@ -127,6 +149,30 @@ export function RoomPanel({
           style={{ flex: 1 }}
         />
         <Button onClick={handleSend}>Send</Button>
+      </Group>
+
+      <Divider
+        label="Durable notices (encrypted, replicated)"
+        labelPosition="center"
+      />
+      <NoticesView notices={view.notices} />
+      <Group>
+        <TextInput
+          placeholder="Post a durable notice"
+          value={noticeDraft}
+          onChange={(event) => {
+            setNoticeDraft(event.currentTarget.value);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              void handlePostNotice();
+            }
+          }}
+          style={{ flex: 1 }}
+        />
+        <Button variant="light" onClick={() => void handlePostNotice()}>
+          Post notice
+        </Button>
       </Group>
     </Stack>
   );

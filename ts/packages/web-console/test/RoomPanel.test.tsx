@@ -2,7 +2,13 @@
 
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { RoomPanel } from "../src/components/RoomPanel.js";
 import type { RoomSessionView } from "../src/hooks/use-room-messaging.js";
@@ -16,6 +22,7 @@ function view(overrides: Partial<RoomSessionView> = {}): RoomSessionView {
     roomPath: `${"1".repeat(DEVICE_ID_HEX_LENGTH)}+${"2".repeat(DEVICE_ID_HEX_LENGTH)}`,
     status: "connected",
     messages: [],
+    notices: [],
     pendingJoinRequest: undefined,
     ...overrides,
   };
@@ -29,6 +36,7 @@ function renderPanel(
       <RoomPanel
         view={view()}
         onSend={async () => Promise.resolve()}
+        onPostNotice={async () => Promise.resolve()}
         {...props}
       />
     </MantineProvider>,
@@ -67,6 +75,35 @@ describe("RoomPanel", () => {
 
     expect(screen.getByText("hi")).toBeInTheDocument();
     expect(screen.getByText("hello back")).toBeInTheDocument();
+  });
+
+  it("calls onPostNotice with the drafted notice text and clears the input on success", async () => {
+    const onPostNotice = vi.fn(async (): Promise<void> => Promise.resolve());
+    renderPanel({ onPostNotice });
+    const input = screen.getByPlaceholderText("Post a durable notice");
+    fireEvent.change(input, { target: { value: "durable hello" } });
+    fireEvent.click(screen.getByText("Post notice"));
+    await waitFor(() => {
+      expect(onPostNotice).toHaveBeenCalledWith("durable hello");
+    });
+    expect(screen.getByPlaceholderText("Post a durable notice")).toHaveValue(
+      "",
+    );
+  });
+
+  it("renders the session's notices through the notices view", () => {
+    renderPanel({
+      view: view({
+        notices: [
+          {
+            verified: true,
+            contentType: "text/plain",
+            plaintext: new TextEncoder().encode("a replicated notice"),
+          },
+        ],
+      }),
+    });
+    expect(screen.getByText("a replicated notice")).toBeInTheDocument();
   });
 
   it("calls onSend with the drafted text and clears the input on success", async () => {
