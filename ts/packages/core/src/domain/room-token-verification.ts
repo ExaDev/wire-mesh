@@ -11,6 +11,7 @@ import { deviceIdToHex } from "./device-id.js";
 import type {
   CapabilityToken,
   DeviceId,
+  IdentityKey,
   TokenClaims,
 } from "../generated/protocol.js";
 import { parseRoomPath } from "./room-path.js";
@@ -25,7 +26,12 @@ export type RoomTokenVerdictReason =
   | "wrong_chain_root";
 
 export type RoomTokenVerdict =
-  | { ok: true; claims: TokenClaims }
+  | {
+      ok: true;
+      claims: TokenClaims;
+      /** The chain's own certified root issuer-key -- for a named room, this is exactly the room's rightful owner (obligation 1 just confirmed the chain terminates there), and for a DM it's the verifying identity's own key. Lets a caller (e.g. room.rekey's own handler) derive an ECDH shared secret against the room's real owner with no separate live-sender identity check needed. */
+      rootIssuerKey: IdentityKey;
+    }
   | { ok: false; reason: RoomTokenVerdictReason };
 
 export interface VerifyRoomTokenOptions extends Omit<
@@ -71,5 +77,9 @@ export async function verifyRoomToken(
     return { ok: false, reason: "wrong_chain_root" };
   }
 
-  return { ok: true, claims: verdict.claims };
+  return {
+    ok: true,
+    claims: verdict.claims,
+    rootIssuerKey: verdict.rootIssuerKey,
+  };
 }

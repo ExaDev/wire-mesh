@@ -146,6 +146,10 @@
       "import": "./dist/domain/room-path.mjs",
       "require": "./dist/domain/room-path.cjs"
     },
+    "./domain/room-rekey": {
+      "import": "./dist/domain/room-rekey.mjs",
+      "require": "./dist/domain/room-rekey.cjs"
+    },
     "./domain/room-token-verification": {
       "import": "./dist/domain/room-token-verification.mjs",
       "require": "./dist/domain/room-token-verification.cjs"

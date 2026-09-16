@@ -84,6 +84,9 @@ describe("verifyRoomToken", () => {
     });
 
     expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    // The chain's own certified root is exactly this room's rightful owner (that's what obligation 1 just checked) -- exposing its issuer-key is what lets room.rekey derive an ECDH shared secret against it with no separate live-sender identity check needed.
+    expect(verdict.rootIssuerKey).toEqual(owner.identityKey);
   });
 
   it("refuses a token rooted at the wrong device for a named room", async () => {
