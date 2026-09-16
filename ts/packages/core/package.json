@@ -114,6 +114,10 @@
       "import": "./dist/domain/grant-candidates.mjs",
       "require": "./dist/domain/grant-candidates.cjs"
     },
+    "./domain/group-key": {
+      "import": "./dist/domain/group-key.mjs",
+      "require": "./dist/domain/group-key.cjs"
+    },
     "./domain/handshake": {
       "import": "./dist/domain/handshake.mjs",
       "require": "./dist/domain/handshake.cjs"
