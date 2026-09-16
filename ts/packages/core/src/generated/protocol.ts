@@ -21,7 +21,7 @@ export const bulkCancelSchema = z.lazy(() => z.object({
 }).catchall(z.unknown()));
 export const manageCommandParamsSchema = z.lazy(() => z.union([z.union([z.lazy(() => bulkOpenSchema), z.lazy(() => bulkResumeSchema), z.lazy(() => bulkCancelSchema)]), z.union([z.lazy(() => ptySpawnSchema), z.lazy(() => ptyWriteSchema), z.lazy(() => ptyResizeSchema), z.lazy(() => ptyKillSchema), z.lazy(() => procSpawnSchema), z.lazy(() => procSignalSchema), z.lazy(() => procKillSchema), z.lazy(() => execListSchema)]), z.object({
 
-}).catchall(z.unknown()), z.lazy(() => capabilityRequestSchema), z.lazy(() => capabilityGrantSchema), z.union([z.lazy(() => roomSendSchema), z.lazy(() => roomReadSchema), z.lazy(() => roomLeaveSchema), z.lazy(() => roomMembersSchema)]), z.union([z.lazy(() => roomJoinSchema), z.lazy(() => roomInviteSchema)]), z.union([z.lazy(() => webrtcOfferSchema), z.lazy(() => webrtcAnswerSchema), z.lazy(() => webrtcIceCandidateSchema)])]));
+}).catchall(z.unknown()), z.lazy(() => capabilityRequestSchema), z.lazy(() => capabilityGrantSchema), z.union([z.lazy(() => roomSendSchema), z.lazy(() => roomReadSchema), z.lazy(() => roomLeaveSchema), z.lazy(() => roomMembersSchema)]), z.union([z.lazy(() => roomJoinSchema), z.lazy(() => roomInviteSchema)]), z.lazy(() => roomRekeySchema), z.union([z.lazy(() => webrtcOfferSchema), z.lazy(() => webrtcAnswerSchema), z.lazy(() => webrtcIceCandidateSchema)])]));
 export const bulkDataFrameSchema = z.lazy(() => z.object({
   "type": z.literal("bulk-data"),
   "transfer-id": z.lazy(() => transferIdSchema),
@@ -227,6 +227,11 @@ export const roomInviteSchema = z.lazy(() => z.object({
   "invitee": z.lazy(() => deviceIdSchema),
   "token": z.lazy(() => capabilityTokenSchema),
 }).catchall(z.unknown()));
+export const roomRekeySchema = z.lazy(() => z.object({
+  "verb": z.literal("room.rekey"),
+  "key-epoch": z.number().int().nonnegative(),
+  "wrapped-key": z.union([z.instanceof(Uint8Array), z.array(z.instanceof(Uint8Array))]),
+}).catchall(z.unknown()));
 export const roomMemberSchema = z.lazy(() => z.object({
   "device": z.lazy(() => deviceIdSchema),
 }).catchall(z.unknown()));
@@ -251,6 +256,7 @@ export const roomNoticeClaimsSchema = z.lazy(() => z.object({
   "content": z.instanceof(Uint8Array),
   "refs": z.array(z.lazy(() => messageRefSchema)).optional(),
   "valid-until": z.number().int().nonnegative().optional(),
+  "key-epoch": z.number().int().nonnegative().optional(),
 }).catchall(z.unknown()));
 export const streamSessionSchema = z.lazy(() => z.number().int().nonnegative());
 export const streamDataFrameSchema = z.lazy(() => z.object({
@@ -439,6 +445,7 @@ export type RoomMembers = z.infer<typeof roomMembersSchema>;
 export type MessageRef = z.infer<typeof messageRefSchema>;
 export type RoomJoin = z.infer<typeof roomJoinSchema>;
 export type RoomInvite = z.infer<typeof roomInviteSchema>;
+export type RoomRekey = z.infer<typeof roomRekeySchema>;
 export type RoomMember = z.infer<typeof roomMemberSchema>;
 export type RoomJoinOk = z.infer<typeof roomJoinOkSchema>;
 export type RoomMembersOk = z.infer<typeof roomMembersOkSchema>;
