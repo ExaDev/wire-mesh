@@ -215,6 +215,31 @@ const roomNoticeForwardVector = vector(
   roomNoticeForward,
 );
 
+// wire-mesh#141: an encrypted notice names the room.rekey epoch its content is wrapped under via the optional key-epoch claim, present if and only if content-type names an encrypted content-type -- the field this file freezes is the byte shape, not real ciphertext (content stays a structural placeholder, the same scope this file's own header comment already states for signature/key bytes).
+const roomNoticeEncryptedClaims: JsonWire = {
+  room: `${deviceAHex}/general`,
+  poster: deviceB,
+  "poster-key": { alg: -7, "public-key": publicKeyEs256B },
+  token: roomMemberRootToken,
+  "notice-id": hex("a3".repeat(NOTICE_ID_BYTE_LENGTH)),
+  "posted-at": 1861920200000,
+  "content-type": "application/x-room-notice-encrypted",
+  content: hex("deadbeef"), // structural placeholder for an AES-256-GCM ciphertext, not real crypto -- see this file's own header comment
+  "key-epoch": 1,
+};
+
+const roomNoticeEncrypted: JsonWire = [
+  hex(wireHex({ 1: -7, 4: deviceB })),
+  {},
+  hex(wireHex(roomNoticeEncryptedClaims)),
+  signatureFiller,
+];
+
+const roomNoticeEncryptedVector = vector(
+  "room_notice_v1_encrypted",
+  roomNoticeEncrypted,
+);
+
 const handleClaims: JsonWire = {
   handle: "alice@example.com",
   "device-id": deviceD,
@@ -239,6 +264,7 @@ const tokenVectors: Vector[] = [
   roomMemberDelegatedTokenVector,
   roomNoticeVector,
   roomNoticeForwardVector,
+  roomNoticeEncryptedVector,
   handleRecordVector,
 ];
 
@@ -474,6 +500,36 @@ const frameVectors: Vector[] = [
       },
     },
     scope: { kind: "room", path: `${deviceAHex}/general` },
+  }),
+  // room.rekey (wire-mesh#141) distributes a room's symmetric content-encryption key -- wrapped-key is a bare bstr for the default "members-at-the-time" policy (this joiner gets only the current epoch).
+  vector("manage_request_v1_room_rekey", {
+    type: "manage-request",
+    "request-id": 13,
+    command: {
+      verb: "room:member",
+      params: {
+        verb: "room.rekey",
+        "key-epoch": 1,
+        "wrapped-key": hex("cafe01"),
+      },
+    },
+    scope: { kind: "room", path: `${deviceAHex}/general` },
+    token: roomMemberRootToken,
+  }),
+  // room.rekey under the "full history" policy: wrapped-key is an array, one entry per historical epoch being granted to a newly admitted member.
+  vector("manage_request_v1_room_rekey_full_history", {
+    type: "manage-request",
+    "request-id": 14,
+    command: {
+      verb: "room:member",
+      params: {
+        verb: "room.rekey",
+        "key-epoch": 2,
+        "wrapped-key": [hex("cafe01"), hex("cafe02")],
+      },
+    },
+    scope: { kind: "room", path: `${deviceAHex}/general` },
+    token: roomMemberRootToken,
   }),
   // room-join-ok: the approval response to room.join, carrying the freshly minted grant AND the room's current membership so a joiner learns who else is there on the same round trip that grants it membership.
   vector("manage_response_v1_room_join_ok", {
