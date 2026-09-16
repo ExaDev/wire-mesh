@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createNodeIdentity } from "../src/adapters/node-identity.js";
 import { mintCapabilityToken } from "../src/domain/tokens.js";
 import { createRevocationView } from "../src/domain/revocation-view.js";
-import { ownerNamedRoomPath } from "../src/domain/room-path.js";
+import { dmRoomPath, ownerNamedRoomPath } from "../src/domain/room-path.js";
 import { deviceIdToHex } from "../src/domain/device-id.js";
 import {
   deriveWrappingKey,
@@ -392,6 +392,92 @@ describe("createRoomRekeyHandler", () => {
     expect(respond).toHaveBeenCalledWith({
       result: "error",
       code: "ecdh_unsupported",
+    });
+    expect(onRekey).not.toHaveBeenCalled();
+  });
+
+  // The DM bootstrap scenario wire-mesh#36's consumer work surfaced: in a DM,
+  // each participant's own held token chains to the OTHER side (I approve
+  // your join request, minting a grant rooted at me, held by you). The
+  // rekey handler must accept that root for a DM path -- both participants
+  // are named, equal authorities in the path itself, and the handler's real
+  // binding is the ECDH unwrap (a forged rekey needs the root's private key
+  // to produce unwrappable ciphertext), not the room.send-grade root rule.
+  async function dmSetup(): Promise<{
+    alice: IdentityPort;
+    bob: IdentityPort;
+    roomPath: string;
+  }> {
+    const a = await generateEs256Identity();
+    const b = await generateEs256Identity();
+    // dmRoomPath wants the sorted pair; determine who is lower for clarity.
+    const aHex = deviceIdToHex(a.deviceId);
+    const bHex = deviceIdToHex(b.deviceId);
+    const lower = aHex < bHex ? a : b;
+    const higher = aHex < bHex ? b : a;
+    const path = dmRoomPath(aHex, bHex);
+    return { alice: lower, bob: higher, roomPath: path };
+  }
+
+  it("unwraps a DM epoch-1 rekey sent by the lower participant, whose root the higher side's own token chains to", async () => {
+    const { alice, bob, roomPath } = await dmSetup();
+    // bob's own token: granted by alice (the DM convention -- each side's
+    // held token is rooted at the other).
+    const bobToken = await mintRoomMemberToken(alice, bob, roomPath);
+    const onRekey = vi.fn<(event: Readonly<RoomRekeyEvent>) => void>();
+    const handler = createRoomRekeyHandler({
+      identity: bob,
+      clock: fixedClock(NOW_MS),
+      revocation: createRevocationView(),
+      ownRoomMemberToken: bobToken,
+      onRekey,
+    });
+    const contentKey = generateContentKey();
+    const wrapped = await ownerWraps(alice, bob, roomPath, 1, contentKey);
+    const { incoming, respond } = fakeIncoming(
+      buildRoomRekeyCommand(1, wrapped),
+      { kind: "room", path: roomPath },
+    );
+
+    await handler(incoming);
+
+    expect(respond).toHaveBeenCalledWith({ result: "ok" });
+    expect(onRekey).toHaveBeenCalledWith({
+      room: roomPath,
+      keyEpoch: 1,
+      contentKeys: [contentKey],
+    });
+  });
+
+  it("still refuses a DM rekey rooted at a stranger outside the path", async () => {
+    const { alice, bob, roomPath } = await dmSetup();
+    const stranger = await generateEs256Identity();
+    // bob's token granted by a stranger -- NOT a path participant. Even the
+    // rekey-scoped either-participant rule must refuse this root.
+    const bobToken = await mintRoomMemberToken(stranger, bob, roomPath);
+    const onRekey = vi.fn<(event: Readonly<RoomRekeyEvent>) => void>();
+    const handler = createRoomRekeyHandler({
+      identity: bob,
+      clock: fixedClock(NOW_MS),
+      revocation: createRevocationView(),
+      ownRoomMemberToken: bobToken,
+      onRekey,
+    });
+    const contentKey = generateContentKey();
+    // alice wraps (a genuine path participant) -- but bob's verified token
+    // roots at the stranger, so the derivation target is the stranger's key
+    // and the unwrap must fail.
+    const wrapped = await ownerWraps(alice, bob, roomPath, 1, contentKey);
+    const { incoming, respond } = fakeIncoming(
+      buildRoomRekeyCommand(1, wrapped),
+      { kind: "room", path: roomPath },
+    );
+
+    await handler(incoming);
+
+    expect(respond).toHaveBeenCalledWith({
+      result: "error",
+      code: "wrong_chain_root",
     });
     expect(onRekey).not.toHaveBeenCalled();
   });
