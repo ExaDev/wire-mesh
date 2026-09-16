@@ -215,6 +215,8 @@ export interface RoomRouterHandlers {
   onJoinRequest?: (event: Readonly<RoomJoinRequestEvent>) => void;
   /** Called for an incoming, verified room.invite -- there is no decision to make (unlike onJoinRequest): by the time this fires, capability-grant.ts's own handler has already responded ok on the wire, so this is purely a notification for the domain to act on (persist the token, surface a UI notice, etc.). Omit for a router that only ever handles room.send/room.join -- an incoming room.invite is then refused with `unsupported_verb`, the same precondition handleRoomJoin already applies to onJoinRequest. */
   onRoomInvite?: (event: Readonly<RoomInviteEvent>) => void;
+  /** Called for an incoming room.rekey -- the caller supplies core's createRoomRekeyHandler output (or any handler with the same shape); the router only recognises the verb and forwards the whole incoming request, since the rekey handler answers on the wire itself (ok on successful unwrap, its own specific error codes otherwise). Omit and an incoming room.rekey is left unanswered, this router's default behaviour for any verb it does not recognise. */
+  onRekey?: (incoming: Readonly<IncomingManageRequest>) => Promise<void>;
 }
 
 /**
@@ -379,6 +381,11 @@ export function createRoomRouter(
         await handleRoomJoin(incoming);
       } else if (params.verb === "capability.grant") {
         await handleRoomInvite(incoming);
+      } else if (
+        params.verb === "room.rekey" &&
+        handlers.onRekey !== undefined
+      ) {
+        await handlers.onRekey(incoming);
       }
     }
   })();
