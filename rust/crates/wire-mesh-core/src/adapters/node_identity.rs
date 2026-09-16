@@ -158,4 +158,75 @@ impl Identity for NodeIdentity {
     fn derive_device_id(&self, public_key: &[u8]) -> DeviceId {
         derive_device_id_from_public_key(public_key)
     }
+
+    fn derive_shared_secret(&self, peer_key: &IdentityKey) -> Result<Vec<u8>, CoreError> {
+        if self.identity_key.alg != IdentityKey::ALG_ES256 {
+            return Err(CoreError::Crypto(
+                "ECDH requires an ES256 (P-256) local identity-key".to_owned(),
+            ));
+        }
+        if peer_key.alg != IdentityKey::ALG_ES256 {
+            return Err(CoreError::Crypto(
+                "ECDH requires an ES256 (P-256) peer identity-key".to_owned(),
+            ));
+        }
+        // Unlike Web Crypto (which permanently binds a CryptoKey to the one
+        // algorithm it was imported for, forcing the TS side's caller-supplied
+        // dual-import dance), p256's SecretKey works for both ECDSA signing and
+        // ECDH directly -- the same scalar, no second import needed.
+        let SigningMaterial::Es256(signing) = &self.signing else {
+            return Err(CoreError::Crypto(
+                "ECDH requires an ES256 (P-256) local identity-key".to_owned(),
+            ));
+        };
+        let peer_public = p256::PublicKey::from_sec1_bytes(&peer_key.public_key).map_err(|e| {
+            CoreError::Crypto(format!("peer identity-key is not a valid P-256 point: {e}"))
+        })?;
+        let shared =
+            p256::ecdh::diffie_hellman(signing.as_nonzero_scalar(), peer_public.as_affine());
+        Ok(shared.raw_secret_bytes().to_vec())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn es256_identities_derive_the_same_ecdh_shared_secret_both_directions() {
+        let a = NodeIdentity::generate_es256();
+        let b = NodeIdentity::generate_es256();
+
+        let from_a = a.derive_shared_secret(b.identity_key()).expect("ECDH");
+        let from_b = b.derive_shared_secret(a.identity_key()).expect("ECDH");
+
+        assert_eq!(from_a, from_b);
+    }
+
+    #[tokio::test]
+    async fn a_different_peer_derives_a_different_shared_secret() {
+        let a = NodeIdentity::generate_es256();
+        let b = NodeIdentity::generate_es256();
+        let c = NodeIdentity::generate_es256();
+
+        let with_b = a.derive_shared_secret(b.identity_key()).expect("ECDH");
+        let with_c = a.derive_shared_secret(c.identity_key()).expect("ECDH");
+
+        assert_ne!(with_b, with_c);
+    }
+
+    #[tokio::test]
+    async fn deriving_against_a_non_es256_peer_key_fails_closed() {
+        let a = NodeIdentity::generate_es256();
+        let ed25519 = NodeIdentity::generate_ed25519();
+
+        assert!(a.derive_shared_secret(ed25519.identity_key()).is_err());
+    }
+
+    #[tokio::test]
+    async fn an_ed25519_identity_cannot_derive_at_all() {
+        let ed25519 = NodeIdentity::generate_ed25519();
+        let es256 = NodeIdentity::generate_es256();
+        assert!(ed25519.derive_shared_secret(es256.identity_key()).is_err());
+    }
 }

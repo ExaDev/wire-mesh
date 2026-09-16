@@ -33,4 +33,21 @@ pub trait Identity: Send + Sync {
     /// bytes*, never of certificate DER (which embeds a serial number and
     /// validity window that change on every reissue).
     fn derive_device_id(&self, public_key: &[u8]) -> DeviceId;
+
+    /// Derives a raw ECDH shared secret against a peer's identity-key --
+    /// the asymmetric half of room.rekey's ECIES key-wrapping construction
+    /// (wire-mesh#141). Fails closed (rather than panicking or returning
+    /// empty bytes) whenever the local key or the peer key is not ES256
+    /// (P-256): ECDH is only defined for that curve here, so an
+    /// Ed25519-only identity genuinely cannot support it -- the same
+    /// "some identities can do this, some can't" reality the TS port
+    /// models with an optional method. A caller that needs this and gets
+    /// an error must refuse the operation, never substitute a different
+    /// construction. The returned bytes are NOT yet an encryption key --
+    /// always pass them through HKDF (domain::group_key) first.
+    fn derive_shared_secret(&self, _peer_key: &IdentityKey) -> Result<Vec<u8>, CoreError> {
+        Err(CoreError::Crypto(
+            "this identity cannot derive ECDH shared secrets".to_owned(),
+        ))
+    }
 }
