@@ -3,6 +3,9 @@
 import {
   type CapabilityScope,
   type CapabilityToken,
+  type DataEntriesFrame,
+  type DataHaveFrame,
+  type DataRequestFrame,
   type DeviceId,
   type Frame,
   type GossipFrame,
@@ -123,6 +126,10 @@ export interface MeshSession {
   ) => Promise<void>;
   /** Re-sends this side's own self-advert with a fresh snapshot-seconds and, when given, extensions merged onto peer-advert's own open `* tstr => any` tail -- the mechanism a caller uses to keep gossiped presence status (or any other advertised fact) live over a connection's lifetime, since the initial self-advert wireUpConnection sends at connect time is otherwise never repeated. Callers own their own re-advertisement cadence (there is no timer inside MeshSession itself, matching its own DOM-free, fully unit-testable design); a caller not calling this again after connecting is exactly today's existing gossip-once-on-connect behaviour. */
   sendGossipUpdate: (extensions?: Record<string, unknown>) => Promise<void>;
+  /** Sends one core/data frame (data-have, data-request, or data-entries) directly over this session's own connection, never relay-wrapped -- the transport half of an application's own noticeboard replication policy (data-sync.ts owns what the frames MEAN; this owns getting one onto the wire), the same layering sendRevocationAnnounce already established for its own frame kind. Rejects when not connected, exactly like every other send method here. */
+  sendDataFrame: (
+    frame: DataHaveFrame | DataRequestFrame | DataEntriesFrame,
+  ) => Promise<void>;
   /** Sends a manage-request and resolves with the matching manage-response's outcome, correlated by request-id. When targetDevice is given, the request is routed to that specific peer via an established relay-connect pairing (wrapped as relay-data) rather than sent directly over this session's own Connection -- relay-hub deliberately drops manage-request/manage-response frames sent to it directly, since routing between two connected peers is not the relay role's business, so a specific peer reachable only through a relay hub can only be addressed this way. Absent, this sends directly over the Connection exactly as before. When token is given, it is attached to this one request instead of whatever setToken last set -- a single session routinely needs a different token per request when its peer shares more than one scope with this side (e.g. several core/room memberships over one connection), and a session-global token can only ever be correct for one of them. Absent, this request carries setToken's own session-global token exactly as before. When timeoutMs is given, the returned promise resolves with `{ result: "error", code: "timeout" }` rather than hanging forever if no manage-response arrives in time -- a held-open request (a human approval, a not-yet-online peer) otherwise has no way for the caller to give up on it. Absent, this request waits exactly as before, with no time limit of its own. */
   sendManageRequest: (
     command: ManageCommand,
@@ -666,6 +673,16 @@ function createSessionCore(
           throw new Error("not connected");
         }
         const frame = buildSelfAdvert(extensions);
+        frameLog.push({ direction: "sent", frame });
+        await transmit(frame, false);
+        emit();
+      },
+      async sendDataFrame(
+        frame: DataHaveFrame | DataRequestFrame | DataEntriesFrame,
+      ): Promise<void> {
+        if (connection === null || state.status !== "connected") {
+          throw new Error("not connected");
+        }
         frameLog.push({ direction: "sent", frame });
         await transmit(frame, false);
         emit();

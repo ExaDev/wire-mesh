@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { GossipFrame, HandshakeFrame } from "../src/generated/protocol.js";
+import type {
+  DataHaveFrame,
+  GossipFrame,
+  HandshakeFrame,
+} from "../src/generated/protocol.js";
 import type {
   Connection,
   Listener,
@@ -131,6 +135,37 @@ describe("createMeshSession", () => {
       ],
     } satisfies GossipFrame);
     await session.close();
+  });
+
+  it("sendDataFrame sends a core/data frame directly once connected", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/data"]);
+
+    const have: DataHaveFrame = {
+      type: "data-have",
+      peer: testIdentityDeviceId,
+      "head-seq": 3,
+    };
+    await session.sendDataFrame(have);
+
+    const sent = connection.sent.find(
+      (f): f is DataHaveFrame => f.type === "data-have",
+    );
+    expect(sent).toEqual(have);
+    await session.close();
+  });
+
+  it("sendDataFrame rejects when the session is not connected", async () => {
+    const { transport } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await expect(
+      session.sendDataFrame({
+        type: "data-request",
+        peer: testIdentityDeviceId,
+        "from-seq": 0,
+      }),
+    ).rejects.toThrow("not connected");
   });
 
   it("sendGossipUpdate rejects an extension key that collides with a mandatory peer-advert field", async () => {
