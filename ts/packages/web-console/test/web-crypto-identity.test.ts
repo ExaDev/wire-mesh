@@ -138,6 +138,25 @@ describe("createPersistedWebCryptoIdentity", () => {
     expect(bytesEqual(identity.deviceId, expectedDeviceId)).toBe(true);
   });
 
+  it("derives a symmetric ECDH shared secret a persisted peer identity can match", async () => {
+    const storageA = await createIndexedDbStorage({
+      dbName: crypto.randomUUID(),
+    });
+    const storageB = await createIndexedDbStorage({
+      dbName: crypto.randomUUID(),
+    });
+    const a = await createPersistedWebCryptoIdentity(storageA);
+    const b = await createPersistedWebCryptoIdentity(storageB);
+    if (a.deriveSharedSecret === undefined || b.deriveSharedSecret === undefined) {
+      throw new Error("a persisted identity must expose deriveSharedSecret");
+    }
+
+    const fromA = await a.deriveSharedSecret(b.identityKey);
+    const fromB = await b.deriveSharedSecret(a.identityKey);
+
+    expect(bytesEqual(fromA, fromB)).toBe(true);
+  });
+
   it("returns the same device-id on a second call against the same storage, simulating a reload", async () => {
     const storage = await createIndexedDbStorage({
       dbName: crypto.randomUUID(),
