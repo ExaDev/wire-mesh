@@ -23,10 +23,11 @@ import type {
   DataHaveFrame,
   DeviceId,
   Frame,
+  ManageCommand,
 } from "wire-mesh-core/generated/protocol";
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import type { Clock } from "wire-mesh-core/ports/clock";
-import { createNoticeWiring } from "../src/notices.js";
+import { bootstrapDmEpoch1, createNoticeWiring } from "../src/notices.js";
 
 const ES256 = -7;
 const HOUR_MS = 3_600_000;
@@ -87,16 +88,28 @@ function memoryKeyStore(): RoomKeyStore {
   };
 }
 
-/** A minimal MeshSession double: sendDataFrame records frames; everything else the wiring touches is this alone. */
-function fakeSession(): MeshSession & { sent: Frame[] } {
+/** A minimal MeshSession double: sendDataFrame records frames, sendManageRequest records commands; everything else the wiring and bootstrap touch is these two alone. */
+function fakeSession(): MeshSession & {
+  sent: Frame[];
+  commands: ManageCommand[];
+} {
   const sent: Frame[] = [];
+  const commands: ManageCommand[] = [];
   return {
     sent,
+    commands,
     sendDataFrame: async (frame: Frame) => {
       sent.push(frame);
       return Promise.resolve();
     },
-  } as unknown as MeshSession & { sent: Frame[] };
+    sendManageRequest: async (command: ManageCommand) => {
+      commands.push(command);
+      return Promise.resolve({ result: "ok" });
+    },
+  } as unknown as MeshSession & {
+    sent: Frame[];
+    commands: ManageCommand[];
+  };
 }
 
 async function flush(): Promise<void> {
@@ -141,6 +154,119 @@ async function mintRoomMemberToken(
   if (!verdict.ok) throw new Error(`mint failed: ${verdict.reason}`);
   return verdict.token;
 }
+
+describe("bootstrapDmEpoch1", () => {
+  it("the lower participant mints epoch 1 and the higher side unwraps it through the real handler path", async () => {
+    const a = await generateEs256Identity();
+    const b = await generateEs256Identity();
+    const aHex = deviceIdToHex(a.deviceId);
+    const bHex = deviceIdToHex(b.deviceId);
+    const lower = aHex < bHex ? a : b;
+    const higher = aHex < bHex ? b : a;
+    const lowerHex = aHex < bHex ? aHex : bHex;
+    const higherHex = aHex < bHex ? bHex : aHex;
+    const roomPath = `${lowerHex}+${higherHex}`;
+
+    // DM convention: each side's own token is granted by the other.
+    const lowerToken = await mintRoomMemberToken(higher, lower, roomPath);
+    const higherToken = await mintRoomMemberToken(lower, higher, roomPath);
+
+    const lowerSession = fakeSession();
+    const lowerKeys = memoryKeyStore();
+    const higherKeys = memoryKeyStore();
+
+    await bootstrapDmEpoch1({
+      session: lowerSession,
+      identity: lower,
+      clock: fixedClock(NOW_MS),
+      revocation: createRevocationView(),
+      ownRoomMemberToken: lowerToken,
+      roomPath,
+      roomKeys: lowerKeys,
+    });
+
+    // The lower side stored its own epoch-1 key and sent exactly one rekey
+    // (a manage-request, recorded by the session double).
+    expect(await lowerKeys.currentEpoch(roomPath)).toBe(1);
+    expect(lowerSession.commands).toHaveLength(1);
+
+    // Deliver the rekey to the higher side's handler.
+    const command = lowerSession.commands[0];
+    if (command === undefined) {
+      throw new Error("expected exactly one sent rekey command");
+    }
+    const handler = createRoomRekeyHandler({
+      identity: higher,
+      clock: fixedClock(NOW_MS),
+      revocation: createRevocationView(),
+      ownRoomMemberToken: higherToken,
+      onRekey: (event: Readonly<RoomRekeyEvent>) => {
+        event.contentKeys.forEach((key, i) => {
+          higherKeys.set(
+            roomPath,
+            event.keyEpoch - event.contentKeys.length + 1 + i,
+            key,
+          );
+        });
+      },
+    });
+    await handler({
+      requestId: 0,
+      command,
+      scope: { kind: "room", path: roomPath },
+      respond: vi.fn(async (): Promise<void> => Promise.resolve()),
+    });
+
+    // The higher side now holds the SAME epoch-1 key as the lower side.
+    const lowerKey = await lowerKeys.get(roomPath, 1);
+    const higherKey = await higherKeys.get(roomPath, 1);
+    expect(lowerKey).toBeDefined();
+    expect(higherKey).toEqual(lowerKey);
+  });
+
+  it("is a no-op for the higher participant and when an epoch already exists", async () => {
+    const a = await generateEs256Identity();
+    const b = await generateEs256Identity();
+    const aHex = deviceIdToHex(a.deviceId);
+    const bHex = deviceIdToHex(b.deviceId);
+    const lower = aHex < bHex ? a : b;
+    const higher = aHex < bHex ? b : a;
+    const lowerHex = aHex < bHex ? aHex : bHex;
+    const higherHex = aHex < bHex ? bHex : aHex;
+    const roomPath = `${lowerHex}+${higherHex}`;
+    const higherToken = await mintRoomMemberToken(lower, higher, roomPath);
+
+    const higherSession = fakeSession();
+    const higherKeys = memoryKeyStore();
+    await bootstrapDmEpoch1({
+      session: higherSession,
+      identity: higher,
+      clock: fixedClock(NOW_MS),
+      revocation: createRevocationView(),
+      ownRoomMemberToken: higherToken,
+      roomPath,
+      roomKeys: higherKeys,
+    });
+    expect(higherSession.commands).toHaveLength(0);
+    expect(await higherKeys.currentEpoch(roomPath)).toBeUndefined();
+
+    // Idempotent for the lower side once an epoch exists.
+    const lowerToken = await mintRoomMemberToken(higher, lower, roomPath);
+    const lowerSession = fakeSession();
+    const lowerKeys = memoryKeyStore();
+    lowerKeys.set(roomPath, 1, generateContentKey());
+    await bootstrapDmEpoch1({
+      session: lowerSession,
+      identity: lower,
+      clock: fixedClock(NOW_MS),
+      revocation: createRevocationView(),
+      ownRoomMemberToken: lowerToken,
+      roomPath,
+      roomKeys: lowerKeys,
+    });
+    expect(lowerSession.commands).toHaveLength(0);
+  });
+});
 
 describe("createNoticeWiring", () => {
   it("a posted notice replicates to the peer and decrypts there, end to end over the frame flow", async () => {

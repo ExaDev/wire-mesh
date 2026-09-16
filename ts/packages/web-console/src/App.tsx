@@ -160,6 +160,9 @@ export function App({
           key={view.peerHex}
           view={view}
           onSend={async (text) => roomMessaging.send(view.peerHex, text)}
+          onPostNotice={async (text) =>
+            roomMessaging.postNotice(view.peerHex, text)
+          }
         />
       ))}
     </Stack>

@@ -153,7 +153,10 @@ async function identityFromStoredEnvelope(
   // JWK's own alg/key_ops describe its ECDSA usage; strip both (importKey
   // validates requested usage against key_ops when present) and re-declare
   // deriveBits, which is all ECDH needs from the curve point.
-  const ecdhJwk: JsonWebKey = { ...envelope.privateJwk, key_ops: ["deriveBits"] };
+  const ecdhJwk: JsonWebKey = {
+    ...envelope.privateJwk,
+    key_ops: ["deriveBits"],
+  };
   delete ecdhJwk.alg;
   const ecdhPrivateKey = await crypto.subtle.importKey(
     "jwk",

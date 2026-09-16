@@ -11,6 +11,14 @@ import {
   headSeqFor,
 } from "wire-mesh-core/domain/data-sync";
 import type { MeshSession } from "wire-mesh-core/domain/mesh-session";
+import { sendRoomRekey } from "wire-mesh-core/domain/room-rekey";
+import { verifyRoomToken } from "wire-mesh-core/domain/room-token-verification";
+import {
+  deriveWrappingKey,
+  generateContentKey,
+  wrapContentKey,
+} from "wire-mesh-core/domain/group-key";
+import type { RevocationCheck } from "wire-mesh-core/domain/tokens";
 import { deviceIdToHex } from "wire-mesh-core/domain/device-id";
 import type {
   CapabilityToken,
@@ -20,7 +28,6 @@ import type {
 import type { Clock } from "wire-mesh-core/ports/clock";
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import type { KeyValueStorage } from "wire-mesh-core/ports/storage";
-import type { RevocationCheck } from "wire-mesh-core/domain/tokens";
 
 /** How many entries one catch-up data-entries frame may carry -- a bounding constant, not a protocol limit; a larger log simply takes more rounds. */
 const CATCH_UP_BATCH_LIMIT = 32;
@@ -126,4 +133,75 @@ export function createNoticeWiring(
     },
     roomKeys,
   };
+}
+
+export interface BootstrapDmEpoch1Options {
+  session: MeshSession;
+  identity: IdentityPort;
+  clock: Clock;
+  revocation: RevocationCheck;
+  /** This side's own held room:member token for the DM -- verified fresh, under the rekey-scoped either-participant root policy, to extract the peer's identity-key as the token chain's root. */
+  ownRoomMemberToken: CapabilityToken;
+  roomPath: string;
+  roomKeys: RoomKeyStore;
+}
+
+/**
+ * The DM first-epoch bootstrap (wire-mesh#36): the LOWER device-id participant,
+ * once it holds its own join-grant, mints epoch 1 -- generating the content key,
+ * storing it locally, and wrapping it for the peer via ECDH against the peer's
+ * identity-key, which is exactly the chain root of this side's own granted token
+ * (I approved your join, so my token chains to you; your key wraps my epoch).
+ * The higher participant never calls this: it waits to receive room.rekey, per
+ * the deterministic lower-mints rule that mirrors dmRoomPath's own sorted-pair
+ * convention. A no-op when the store already holds any epoch (idempotent across
+ * re-sends) or when this side is the higher participant.
+ */
+export async function bootstrapDmEpoch1(
+  options: Readonly<BootstrapDmEpoch1Options>,
+): Promise<void> {
+  const {
+    session,
+    identity,
+    clock,
+    revocation,
+    ownRoomMemberToken,
+    roomPath,
+    roomKeys,
+  } = options;
+  if ((await roomKeys.currentEpoch(roomPath)) !== undefined) {
+    return;
+  }
+  // Only the lower participant mints epoch 1: dmRoomPath embeds the sorted
+  // pair (lower + "+" + higher), so this side mints iff its own hex sorts
+  // strictly below the peer's -- the participant names ARE the path halves.
+  const lower = roomPath.split("+")[0] ?? "";
+  if (lower === "" || deviceIdToHex(identity.deviceId) !== lower) {
+    return;
+  }
+  const verdict = await verifyRoomToken(ownRoomMemberToken, {
+    identity,
+    clock,
+    revocation,
+    expectedBearer: identity.deviceId,
+    roomPath,
+    dmRootPolicy: "either-participant",
+  });
+  if (!verdict.ok) {
+    throw new Error(`own room token failed verification: ${verdict.reason}`);
+  }
+  const deriveSharedSecret = identity.deriveSharedSecret;
+  if (deriveSharedSecret === undefined) {
+    throw new Error("this identity cannot derive ECDH shared secrets");
+  }
+  const FIRST_EPOCH = 1;
+  const contentKey = generateContentKey();
+  const sharedSecret = await deriveSharedSecret(verdict.rootIssuerKey);
+  const wrappingKey = await deriveWrappingKey(sharedSecret, {
+    room: roomPath,
+    keyEpoch: FIRST_EPOCH,
+  });
+  const wrapped = await wrapContentKey(wrappingKey, contentKey);
+  roomKeys.set(roomPath, FIRST_EPOCH, contentKey);
+  await sendRoomRekey(session, roomPath, FIRST_EPOCH, wrapped);
 }
