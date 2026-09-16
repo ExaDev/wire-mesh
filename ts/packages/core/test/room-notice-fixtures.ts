@@ -34,6 +34,8 @@ export interface RoomNoticeSeed {
   content?: Uint8Array<ArrayBuffer>;
   refs?: MessageRef[];
   validUntil?: number;
+  /** Which room.rekey epoch content is encrypted under -- room.cddl obligation 7 requires this iff contentType carries the +aes256gcm suffix; the two RED tests in room-notice-verification.test.ts exercise exactly that pairing. */
+  keyEpoch?: number;
 }
 
 /** Builds and signs one room-notice (a bare cose-sign1 over room-notice-claims) as `identity` -- explicit field-by-field construction, mirroring tokens-fixtures.ts's own signToken, since RoomNoticeClaims' `.catchall(z.unknown())` extension tail would otherwise lose specific field types under a spread. Deliberately performs none of verifyRoomNotice's own checks -- tests exercising its enforcement need to construct notices it would refuse. */
@@ -54,6 +56,7 @@ export async function signRoomNotice(
     ...(seed.validUntil !== undefined
       ? { "valid-until": seed.validUntil }
       : {}),
+    ...(seed.keyEpoch !== undefined ? { "key-epoch": seed.keyEpoch } : {}),
   };
 
   const payload = encodeBuf(claims);

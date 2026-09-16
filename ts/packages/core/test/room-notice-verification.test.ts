@@ -490,6 +490,80 @@ describe("verifyRoomNotice", () => {
 
     expect(verdict.ok).toBe(true);
   });
+
+  it("accepts an encrypted notice whose content-type and key-epoch agree", async () => {
+    const owner = await generateEs256Identity();
+    const poster = await generateEs256Identity();
+    const roomPath = ownerNamedRoomPath(
+      deviceIdToHex(owner.deviceId),
+      "general",
+    );
+    const token = await mintRoomMemberToken(owner, poster, roomPath);
+    const notice = await signRoomNotice(poster, {
+      room: roomPath,
+      token,
+      postedAt: NOW_MS,
+      contentType: "text/plain+aes256gcm",
+      keyEpoch: 1,
+    });
+
+    const verdict = await verifyRoomNotice(notice, {
+      identity: owner,
+      clock: fixedClock(NOW_MS),
+      revocation: createRevocationView(),
+    });
+
+    expect(verdict.ok).toBe(true);
+  });
+
+  it("rejects an encrypted content-type with no key-epoch -- the reader could not know which epoch to decrypt under", async () => {
+    const owner = await generateEs256Identity();
+    const poster = await generateEs256Identity();
+    const roomPath = ownerNamedRoomPath(
+      deviceIdToHex(owner.deviceId),
+      "general",
+    );
+    const token = await mintRoomMemberToken(owner, poster, roomPath);
+    const notice = await signRoomNotice(poster, {
+      room: roomPath,
+      token,
+      postedAt: NOW_MS,
+      contentType: "text/plain+aes256gcm",
+    });
+
+    const verdict = await verifyRoomNotice(notice, {
+      identity: owner,
+      clock: fixedClock(NOW_MS),
+      revocation: createRevocationView(),
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: "key_epoch_mismatch" });
+  });
+
+  it("rejects a key-epoch on a plaintext content-type -- the epoch would name a key nothing was encrypted under", async () => {
+    const owner = await generateEs256Identity();
+    const poster = await generateEs256Identity();
+    const roomPath = ownerNamedRoomPath(
+      deviceIdToHex(owner.deviceId),
+      "general",
+    );
+    const token = await mintRoomMemberToken(owner, poster, roomPath);
+    const notice = await signRoomNotice(poster, {
+      room: roomPath,
+      token,
+      postedAt: NOW_MS,
+      contentType: "text/plain",
+      keyEpoch: 1,
+    });
+
+    const verdict = await verifyRoomNotice(notice, {
+      identity: owner,
+      clock: fixedClock(NOW_MS),
+      revocation: createRevocationView(),
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: "key_epoch_mismatch" });
+  });
 });
 
 describe("compareRoomNotices", () => {

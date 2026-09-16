@@ -279,6 +279,18 @@ room-notice = cose-sign1   ; payload = bstr .cbor room-notice-claims
 ;    obligation above unchanged: encryption is layered on top of this
 ;    envelope's own signing as encrypt-then-sign, so `content`'s own
 ;    interpretation is the only thing this field affects.
+;
+;    An encrypted content-type is the notice's own TRUE content-type with
+;    the literal suffix `+aes256gcm` appended (e.g. `text/plain` posted
+;    encrypted becomes `text/plain+aes256gcm`), the same suffix convention
+;    MIME subtypes like `application/jose+json` already use -- never a
+;    separate, generic "this is encrypted" sentinel with the true type
+;    embedded in the decrypted bytes instead. This deliberately keeps
+;    `content` itself as pure ciphertext with no structured envelope of its
+;    own, and lets a reader WITHOUT that epoch's key still learn the
+;    notice's general kind (a message, a forward, ...) without needing to
+;    decrypt anything -- a small, accepted metadata leak no different from
+;    what content-type already reveals for any plaintext notice.
 room-notice-claims = {
   room: room-path,
   poster: device-id,

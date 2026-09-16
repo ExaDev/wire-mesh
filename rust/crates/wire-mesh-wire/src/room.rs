@@ -97,6 +97,12 @@ pub struct RoomNoticeClaims {
     /// fall into `extra` and be silently dropped the way `token-claims`'
     /// own `valid-until` once did before that gap was found and fixed.
     pub valid_until: Option<u64>,
+    /// Which room.rekey epoch `content` is encrypted under (wire-mesh#141),
+    /// present iff `content-type` carries the `+aes256gcm` suffix -- room.cddl
+    /// obligation 7. Typed for the same reason `valid_until` above is: so the
+    /// domain verifier can enforce that pairing instead of the field silently
+    /// landing in `extra` unchecked.
+    pub key_epoch: Option<u64>,
     pub extra: CanonicalMap<String, CborValue>,
 }
 
@@ -150,6 +156,9 @@ impl Encode<()> for RoomNoticeClaims {
         if let Some(valid_until) = self.valid_until {
             builder.push("valid-until", &valid_until);
         }
+        if let Some(key_epoch) = self.key_epoch {
+            builder.push("key-epoch", &key_epoch);
+        }
         for (key, value) in self.extra.iter() {
             let mut value_buf = Vec::new();
             let mut value_enc = Encoder::new(&mut value_buf);
@@ -180,6 +189,7 @@ fn room_notice_claims_from(d: &mut Decoder<'_>) -> Result<RoomNoticeClaims, Deco
     let mut content: Option<Vec<u8>> = None;
     let mut refs: Option<Vec<MessageRef>> = None;
     let mut valid_until: Option<u64> = None;
+    let mut key_epoch: Option<u64> = None;
     let mut extra = CanonicalMap::new();
     while let Some(key) = map.next_key(d)? {
         match key {
@@ -202,6 +212,7 @@ fn room_notice_claims_from(d: &mut Decoder<'_>) -> Result<RoomNoticeClaims, Deco
                 refs = Some(list);
             }
             "valid-until" => strict::set_once(&mut valid_until, strict::uint_value(d)?)?,
+            "key-epoch" => strict::set_once(&mut key_epoch, strict::uint_value(d)?)?,
             other => {
                 let value = CborValue::decode_strict(d)?;
                 extra.insert(other.to_owned(), value)?;
@@ -219,6 +230,7 @@ fn room_notice_claims_from(d: &mut Decoder<'_>) -> Result<RoomNoticeClaims, Deco
         content: content.ok_or(DecodeError::MissingField("content"))?,
         refs,
         valid_until,
+        key_epoch,
         extra,
     })
 }
@@ -256,6 +268,7 @@ mod tests {
                 relation: "reply".to_owned(),
             }]),
             valid_until: None,
+            key_epoch: None,
             extra: CanonicalMap::new(),
         };
         let bytes = claims.encode_to_vec();
@@ -279,12 +292,14 @@ mod tests {
             content: b"this offer expires soon".to_vec(),
             refs: None,
             valid_until: Some(1861923600000),
+            key_epoch: Some(3),
             extra: CanonicalMap::new(),
         };
         let bytes = claims.encode_to_vec();
         let back = RoomNoticeClaims::decode_bytes(&bytes).expect("decode");
         assert_eq!(back, claims);
         assert_eq!(back.valid_until, Some(1861923600000));
+        assert_eq!(back.key_epoch, Some(3));
     }
 
     #[test]
@@ -303,6 +318,7 @@ mod tests {
             content: b"hello".to_vec(),
             refs: None,
             valid_until: None,
+            key_epoch: None,
             extra: CanonicalMap::new(),
         };
         let bytes = claims.encode_to_vec();
@@ -349,6 +365,7 @@ mod tests {
             content: b"hello".to_vec(),
             refs: None,
             valid_until: None,
+            key_epoch: None,
             extra: {
                 let mut extra = CanonicalMap::new();
                 extra

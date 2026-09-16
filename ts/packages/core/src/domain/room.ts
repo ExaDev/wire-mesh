@@ -14,6 +14,7 @@ import {
 import type { Clock } from "../ports/clock.js";
 import type { IdentityPort } from "../ports/identity.js";
 import type { RevocationCheck } from "./tokens.js";
+import { isEncryptedContentType } from "./group-key.js";
 import {
   verifyRoomToken,
   type RoomTokenVerdictReason,
@@ -74,6 +75,7 @@ export type RoomNoticeVerdictReason =
   | "bad_signature"
   | "wrong_poster"
   | "content_expired"
+  | "key_epoch_mismatch"
   | RoomTokenVerdictReason;
 
 export type RoomNoticeVerdict =
@@ -144,6 +146,20 @@ export async function verifyRoomNotice(
   const validUntil = claims["valid-until"];
   if (validUntil !== undefined && validUntil <= options.clock.now()) {
     return { ok: false, reason: "content_expired" };
+  }
+
+  // Obligation 7 (room.cddl): key-epoch is present iff content-type names an encrypted
+  // content-type. Both directions of the mismatch are refused: an encrypted content-type
+  // with no epoch leaves a reader unable to know which epoch's key to decrypt under, and an
+  // epoch on a plaintext content-type names a key nothing was encrypted under. Checked here,
+  // structurally, before any cryptographic work -- a mismatched pairing is malformed data
+  // regardless of whether the signature itself happens to be valid.
+  const keyEpoch = claims["key-epoch"];
+  if (
+    isEncryptedContentType(claims["content-type"]) !==
+    (keyEpoch !== undefined)
+  ) {
+    return { ok: false, reason: "key_epoch_mismatch" };
   }
 
   const tokenVerdict = await verifyRoomToken(claims.token, {

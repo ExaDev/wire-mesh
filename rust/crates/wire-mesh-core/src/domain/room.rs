@@ -16,6 +16,12 @@ use crate::domain::room_token_verification::{verify_room_token, RoomTokenRejecti
 use crate::ports::{Clock, Identity};
 
 /// Why a room-notice was rejected.
+/// The literal content-type suffix marking a room-notice's content as
+/// AES-256-GCM-encrypted under a room.rekey epoch's content key (room.cddl
+/// obligation 7) -- the same suffix convention MIME structured syntaxes like
+/// `application/jose+json` already use.
+pub const ENCRYPTED_CONTENT_TYPE_SUFFIX: &str = "+aes256gcm";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RoomNoticeRejection {
     /// Not a well-formed COSE_Sign1 over room-notice-claims: a nil
@@ -34,6 +40,12 @@ pub enum RoomNoticeRejection {
     /// injected clock, even though the embedded token is itself still
     /// valid.
     ContentExpired,
+    /// room.cddl obligation 7's pairing is violated: `content-type`
+    /// carries the `+aes256gcm` suffix but no `key-epoch` is present
+    /// (a reader could not know which epoch to decrypt under), or a
+    /// `key-epoch` is present on a plaintext content-type (it names a
+    /// key nothing was encrypted under). Both directions are refused.
+    KeyEpochMismatch,
     /// The embedded `room:member` token failed one of its own six
     /// verifier obligations.
     Token(RoomTokenRejection),
@@ -114,6 +126,15 @@ pub async fn verify_room_notice(
         if valid_until <= clock.now_unix_ms() {
             return RoomNoticeVerdict::Invalid(RoomNoticeRejection::ContentExpired);
         }
+    }
+
+    // room.cddl obligation 7: key-epoch is present iff content-type names an
+    // encrypted content-type (the `+aes256gcm` suffix). Checked structurally,
+    // before the recursive token verification, matching the TS verifier's own
+    // ordering.
+    let encrypted_content_type = claims.content_type.ends_with(ENCRYPTED_CONTENT_TYPE_SUFFIX);
+    if encrypted_content_type != claims.key_epoch.is_some() {
+        return RoomNoticeVerdict::Invalid(RoomNoticeRejection::KeyEpochMismatch);
     }
 
     let token_verdict = verify_room_token(
@@ -245,6 +266,12 @@ mod tests {
         token: CoseSign1,
         posted_at: u64,
         valid_until: Option<u64>,
+        /// Overrides the default plaintext content-type -- tests exercising room.cddl
+        /// obligation 7 pass a `+aes256gcm`-suffixed (or mismatched) value instead.
+        content_type: Option<String>,
+        /// Which room.rekey epoch content is encrypted under; paired with content_type
+        /// per obligation 7.
+        key_epoch: Option<u64>,
         signer: &'a NodeIdentity,
     }
 
@@ -260,10 +287,11 @@ mod tests {
             token: seed.token,
             notice_id: next_notice_id(),
             posted_at: seed.posted_at,
-            content_type: "text/plain".to_owned(),
+            content_type: seed.content_type.unwrap_or_else(|| "text/plain".to_owned()),
             content: b"hello".to_vec(),
             refs: None,
             valid_until: seed.valid_until,
+            key_epoch: seed.key_epoch,
             extra: CanonicalMap::new(),
         };
         let payload = claims.encode_to_vec();
@@ -293,6 +321,8 @@ mod tests {
             token,
             posted_at: NOW,
             valid_until: None,
+            content_type: None,
+            key_epoch: None,
             signer: &poster,
         })
         .await;
@@ -324,6 +354,8 @@ mod tests {
             token,
             posted_at: NOW,
             valid_until: None,
+            content_type: None,
+            key_epoch: None,
             signer: &them,
         })
         .await;
@@ -400,6 +432,8 @@ mod tests {
             token,
             posted_at: NOW,
             valid_until: None,
+            content_type: None,
+            key_epoch: None,
             signer: &poster,
         })
         .await;
@@ -436,6 +470,8 @@ mod tests {
             token,
             posted_at: NOW,
             valid_until: None,
+            content_type: None,
+            key_epoch: None,
             signer: &poster,
         })
         .await;
@@ -469,6 +505,8 @@ mod tests {
             token,
             posted_at: NOW,
             valid_until: None,
+            content_type: None,
+            key_epoch: None,
             signer: &poster,
         })
         .await;
@@ -503,6 +541,8 @@ mod tests {
             token,
             posted_at: NOW,
             valid_until: None,
+            content_type: None,
+            key_epoch: None,
             signer: &poster,
         })
         .await;
@@ -536,6 +576,8 @@ mod tests {
             token,
             posted_at: NOW,
             valid_until: None,
+            content_type: None,
+            key_epoch: None,
             signer: &poster,
         })
         .await;
@@ -582,6 +624,8 @@ mod tests {
             token,
             posted_at: NOW,
             valid_until: None,
+            content_type: None,
+            key_epoch: None,
             signer: &poster,
         })
         .await;
@@ -617,6 +661,8 @@ mod tests {
             token,
             posted_at: NOW,
             valid_until: None,
+            content_type: None,
+            key_epoch: None,
             signer: &poster,
         })
         .await;
@@ -655,6 +701,8 @@ mod tests {
             token,
             posted_at: NOW,
             valid_until: None,
+            content_type: None,
+            key_epoch: None,
             signer: &poster,
         })
         .await;
@@ -691,6 +739,8 @@ mod tests {
             token,
             posted_at: NOW,
             valid_until: None,
+            content_type: None,
+            key_epoch: None,
             signer: &poster,
         })
         .await;
@@ -767,6 +817,8 @@ mod tests {
             token,
             posted_at: NOW,
             valid_until: None,
+            content_type: None,
+            key_epoch: None,
             signer: &poster,
         })
         .await;
@@ -796,6 +848,8 @@ mod tests {
             token,
             posted_at: NOW,
             valid_until: Some(NOW + 1),
+            content_type: None,
+            key_epoch: None,
             signer: &poster,
         })
         .await;
@@ -830,6 +884,8 @@ mod tests {
             token,
             posted_at: NOW,
             valid_until: Some(NOW + HOUR_MS),
+            content_type: None,
+            key_epoch: None,
             signer: &poster,
         })
         .await;
@@ -862,6 +918,8 @@ mod tests {
             token,
             posted_at: NOW,
             valid_until: None,
+            content_type: None,
+            key_epoch: None,
             signer: &poster,
         })
         .await;
@@ -876,6 +934,111 @@ mod tests {
         .await;
 
         assert!(matches!(verdict, RoomNoticeVerdict::Valid { .. }));
+    }
+
+    #[tokio::test]
+    async fn accepts_an_encrypted_notice_whose_content_type_and_key_epoch_agree() {
+        let owner = NodeIdentity::generate_ed25519();
+        let poster = NodeIdentity::generate_ed25519();
+        let room_path = owner_named_room_path(
+            &crate::domain::room_path::device_id_to_hex(owner.device_id()),
+            "general",
+        );
+        let token = mint_room_member_token(&owner, &poster, &room_path, NOW + HOUR_MS).await;
+        let notice = sign_room_notice(NoticeSeed {
+            room: room_path,
+            poster: None,
+            token,
+            posted_at: NOW,
+            valid_until: None,
+            content_type: Some("text/plain+aes256gcm".to_owned()),
+            key_epoch: Some(1),
+            signer: &poster,
+        })
+        .await;
+
+        let verdict = verify_room_notice(
+            &owner,
+            &FixedClock(NOW),
+            &RevocationView::new(),
+            &notice,
+            None,
+        )
+        .await;
+
+        assert!(matches!(verdict, RoomNoticeVerdict::Valid { .. }));
+    }
+
+    #[tokio::test]
+    async fn rejects_an_encrypted_content_type_with_no_key_epoch() {
+        let owner = NodeIdentity::generate_ed25519();
+        let poster = NodeIdentity::generate_ed25519();
+        let room_path = owner_named_room_path(
+            &crate::domain::room_path::device_id_to_hex(owner.device_id()),
+            "general",
+        );
+        let token = mint_room_member_token(&owner, &poster, &room_path, NOW + HOUR_MS).await;
+        let notice = sign_room_notice(NoticeSeed {
+            room: room_path,
+            poster: None,
+            token,
+            posted_at: NOW,
+            valid_until: None,
+            content_type: Some("text/plain+aes256gcm".to_owned()),
+            key_epoch: None,
+            signer: &poster,
+        })
+        .await;
+
+        let verdict = verify_room_notice(
+            &owner,
+            &FixedClock(NOW),
+            &RevocationView::new(),
+            &notice,
+            None,
+        )
+        .await;
+
+        assert_eq!(
+            verdict,
+            RoomNoticeVerdict::Invalid(RoomNoticeRejection::KeyEpochMismatch)
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_a_key_epoch_on_a_plaintext_content_type() {
+        let owner = NodeIdentity::generate_ed25519();
+        let poster = NodeIdentity::generate_ed25519();
+        let room_path = owner_named_room_path(
+            &crate::domain::room_path::device_id_to_hex(owner.device_id()),
+            "general",
+        );
+        let token = mint_room_member_token(&owner, &poster, &room_path, NOW + HOUR_MS).await;
+        let notice = sign_room_notice(NoticeSeed {
+            room: room_path,
+            poster: None,
+            token,
+            posted_at: NOW,
+            valid_until: None,
+            content_type: None,
+            key_epoch: Some(1),
+            signer: &poster,
+        })
+        .await;
+
+        let verdict = verify_room_notice(
+            &owner,
+            &FixedClock(NOW),
+            &RevocationView::new(),
+            &notice,
+            None,
+        )
+        .await;
+
+        assert_eq!(
+            verdict,
+            RoomNoticeVerdict::Invalid(RoomNoticeRejection::KeyEpochMismatch)
+        );
     }
 
     fn claims_with(posted_at: u64, poster: DeviceId, notice_id: Vec<u8>) -> RoomNoticeClaims {
@@ -898,6 +1061,7 @@ mod tests {
             content: Vec::new(),
             refs: None,
             valid_until: None,
+            key_epoch: None,
             extra: CanonicalMap::new(),
         }
     }
