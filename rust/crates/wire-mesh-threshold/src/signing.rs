@@ -18,14 +18,29 @@ use frost_ed25519::round1::SigningCommitments;
 use frost_ed25519::round2::SignatureShare;
 use frost_ed25519::{Identifier, Signature, SigningPackage};
 use rand::rngs::OsRng;
+use wire_mesh_core::ports::identity::Identity;
+use wire_mesh_wire::identity::DeviceId;
+use wire_mesh_wire::tokens::CoseSign1;
 
 use crate::nonce_store::{NonceStore, NonceStoreError, SessionId};
+use crate::share_envelope::{mint_share_envelope, verify_share_envelope, ShareEnvelopeError};
 
 /// An error in the signing flow.
 #[derive(Debug)]
 pub enum SigningError {
     Frost(frost_ed25519::Error),
     NonceStore(NonceStoreError),
+    ShareEnvelope(ShareEnvelopeError),
+    /// An envelope's own claims did not match what the coordinator expected
+    /// for this session -- e.g. it named a different `group`, or its
+    /// `session-id` didn't match the round it was collected for. This is
+    /// distinct from [`ShareEnvelopeError`] (which covers the envelope's
+    /// own internal self-certification/signature): an envelope can be
+    /// perfectly validly signed by ITS OWN issuer and still be the wrong
+    /// envelope for this round.
+    UnexpectedEnvelopeContext {
+        field: &'static str,
+    },
 }
 
 impl core::fmt::Display for SigningError {
@@ -33,6 +48,13 @@ impl core::fmt::Display for SigningError {
         match self {
             SigningError::Frost(e) => write!(f, "FROST signing error: {e}"),
             SigningError::NonceStore(e) => write!(f, "nonce store error: {e}"),
+            SigningError::ShareEnvelope(e) => write!(f, "share envelope error: {e}"),
+            SigningError::UnexpectedEnvelopeContext { field } => {
+                write!(
+                    f,
+                    "share envelope's own {field} did not match this session's expected value"
+                )
+            }
         }
     }
 }
@@ -48,6 +70,12 @@ impl From<frost_ed25519::Error> for SigningError {
 impl From<NonceStoreError> for SigningError {
     fn from(e: NonceStoreError) -> Self {
         SigningError::NonceStore(e)
+    }
+}
+
+impl From<ShareEnvelopeError> for SigningError {
+    fn from(e: ShareEnvelopeError) -> Self {
+        SigningError::ShareEnvelope(e)
     }
 }
 
@@ -91,6 +119,28 @@ pub fn round2_sign(
     Ok(share)
 }
 
+/// Round 2, participant side, wire-ready: performs [`round2_sign`] and then
+/// wraps the resulting raw FROST share in a `threshold-share-envelope`
+/// (`crate::share_envelope`) signed under `personal_identity` -- never the
+/// group's own key -- so misbehaviour is publicly provable, not merely
+/// locally identifiable to the coordinator. This is what actually answers
+/// `spec/threshold.cddl`'s own `threshold-sign` response shape
+/// (`share: bstr .cbor threshold-share-envelope`); [`round2_sign`] alone
+/// only produces the raw share the envelope wraps.
+pub async fn round2_respond(
+    store: &dyn NonceStore,
+    session_id: SessionId,
+    signing_package: &SigningPackage,
+    key_package: &KeyPackage,
+    personal_identity: &dyn Identity,
+    group: DeviceId,
+) -> Result<CoseSign1, SigningError> {
+    let share = round2_sign(store, session_id, signing_package, key_package)?;
+    let envelope =
+        mint_share_envelope(personal_identity, session_id, group, share.serialize()).await?;
+    Ok(envelope)
+}
+
 /// Coordinator-side: builds the `SigningPackage` round 2 is computed
 /// against, from the commitments collected in round 1 and the message
 /// every participant is expected to have independently reconstructed.
@@ -119,6 +169,46 @@ pub fn aggregate(
 ) -> Result<Signature, SigningError> {
     frost_ed25519::aggregate(signing_package, shares, public_key_package)
         .map_err(SigningError::from)
+}
+
+/// Coordinator-side, wire-ready: verifies every collected
+/// `threshold-share-envelope` (self-certification, signature, and that its
+/// own claimed `session-id`/`group` match what THIS round actually expects
+/// -- an envelope can be validly signed by its own issuer and still be the
+/// wrong envelope for this session, e.g. replayed from a different one),
+/// extracts the raw FROST shares, and aggregates them exactly as
+/// [`aggregate`] does. `identifier_of` maps a personal device-id (an
+/// envelope's own `issuer`) to the FROST `Identifier` the signing package
+/// keyed that participant's commitment under -- the same mapping the
+/// caller already has from round 1, since an envelope's own `issuer` IS the
+/// personal device that committed under that identifier.
+pub async fn unwrap_and_aggregate(
+    signing_package: &SigningPackage,
+    envelopes: &[CoseSign1],
+    public_key_package: &PublicKeyPackage,
+    verifier_identity: &dyn Identity,
+    expected_session_id: SessionId,
+    expected_group: DeviceId,
+    identifier_of: impl Fn(DeviceId) -> Option<Identifier>,
+) -> Result<Signature, SigningError> {
+    let mut shares = BTreeMap::new();
+    for envelope in envelopes {
+        let claims = verify_share_envelope(verifier_identity, envelope).await?;
+        if claims.session_id != expected_session_id {
+            return Err(SigningError::UnexpectedEnvelopeContext {
+                field: "session-id",
+            });
+        }
+        if claims.group != expected_group {
+            return Err(SigningError::UnexpectedEnvelopeContext { field: "group" });
+        }
+        let identifier = identifier_of(claims.issuer)
+            .ok_or(SigningError::UnexpectedEnvelopeContext { field: "issuer" })?;
+        let share = SignatureShare::deserialize(&claims.share)?;
+        shares.insert(identifier, share);
+    }
+
+    aggregate(signing_package, &shares, public_key_package)
 }
 
 #[cfg(test)]
@@ -282,5 +372,174 @@ mod tests {
             result.is_err(),
             "aggregation must reject a mismatched/forged share"
         );
+    }
+
+    /// The wire-ready path: round2_respond wraps each share in a
+    /// threshold-share-envelope signed under the participant's own PERSONAL
+    /// key (never the group's), and unwrap_and_aggregate verifies every
+    /// envelope's self-certification/signature/session context before
+    /// extracting the raw shares and aggregating -- proving the publicly
+    /// provable misbehaviour property is actually exercised end to end,
+    /// not just available as a standalone primitive.
+    #[tokio::test]
+    async fn round2_respond_and_unwrap_and_aggregate_round_trip_with_real_personal_keys() {
+        use wire_mesh_core::adapters::node_identity::NodeIdentity;
+
+        let (ids, key_packages, public_key_package) = dkg_fixture();
+        let signers = &ids[0..2];
+        let session_id = 7;
+
+        // Each signer has its own PERSONAL identity, distinct from its
+        // group key package -- the whole point of the envelope.
+        let personal_identities: Map<Identifier, NodeIdentity> = signers
+            .iter()
+            .map(|&id| (id, NodeIdentity::generate_ed25519()))
+            .collect();
+        let device_id_by_identifier: Map<Identifier, DeviceId> = personal_identities
+            .iter()
+            .map(|(&id, identity)| (id, *identity.device_id()))
+            .collect();
+        let identifier_by_device_id: Map<DeviceId, Identifier> = device_id_by_identifier
+            .iter()
+            .map(|(&id, &device)| (device, id))
+            .collect();
+
+        let group_device_id = DeviceId::from_bytes([42; 32]);
+
+        let subject = ThresholdSubject {
+            kind: "capability-token".to_owned(),
+            protected: vec![0xa1, 0x01, 0x27],
+            payload: vec![0xa1, 0x00, 0x01],
+        };
+        let message = to_be_signed(&subject);
+
+        let mut stores = Map::new();
+        let mut commitments = Map::new();
+        for &id in signers {
+            let store = InMemoryNonceStore::new();
+            let kp = key_packages.get(&id).expect("key package");
+            let c = round1_commit(&store, session_id, kp).expect("round1_commit");
+            commitments.insert(id, c);
+            stores.insert(id, store);
+        }
+        let signing_package = build_signing_package(commitments, &message);
+
+        let mut envelopes = Vec::new();
+        for &id in signers {
+            let kp = key_packages.get(&id).expect("key package");
+            let store = stores.get(&id).expect("store");
+            let personal = personal_identities.get(&id).expect("personal identity");
+            let envelope = round2_respond(
+                store,
+                session_id,
+                &signing_package,
+                kp,
+                personal,
+                group_device_id,
+            )
+            .await
+            .expect("round2_respond");
+            envelopes.push(envelope);
+        }
+
+        // The coordinator's own verifier identity is unrelated to any
+        // signer -- verification only ever needs the envelope's own
+        // embedded issuer-key, never the local verifier's identity.
+        let coordinator_identity = NodeIdentity::generate_ed25519();
+
+        let signature = unwrap_and_aggregate(
+            &signing_package,
+            &envelopes,
+            &public_key_package,
+            &coordinator_identity,
+            session_id,
+            group_device_id,
+            |device_id| identifier_by_device_id.get(&device_id).copied(),
+        )
+        .await
+        .expect("unwrap_and_aggregate");
+
+        assert!(public_key_package
+            .verifying_key()
+            .verify(&message, &signature)
+            .is_ok());
+    }
+
+    /// An envelope whose claimed session-id doesn't match the round it was
+    /// collected for MUST be refused, even though the envelope itself is
+    /// perfectly validly signed by its own issuer.
+    #[tokio::test]
+    async fn an_envelope_for_the_wrong_session_id_is_refused() {
+        use wire_mesh_core::adapters::node_identity::NodeIdentity;
+
+        let (ids, key_packages, public_key_package) = dkg_fixture();
+        let signers = &ids[0..2];
+        let session_id = 1;
+
+        let personal_identities: Map<Identifier, NodeIdentity> = signers
+            .iter()
+            .map(|&id| (id, NodeIdentity::generate_ed25519()))
+            .collect();
+        let identifier_by_device_id: Map<DeviceId, Identifier> = personal_identities
+            .iter()
+            .map(|(&id, identity)| (*identity.device_id(), id))
+            .collect();
+        let group_device_id = DeviceId::from_bytes([1; 32]);
+
+        let subject = ThresholdSubject {
+            kind: "capability-token".to_owned(),
+            protected: vec![],
+            payload: vec![],
+        };
+        let message = to_be_signed(&subject);
+
+        let mut stores = Map::new();
+        let mut commitments = Map::new();
+        for &id in signers {
+            let store = InMemoryNonceStore::new();
+            let kp = key_packages.get(&id).expect("key package");
+            let c = round1_commit(&store, session_id, kp).expect("round1_commit");
+            commitments.insert(id, c);
+            stores.insert(id, store);
+        }
+        let signing_package = build_signing_package(commitments, &message);
+
+        let mut envelopes = Vec::new();
+        for &id in signers {
+            let kp = key_packages.get(&id).expect("key package");
+            let store = stores.get(&id).expect("store");
+            let personal = personal_identities.get(&id).expect("personal identity");
+            let envelope = round2_respond(
+                store,
+                session_id,
+                &signing_package,
+                kp,
+                personal,
+                group_device_id,
+            )
+            .await
+            .expect("round2_respond");
+            envelopes.push(envelope);
+        }
+
+        let coordinator_identity = NodeIdentity::generate_ed25519();
+        let wrong_session_id = session_id + 1;
+        let result = unwrap_and_aggregate(
+            &signing_package,
+            &envelopes,
+            &public_key_package,
+            &coordinator_identity,
+            wrong_session_id,
+            group_device_id,
+            |device_id| identifier_by_device_id.get(&device_id).copied(),
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(SigningError::UnexpectedEnvelopeContext {
+                field: "session-id"
+            })
+        ));
     }
 }
