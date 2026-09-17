@@ -424,6 +424,38 @@ const frameVectors: Vector[] = [
     },
     scope: { kind: "node" },
   }),
+  // sfu-track-map (issue 37) is the one wire-level gap core/webrtc's own offer/answer/ice-candidate exchange leaves for an SFU: once a client's own negotiation with the SFU exists, this maps the SDP mids multiplexed onto that one connection back to which room member each track belongs to. Sent by the SFU itself, never by an ordinary peer: there is no manage-response to this verb, unlike offer/answer, since it is not answering anything, only reporting current state. This vector is the initial track set an SFU sends once a negotiation completes: two tracks from one member (its own audio and video) plus one from another.
+  vector("manage_request_v1_webrtc_sfu_track_map", {
+    type: "manage-request",
+    "request-id": 15,
+    command: {
+      verb: "webrtc:signal",
+      params: {
+        verb: "webrtc.sfu-track-map",
+        "negotiation-id": 1,
+        tracks: [
+          { mid: "1", member: deviceB, kind: "audio" },
+          { mid: "2", member: deviceB, kind: "video" },
+          { mid: "3", member: deviceC, kind: "audio" },
+        ],
+      },
+    },
+    scope: { kind: "node" },
+  }),
+  // The full-resend an SFU sends on every membership change (a participant left, dropping their tracks), never an incremental diff, so an empty tracks array is itself a valid, meaningful message (the call is now empty), not a degenerate case.
+  vector("manage_request_v1_webrtc_sfu_track_map_empty", {
+    type: "manage-request",
+    "request-id": 16,
+    command: {
+      verb: "webrtc:signal",
+      params: {
+        verb: "webrtc.sfu-track-map",
+        "negotiation-id": 1,
+        tracks: [],
+      },
+    },
+    scope: { kind: "node" },
+  }),
   // core/room -- room.send carries sent-at (self-asserted, mandatory), an optional content-type, and an optional refs array (message-ref's own open relation string), exercising the reply/forward reference mechanism alongside the gated room:member token.
   vector("manage_request_v1_room_send_with_reply_ref", {
     type: "manage-request",
