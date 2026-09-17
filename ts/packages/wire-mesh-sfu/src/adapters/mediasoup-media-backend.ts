@@ -12,7 +12,7 @@ import type {
   FingerprintAlgorithm,
   Producer,
   Router,
-  RtpCodecCapability,
+  RouterRtpCodecCapability,
   RtpHeaderExtensionUri,
   RtpParameters,
   Worker,
@@ -33,23 +33,13 @@ export interface MediasoupMediaBackendOptions {
   /** The address advertised in ICE candidates in place of listenIp, for a host behind NAT (a cloud VM's own public IP, a container's host-mapped port). Omit for same-host/same-LAN deployments, where listenIp is already reachable. */
   announcedIp?: string;
   /** Router-level codec set. Defaults to Opus and VP8, the two codecs virtually every browser offers: see this package's README for adding more. */
-  mediaCodecs?: readonly RtpCodecCapability[];
+  mediaCodecs?: readonly RouterRtpCodecCapability[];
 }
 
-const DEFAULT_MEDIA_CODECS: RtpCodecCapability[] = [
-  {
-    kind: "audio",
-    mimeType: "audio/opus",
-    clockRate: 48000,
-    channels: 2,
-    preferredPayloadType: 0,
-  },
-  {
-    kind: "video",
-    mimeType: "video/VP8",
-    clockRate: 90000,
-    preferredPayloadType: 0,
-  },
+const DEFAULT_MEDIA_CODECS: RouterRtpCodecCapability[] = [
+  // preferredPayloadType is genuinely omitted, not set to 0: RouterRtpCodecCapability's own doc comment says an absent value lets mediasoup choose one itself, and 0 is a real, distinct payload type value, not a sentinel for "unset". Setting every codec to the literal 0 here previously made the router see two codecs sharing one payload type and throw "duplicated codec.preferredPayloadType" the moment more than one codec was configured.
+  { kind: "audio", mimeType: "audio/opus", clockRate: 48000, channels: 2 },
+  { kind: "video", mimeType: "video/VP8", clockRate: 90000 },
 ];
 
 // This backend's own fixed DTLS role choice (see module header) and its complement, the role told to mediasoup for the remote (browser) peer.
@@ -144,7 +134,7 @@ function fromDtlsFingerprint(fingerprint: Readonly<DtlsFingerprint>): {
   return { type: fingerprint.algorithm, hash: fingerprint.value };
 }
 
-function toRouterCodec(codec: Readonly<RtpCodecCapability>): {
+function toRouterCodec(codec: Readonly<RouterRtpCodecCapability>): {
   mimeType: string;
   clockRate: number;
   channels?: number;
