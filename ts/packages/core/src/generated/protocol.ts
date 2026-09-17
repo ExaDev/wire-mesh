@@ -21,7 +21,7 @@ export const bulkCancelSchema = z.lazy(() => z.object({
 }).catchall(z.unknown()));
 export const manageCommandParamsSchema = z.lazy(() => z.union([z.union([z.lazy(() => bulkOpenSchema), z.lazy(() => bulkResumeSchema), z.lazy(() => bulkCancelSchema)]), z.union([z.lazy(() => ptySpawnSchema), z.lazy(() => ptyWriteSchema), z.lazy(() => ptyResizeSchema), z.lazy(() => ptyKillSchema), z.lazy(() => procSpawnSchema), z.lazy(() => procSignalSchema), z.lazy(() => procKillSchema), z.lazy(() => execListSchema)]), z.object({
 
-}).catchall(z.unknown()), z.lazy(() => capabilityRequestSchema), z.lazy(() => capabilityGrantSchema), z.union([z.lazy(() => roomSendSchema), z.lazy(() => roomReadSchema), z.lazy(() => roomLeaveSchema), z.lazy(() => roomMembersSchema)]), z.union([z.lazy(() => roomJoinSchema), z.lazy(() => roomInviteSchema)]), z.lazy(() => roomRekeySchema), z.union([z.lazy(() => webrtcOfferSchema), z.lazy(() => webrtcAnswerSchema), z.lazy(() => webrtcIceCandidateSchema), z.lazy(() => sfuTrackMapSchema)])]));
+}).catchall(z.unknown()), z.lazy(() => capabilityRequestSchema), z.lazy(() => capabilityGrantSchema), z.union([z.lazy(() => roomSendSchema), z.lazy(() => roomReadSchema), z.lazy(() => roomLeaveSchema), z.lazy(() => roomMembersSchema)]), z.union([z.lazy(() => roomJoinSchema), z.lazy(() => roomInviteSchema)]), z.lazy(() => roomRekeySchema), z.union([z.lazy(() => thresholdCommitSchema), z.lazy(() => thresholdSignSchema), z.lazy(() => thresholdAbortSchema)]), z.union([z.lazy(() => thresholdKeygenRound1Schema), z.lazy(() => thresholdKeygenRound2Schema), z.lazy(() => thresholdKeygenConfirmSchema)]), z.union([z.lazy(() => webrtcOfferSchema), z.lazy(() => webrtcAnswerSchema), z.lazy(() => webrtcIceCandidateSchema)])]));
 export const bulkDataFrameSchema = z.lazy(() => z.object({
   "type": z.literal("bulk-data"),
   "transfer-id": z.lazy(() => transferIdSchema),
@@ -278,6 +278,62 @@ export const streamEndFrameSchema = z.lazy(() => z.object({
   "exit-code": z.number().int().optional(),
   "exit-signal": z.number().int().optional(),
 }));
+export const sessionIdSchema = z.lazy(() => z.number().int().nonnegative());
+export const thresholdSubjectSchema = z.lazy(() => z.object({
+  "kind": z.union([z.literal("capability-token"), z.literal("revocation-entry"), z.literal("handle-record"), z.literal("room-notice"), z.string()]),
+  "protected": z.instanceof(Uint8Array),
+  "payload": z.instanceof(Uint8Array),
+}));
+export const thresholdCommitmentSchema = z.lazy(() => z.object({
+  "participant": z.lazy(() => deviceIdSchema),
+  "hiding": z.instanceof(Uint8Array),
+  "binding": z.instanceof(Uint8Array),
+}));
+export const thresholdCommitSchema = z.lazy(() => z.object({
+  "verb": z.literal("threshold.commit"),
+  "session-id": z.lazy(() => sessionIdSchema),
+  "group": z.lazy(() => deviceIdSchema),
+  "subject": z.lazy(() => thresholdSubjectSchema),
+  "deadline": z.number().int().nonnegative(),
+}));
+export const thresholdSignSchema = z.lazy(() => z.object({
+  "verb": z.literal("threshold.sign"),
+  "session-id": z.lazy(() => sessionIdSchema),
+  "commitments": z.array(z.lazy(() => thresholdCommitmentSchema)),
+}));
+export const thresholdShareClaimsSchema = z.lazy(() => z.object({
+  "session-id": z.lazy(() => sessionIdSchema),
+  "group": z.lazy(() => deviceIdSchema),
+  "share": z.instanceof(Uint8Array),
+  "issuer": z.lazy(() => deviceIdSchema),
+  "issuer-key": z.lazy(() => identityKeySchema),
+}));
+export const thresholdShareEnvelopeSchema = z.lazy(() => z.lazy(() => coseSign1Schema));
+export const thresholdAbortSchema = z.lazy(() => z.object({
+  "verb": z.literal("threshold.abort"),
+  "session-id": z.lazy(() => sessionIdSchema),
+  "reason": z.string().optional(),
+}));
+export const thresholdKeygenRound1Schema = z.lazy(() => z.object({
+  "verb": z.literal("threshold.keygen-round1"),
+  "session-id": z.lazy(() => sessionIdSchema),
+  "threshold": z.number().int().nonnegative(),
+  "participants": z.array(z.lazy(() => deviceIdSchema)),
+  "commitment": z.array(z.instanceof(Uint8Array)),
+  "proof-of-knowledge": z.instanceof(Uint8Array).optional(),
+  "existing-group-key": z.instanceof(Uint8Array).optional(),
+}));
+export const thresholdKeygenRound2Schema = z.lazy(() => z.object({
+  "verb": z.literal("threshold.keygen-round2"),
+  "session-id": z.lazy(() => sessionIdSchema),
+  "share": z.instanceof(Uint8Array),
+}));
+export const thresholdKeygenConfirmSchema = z.lazy(() => z.object({
+  "verb": z.literal("threshold.keygen-confirm"),
+  "session-id": z.lazy(() => sessionIdSchema),
+  "transcript-digest": z.instanceof(Uint8Array),
+  "group-key": z.instanceof(Uint8Array),
+}));
 export const capabilityVerbSchema = z.lazy(() => z.union([z.lazy(() => coreCapabilitySchema), z.lazy(() => namespacedCapabilitySchema), z.lazy(() => privateUseCapabilitySchema)]));
 export const coreCapabilitySchema = z.lazy(() => z.string().regex(new RegExp("[a-z][a-z0-9-]*:[a-z][a-z0-9-]*")));
 export const namespacedCapabilitySchema = z.lazy(() => z.string().regex(new RegExp("[a-z0-9.-]+/[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+")));
@@ -368,16 +424,6 @@ export const coordinatorFrameSchema = z.lazy(() => z.object({
   "coordinator": z.lazy(() => deviceIdSchema),
   "capacity-hint": z.number().int().nonnegative().optional(),
 }));
-export const sfuTrackMapSchema = z.lazy(() => z.object({
-  "verb": z.literal("webrtc.sfu-track-map"),
-  "negotiation-id": z.number().int().nonnegative(),
-  "tracks": z.array(z.lazy(() => sfuTrackEntrySchema)),
-}));
-export const sfuTrackEntrySchema = z.lazy(() => z.object({
-  "mid": z.string(),
-  "member": z.lazy(() => deviceIdSchema),
-  "kind": z.union([z.literal("audio"), z.literal("video")]),
-}));
 export const webrtcOfferSchema = z.lazy(() => z.object({
   "verb": z.literal("webrtc.offer"),
   "negotiation-id": z.number().int().nonnegative(),
@@ -465,6 +511,17 @@ export type StreamSession = z.infer<typeof streamSessionSchema>;
 export type StreamDataFrame = z.infer<typeof streamDataFrameSchema>;
 export type StreamAckFrame = z.infer<typeof streamAckFrameSchema>;
 export type StreamEndFrame = z.infer<typeof streamEndFrameSchema>;
+export type SessionId = z.infer<typeof sessionIdSchema>;
+export type ThresholdSubject = z.infer<typeof thresholdSubjectSchema>;
+export type ThresholdCommitment = z.infer<typeof thresholdCommitmentSchema>;
+export type ThresholdCommit = z.infer<typeof thresholdCommitSchema>;
+export type ThresholdSign = z.infer<typeof thresholdSignSchema>;
+export type ThresholdShareClaims = z.infer<typeof thresholdShareClaimsSchema>;
+export type ThresholdShareEnvelope = z.infer<typeof thresholdShareEnvelopeSchema>;
+export type ThresholdAbort = z.infer<typeof thresholdAbortSchema>;
+export type ThresholdKeygenRound1 = z.infer<typeof thresholdKeygenRound1Schema>;
+export type ThresholdKeygenRound2 = z.infer<typeof thresholdKeygenRound2Schema>;
+export type ThresholdKeygenConfirm = z.infer<typeof thresholdKeygenConfirmSchema>;
 export type CapabilityVerb = z.infer<typeof capabilityVerbSchema>;
 export type CoreCapability = z.infer<typeof coreCapabilitySchema>;
 export type NamespacedCapability = z.infer<typeof namespacedCapabilitySchema>;
@@ -491,8 +548,6 @@ export type RelayConnectFrame = z.infer<typeof relayConnectFrameSchema>;
 export type RelayDataFrame = z.infer<typeof relayDataFrameSchema>;
 export type RelayInboundFrame = z.infer<typeof relayInboundFrameSchema>;
 export type CoordinatorFrame = z.infer<typeof coordinatorFrameSchema>;
-export type SfuTrackMap = z.infer<typeof sfuTrackMapSchema>;
-export type SfuTrackEntry = z.infer<typeof sfuTrackEntrySchema>;
 export type WebrtcOffer = z.infer<typeof webrtcOfferSchema>;
 export type WebrtcAnswer = z.infer<typeof webrtcAnswerSchema>;
 export type WebrtcIceCandidate = z.infer<typeof webrtcIceCandidateSchema>;
