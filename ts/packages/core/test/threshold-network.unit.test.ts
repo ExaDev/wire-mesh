@@ -22,6 +22,16 @@ import {
 import type { ThresholdSubject } from "../src/domain/threshold-subject.js";
 
 const DEVICE_ID_LENGTH = 32;
+const GROUP_DEVICE_BYTE = 9;
+const DEADLINE_MS = 1_000;
+const THRESHOLD = 2;
+const COMMIT_SESSION_ID = 1n;
+const SIGN_SESSION_ID = 2n;
+const ABORT_SESSION_ID = 3n;
+const FRESH_DKG_SESSION_ID = 4n;
+const RESHARE_SESSION_ID = 5n;
+const ROUND2_CONFIRM_SESSION_ID = 6n;
+const GROUP_KEY_FILL_BYTE = 7;
 
 function deviceId(byte: number): DeviceId {
   const bytes = new Uint8Array(DEVICE_ID_LENGTH);
@@ -37,22 +47,31 @@ const subject: ThresholdSubject = {
 
 describe("threshold-network: command builders and type guards", () => {
   it("buildCommitCommand carries the group-scoped exadev.io/threshold:sign verb", () => {
-    const command = buildCommitCommand(1n, deviceId(9), subject, 1_000);
+    const command = buildCommitCommand(
+      COMMIT_SESSION_ID,
+      deviceId(GROUP_DEVICE_BYTE),
+      subject,
+      DEADLINE_MS,
+    );
     expect(command.verb).toBe(THRESHOLD_SIGN_VERB);
     expect(isThresholdCommit(command.params)).toBe(true);
     if (!isThresholdCommit(command.params)) {
       throw new Error("expected threshold.commit params");
     }
-    expect(command.params["session-id"]).toBe(1);
-    expect(command.params.deadline).toBe(1_000);
+    expect(command.params["session-id"]).toBe(Number(COMMIT_SESSION_ID));
+    expect(command.params.deadline).toBe(DEADLINE_MS);
     expect(command.params.subject).toEqual(subject);
   });
 
   it("buildSignCommand round-trips its commitments", () => {
     const commitments = [
-      { participant: deviceId(1), hiding: new Uint8Array([1]), binding: new Uint8Array([2]) },
+      {
+        participant: deviceId(1),
+        hiding: new Uint8Array([1]),
+        binding: new Uint8Array([2]),
+      },
     ];
-    const command = buildSignCommand(2n, commitments);
+    const command = buildSignCommand(SIGN_SESSION_ID, commitments);
     expect(isThresholdSign(command.params)).toBe(true);
     if (!isThresholdSign(command.params)) {
       throw new Error("expected threshold.sign params");
@@ -61,13 +80,13 @@ describe("threshold-network: command builders and type guards", () => {
   });
 
   it("buildAbortCommand omits reason when not given, includes it when given", () => {
-    const withoutReason = buildAbortCommand(3n);
+    const withoutReason = buildAbortCommand(ABORT_SESSION_ID);
     if (!isThresholdAbort(withoutReason.params)) {
       throw new Error("expected threshold.abort params");
     }
     expect(withoutReason.params.reason).toBeUndefined();
 
-    const withReason = buildAbortCommand(3n, "timed out");
+    const withReason = buildAbortCommand(ABORT_SESSION_ID, "timed out");
     if (!isThresholdAbort(withReason.params)) {
       throw new Error("expected threshold.abort params");
     }
@@ -80,22 +99,32 @@ describe("threshold-network: command builders and type guards", () => {
   });
 
   it("buildKeygenRound1Command carries the fresh-DKG shape with proof-of-knowledge, no existing-group-key", () => {
-    const command = buildKeygenRound1Command(4n, 2, [deviceId(1), deviceId(2)], [new Uint8Array([1])], {
-      proofOfKnowledge: new Uint8Array([9]),
-    });
+    const command = buildKeygenRound1Command(
+      FRESH_DKG_SESSION_ID,
+      THRESHOLD,
+      [deviceId(1), deviceId(2)],
+      [new Uint8Array([1])],
+      { proofOfKnowledge: new Uint8Array([GROUP_DEVICE_BYTE]) },
+    );
     expect(command.verb).toBe(THRESHOLD_KEYGEN_VERB);
     if (!isThresholdKeygenRound1(command.params)) {
       throw new Error("expected threshold.keygen-round1 params");
     }
-    expect(command.params["proof-of-knowledge"]).toEqual(new Uint8Array([9]));
+    expect(command.params["proof-of-knowledge"]).toEqual(
+      new Uint8Array([GROUP_DEVICE_BYTE]),
+    );
     expect(command.params["existing-group-key"]).toBeUndefined();
   });
 
   it("buildKeygenRound1Command carries the reshare shape with existing-group-key, no proof-of-knowledge required", () => {
-    const groupKey = new Uint8Array(32).fill(7);
-    const command = buildKeygenRound1Command(5n, 2, [deviceId(1)], [new Uint8Array([1])], {
-      existingGroupKey: groupKey,
-    });
+    const groupKey = new Uint8Array(DEVICE_ID_LENGTH).fill(GROUP_KEY_FILL_BYTE);
+    const command = buildKeygenRound1Command(
+      RESHARE_SESSION_ID,
+      THRESHOLD,
+      [deviceId(1)],
+      [new Uint8Array([1])],
+      { existingGroupKey: groupKey },
+    );
     expect(command.verb).toBe(THRESHOLD_RESHARE_VERB);
     if (!isThresholdKeygenRound1(command.params)) {
       throw new Error("expected threshold.keygen-round1 params");
@@ -105,12 +134,16 @@ describe("threshold-network: command builders and type guards", () => {
   });
 
   it("buildKeygenRound2Command and buildKeygenConfirmCommand use the given ceremony's own capability verb", () => {
-    const round2 = buildKeygenRound2Command(6n, new Uint8Array([1]), true);
+    const round2 = buildKeygenRound2Command(
+      ROUND2_CONFIRM_SESSION_ID,
+      new Uint8Array([1]),
+      true,
+    );
     expect(round2.verb).toBe(THRESHOLD_RESHARE_VERB);
     expect(isThresholdKeygenRound2(round2.params)).toBe(true);
 
     const confirm = buildKeygenConfirmCommand(
-      6n,
+      ROUND2_CONFIRM_SESSION_ID,
       new Uint8Array([1]),
       new Uint8Array([2]),
       false,

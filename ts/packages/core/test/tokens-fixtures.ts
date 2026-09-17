@@ -56,10 +56,12 @@ export async function generateEs256Identity(): Promise<IdentityPort> {
 
 /** A fresh Ed25519 IdentityPort -- the personal-device signing key a threshold-share-envelope is minted under (never the group's own key), distinct from generateEs256Identity's P-256 identity. */
 export async function generateEd25519Identity(): Promise<IdentityPort> {
-  const keyPair = await webcrypto.subtle.generateKey({ name: "Ed25519" }, true, [
-    "sign",
-    "verify",
-  ]);
+  // @types/node's own generateKey overloads mis-resolve a bare { name: "Ed25519" }: it structurally matches KmacKeyGenParams (Algorithm's own `name: string` plus an OPTIONAL `length`), so TypeScript picks the CryptoKey-only overload instead of the CryptoKeyPair-returning EcKeyGenParams one. Supplying `namedCurve` (typed as a bare `string` alias, not a literal union -- Node's own crypto.d.ts declares `type NamedCurve = string`) steers overload resolution to EcKeyGenParams instead, with zero effect on the actual runtime call: Web Crypto dispatches Ed25519 key generation purely on `name` and never reads `namedCurve` for it, so this satisfies the type checker honestly rather than casting past it.
+  const keyPair = await webcrypto.subtle.generateKey(
+    { name: "Ed25519", namedCurve: "Ed25519" },
+    true,
+    ["sign", "verify"],
+  );
   const publicKeyBytes = new Uint8Array(
     await webcrypto.subtle.exportKey("raw", keyPair.publicKey),
   );
