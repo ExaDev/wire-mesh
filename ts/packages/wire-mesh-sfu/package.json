@@ -1,0 +1,70 @@
+{
+  "name": "wire-mesh-sfu",
+  "version": "0.0.0",
+  "bin": {
+    "wire-mesh-sfu": "./dist/server.mjs"
+  },
+  "dependencies": {
+    "mediasoup": "3.26.0",
+    "sdp-transform": "3.0.0",
+    "wire-mesh-core": "workspace:*",
+    "ws": "8.21.3"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
+    "@exadev/eslint-config": "2.18.0",
+    "@types/node": "26.4.1",
+    "@types/sdp-transform": "2.4.10",
+    "@types/ws": "8.18.1",
+    "eslint": "10.10.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-prettier": "5.5.6",
+    "globals": "17.12.0",
+    "jiti": "2.7.0",
+    "prettier": "3.9.6",
+    "tsdown": "0.23.0",
+    "turbo": "2.10.12",
+    "typescript": "6.0.3",
+    "vitest": "5.0.0"
+  },
+  "exports": {
+    "./adapters/mediasoup-media-backend": {
+      "import": "./dist/adapters/mediasoup-media-backend.mjs",
+      "require": "./dist/adapters/mediasoup-media-backend.cjs"
+    },
+    "./adapters/sdp-bridge": {
+      "import": "./dist/adapters/sdp-bridge.mjs",
+      "require": "./dist/adapters/sdp-bridge.cjs"
+    },
+    "./domain/media-backend": {
+      "import": "./dist/domain/media-backend.mjs",
+      "require": "./dist/domain/media-backend.cjs"
+    },
+    "./domain/sfu-session": {
+      "import": "./dist/domain/sfu-session.mjs",
+      "require": "./dist/domain/sfu-session.cjs"
+    },
+    "./server": {
+      "import": "./dist/server.mjs",
+      "require": "./dist/server.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "packageManager": "pnpm@12.4.1+sha512.2e81e399d73fe8390dab25e06aa788ab7a5908248d2f5a370f82b481147a6a7a367bf8048f9a6fdb6460f21a66f0542dedb8b94ca2c8723596741920b1656d4c",
+  "private": true,
+  "scripts": {
+    "_build": "tsdown",
+    "_lint": "eslint . --fix --cache --max-warnings 0",
+    "_test": "vitest run",
+    "_typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "build": "turbo run _build",
+    "lint": "turbo run _lint",
+    "start": "node dist/server.mjs",
+    "test": "turbo run _test",
+    "typecheck": "turbo run _typecheck"
+  },
+  "type": "module"
+}

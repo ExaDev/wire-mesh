@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "exactOptionalPropertyTypes": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "noEmit": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2024",
+    "types": ["node", "ws"]
+  },
+  "include": [
+    "src/domain/media-backend.ts",
+    "src/domain/sfu-session.ts",
+    "src/adapters/sdp-bridge.ts",
+    "src/adapters/mediasoup-media-backend.ts",
+    "src/server.ts"
+  ]
+}
