@@ -1,0 +1,172 @@
+; exadev.io/threshold -- FROST(Ed25519, SHA-512) threshold signing (RFC 9591)
+; among a person's, team's, or organisation's own devices, so that no single
+; device can sign as the group's root identity alone. Namespaced, not core
+; (wire-mesh#39): a registrant-owned namespaced-domain-id (handshake.cddl)
+; needs no core-file edit, and this domain's mechanism -- key management
+; across a set of devices -- is structurally different from every existing
+; core/* domain, which are all peer-to-peer communication verbs. The group's
+; public key is an ordinary Ed25519 key (identity-key alg -8, already carried
+; by identity.cddl and already pinned by a frozen conformance vector), its
+; device-id is the ordinary SHA-256(public-key) derivation (identity.cddl),
+; and the aggregate signature is an ordinary RFC 8032 Ed25519 signature -- so
+; a threshold-issued capability-token, revocation-entry, or handle-record is
+; indistinguishable from a single-device one and needs no verifier-side
+; change whatsoever, anywhere in this spec. That indistinguishability is the
+; point, not an accident: it keeps every existing verifier correct, and it
+; denies an attacker any way to enumerate which identities are single points
+; of failure.
+;
+; Like core/exec and core/webrtc, control travels as manage-command, never a
+; dedicated frame kind: a manage-request already travels over one Connection
+; to one specific peer, so no wire field is needed for "which peer". What
+; does need a field is which multi-round exchange a given message belongs to
+; -- manage-request-frame's own request-id only correlates one RPC round
+; trip, not the several round trips a signing, key-generation, or resharing
+; ceremony is made of. Per spec/CONVENTIONS.md's canonical-correlation-id
+; convention (added specifically anticipating this domain), that field is
+; named session-id, not a domain-specific synonym like the signing-id/
+; keygen-id names an earlier design draft used.
+;
+; manage-command's own outer verb (management.cddl) is the gating capability
+; string -- exadev.io/threshold:sign, exadev.io/threshold:keygen, or
+; exadev.io/threshold:reshare -- exactly as core/webrtc's outer verb is the
+; single webrtc:signal capability gating all three of its own inner verbs.
+; Each params map below carries its own finer-grained verb (threshold.commit,
+; threshold.keygen-round1, etc.), which is what a receiver's per-domain
+; handler dispatches on; the outer capability is what authorises the request
+; at all.
+
+$manage-command-params /= threshold-commit / threshold-sign / threshold-abort
+$manage-command-params /= threshold-keygen-round1 / threshold-keygen-round2 / threshold-keygen-confirm
+
+session-id = uint   ; chosen by the initiating side, echoed by every participant for the lifetime of one signing/keygen/reshare ceremony -- see spec/CONVENTIONS.md
+
+; What the group is being asked to sign, carried in decoded form so a
+; participant applies its own content policy rather than blind-signing a
+; digest. A participant that commits to an opaque hash is a blind signer and
+; the whole security property of threshold signing is lost: the entire value
+; of T-of-N is that each participant independently authorises the content,
+; and returning a round-1 commitment IS that act of authorisation. A
+; participant MUST decode `payload` per `kind`, MUST reconstruct the RFC 9052
+; section 4.4 Sig_structure itself as ["Signature1", protected, h'', payload]
+; (matching tokens.cddl's own sig1ToBeSigned construction exactly), and MUST
+; NOT accept a pre-assembled to-be-signed blob from the coordinator.
+;
+; kind is an open tstr, not a closed enum (spec/CONVENTIONS.md's own
+; open-tstr-over-closed-enum convention) -- future content this group signs
+; is not limited to the three kinds wire-mesh itself already defines self-
+; certifying payloads for. A participant that does not recognise a kind MUST
+; refuse to sign rather than proceed blindly, the same fail-closed obligation
+; every other open discriminator in this spec carries.
+threshold-subject = {
+  kind: "capability-token" / "revocation-entry" / "handle-record" / "room-notice" / tstr,
+  protected: bstr,   ; bstr .cbor cose-token-headers -- the header the aggregate signature will carry
+  payload: bstr,     ; bstr .cbor of the claims structure `kind` names (token-claims / revocation-claims / handle-claims / room-notice-claims)
+}
+
+threshold-commitment = { participant: uint, hiding: bstr, binding: bstr }
+
+; Round 1 of signing. Returning a commitment IS the act of authorisation --
+; see threshold-subject's own comment. A participant MUST durably persist
+; its nonce pair, keyed by session-id, BEFORE this response leaves the
+; device, and MUST discard that state once `deadline` passes: an abandoned
+; session must never leave a reusable nonce sitting on disk indefinitely.
+threshold-commit = {
+  verb: "threshold.commit",
+  "session-id": session-id,
+  group: device-id,
+  subject: threshold-subject,
+  deadline: uint,   ; Unix ms
+}
+; manage-ok extended with: participant: uint, hiding: bstr, binding: bstr
+
+; Round 2 of signing. Deliberately carries no subject: the participant
+; re-derives the message to be signed from its own stored round-1 state, so
+; a coordinator cannot show different participants different content across
+; the two rounds -- a structural closure, not a checking obligation an
+; implementation could forget. A participant MUST refuse a second share for
+; any session-id it has already answered, and MUST mark the nonce used
+; atomically BEFORE this response leaves the device: releasing two signature
+; shares derived from one nonce pair discloses that participant's long-term
+; key share outright, and T such disclosures reconstruct the group secret.
+; A crash between rounds fails closed -- the session aborts and the nonce is
+; discarded, never re-derived or resumed from partial state.
+threshold-sign = {
+  verb: "threshold.sign",
+  "session-id": session-id,
+  commitments: [+ threshold-commitment],
+}
+; manage-ok extended with: share: bstr
+
+; Reusable across a signing, keygen, or reshare ceremony -- a participant
+; tracks which family a given session-id belongs to from whichever message
+; first introduced it (threshold-commit or threshold-keygen-round1), so no
+; separate kind discriminator is needed here.
+threshold-abort = { verb: "threshold.abort", "session-id": session-id, ? reason: tstr }
+
+; Distributed key generation AND proactive resharing share one wire-level
+; triplet (wire-mesh#29's own resolved design: "DKG and reshare's wire
+; shapes collapse into one threshold.keygen-round1/round2/confirm triplet").
+; `existing-group-key`, present or absent, is what distinguishes them --
+; both are the identical Pedersen-DKG-with-Feldman-VSS ceremony
+; cryptographically, since a reshare IS a fresh DKG of each surviving
+; participant's own Lagrange-weighted share as the constant term of a new
+; polynomial (wire-mesh's own design doc, section 5). No device ever holds
+; the full secret at any point in either case; this is a genuine DKG, never
+; "generate then split".
+;
+; `threshold:keygen` and `threshold:reshare` stay separately grantable and
+; separately revocable capabilities even though they share this one wire
+; triplet (wire-mesh#29's own resolved design) -- resharing can redefine the
+; participant set entirely and is strictly more dangerous than an initial
+; keygen among devices that already trust each other, so a verifier
+; obligation applies: a participant MUST require exadev.io/threshold:reshare
+; when `existing-group-key` is present on round1, and exadev.io/threshold:keygen
+; when it is absent, checked against the enclosing manage-request-frame's
+; own token -- never inferred from context alone.
+;
+; `proof-of-knowledge` is load-bearing, not ceremonial: without a Schnorr
+; proof of knowledge of the polynomial's own constant term, a participant
+; broadcasting last could choose its commitment adaptively to bias the
+; resulting group key (the rogue-key / key-cancellation attack).
+threshold-keygen-round1 = {
+  verb: "threshold.keygen-round1",
+  "session-id": session-id,
+  threshold: uint,
+  participants: [+ device-id],
+  commitment: [+ bstr],          ; Feldman commitment to each polynomial coefficient
+  "proof-of-knowledge": bstr,
+  ? "existing-group-key": bstr,  ; present => this is a reshare of the named group's existing Ed25519 public key; absent => a fresh DKG
+}
+
+; Pairwise, confidential. This carries secret share material and MUST travel
+; only over a connection whose confidentiality is end-to-end with respect to
+; the receiving device -- a relayed path qualifies only because
+; transport.cddl's own relay carries ciphertext established one layer above
+; the transport, never plaintext the relay could read.
+threshold-keygen-round2 = {
+  verb: "threshold.keygen-round2",
+  "session-id": session-id,
+  share: bstr,
+}
+
+; The echo-broadcast consistency round, and it is not optional. Pedersen DKG
+; assumes a broadcast channel; wire-mesh has only point-to-point
+; connections, so a dishonest participant can equivocate -- send different
+; commitments to different peers -- and split the group into two
+; inconsistent views of the key. Every participant exchanges a digest over
+; the full ordered set of round-1 commitments it received, together with the
+; group key it derived; the ceremony completes only if every digest and
+; every derived key match every other participant's, and any mismatch
+; aborts it outright rather than repairing it in place.
+;
+; For a reshare specifically (existing-group-key was present on round1), a
+; further check applies: `group-key` here MUST equal that existing-group-key.
+; A reshare that changes the group key is not a reshare, it is a takeover,
+; and a participant MUST abort rather than adopt it.
+threshold-keygen-confirm = {
+  verb: "threshold.keygen-confirm",
+  "session-id": session-id,
+  "transcript-digest": bstr,
+  "group-key": bstr,
+}
