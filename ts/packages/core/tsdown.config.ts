@@ -29,6 +29,7 @@ export default defineConfig({
     "src/domain/shard-manifest.ts",
     "src/domain/tokens.ts",
     "src/domain/revocation-view.ts",
+    "src/domain/webrtc-signaling.ts",
     "src/adapters/frame-codec.ts",
     "src/adapters/tcp-transport.ts",
     "src/adapters/tls-transport.ts",

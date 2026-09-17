@@ -139,6 +139,10 @@
       "import": "./dist/domain/tokens.mjs",
       "require": "./dist/domain/tokens.cjs"
     },
+    "./domain/webrtc-signaling": {
+      "import": "./dist/domain/webrtc-signaling.mjs",
+      "require": "./dist/domain/webrtc-signaling.cjs"
+    },
     "./generated/protocol": {
       "import": "./dist/generated/protocol.mjs",
       "require": "./dist/generated/protocol.cjs"
