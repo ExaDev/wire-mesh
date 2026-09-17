@@ -55,6 +55,10 @@
       "import": "./dist/adapters/tcp-transport.mjs",
       "require": "./dist/adapters/tcp-transport.cjs"
     },
+    "./adapters/threshold-identity": {
+      "import": "./dist/adapters/threshold-identity.mjs",
+      "require": "./dist/adapters/threshold-identity.cjs"
+    },
     "./adapters/threshold-wasm": {
       "import": "./dist/adapters/threshold-wasm.mjs",
       "require": "./dist/adapters/threshold-wasm.cjs"
@@ -138,6 +142,10 @@
     "./domain/shard-manifest": {
       "import": "./dist/domain/shard-manifest.mjs",
       "require": "./dist/domain/shard-manifest.cjs"
+    },
+    "./domain/threshold-subject": {
+      "import": "./dist/domain/threshold-subject.mjs",
+      "require": "./dist/domain/threshold-subject.cjs"
     },
     "./domain/tokens": {
       "import": "./dist/domain/tokens.mjs",
