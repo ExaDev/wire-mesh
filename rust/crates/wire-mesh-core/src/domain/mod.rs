@@ -9,6 +9,8 @@ pub mod revocation;
 pub mod room;
 pub mod room_path;
 pub mod room_token_verification;
+#[cfg(feature = "net")]
+pub mod session;
 pub mod shard_manifest;
 pub mod tokens;
 
@@ -18,5 +20,9 @@ pub use room::{compare_room_notices, verify_room_notice, RoomNoticeRejection, Ro
 pub use room_path::{device_id_from_hex, device_id_to_hex, parse_room_path, ParsedRoomPath};
 pub use room_token_verification::{
     verify_room_token, RoomTokenRejection, RoomTokenVerdict, ROOM_MEMBER_CAPABILITY,
+};
+#[cfg(feature = "net")]
+pub use session::{
+    DataFrame, HandlerRegistry, IncomingManageRequest, ManageRequestHandler, Session, SessionEvent,
 };
 pub use tokens::{verify_capability_token, TokenRejection, TokenVerdict};
