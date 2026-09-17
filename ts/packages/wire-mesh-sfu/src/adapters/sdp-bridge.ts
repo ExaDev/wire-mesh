@@ -64,7 +64,7 @@ function iceDtlsFor(
     fingerprint === undefined
   ) {
     throw new Error(
-      `m-line mid=${media.mid ?? "?"} carries no ICE ufrag/pwd or DTLS fingerprint, at session or media level`,
+      `m-line mid=${midOf(media) ?? "?"} carries no ICE ufrag/pwd or DTLS fingerprint, at session or media level`,
     );
   }
   return { iceUfrag, icePwd, fingerprint };
@@ -76,9 +76,18 @@ function kindOf(media: Readonly<Media>): MediaKind | "other" {
     : "other";
 }
 
+/** sdp-transform's own grammar has no explicit string type for a=mid, so a purely numeric mid value (e.g. "a=mid:0", by far the most common case: Chrome, Firefox, and Safari all number their own mids from 0) parses back as the JS number 0, not the string "0", despite the declared `mid?: string` type, confirmed directly against sdp-transform's own grammar.js (the `mid` rule carries no `type` marker, so it falls through the library's generic numify-if-numeric-looking parsing) and against this bridge's own test suite. Every mid this module reads goes through this one coercion point, narrowing to number|string explicitly (never a bare String() on the declared-but-inaccurate type) so the eslint no-base-to-string/no-unnecessary-type-conversion rules stay meaningful here rather than needing a disable. */
+function midOf(media: Readonly<Media>): string | undefined {
+  const mid: unknown = media.mid;
+  if (typeof mid === "number") {
+    return String(mid);
+  }
+  return typeof mid === "string" ? mid : undefined;
+}
+
 /** Builds a single-encoding (non-simulcast) BridgeRtpParameters from one m-line's own rtp/fmtp/ext/ssrc attributes: every payload the offer proposes for this m-line, not narrowed to any router's own capabilities yet (see intersectWithRouterCapabilities, which narrows this down to exactly one mutually supported codec before it's ever handed to mediasoup). */
 function rtpParametersFromMedia(media: Readonly<Media>): BridgeRtpParameters {
-  const mid = media.mid;
+  const mid = midOf(media);
   if (mid === undefined) {
     throw new Error("m-line carries no a=mid");
   }
@@ -151,7 +160,7 @@ export function parseOffer(offerSdp: string): ParsedOffer {
   const sections: ParsedOfferSection[] = session.media.map((media) => {
     const kind = kindOf(media);
     const direction = media.direction ?? "sendrecv";
-    const mid = media.mid ?? "";
+    const mid = midOf(media) ?? "";
     if (kind === "other") {
       return { mid, kind, canReceive: false };
     }
