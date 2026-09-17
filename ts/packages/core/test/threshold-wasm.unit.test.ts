@@ -15,6 +15,8 @@ import {
   signingBuildPackage,
   signingRound1Commit,
   signingRound2Sign,
+  splitCommitments,
+  combineCommitments,
   type DeviceKeyed,
 } from "../src/adapters/threshold-wasm.js";
 import {
@@ -223,6 +225,19 @@ describe("threshold-wasm: signing", () => {
       signature,
     );
     expect(ok).toBe(true);
+  });
+
+  it("splitCommitments/combineCommitments round-trips into the identical combined blob signingBuildPackage expects", () => {
+    const ids = [deviceId(1), deviceId(2), deviceId(THIRD_DEVICE_BYTE)];
+    const [alice] = twoSigners(runDkg(ids));
+    const commit = signingRound1Commit(alice.round3.keyPackage);
+
+    const { hiding, binding } = splitCommitments(commit.commitments);
+    expect(hiding.length).toBeGreaterThan(0);
+    expect(binding.length).toBeGreaterThan(0);
+
+    const recombined = combineCommitments(hiding, binding);
+    expect(recombined).toEqual(commit.commitments);
   });
 
   it("aggregation rejects a mismatched/forged share rather than publishing an invalid signature", () => {

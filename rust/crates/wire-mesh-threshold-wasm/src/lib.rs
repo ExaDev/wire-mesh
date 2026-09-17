@@ -338,6 +338,49 @@ pub fn signing_round1_commit(own_key_package: Vec<u8>) -> Result<SigningRound1Ou
     })
 }
 
+#[wasm_bindgen]
+pub struct SplitCommitmentsOutput {
+    hiding: Vec<u8>,
+    binding: Vec<u8>,
+}
+
+#[wasm_bindgen]
+impl SplitCommitmentsOutput {
+    #[wasm_bindgen(getter)]
+    pub fn hiding(&self) -> Vec<u8> {
+        self.hiding.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn binding(&self) -> Vec<u8> {
+        self.binding.clone()
+    }
+}
+
+/// Splits a serialized `SigningCommitments` (`signing_round1_commit`'s own
+/// `commitments` output) into the two independently-serialized halves
+/// `threshold-commitment`'s wire shape carries (`hiding: bstr, binding:
+/// bstr`) -- unlike frost-core's own combined-blob serialization, which is
+/// opaque and not spec-shaped. The inverse of [`combine_commitments`].
+#[wasm_bindgen]
+pub fn split_commitments(commitments: Vec<u8>) -> Result<SplitCommitmentsOutput, JsValue> {
+    let commitments = SigningCommitments::deserialize(&commitments).map_err(js_err)?;
+    let (hiding, binding) =
+        wire_mesh_threshold::signing::split_commitments(&commitments).map_err(js_err)?;
+    Ok(SplitCommitmentsOutput { hiding, binding })
+}
+
+/// Reconstructs a serialized `SigningCommitments` (the same combined-blob
+/// shape [`signing_build_package`] and [`signing_round2_sign`] expect) from
+/// the two independently-serialized halves `threshold-commitment` carries
+/// on the wire. The inverse of [`split_commitments`].
+#[wasm_bindgen]
+pub fn combine_commitments(hiding: Vec<u8>, binding: Vec<u8>) -> Result<Vec<u8>, JsValue> {
+    let commitments =
+        wire_mesh_threshold::signing::combine_commitments(&hiding, &binding).map_err(js_err)?;
+    commitments.serialize().map_err(js_err)
+}
+
 /// Coordinator-side: builds the `SigningPackage` bytes every participant's
 /// round 2 is computed against.
 #[wasm_bindgen]

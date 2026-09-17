@@ -172,6 +172,30 @@ export function signingRound1Commit(
   };
 }
 
+export interface SplitCommitmentsResult {
+  hiding: Uint8Array<ArrayBuffer>;
+  binding: Uint8Array<ArrayBuffer>;
+}
+
+/** Splits a serialized SigningCommitments blob (signingRound1Commit's own `commitments` output) into the two independently-serialized halves `threshold-commitment`'s wire shape carries (`hiding: bstr, binding: bstr`) -- unlike frost-core's own combined-blob serialization, which is opaque and not spec-shaped. The inverse of combineCommitments. */
+export function splitCommitments(
+  commitments: Uint8Array,
+): SplitCommitmentsResult {
+  const out = wasm.split_commitments(commitments);
+  return {
+    hiding: toBufferSource(out.hiding),
+    binding: toBufferSource(out.binding),
+  };
+}
+
+/** Reconstructs a serialized SigningCommitments blob (the same combined-blob shape signingBuildPackage/signingRound2Sign expect) from the two independently-serialized halves `threshold-commitment` carries on the wire. The inverse of splitCommitments. */
+export function combineCommitments(
+  hiding: Uint8Array,
+  binding: Uint8Array,
+): Uint8Array<ArrayBuffer> {
+  return toBufferSource(wasm.combine_commitments(hiding, binding));
+}
+
 /** Coordinator-side: builds the signing-package bytes every participant's round 2 is computed against. */
 export function signingBuildPackage(
   commitments: readonly DeviceKeyed[],
