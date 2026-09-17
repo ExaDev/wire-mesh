@@ -483,6 +483,9 @@ importers:
       wire-mesh-core:
         specifier: workspace:*
         version: link:../core
+      wire-mesh-node:
+        specifier: workspace:*
+        version: link:../node
       ws:
         specifier: 8.21.3
         version: 8.21.3

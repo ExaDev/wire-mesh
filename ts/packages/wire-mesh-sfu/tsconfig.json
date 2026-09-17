@@ -10,7 +10,7 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "ES2024",
-    "types": ["node", "ws"]
+    "types": ["node"]
   },
   "include": [
     "src/domain/media-backend.ts",
