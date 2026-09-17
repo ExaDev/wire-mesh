@@ -96,7 +96,28 @@ threshold-sign = {
   "session-id": session-id,
   commitments: [+ threshold-commitment],
 }
-; manage-ok extended with: share: bstr
+; manage-ok extended with: share: bstr .cbor threshold-share-envelope
+
+; A participant's round-2 share, self-certifying and wrapped in its OWN
+; additional cose-sign1 signed under the participant's own PERSONAL device
+; key (never the group's), so misbehaviour is publicly provable, not merely
+; locally identifiable to the coordinator: anyone holding this envelope --
+; not just the coordinator that requested it -- can attribute a specific
+; released share to a specific, identifiable device, and (per the aggregate
+; signature's own verification obligation in the design doc's section 3) an
+; invalid aggregate identifies exactly which participant's share was bad.
+; The FROST share bytes themselves travel opaquely inside `share`; this
+; schema is agnostic to their internal encoding, matching how `parent` and
+; `conditions` elsewhere in this spec nest an opaque signed structure rather
+; than redefining its shape.
+threshold-share-claims = {
+  "session-id": session-id,
+  group: device-id,
+  share: bstr,           ; the raw FROST round2::SignatureShare bytes
+  issuer: device-id,      ; the releasing participant's own PERSONAL device-id, never the group's
+  "issuer-key": identity-key,   ; verifier checks sha256(issuer-key.public-key) == issuer, the same self-certification obligation as token-claims/revocation-claims/handle-claims
+}
+threshold-share-envelope = cose-sign1   ; payload = bstr .cbor threshold-share-claims
 
 ; Reusable across a signing, keygen, or reshare ceremony -- a participant
 ; tracks which family a given session-id belongs to from whichever message
