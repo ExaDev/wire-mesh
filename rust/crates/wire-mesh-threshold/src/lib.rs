@@ -4,6 +4,7 @@ pub mod dkg;
 pub mod identifiers;
 pub mod identity;
 pub mod lagrange;
+pub mod network;
 pub mod nonce_store;
 pub mod reshare;
 pub mod share_envelope;
