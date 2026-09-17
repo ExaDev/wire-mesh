@@ -42,6 +42,7 @@
     "src/domain/tokens.ts",
     "src/domain/webrtc-signaling.ts",
     "src/adapters/frame-codec.ts",
+    "src/adapters/threshold-wasm.ts",
     "src/adapters/tcp-transport.ts",
     "src/adapters/tls-transport.ts",
     "src/adapters/memory-storage.ts",
