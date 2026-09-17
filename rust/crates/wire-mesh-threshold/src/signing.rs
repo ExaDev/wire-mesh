@@ -141,6 +141,39 @@ pub async fn round2_respond(
     Ok(envelope)
 }
 
+/// Splits a `SigningCommitments` into its two independently-serialized
+/// halves -- `threshold-commitment`'s own wire shape (`hiding: bstr,
+/// binding: bstr`), unlike `SigningCommitments::serialize()`'s single
+/// combined blob (frost-core's own internal format, opaque and not
+/// spec-shaped). The inverse of [`combine_commitments`].
+pub fn split_commitments(
+    commitments: &SigningCommitments,
+) -> Result<(Vec<u8>, Vec<u8>), SigningError> {
+    let hiding = commitments
+        .hiding()
+        .serialize()
+        .map_err(SigningError::from)?;
+    let binding = commitments
+        .binding()
+        .serialize()
+        .map_err(SigningError::from)?;
+    Ok((hiding, binding))
+}
+
+/// Reconstructs a `SigningCommitments` from the two independently-
+/// serialized halves `threshold-commitment` carries on the wire. The
+/// inverse of [`split_commitments`].
+pub fn combine_commitments(
+    hiding: &[u8],
+    binding: &[u8],
+) -> Result<SigningCommitments, SigningError> {
+    let hiding =
+        frost_ed25519::round1::NonceCommitment::deserialize(hiding).map_err(SigningError::from)?;
+    let binding =
+        frost_ed25519::round1::NonceCommitment::deserialize(binding).map_err(SigningError::from)?;
+    Ok(SigningCommitments::new(hiding, binding))
+}
+
 /// Coordinator-side: builds the `SigningPackage` round 2 is computed
 /// against, from the commitments collected in round 1 and the message
 /// every participant is expected to have independently reconstructed.
@@ -541,5 +574,30 @@ mod tests {
                 field: "session-id"
             })
         ));
+    }
+
+    /// `threshold-commitment`'s own wire shape carries hiding/binding as two
+    /// SEPARATE `bstr` fields, unlike `SigningCommitments::serialize()`'s
+    /// single combined blob (frost-core's own internal format) -- split then
+    /// combine must round-trip to the identical commitments a coordinator
+    /// builds its SigningPackage from.
+    #[test]
+    fn split_and_combine_commitments_round_trips() {
+        let (ids, key_packages, _public_key_package) = dkg_fixture();
+        let id = *ids.first().expect("at least one participant");
+        let kp = key_packages.get(&id).expect("key package");
+        let store = InMemoryNonceStore::new();
+        let commitments = round1_commit(&store, 1, kp).expect("round1_commit");
+
+        let (hiding, binding) = split_commitments(&commitments).expect("split");
+        let recombined = combine_commitments(&hiding, &binding).expect("combine");
+        assert_eq!(recombined, commitments);
+    }
+
+    /// Malformed hiding/binding bytes must be rejected, never silently
+    /// accepted as some other valid-looking commitment.
+    #[test]
+    fn combine_commitments_rejects_malformed_bytes() {
+        assert!(combine_commitments(&[0u8; 4], &[0u8; 32]).is_err());
     }
 }
