@@ -20,9 +20,11 @@ import type { ThresholdSubject } from "./threshold-subject.js";
 /** Gates threshold.commit/.sign/.abort -- the two-round signing protocol and its abort path. */
 export const THRESHOLD_SIGN_VERB: CapabilityVerb = "exadev.io/threshold:sign";
 /** Gates threshold.keygen-round1/round2/confirm when `existing-group-key` is absent on round1 -- a fresh DKG among devices that already trust each other. */
-export const THRESHOLD_KEYGEN_VERB: CapabilityVerb = "exadev.io/threshold:keygen";
+export const THRESHOLD_KEYGEN_VERB: CapabilityVerb =
+  "exadev.io/threshold:keygen";
 /** Gates the same keygen-round1/round2/confirm triplet when `existing-group-key` is present -- resharing can redefine the participant set entirely and is strictly more dangerous than an initial keygen, so it is a separately grantable and separately revocable capability (spec/threshold.cddl's own resolved design). */
-export const THRESHOLD_RESHARE_VERB: CapabilityVerb = "exadev.io/threshold:reshare";
+export const THRESHOLD_RESHARE_VERB: CapabilityVerb =
+  "exadev.io/threshold:reshare";
 
 /** No path: `group` names the specific group within the params themselves (threshold-commit/-sign) or is established by the ceremony's own participant set (keygen-round1/round2/confirm) -- there is no filesystem-subtree-style resource to scope by path. */
 export const THRESHOLD_GROUP_SCOPE: CapabilityScope = { kind: "group" };
@@ -33,9 +35,7 @@ export function keygenCapabilityVerb(isReshare: boolean): CapabilityVerb {
 }
 
 function hasVerb(params: ManageCommandParams, verb: string): boolean {
-  return (
-    typeof params === "object" && "verb" in params && params.verb === verb
-  );
+  return typeof params === "object" && "verb" in params && params.verb === verb;
 }
 
 export function isThresholdCommit(
@@ -126,7 +126,7 @@ export function buildAbortCommand(
 export interface KeygenRound1Options {
   /** REQUIRED for a fresh DKG (existingGroupKey absent) -- load-bearing, not ceremonial: without it a participant broadcasting last could adaptively bias the resulting group key (the rogue-key attack). MAY be omitted for a reshare. */
   proofOfKnowledge?: Uint8Array;
-  /** Present => this is a reshare of the named group's existing Ed25519 public key; absent => a fresh DKG. Determines this command's own capability verb via keygenCapabilityVerb. */
+  /** Present: this is a reshare of the named group's existing Ed25519 public key. Absent: a fresh DKG. Determines this command's own capability verb via keygenCapabilityVerb. */
   existingGroupKey?: Uint8Array;
 }
 
