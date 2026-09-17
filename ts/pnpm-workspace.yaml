@@ -1,7 +1,6 @@
 packages:
   - "packages/*"
 overrides:
-  conventional-changelog-writer: "^9.2.0"
   # trilean@1.6.1's own published package.json still declares its sibling workspace dependency as "trilean-regex: workspace:^", never rewritten to a real semver range before publish (a real bug in trilean's own release pipeline, filed upstream -- see ExaDev/trilean's issue tracker) -- pnpm refuses to resolve an unrewritten workspace protocol range outside the monorepo that declared it, so every external consumer of trilean is currently unable to install it at all without this override forcing resolution to trilean-regex's own real, independently published version.
   trilean-regex: "^1.0.2"
 # Left disallowed, matching this workspace's existing behaviour under pnpm 10 (which only ever warned "Ignored build scripts" for these three and installed successfully without running them).
