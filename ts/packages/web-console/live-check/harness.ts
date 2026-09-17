@@ -16,8 +16,8 @@ import {
 import {
   WEBRTC_SIGNAL_SCOPE,
   WEBRTC_SIGNAL_VERB,
-  createWebrtcNegotiator,
-} from "../src/webrtc-negotiation.js";
+} from "wire-mesh-core/domain/webrtc-signaling";
+import { createWebrtcNegotiator } from "../src/webrtc-negotiation.js";
 
 const HOUR_MS = 3_600_000;
 
