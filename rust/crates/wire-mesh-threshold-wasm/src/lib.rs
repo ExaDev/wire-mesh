@@ -24,7 +24,9 @@
 use std::collections::BTreeMap;
 
 use frost_ed25519::keys::dkg::{round1 as dkg_round1_types, round2 as dkg_round2_types};
-use frost_ed25519::keys::{KeyPackage, PublicKeyPackage, SecretShare, SigningShare, VerifiableSecretSharingCommitment};
+use frost_ed25519::keys::{
+    KeyPackage, PublicKeyPackage, SecretShare, SigningShare, VerifiableSecretSharingCommitment,
+};
 use frost_ed25519::round1::{SigningCommitments, SigningNonces};
 use frost_ed25519::round2::SignatureShare;
 use frost_ed25519::{Identifier, SigningPackage, VerifyingKey};
@@ -38,9 +40,12 @@ fn js_err(e: impl core::fmt::Display) -> JsValue {
 }
 
 fn device_id_from_bytes(bytes: &[u8]) -> Result<DeviceId, JsValue> {
-    let arr: [u8; 32] = bytes
-        .try_into()
-        .map_err(|_| js_err(format!("device-id must be exactly 32 bytes, got {}", bytes.len())))?;
+    let arr: [u8; 32] = bytes.try_into().map_err(|_| {
+        js_err(format!(
+            "device-id must be exactly 32 bytes, got {}",
+            bytes.len()
+        ))
+    })?;
     Ok(DeviceId::from_bytes(arr))
 }
 
@@ -134,9 +139,14 @@ impl DkgRound1Output {
 }
 
 #[wasm_bindgen]
-pub fn dkg_round1(own_device_id: Vec<u8>, max_signers: u16, min_signers: u16) -> Result<DkgRound1Output, JsValue> {
+pub fn dkg_round1(
+    own_device_id: Vec<u8>,
+    max_signers: u16,
+    min_signers: u16,
+) -> Result<DkgRound1Output, JsValue> {
     let own_id = identifier_from_device_id_bytes(&own_device_id)?;
-    let (secret, package) = wire_mesh_threshold::dkg::round1(own_id, max_signers, min_signers).map_err(js_err)?;
+    let (secret, package) =
+        wire_mesh_threshold::dkg::round1(own_id, max_signers, min_signers).map_err(js_err)?;
     Ok(DkgRound1Output {
         secret_package: secret.serialize().map_err(js_err)?,
         package: package.serialize().map_err(js_err)?,
@@ -174,20 +184,21 @@ pub fn dkg_round2(
     round1_ids: Array,
     round1_packages: Array,
 ) -> Result<DkgRound2Output, JsValue> {
-    let secret_package = dkg_round1_types::SecretPackage::deserialize(&own_secret_package).map_err(js_err)?;
+    let secret_package =
+        dkg_round1_types::SecretPackage::deserialize(&own_secret_package).map_err(js_err)?;
     let packages = parallel_arrays_to_map(&round1_ids, &round1_packages, |bytes| {
         dkg_round1_types::Package::deserialize(bytes).map_err(js_err)
     })?;
 
     let device_ids = identifier_to_device_id_lookup(&round1_ids)?;
-    let (secret2, outgoing) = wire_mesh_threshold::dkg::round2(secret_package, &packages).map_err(js_err)?;
+    let (secret2, outgoing) =
+        wire_mesh_threshold::dkg::round2(secret_package, &packages).map_err(js_err)?;
     let (recipient_ids, packages_out) = map_to_parallel_arrays(
         &outgoing,
         |identifier| {
-            device_ids
-                .get(&identifier)
-                .cloned()
-                .ok_or_else(|| js_err("internal error: round2 recipient identifier not in round1_ids"))
+            device_ids.get(&identifier).cloned().ok_or_else(|| {
+                js_err("internal error: round2 recipient identifier not in round1_ids")
+            })
         },
         |p| p.serialize().map_err(js_err),
     )?;
@@ -232,7 +243,8 @@ pub fn dkg_round3(
     round2_ids: Array,
     round2_packages: Array,
 ) -> Result<DkgRound3Output, JsValue> {
-    let secret2 = dkg_round2_types::SecretPackage::deserialize(&own_secret_package).map_err(js_err)?;
+    let secret2 =
+        dkg_round2_types::SecretPackage::deserialize(&own_secret_package).map_err(js_err)?;
     let packages1 = parallel_arrays_to_map(&round1_ids, &round1_packages, |bytes| {
         dkg_round1_types::Package::deserialize(bytes).map_err(js_err)
     })?;
@@ -246,7 +258,10 @@ pub fn dkg_round3(
     Ok(DkgRound3Output {
         key_package: key_package.serialize().map_err(js_err)?,
         public_key_package: public_key_package.serialize().map_err(js_err)?,
-        group_verifying_key: public_key_package.verifying_key().serialize().map_err(js_err)?,
+        group_verifying_key: public_key_package
+            .verifying_key()
+            .serialize()
+            .map_err(js_err)?,
     })
 }
 
@@ -260,7 +275,8 @@ pub fn dkg_transcript_digest(
         dkg_round1_types::Package::deserialize(bytes).map_err(js_err)
     })?;
     let group_key = VerifyingKey::deserialize(&group_verifying_key).map_err(js_err)?;
-    let digest = wire_mesh_threshold::dkg::transcript_digest(&packages, &group_key).map_err(js_err)?;
+    let digest =
+        wire_mesh_threshold::dkg::transcript_digest(&packages, &group_key).map_err(js_err)?;
     Ok(digest.to_vec())
 }
 
@@ -276,10 +292,13 @@ pub fn dkg_confirm_matches(
         .try_into()
         .map_err(|_| js_err("own_digest must be exactly 32 bytes"))?;
     let group_key = VerifyingKey::deserialize(&own_group_key).map_err(js_err)?;
-    Ok(
-        wire_mesh_threshold::dkg::confirm_matches(&own_digest_arr, &group_key, &peer_digest, &peer_group_key)
-            .is_ok(),
+    Ok(wire_mesh_threshold::dkg::confirm_matches(
+        &own_digest_arr,
+        &group_key,
+        &peer_digest,
+        &peer_group_key,
     )
+    .is_ok())
 }
 
 // --- Signing -----------------------------------------------------------
@@ -311,7 +330,8 @@ impl SigningRound1Output {
 #[wasm_bindgen]
 pub fn signing_round1_commit(own_key_package: Vec<u8>) -> Result<SigningRound1Output, JsValue> {
     let key_package = KeyPackage::deserialize(&own_key_package).map_err(js_err)?;
-    let (nonces, commitments) = frost_ed25519::round1::commit(key_package.signing_share(), &mut rand::rngs::OsRng);
+    let (nonces, commitments) =
+        frost_ed25519::round1::commit(key_package.signing_share(), &mut rand::rngs::OsRng);
     Ok(SigningRound1Output {
         nonces: nonces.serialize().map_err(js_err)?,
         commitments: commitments.serialize().map_err(js_err)?,
@@ -321,7 +341,11 @@ pub fn signing_round1_commit(own_key_package: Vec<u8>) -> Result<SigningRound1Ou
 /// Coordinator-side: builds the `SigningPackage` bytes every participant's
 /// round 2 is computed against.
 #[wasm_bindgen]
-pub fn signing_build_package(ids: Array, commitments: Array, message: Vec<u8>) -> Result<Vec<u8>, JsValue> {
+pub fn signing_build_package(
+    ids: Array,
+    commitments: Array,
+    message: Vec<u8>,
+) -> Result<Vec<u8>, JsValue> {
     let map = parallel_arrays_to_map(&ids, &commitments, |bytes| {
         SigningCommitments::deserialize(bytes).map_err(js_err)
     })?;
@@ -334,11 +358,16 @@ pub fn signing_build_package(ids: Array, commitments: Array, message: Vec<u8>) -
 /// durable nonce store before calling this -- exactly as
 /// `wire_mesh_threshold::signing::round2_sign` requires on the Rust side.
 #[wasm_bindgen]
-pub fn signing_round2_sign(nonces: Vec<u8>, signing_package: Vec<u8>, own_key_package: Vec<u8>) -> Result<Vec<u8>, JsValue> {
+pub fn signing_round2_sign(
+    nonces: Vec<u8>,
+    signing_package: Vec<u8>,
+    own_key_package: Vec<u8>,
+) -> Result<Vec<u8>, JsValue> {
     let nonces = SigningNonces::deserialize(&nonces).map_err(js_err)?;
     let signing_package = SigningPackage::deserialize(&signing_package).map_err(js_err)?;
     let key_package = KeyPackage::deserialize(&own_key_package).map_err(js_err)?;
-    let share = frost_ed25519::round2::sign(&signing_package, &nonces, &key_package).map_err(js_err)?;
+    let share =
+        frost_ed25519::round2::sign(&signing_package, &nonces, &key_package).map_err(js_err)?;
     Ok(share.serialize())
 }
 
@@ -354,10 +383,13 @@ pub fn signing_aggregate(
     public_key_package: Vec<u8>,
 ) -> Result<Vec<u8>, JsValue> {
     let signing_package = SigningPackage::deserialize(&signing_package).map_err(js_err)?;
-    let shares_map = parallel_arrays_to_map(&ids, &shares, |bytes| SignatureShare::deserialize(bytes).map_err(js_err))?;
+    let shares_map = parallel_arrays_to_map(&ids, &shares, |bytes| {
+        SignatureShare::deserialize(bytes).map_err(js_err)
+    })?;
     let public_key_package = PublicKeyPackage::deserialize(&public_key_package).map_err(js_err)?;
     let signature =
-        wire_mesh_threshold::signing::aggregate(&signing_package, &shares_map, &public_key_package).map_err(js_err)?;
+        wire_mesh_threshold::signing::aggregate(&signing_package, &shares_map, &public_key_package)
+            .map_err(js_err)?;
     signature.serialize().map_err(js_err)
 }
 
@@ -422,9 +454,14 @@ pub fn reshare_round1(
     let device_id_by_identifier = identifier_to_device_id_lookup(&new_participant_device_ids)?;
     let new_ids: Vec<Identifier> = device_id_by_identifier.keys().copied().collect();
 
-    let (commitment, shares) =
-        wire_mesh_threshold::reshare::round1_reshare(own_id, &old_share, &survivors, &new_ids, new_min_signers)
-            .map_err(js_err)?;
+    let (commitment, shares) = wire_mesh_threshold::reshare::round1_reshare(
+        own_id,
+        &old_share,
+        &survivors,
+        &new_ids,
+        new_min_signers,
+    )
+    .map_err(js_err)?;
 
     let (recipient_ids, shares_out) = map_to_parallel_arrays(
         &shares,
@@ -451,7 +488,8 @@ pub fn reshare_combine_commitments(commitments: Array) -> Result<Vec<u8>, JsValu
         .iter()
         .map(|b| VerifiableSecretSharingCommitment::deserialize_whole(b).map_err(js_err))
         .collect::<Result<Vec<_>, _>>()?;
-    let combined = wire_mesh_threshold::reshare::combine_survivor_commitments(&parsed).map_err(js_err)?;
+    let combined =
+        wire_mesh_threshold::reshare::combine_survivor_commitments(&parsed).map_err(js_err)?;
     combined.serialize_whole().map_err(js_err)
 }
 
@@ -460,13 +498,15 @@ pub fn reshare_derive_public_key_package(
     combined_commitment: Vec<u8>,
     new_participant_device_ids: Array,
 ) -> Result<Vec<u8>, JsValue> {
-    let commitment = VerifiableSecretSharingCommitment::deserialize_whole(&combined_commitment).map_err(js_err)?;
+    let commitment = VerifiableSecretSharingCommitment::deserialize_whole(&combined_commitment)
+        .map_err(js_err)?;
     let bytes = array_to_bytes_vec(&new_participant_device_ids)?;
     let ids = bytes
         .iter()
         .map(|b| identifier_from_device_id_bytes(b))
         .collect::<Result<Vec<_>, _>>()?;
-    let pkp = wire_mesh_threshold::reshare::derive_public_key_package(&commitment, &ids).map_err(js_err)?;
+    let pkp = wire_mesh_threshold::reshare::derive_public_key_package(&commitment, &ids)
+        .map_err(js_err)?;
     pkp.serialize().map_err(js_err)
 }
 
@@ -484,7 +524,12 @@ pub fn reshare_combine_received_shares(
         .map(|b| SecretShare::deserialize(b).map_err(js_err))
         .collect::<Result<Vec<_>, _>>()?;
     let pkp = PublicKeyPackage::deserialize(&public_key_package).map_err(js_err)?;
-    let key_package =
-        wire_mesh_threshold::reshare::combine_received_shares(own_id, &shares, &pkp, new_min_signers).map_err(js_err)?;
+    let key_package = wire_mesh_threshold::reshare::combine_received_shares(
+        own_id,
+        &shares,
+        &pkp,
+        new_min_signers,
+    )
+    .map_err(js_err)?;
     key_package.serialize().map_err(js_err)
 }
