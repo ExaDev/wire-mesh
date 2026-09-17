@@ -295,6 +295,29 @@ export function reshareRound1(
   };
 }
 
+/** Splits a survivor's serialized broadcast commitment (reshareRound1's own `commitment` output) into `threshold-keygen-round1`'s own wire shape: an array of independently-serialized coefficients (`commitment: [* bstr]`) -- unlike reshareRound1's own whole-blob serialization. The inverse of reshareCombineCommitmentParts. */
+export function reshareSplitCommitment(
+  commitment: Uint8Array,
+): Uint8Array<ArrayBuffer>[] {
+  const out: Uint8Array<ArrayBuffer>[] = [];
+  for (const part of wasm.reshare_split_commitment(commitment)) {
+    if (!isUint8Array(part)) {
+      throw new Error(
+        "wasm returned a non-Uint8Array entry in reshare_split_commitment's own output array",
+      );
+    }
+    out.push(toBufferSource(part));
+  }
+  return out;
+}
+
+/** Reconstructs a survivor's serialized broadcast commitment (the same whole-blob shape reshareCombineCommitments expects each entry of its own commitments array to be) from the wire's own per-coefficient array. The inverse of reshareSplitCommitment. */
+export function reshareCombineCommitmentParts(
+  parts: readonly Uint8Array[],
+): Uint8Array<ArrayBuffer> {
+  return toBufferSource(wasm.reshare_combine_commitment_parts([...parts]));
+}
+
 /** Sums T survivors' broadcast commitment vectors into the one combined VSS commitment `reshareDerivePublicKeyPackage` needs. */
 export function reshareCombineCommitments(
   commitments: readonly Uint8Array[],
