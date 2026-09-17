@@ -20,6 +20,7 @@ import {
   TEST_INCOMING_REQUEST_ID,
   deviceA,
   deviceB,
+  deviceC,
   fakeTransport,
   nthEvent,
   testClock,
@@ -80,6 +81,7 @@ describe("relay routing", () => {
     });
 
     const relayData = frameAt(connection.sent, LAST_SENT);
+    expect((relayData as RelayDataFrame)["to-device"]).toEqual(deviceA);
     const inner = unwrapRelayData(relayData) as ManageRequestFrame;
     expect(inner.type).toBe("manage-request");
     expect(inner.command).toEqual(testCommand);
@@ -136,7 +138,7 @@ describe("relay routing", () => {
     await expect(second).rejects.toThrow();
   });
 
-  it("dispatches a relay-data frame wrapping a manage-request into incomingManageRequests, with fromDevice set from the establishing relay-inbound", async () => {
+  it("dispatches a relay-data frame wrapping a manage-request into incomingManageRequests, with fromDevice set from the frame's own from-device field", async () => {
     const { transport, connection } = fakeTransport();
     const session = createMeshSession(transport, testIdentity, testClock);
     await session.connect("ws://node", ["core/management"]);
@@ -157,6 +159,7 @@ describe("relay routing", () => {
     connection.push({
       type: "relay-data",
       payload: messageFromFrame(wrapped),
+      "from-device": deviceA,
     } satisfies RelayDataFrame);
 
     const incoming = await incomingDone;
@@ -167,12 +170,158 @@ describe("relay routing", () => {
 
     await incoming.respond({ result: "ok" });
     const sentResponse = frameAt(connection.sent, LAST_SENT);
+    expect((sentResponse as RelayDataFrame)["to-device"]).toEqual(deviceA);
     const innerResponse = unwrapRelayData(sentResponse);
     expect(innerResponse).toEqual({
       type: "manage-response",
       "request-id": TEST_INCOMING_REQUEST_ID,
       outcome: { result: "ok" },
     } satisfies ManageResponseFrame);
+    await session.close();
+  });
+
+  it("attributes fromDevice from the relay-data frame's own from-device field, not from whichever relay pairing was most recently established", async () => {
+    // Regression test for wire-mesh#170: a single-value "most recent pairing" tracker collapses concurrent relay pairings, mis-attributing every inbound request to whichever peer paired last regardless of who actually sent it. Two pairings are established (A first, then B) and a request stamped from-device: A must still be attributed to A, not silently reassigned to B because it was established more recently.
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/management"]);
+
+    const incomingDone = (async (): Promise<IncomingManageRequest> => {
+      const iterator = session.incomingManageRequests[Symbol.asyncIterator]();
+      const result = await iterator.next();
+      return result.value as IncomingManageRequest;
+    })();
+
+    connection.push({ type: "relay-inbound", "source-device": deviceA });
+    connection.push({ type: "relay-inbound", "source-device": deviceB });
+    const wrapped: ManageRequestFrame = {
+      type: "manage-request",
+      "request-id": TEST_INCOMING_REQUEST_ID,
+      command: testCommand,
+      scope: testScope,
+    };
+    connection.push({
+      type: "relay-data",
+      payload: messageFromFrame(wrapped),
+      "from-device": deviceA,
+    } satisfies RelayDataFrame);
+
+    const incoming = await incomingDone;
+    expect(incoming.fromDevice).toEqual(deviceA);
+    await session.close();
+  });
+
+  it("exposes toDevice from the relay-data frame's own to-device field, for a caller fronting more than one local device to route on", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/management"]);
+
+    const incomingDone = (async (): Promise<IncomingManageRequest> => {
+      const iterator = session.incomingManageRequests[Symbol.asyncIterator]();
+      const result = await iterator.next();
+      return result.value as IncomingManageRequest;
+    })();
+
+    const wrapped: ManageRequestFrame = {
+      type: "manage-request",
+      "request-id": TEST_INCOMING_REQUEST_ID,
+      command: testCommand,
+      scope: testScope,
+    };
+    connection.push({
+      type: "relay-data",
+      payload: messageFromFrame(wrapped),
+      "from-device": deviceA,
+      "to-device": deviceB,
+    } satisfies RelayDataFrame);
+
+    const incoming = await incomingDone;
+    expect(incoming.toDevice).toEqual(deviceB);
+    await session.close();
+  });
+
+  it("does not resend relay-connect for a previously-paired target after pairing with a different target in between", async () => {
+    // Regression test for wire-mesh#170: the old single-value pairing tracker treated pairing with a new target as replacing the old one, so returning to an already-paired device sent a redundant relay-connect. relay-hub.ts has tracked a real multiplexed adjacency map (multiple simultaneous pairings per connection) since #30; the session side must hold onto every pairing it has established, not just the latest.
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/management"]);
+    const firstDone = nthEvent(session, EVENTS_THROUGH_FIRST_RELAY_REQUEST);
+    const first = session.sendManageRequest(testCommand, testScope, deviceA);
+    await firstDone;
+    const secondDone = nthEvent(session, EVENTS_PER_RELAY_REQUEST_NEW_TARGET);
+    const second = session.sendManageRequest(testCommand, testScope, deviceB);
+    await secondDone;
+    const thirdDone = nthEvent(session, EVENTS_PER_RELAY_REQUEST_SAME_TARGET);
+    const third = session.sendManageRequest(testCommand, testScope, deviceA);
+    await thirdDone;
+
+    const relayConnects = connection.sent.filter(
+      (frame) => frame.type === "relay-connect",
+    );
+    expect(relayConnects).toEqual([
+      { type: "relay-connect", "target-device": deviceA },
+      { type: "relay-connect", "target-device": deviceB },
+    ]);
+    await session.close();
+    await expect(first).rejects.toThrow();
+    await expect(second).rejects.toThrow();
+    await expect(third).rejects.toThrow();
+  });
+
+  it("addresses a response back to the request's own source device via to-device, even after a different relay pairing was established in between", async () => {
+    // Regression test for wire-mesh#170: two concurrent inbound requests from two different peers relayed through the same hub connection must each get their response addressed back to the actual sender, not to whichever pairing is currently "most recent" from the hub's own fallback perspective.
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/management"]);
+
+    const incoming: IncomingManageRequest[] = [];
+    const collectIncoming = (async (): Promise<void> => {
+      for await (const request of session.incomingManageRequests) {
+        incoming.push(request);
+        if (incoming.length === 2) {
+          return;
+        }
+      }
+    })();
+
+    connection.push({ type: "relay-inbound", "source-device": deviceA });
+    connection.push({
+      type: "relay-data",
+      payload: messageFromFrame({
+        type: "manage-request",
+        "request-id": 1,
+        command: testCommand,
+        scope: testScope,
+      } satisfies ManageRequestFrame),
+      "from-device": deviceA,
+    } satisfies RelayDataFrame);
+
+    connection.push({ type: "relay-inbound", "source-device": deviceC });
+    connection.push({
+      type: "relay-data",
+      payload: messageFromFrame({
+        type: "manage-request",
+        "request-id": 2,
+        command: testCommand,
+        scope: testScope,
+      } satisfies ManageRequestFrame),
+      "from-device": deviceC,
+    } satisfies RelayDataFrame);
+
+    await collectIncoming;
+    const [fromA, fromC] = incoming;
+    if (fromA === undefined || fromC === undefined) {
+      throw new Error("expected two incoming manage-requests");
+    }
+
+    await fromA.respond({ result: "ok" });
+    const responseToA = frameAt(connection.sent, LAST_SENT);
+    expect((responseToA as RelayDataFrame)["to-device"]).toEqual(deviceA);
+
+    await fromC.respond({ result: "ok" });
+    const responseToC = frameAt(connection.sent, LAST_SENT);
+    expect((responseToC as RelayDataFrame)["to-device"]).toEqual(deviceC);
+
     await session.close();
   });
 

@@ -11,6 +11,7 @@ import { deviceIdFromFillHex } from "./hex.js";
 
 export const deviceA = deviceIdFromFillHex("11");
 export const deviceB = deviceIdFromFillHex("22");
+export const deviceC = deviceIdFromFillHex("33");
 
 export const testIdentityDeviceId = deviceIdFromFillHex("ee");
 export const testIdentity: IdentityPort = {
