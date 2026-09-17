@@ -17,6 +17,7 @@ import {
   type ManageResponseFrame,
   type PeerAdvert,
   type ProtocolVersion,
+  type RelayDataFrame,
   type RevocationAnnounceFrame,
   type RevocationEntry,
 } from "../generated/protocol.js";
@@ -81,8 +82,10 @@ export interface IncomingManageRequest {
   command: ManageCommand;
   scope: CapabilityScope;
   token?: CapabilityToken;
-  /** The device-id of the peer this request was relayed on behalf of, present only when the request arrived wrapped in a relay-data frame rather than directly over this session's own connection. A caller that needs to address a further request back to the same peer (one not sent via respond(), which already routes back correctly on its own) passes this as sendManageRequest's targetDevice. */
+  /** The device-id of the peer this request was relayed on behalf of, read directly from the enclosing relay-data-frame's own `from-device` field (stamped by the hub on every frame it forwards, wire-mesh#30) -- present only when the request arrived wrapped in a relay-data frame that carried one. A caller that needs to address a further request back to the same peer (one not sent via respond(), which already routes back correctly on its own) passes this as sendManageRequest's targetDevice. Never inferred from which relay pairing happens to be most recently established: a connection can hold several concurrent pairings (wire-mesh#30's own multiplexed adjacency map), so only the frame's own per-message addressing can say who actually sent it. */
   fromDevice?: DeviceId;
+  /** The device-id this request's relay-data frame was explicitly addressed to, read from its own `to-device` field -- present only when the request arrived relay-wrapped and the frame carried one. A caller fronting more than one locally-addressable device behind a single hub connection (a gateway advertising several local peers through the same relay pairing) uses this to decide whether the request is for this device or should be routed on to a different local peer it also advertises; this session has no such routing logic of its own, since it represents exactly one identity. */
+  toDevice?: DeviceId;
   respond: (outcome: ManageOutcome) => Promise<void>;
 }
 
@@ -192,8 +195,8 @@ function createSessionCore(
   let attempt = 0;
   let currentToken: CapabilityToken | null = null;
   let nextRequestId = 0;
-  // The device-id this session's relay-hub connection is currently paired with, in either role: set when this session sends its own relay-connect (initiator role), or when it receives a relay-inbound naming who is now paired with it (target role). relay-hub pairs at most one device per connection at a time -- a fresh relay-connect re-pairs totally -- so a single field is enough to track it, in whichever role this session is currently playing.
-  let relayPeerDevice: DeviceId | null = null;
+  // Every device this session's own connection currently holds a relay pairing with, keyed by hex device-id, in either role: added when this session sends its own relay-connect (initiator role) or when it receives a relay-inbound naming who is now paired with it (target role). relay-hub has supported multiple simultaneous pairings per connection since wire-mesh#30 (a symmetric adjacency map, not a single slot) -- this mirrors that on the session side, so establishing a pairing with a new target never discards an already-established one with a different target. Used only to avoid a redundant relay-connect for an already-paired target (ensureRelayPairing); outbound relay-data is always addressed explicitly via targetDevice/fromDevice rather than read back out of this map, and inbound attribution comes solely from each frame's own to-device/from-device fields -- never from this map -- so a stale or merely-most-recent entry here can never mis-attribute a message.
+  const relayPairings = new Map<string, DeviceId>();
   const pendingManageRequests = new Map<
     number,
     {
@@ -266,15 +269,20 @@ function createSessionCore(
     };
   }
 
-  /** Sends a frame, wrapping it as relay-data first when viaRelay is set -- the single choke point every outbound manage-request/manage-response passes through, so a consumer of sendManageRequest/respond never needs its own relay-wrapping logic. */
-  async function transmit(frame: Frame, viaRelay: boolean): Promise<void> {
+  /** Sends a frame, wrapping it as relay-data first when viaRelay is set -- the single choke point every outbound manage-request/manage-response passes through, so a consumer of sendManageRequest/respond never needs its own relay-wrapping logic. When relaying, toDevice is stamped onto the outer relay-data-frame's own `to-device` field so the hub addresses it to the correct pairing directly (wire-mesh#30) rather than falling back to whichever pairing it last saw -- the one case this is omitted is a response to a request that itself arrived with no from-device to echo back, which is left to that same hub fallback exactly as an unaddressed relay-data always has been. */
+  async function transmit(
+    frame: Frame,
+    viaRelay: boolean,
+    toDevice?: DeviceId,
+  ): Promise<void> {
     if (connection === null) {
       throw new Error("not connected");
     }
     if (viaRelay) {
-      const relayFrame: Frame = {
+      const relayFrame: RelayDataFrame = {
         type: "relay-data",
         payload: messageFromFrame(frame),
+        ...(toDevice !== undefined ? { "to-device": toDevice } : {}),
       };
       await connection.send(relayFrame);
       return;
@@ -294,16 +302,17 @@ function createSessionCore(
   function applyManageRequest(
     frame: ManageRequestFrame,
     viaRelay: boolean,
+    fromDevice?: DeviceId,
+    toDevice?: DeviceId,
   ): void {
     const requestId = frame["request-id"];
-    const fromDevice =
-      viaRelay && relayPeerDevice !== null ? relayPeerDevice : undefined;
     const incoming: IncomingManageRequest = {
       requestId,
       command: frame.command,
       scope: frame.scope,
       ...(frame.token !== undefined ? { token: frame.token } : {}),
       ...(fromDevice !== undefined ? { fromDevice } : {}),
+      ...(toDevice !== undefined ? { toDevice } : {}),
       respond: async (outcome: ManageOutcome): Promise<void> => {
         const response: ManageResponseFrame = {
           type: "manage-response",
@@ -311,7 +320,7 @@ function createSessionCore(
           outcome,
         };
         frameLog.push({ direction: "sent", frame: response });
-        await transmit(response, viaRelay);
+        await transmit(response, viaRelay, fromDevice);
         emit();
       },
     };
@@ -330,7 +339,12 @@ function createSessionCore(
         if (inner.type === "manage-response") {
           applyManageResponse(inner);
         } else {
-          applyManageRequest(inner, true);
+          applyManageRequest(
+            inner,
+            true,
+            frame["from-device"],
+            frame["to-device"],
+          );
         }
         return;
       }
@@ -350,8 +364,11 @@ function createSessionCore(
         onPeerAdvert?.(advert);
       }
     } else if (frame.type === "relay-inbound") {
-      // The target-role side of a relay-connect pairing learns who dialed it only via this frame -- there is no ack frame for relay-connect itself, so an initiator simply proceeds to relay-data right after sending it.
-      relayPeerDevice = frame["source-device"];
+      // The target-role side of a relay-connect pairing learns who dialed it only via this frame -- there is no ack frame for relay-connect itself, so an initiator simply proceeds to relay-data right after sending it. Added to relayPairings rather than replacing a single tracked value, since this connection may already hold other established pairings (wire-mesh#30's own multiplexed adjacency map) that must not be discarded.
+      relayPairings.set(
+        deviceIdToHex(frame["source-device"]),
+        frame["source-device"],
+      );
     } else if (frame.type === "manage-response") {
       applyManageResponse(frame);
     } else if (frame.type === "manage-request") {
@@ -363,15 +380,13 @@ function createSessionCore(
     }
   }
 
-  /** Establishes a relay-connect pairing to targetDevice if this session isn't already paired with it -- a no-op when it already is, whether that pairing was established by this session's own prior relay-connect (initiator role) or learned from an incoming relay-inbound (target role, replying back to whoever dialed it). relay-connect has no ack frame: the initiator proceeds to relay-data right after sending it. */
+  /** Establishes a relay-connect pairing to targetDevice if this session isn't already paired with it -- a no-op when it already is, whether that pairing was established by this session's own prior relay-connect (initiator role) or learned from an incoming relay-inbound (target role, replying back to whoever dialed it). Pairing with a new target never tears down an existing pairing with a different one: this connection can hold several simultaneously (wire-mesh#30's own multiplexed adjacency map), so a later request back to an already-paired target must not re-send relay-connect for it. relay-connect has no ack frame: the initiator proceeds to relay-data right after sending it. */
   async function ensureRelayPairing(targetDevice: DeviceId): Promise<void> {
     if (connection === null) {
       throw new Error("not connected");
     }
-    if (
-      relayPeerDevice !== null &&
-      deviceIdToHex(relayPeerDevice) === deviceIdToHex(targetDevice)
-    ) {
+    const key = deviceIdToHex(targetDevice);
+    if (relayPairings.has(key)) {
       return;
     }
     const relayConnect: Frame = {
@@ -380,7 +395,7 @@ function createSessionCore(
     };
     frameLog.push({ direction: "sent", frame: relayConnect });
     await connection.send(relayConnect);
-    relayPeerDevice = targetDevice;
+    relayPairings.set(key, targetDevice);
     emit();
   }
 
@@ -636,7 +651,7 @@ function createSessionCore(
           pendingManageRequests.set(requestId, { resolve, reject });
         });
         frameLog.push({ direction: "sent", frame });
-        await transmit(frame, targetDevice !== undefined);
+        await transmit(frame, targetDevice !== undefined, targetDevice);
         emit();
         if (timeoutMs === undefined) {
           return outcome;
