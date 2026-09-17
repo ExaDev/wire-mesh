@@ -10,6 +10,7 @@ import type {
 } from "../generated/protocol.js";
 import { deviceIdToHex } from "../domain/device-id.js";
 import type { MeshSession } from "../domain/mesh-session.js";
+import { bytesEqual } from "../domain/token-scope.js";
 import {
   buildKeygenConfirmCommand,
   buildKeygenRound1Command,
@@ -27,6 +28,14 @@ import {
   dkgRound2,
   dkgRound3,
   dkgTranscriptDigest,
+  keyPackageSigningShare,
+  reshareCombineCommitmentParts,
+  reshareCombineCommitments,
+  reshareCombineReceivedShares,
+  reshareDerivePublicKeyPackage,
+  reshareRound1,
+  reshareSplitCommitment,
+  reshareTranscriptDigest,
   splitRound1Package,
   type DeviceKeyed,
 } from "./threshold-wasm.js";
@@ -297,4 +306,265 @@ export async function runFreshThresholdDkg(
   );
 
   return round3;
+}
+
+// --- Reshare -------------------------------------------------------------
+//
+// Resharing has no single symmetric choreography the way fresh DKG does: only the T SURVIVORS dealt from an existing share broadcast round 1 and send round 2; every member of the NEW participant set (survivors staying on and brand-new joiners alike) must independently collect all T survivors' round1 broadcasts, derive the combined public key package, and combine whatever round2 shares it received. A device that is both a survivor AND a member of the new set runs BOTH contributeThresholdReshare and joinThresholdReshare concurrently; a survivor that is leaving runs only contributeThresholdReshare (and is done -- it has no new share, no confirm round to take part in); a brand-new device with no prior share runs only joinThresholdReshare.
+
+export interface ContributeThresholdReshareOptions {
+  session: Readonly<ThresholdDkgTransport>;
+  ownDeviceId: DeviceId;
+  /** This survivor's own EXISTING key package for the group being reshared -- reshareRound1 needs only its signing-share bytes (keyPackageSigningShare), never the whole package. */
+  ownOldKeyPackage: Uint8Array;
+  /** The full T-survivor set, INCLUDING this device. MUST be identical across every survivor's own call for this session-id. */
+  survivors: readonly DeviceId[];
+  /** The full new participant set this reshare is moving to (may overlap with survivors, may add or drop devices). MUST be identical across every survivor's own call for this session-id. */
+  newParticipants: readonly DeviceId[];
+  newThreshold: number;
+  /** The group's own existing Ed25519 verifying key, echoed on threshold-keygen-round1 as `existing-group-key` so recipients know this is a reshare (not a fresh DKG) of a SPECIFIC, already-known group. */
+  existingGroupKey: Uint8Array;
+  sessionId: bigint;
+  scope?: Readonly<CapabilityScope>;
+  token?: CapabilityToken;
+  timeoutMs?: number;
+}
+
+export interface ReshareContribution {
+  commitment: Uint8Array<ArrayBuffer>;
+  outgoing: DeviceKeyed[];
+  /** This survivor's own round-2 share to itself, present iff this device is also a member of newParticipants -- extracted from `outgoing` so a caller staying in the committee never has to special-case its own entry. */
+  shareToSelf?: Uint8Array<ArrayBuffer>;
+}
+
+/**
+ * The synchronous half of a surviving participant's dealer role: computes its Lagrange-weighted resharing of `ownOldKeyPackage`'s signing share across `newParticipants`. No network I/O -- deliberately split out from `sendReshareContribution` so a device that is ALSO staying in `newParticipants` can start `joinThresholdReshare` (which begins listening immediately) with this result's own `commitment`/`shareToSelf` BEFORE the broadcast sends below have gone anywhere, rather than after: two devices that are both survivors and both new participants would otherwise deadlock, each waiting for the other's `joinThresholdReshare` consume loop to start before either's own send can be acknowledged, while neither starts listening until its own sends finish.
+ */
+export function computeReshareContribution(
+  options: Readonly<
+    Pick<
+      ContributeThresholdReshareOptions,
+      | "ownDeviceId"
+      | "ownOldKeyPackage"
+      | "survivors"
+      | "newParticipants"
+      | "newThreshold"
+    >
+  >,
+): ReshareContribution {
+  const ownOldShare = keyPackageSigningShare(options.ownOldKeyPackage);
+  const r1 = reshareRound1(
+    options.ownDeviceId,
+    ownOldShare,
+    options.survivors,
+    options.newParticipants,
+    options.newThreshold,
+  );
+  const shareToSelf = r1.outgoing.find((entry) =>
+    bytesEqual(entry.deviceId, options.ownDeviceId),
+  )?.value;
+  return {
+    commitment: r1.commitment,
+    outgoing: r1.outgoing,
+    ...(shareToSelf !== undefined ? { shareToSelf } : {}),
+  };
+}
+
+/**
+ * The network half of a surviving participant's dealer role: broadcasts round 1 (the commitment) to every recipient other than itself, then sends each recipient's own round-2 share pairwise, from an already-computed `computeReshareContribution` result. Resolves once every send has been acknowledged.
+ */
+export async function sendReshareContribution(
+  options: Readonly<ContributeThresholdReshareOptions>,
+  contribution: Readonly<ReshareContribution>,
+): Promise<void> {
+  const scope = options.scope ?? THRESHOLD_GROUP_SCOPE;
+  const commitmentParts = reshareSplitCommitment(contribution.commitment);
+
+  const recipients = options.newParticipants.filter(
+    (peer) => !bytesEqual(peer, options.ownDeviceId),
+  );
+  await Promise.all(
+    recipients.map(async (peer) => {
+      const command = buildKeygenRound1Command(
+        options.sessionId,
+        options.newThreshold,
+        options.newParticipants,
+        commitmentParts,
+        { existingGroupKey: options.existingGroupKey },
+      );
+      await options.session.sendManageRequest(
+        command,
+        scope,
+        peer,
+        options.token,
+        options.timeoutMs,
+      );
+    }),
+  );
+
+  await Promise.all(
+    contribution.outgoing.map(async ({ deviceId: peer, value: share }) => {
+      if (bytesEqual(peer, options.ownDeviceId)) {
+        return;
+      }
+      const command = buildKeygenRound2Command(options.sessionId, share, true);
+      await options.session.sendManageRequest(
+        command,
+        scope,
+        peer,
+        options.token,
+        options.timeoutMs,
+      );
+    }),
+  );
+}
+
+/**
+ * Runs a surviving participant's OWN dealer role end to end: `computeReshareContribution` then `sendReshareContribution`. Only correct for a survivor that is LEAVING the committee (not a member of `newParticipants`) -- it has no further round to take part in, so there is no concurrent listener this call's own sends could deadlock against. A survivor that is ALSO staying in `newParticipants` MUST call `computeReshareContribution` and `sendReshareContribution` separately, starting its own `joinThresholdReshare` (with the computed contribution) concurrently with `sendReshareContribution` -- see that function's own doc comment for why.
+ */
+export async function contributeThresholdReshare(
+  options: Readonly<ContributeThresholdReshareOptions>,
+): Promise<ReshareContribution> {
+  const contribution = computeReshareContribution(options);
+  await sendReshareContribution(options, contribution);
+  return contribution;
+}
+
+export interface ReshareOwnContribution {
+  /** This device's own survivor commitment (contributeThresholdReshare's own return value's `commitment` field), when this device is itself one of the T survivors. */
+  commitment: Uint8Array;
+  /** This device's own round-2 share-to-self (contributeThresholdReshare's own return value's `shareToSelf` field). */
+  shareToSelf: Uint8Array;
+}
+
+export interface JoinThresholdReshareOptions {
+  session: Readonly<ThresholdDkgTransport>;
+  ownDeviceId: DeviceId;
+  /** Every survivor this device must collect a round1 broadcast and round2 share FROM over the wire -- the full survivor set, MINUS this device itself if it is also a survivor (see ownContribution). */
+  otherSurvivors: readonly DeviceId[];
+  /** Present when this device is itself one of the T survivors (its own contribution is known locally, from a concurrent contributeThresholdReshare call on this same device, never sent to itself over the wire); absent for a brand-new device with no prior share, which only ever receives. */
+  ownContribution?: Readonly<ReshareOwnContribution>;
+  newParticipants: readonly DeviceId[];
+  newThreshold: number;
+  existingGroupKey: Uint8Array;
+  sessionId: bigint;
+  scope?: Readonly<CapabilityScope>;
+  token?: CapabilityToken;
+  timeoutMs?: number;
+}
+
+/**
+ * Runs a new-participant's own receiving role: collects every survivor's round1 broadcast and this device's own round2 share, derives the reshared group's public key package (verifying it still matches `existingGroupKey` -- a reshare that changes the group key is a takeover, never adopted), then confirms via the same echo-broadcast digest exchange fresh DKG uses, against every OTHER member of `newParticipants` (not just survivors -- every new-participant peer independently derives and must agree on the identical digest and group key). Rejects, without ever returning a key package, on any digest, group-key, or existing-group-key mismatch.
+ */
+export async function joinThresholdReshare(
+  options: Readonly<JoinThresholdReshareOptions>,
+): Promise<ThresholdDkgResult> {
+  const verb = keygenCapabilityVerb(true);
+  const scope = options.scope ?? THRESHOLD_GROUP_SCOPE;
+  const collectors: DkgCollectors = {
+    round1: new PerDeviceCollector(),
+    round2: new PerDeviceCollector(),
+    confirm: new PerDeviceCollector(),
+  };
+  startDkgConsumeLoop(options.session, verb, options.sessionId, collectors);
+
+  const otherSurvivorEntries: DeviceKeyed[] = await Promise.all(
+    options.otherSurvivors.map(async (peer): Promise<DeviceKeyed> => {
+      const payload = await collectors.round1.awaitFrom(deviceIdToHex(peer));
+      return {
+        deviceId: peer,
+        value: reshareCombineCommitmentParts(payload.commitment),
+      };
+    }),
+  );
+  const survivorEntries: DeviceKeyed[] =
+    options.ownContribution !== undefined
+      ? [
+          {
+            deviceId: options.ownDeviceId,
+            value: Uint8Array.from(options.ownContribution.commitment),
+          },
+          ...otherSurvivorEntries,
+        ]
+      : otherSurvivorEntries;
+
+  const combined = reshareCombineCommitments(
+    survivorEntries.map((entry) => entry.value),
+  );
+  const derived = reshareDerivePublicKeyPackage(
+    combined,
+    options.newParticipants,
+  );
+  if (!bytesEqual(derived.groupVerifyingKey, options.existingGroupKey)) {
+    throw new Error(
+      "reshare's own derived group key does not match existing-group-key -- refusing to adopt a takeover",
+    );
+  }
+
+  const receivedShares: Uint8Array[] = await Promise.all(
+    options.otherSurvivors.map(async (peer) =>
+      collectors.round2.awaitFrom(deviceIdToHex(peer)),
+    ),
+  );
+  if (options.ownContribution !== undefined) {
+    receivedShares.push(options.ownContribution.shareToSelf);
+  }
+
+  const keyPackage = reshareCombineReceivedShares(
+    options.ownDeviceId,
+    receivedShares,
+    derived.publicKeyPackage,
+    options.newThreshold,
+  );
+
+  const otherNewParticipants = options.newParticipants.filter(
+    (peer) => !bytesEqual(peer, options.ownDeviceId),
+  );
+  const ownDigest = reshareTranscriptDigest(
+    survivorEntries,
+    derived.groupVerifyingKey,
+  );
+  await Promise.all(
+    otherNewParticipants.map(async (peer) => {
+      const command = buildKeygenConfirmCommand(
+        options.sessionId,
+        ownDigest,
+        derived.groupVerifyingKey,
+        true,
+      );
+      await options.session.sendManageRequest(
+        command,
+        scope,
+        peer,
+        options.token,
+        options.timeoutMs,
+      );
+    }),
+  );
+  await Promise.all(
+    otherNewParticipants.map(async (peer) => {
+      const confirm = await collectors.confirm.awaitFrom(deviceIdToHex(peer));
+      const matches = dkgConfirmMatches(
+        ownDigest,
+        derived.groupVerifyingKey,
+        confirm.transcriptDigest,
+        confirm.groupKey,
+      );
+      if (!matches) {
+        const error = new Error(
+          `reshare echo-broadcast transcript mismatch with ${deviceIdToHex(peer)} -- aborting`,
+        );
+        collectors.round1.fail(error);
+        collectors.round2.fail(error);
+        collectors.confirm.fail(error);
+        throw error;
+      }
+    }),
+  );
+
+  return {
+    keyPackage,
+    publicKeyPackage: derived.publicKeyPackage,
+    groupVerifyingKey: derived.groupVerifyingKey,
+  };
 }
