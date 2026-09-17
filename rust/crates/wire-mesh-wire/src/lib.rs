@@ -38,6 +38,7 @@ pub mod management;
 pub mod room;
 pub mod streaming;
 pub mod strict;
+pub mod threshold;
 pub mod tokens;
 pub mod transport;
 pub mod value;

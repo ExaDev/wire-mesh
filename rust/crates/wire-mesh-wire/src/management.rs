@@ -15,6 +15,10 @@ use crate::exec::{
 };
 use crate::identity::{device_id_from, DeviceId, IdentityKey};
 use crate::strict;
+use crate::threshold::{
+    ThresholdAbort, ThresholdCommit, ThresholdKeygenConfirm, ThresholdKeygenRound1,
+    ThresholdKeygenRound2, ThresholdSign,
+};
 use crate::tokens::{scope_from, CapabilityScope, CapabilityVerb, CoseSign1};
 use crate::value::{CanonicalMap, CborValue, CdeKey, CdeMapBuilder};
 use crate::webrtc::{WebrtcAnswer, WebrtcIceCandidate, WebrtcOffer};
@@ -83,6 +87,12 @@ pub enum ManageParams {
     WebrtcOffer(WebrtcOffer),
     WebrtcAnswer(WebrtcAnswer),
     WebrtcIceCandidate(WebrtcIceCandidate),
+    ThresholdCommit(ThresholdCommit),
+    ThresholdSign(ThresholdSign),
+    ThresholdAbort(ThresholdAbort),
+    ThresholdKeygenRound1(ThresholdKeygenRound1),
+    ThresholdKeygenRound2(ThresholdKeygenRound2),
+    ThresholdKeygenConfirm(ThresholdKeygenConfirm),
     /// An unrecognised command verb: the params map exactly as sent, `* tstr => any`.
     Json(CanonicalMap<String, CborValue>),
 }
@@ -102,6 +112,12 @@ impl ManageParams {
             ManageParams::WebrtcOffer(_) => WebrtcOffer::VERB,
             ManageParams::WebrtcAnswer(_) => WebrtcAnswer::VERB,
             ManageParams::WebrtcIceCandidate(_) => WebrtcIceCandidate::VERB,
+            ManageParams::ThresholdCommit(_) => ThresholdCommit::VERB,
+            ManageParams::ThresholdSign(_) => ThresholdSign::VERB,
+            ManageParams::ThresholdAbort(_) => ThresholdAbort::VERB,
+            ManageParams::ThresholdKeygenRound1(_) => ThresholdKeygenRound1::VERB,
+            ManageParams::ThresholdKeygenRound2(_) => ThresholdKeygenRound2::VERB,
+            ManageParams::ThresholdKeygenConfirm(_) => ThresholdKeygenConfirm::VERB,
             ManageParams::Json(map) => map
                 .get(&"verb".to_owned())
                 .and_then(|v| match v {
@@ -131,6 +147,12 @@ impl Encode<()> for ManageParams {
             ManageParams::WebrtcOffer(p) => p.encode(e, &mut ()),
             ManageParams::WebrtcAnswer(p) => p.encode(e, &mut ()),
             ManageParams::WebrtcIceCandidate(p) => p.encode(e, &mut ()),
+            ManageParams::ThresholdCommit(p) => p.encode(e, &mut ()),
+            ManageParams::ThresholdSign(p) => p.encode(e, &mut ()),
+            ManageParams::ThresholdAbort(p) => p.encode(e, &mut ()),
+            ManageParams::ThresholdKeygenRound1(p) => p.encode(e, &mut ()),
+            ManageParams::ThresholdKeygenRound2(p) => p.encode(e, &mut ()),
+            ManageParams::ThresholdKeygenConfirm(p) => p.encode(e, &mut ()),
             ManageParams::Json(map) => {
                 e.map(map.len() as u64)?;
                 for (k, v) in map.iter() {
@@ -182,6 +204,18 @@ pub(crate) fn manage_params_from(d: &mut Decoder<'_>) -> Result<ManageParams, De
         WebrtcAnswer::VERB => Ok(ManageParams::WebrtcAnswer(WebrtcAnswer::from_map(d)?)),
         WebrtcIceCandidate::VERB => Ok(ManageParams::WebrtcIceCandidate(
             WebrtcIceCandidate::from_map(d)?,
+        )),
+        ThresholdCommit::VERB => Ok(ManageParams::ThresholdCommit(ThresholdCommit::from_map(d)?)),
+        ThresholdSign::VERB => Ok(ManageParams::ThresholdSign(ThresholdSign::from_map(d)?)),
+        ThresholdAbort::VERB => Ok(ManageParams::ThresholdAbort(ThresholdAbort::from_map(d)?)),
+        ThresholdKeygenRound1::VERB => Ok(ManageParams::ThresholdKeygenRound1(
+            ThresholdKeygenRound1::from_map(d)?,
+        )),
+        ThresholdKeygenRound2::VERB => Ok(ManageParams::ThresholdKeygenRound2(
+            ThresholdKeygenRound2::from_map(d)?,
+        )),
+        ThresholdKeygenConfirm::VERB => Ok(ManageParams::ThresholdKeygenConfirm(
+            ThresholdKeygenConfirm::from_map(d)?,
         )),
         _ => {
             let count = strict::definite_map(d)?;
