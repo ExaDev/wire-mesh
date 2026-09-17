@@ -340,10 +340,9 @@ describe("threshold-wasm: reshare", () => {
     const combined = reshareCombineCommitments(
       reshareR1.map((r) => r.commitment),
     );
-    const newPublicKeyPackage = reshareDerivePublicKeyPackage(
-      combined,
-      survivors,
-    );
+    const { publicKeyPackage: newPublicKeyPackage, groupVerifyingKey } =
+      reshareDerivePublicKeyPackage(combined, survivors);
+    expect(groupVerifyingKey).toEqual(originalGroupKey);
 
     const receivedByRecipient = new Map<string, Uint8Array[]>(
       survivors.map((id) => [Buffer.from(id).toString("hex"), []]),

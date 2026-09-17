@@ -622,10 +622,34 @@ pub fn reshare_combine_commitments(commitments: Array) -> Result<Vec<u8>, JsValu
 }
 
 #[wasm_bindgen]
+pub struct ReshareDerivePublicKeyPackageOutput {
+    public_key_package: Vec<u8>,
+    group_verifying_key: Vec<u8>,
+}
+
+#[wasm_bindgen]
+impl ReshareDerivePublicKeyPackageOutput {
+    #[wasm_bindgen(getter, js_name = publicKeyPackage)]
+    pub fn public_key_package(&self) -> Vec<u8> {
+        self.public_key_package.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = groupVerifyingKey)]
+    pub fn group_verifying_key(&self) -> Vec<u8> {
+        self.group_verifying_key.clone()
+    }
+}
+
+/// `groupVerifyingKey` is what `threshold-keygen-confirm`'s own `group-key`
+/// field carries and what a reshare's own verifier obligation checks
+/// against `existing-group-key` -- exposed alongside the whole
+/// `PublicKeyPackage` blob (mirroring `DkgRound3Output`'s identical shape
+/// for fresh DKG) rather than requiring a second call to extract it.
+#[wasm_bindgen]
 pub fn reshare_derive_public_key_package(
     combined_commitment: Vec<u8>,
     new_participant_device_ids: Array,
-) -> Result<Vec<u8>, JsValue> {
+) -> Result<ReshareDerivePublicKeyPackageOutput, JsValue> {
     let commitment = VerifiableSecretSharingCommitment::deserialize_whole(&combined_commitment)
         .map_err(js_err)?;
     let bytes = array_to_bytes_vec(&new_participant_device_ids)?;
@@ -635,7 +659,10 @@ pub fn reshare_derive_public_key_package(
         .collect::<Result<Vec<_>, _>>()?;
     let pkp = wire_mesh_threshold::reshare::derive_public_key_package(&commitment, &ids)
         .map_err(js_err)?;
-    pkp.serialize().map_err(js_err)
+    Ok(ReshareDerivePublicKeyPackageOutput {
+        public_key_package: pkp.serialize().map_err(js_err)?,
+        group_verifying_key: pkp.verifying_key().serialize().map_err(js_err)?,
+    })
 }
 
 #[wasm_bindgen]

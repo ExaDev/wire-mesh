@@ -325,16 +325,23 @@ export function reshareCombineCommitments(
   return toBufferSource(wasm.reshare_combine_commitments([...commitments]));
 }
 
-/** The group's derived public key given the combined commitment and the new participant set -- reused directly by `threshold-keygen-confirm`'s own group-key check (MUST equal the group's `existing-group-key` for a reshare). */
+export interface ReshareDerivePublicKeyPackageResult {
+  publicKeyPackage: Uint8Array<ArrayBuffer>;
+  groupVerifyingKey: Uint8Array<ArrayBuffer>;
+}
+
+/** The group's derived public key package given the combined commitment and the new participant set. `groupVerifyingKey` is what `threshold-keygen-confirm`'s own `group-key` field carries and what a reshare's own verifier obligation checks against `existing-group-key` (MUST equal it -- a reshare that changes the group key is a takeover, not a reshare). */
 export function reshareDerivePublicKeyPackage(
   combinedCommitment: Uint8Array,
   newParticipantDeviceIds: readonly DeviceId[],
-): Uint8Array<ArrayBuffer> {
-  return toBufferSource(
-    wasm.reshare_derive_public_key_package(combinedCommitment, [
-      ...newParticipantDeviceIds,
-    ]),
-  );
+): ReshareDerivePublicKeyPackageResult {
+  const out = wasm.reshare_derive_public_key_package(combinedCommitment, [
+    ...newParticipantDeviceIds,
+  ]);
+  return {
+    publicKeyPackage: toBufferSource(out.publicKeyPackage),
+    groupVerifyingKey: toBufferSource(out.groupVerifyingKey),
+  };
 }
 
 /** New-participant side (local): verifies each received share against its own embedded commitment, sums the validated shares, and builds this participant's final key package. */
