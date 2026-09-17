@@ -1053,7 +1053,11 @@ threshold-subject = {
   payload: bstr,     ; bstr .cbor of the claims structure `kind` names (token-claims / revocation-claims / handle-claims / room-notice-claims)
 }
 
-threshold-commitment = { participant: uint, hiding: bstr, binding: bstr }
+; `participant` names the committing device by its own ordinary device-id,
+; never a wire-assigned ordinal index -- a FROST participant identifier is
+; deterministically derived from it (Identifier::derive(device-id)), so no
+; separate index-coordination scheme is needed anywhere in this protocol.
+threshold-commitment = { participant: device-id, hiding: bstr, binding: bstr }
 
 ; Round 1 of signing. Returning a commitment IS the act of authorisation --
 ; see threshold-subject's own comment. A participant MUST durably persist
@@ -1067,7 +1071,7 @@ threshold-commit = {
   subject: threshold-subject,
   deadline: uint,   ; Unix ms
 }
-; manage-ok extended with: participant: uint, hiding: bstr, binding: bstr
+; manage-ok extended with: participant: device-id, hiding: bstr, binding: bstr
 
 ; Round 2 of signing. Deliberately carries no subject: the participant
 ; re-derives the message to be signed from its own stored round-1 state, so
@@ -1083,7 +1087,7 @@ threshold-commit = {
 threshold-sign = {
   verb: "threshold.sign",
   "session-id": session-id,
-  commitments: [+ threshold-commitment],
+  commitments: [* threshold-commitment],   ; MUST be non-empty -- a verifier obligation CDDL's own [*] can't express, matching the same [*]-over-[+] convention every other array field in this spec already uses for tooling compatibility
 }
 ; manage-ok extended with: share: bstr .cbor threshold-share-envelope
 
@@ -1162,8 +1166,8 @@ threshold-keygen-round1 = {
   verb: "threshold.keygen-round1",
   "session-id": session-id,
   threshold: uint,
-  participants: [+ device-id],
-  commitment: [+ bstr],          ; Feldman commitment to each polynomial coefficient
+  participants: [* device-id],   ; MUST be non-empty -- see threshold-sign's own comment on this spec's [*]-over-[+] tooling-compatibility convention
+  commitment: [* bstr],          ; Feldman commitment to each polynomial coefficient; MUST be non-empty
   ? "proof-of-knowledge": bstr,  ; REQUIRED when existing-group-key is absent; MAY be omitted when present -- see comment above
   ? "existing-group-key": bstr,  ; present => this is a reshare of the named group's existing Ed25519 public key; absent => a fresh DKG
 }
