@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { DeviceId } from "../src/generated/protocol.js";
 import {
+  combineRound1Package,
   dkgConfirmMatches,
   dkgRound1,
   dkgRound2,
   dkgRound3,
   dkgTranscriptDigest,
   keyPackageSigningShare,
+  splitRound1Package,
   reshareCombineCommitments,
   reshareCombineReceivedShares,
   reshareDerivePublicKeyPackage,
@@ -120,6 +122,23 @@ describe("threshold-wasm: DKG", () => {
       Buffer.from(p.round3.groupVerifyingKey).toString("hex"),
     );
     expect(new Set(keys).size).toBe(1);
+  });
+
+  it("splitRound1Package/combineRound1Package round-trips into the identical combined blob dkgRound2 expects", () => {
+    const ids = [deviceId(1), deviceId(2), deviceId(THIRD_DEVICE_BYTE)];
+    const [alice] = runDkg(ids);
+    if (!alice) {
+      throw new Error("test fixture: expected at least one DKG participant");
+    }
+
+    const { commitment, proofOfKnowledge } = splitRound1Package(
+      alice.round1.package,
+    );
+    expect(commitment.length).toBeGreaterThan(0);
+    expect(proofOfKnowledge.length).toBeGreaterThan(0);
+
+    const recombined = combineRound1Package(commitment, proofOfKnowledge);
+    expect(recombined).toEqual(alice.round1.package);
   });
 
   it("the group device-id is SHA-256 of the group verifying key, the ordinary identity.cddl rule", async () => {

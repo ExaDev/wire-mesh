@@ -266,6 +266,62 @@ pub fn dkg_round3(
 }
 
 #[wasm_bindgen]
+pub struct SplitRound1PackageOutput {
+    commitment: Array,
+    proof_of_knowledge: Vec<u8>,
+}
+
+#[wasm_bindgen]
+impl SplitRound1PackageOutput {
+    #[wasm_bindgen(getter)]
+    pub fn commitment(&self) -> Array {
+        self.commitment.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = proofOfKnowledge)]
+    pub fn proof_of_knowledge(&self) -> Vec<u8> {
+        self.proof_of_knowledge.clone()
+    }
+}
+
+/// Splits a serialized DKG round-1 `Package` (`dkg_round1`'s own `package`
+/// output) into `threshold-keygen-round1`'s own wire shape: the Feldman
+/// commitment as an array of independently-serialized coefficients
+/// (`commitment: [* bstr]`) and the Schnorr proof of knowledge as a
+/// separate byte string -- unlike frost-core's own combined-blob
+/// serialization. The inverse of [`combine_round1_package`].
+#[wasm_bindgen]
+pub fn split_round1_package(package: Vec<u8>) -> Result<SplitRound1PackageOutput, JsValue> {
+    let package = dkg_round1_types::Package::deserialize(&package).map_err(js_err)?;
+    let (commitment, proof_of_knowledge) =
+        wire_mesh_threshold::dkg::split_round1_package(&package).map_err(js_err)?;
+    let commitment_array = Array::new();
+    for coefficient in &commitment {
+        commitment_array.push(&Uint8Array::from(coefficient.as_slice()));
+    }
+    Ok(SplitRound1PackageOutput {
+        commitment: commitment_array,
+        proof_of_knowledge,
+    })
+}
+
+/// Reconstructs a serialized DKG round-1 `Package` (the same combined-blob
+/// shape `dkg_round2`/`dkg_round3`/`dkg_transcript_digest` expect) from the
+/// two independently-serialized wire fields `threshold-keygen-round1`
+/// carries. The inverse of [`split_round1_package`].
+#[wasm_bindgen]
+pub fn combine_round1_package(
+    commitment: Array,
+    proof_of_knowledge: Vec<u8>,
+) -> Result<Vec<u8>, JsValue> {
+    let commitment_bytes = array_to_bytes_vec(&commitment)?;
+    let package =
+        wire_mesh_threshold::dkg::combine_round1_package(&commitment_bytes, &proof_of_knowledge)
+            .map_err(js_err)?;
+    package.serialize().map_err(js_err)
+}
+
+#[wasm_bindgen]
 pub fn dkg_transcript_digest(
     all_round1_ids: Array,
     all_round1_packages: Array,

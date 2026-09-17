@@ -73,6 +73,41 @@ export function dkgRound1(
   };
 }
 
+export interface SplitRound1PackageResult {
+  commitment: Uint8Array<ArrayBuffer>[];
+  proofOfKnowledge: Uint8Array<ArrayBuffer>;
+}
+
+/** Splits a serialized DKG round-1 package (dkgRound1's own `package` output) into `threshold-keygen-round1`'s own wire shape: the Feldman commitment as an array of independently-serialized coefficients (`commitment: [* bstr]`) and the Schnorr proof of knowledge as a separate byte string -- unlike frost-core's own combined-blob serialization. The inverse of combineRound1Package. */
+export function splitRound1Package(
+  serializedPackage: Uint8Array,
+): SplitRound1PackageResult {
+  const out = wasm.split_round1_package(serializedPackage);
+  const commitment: Uint8Array<ArrayBuffer>[] = [];
+  for (const coefficient of out.commitment) {
+    if (!isUint8Array(coefficient)) {
+      throw new Error(
+        "wasm returned a non-Uint8Array entry in split_round1_package's own commitment array",
+      );
+    }
+    commitment.push(toBufferSource(coefficient));
+  }
+  return {
+    commitment,
+    proofOfKnowledge: toBufferSource(out.proofOfKnowledge),
+  };
+}
+
+/** Reconstructs a serialized DKG round-1 package (the same combined-blob shape dkgRound2/dkgRound3/dkgTranscriptDigest expect) from the two independently-serialized wire fields `threshold-keygen-round1` carries. The inverse of splitRound1Package. */
+export function combineRound1Package(
+  commitment: readonly Uint8Array[],
+  proofOfKnowledge: Uint8Array,
+): Uint8Array<ArrayBuffer> {
+  return toBufferSource(
+    wasm.combine_round1_package([...commitment], proofOfKnowledge),
+  );
+}
+
 export interface DkgRound2Result {
   secretPackage: Uint8Array<ArrayBuffer>;
   outgoing: DeviceKeyed[];
