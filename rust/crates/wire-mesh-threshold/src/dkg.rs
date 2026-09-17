@@ -99,6 +99,33 @@ pub fn round3(
         .map_err(DkgError::from)
 }
 
+/// Splits a DKG round-1 `Package` into `threshold-keygen-round1`'s own wire
+/// shape: the Feldman commitment as independently-serialized coefficients
+/// (`commitment: [* bstr]`) and the Schnorr proof of knowledge as a
+/// separate `bstr` (`proof-of-knowledge`) -- unlike `Package::serialize()`'s
+/// single combined blob, frost-core's own internal format. The inverse of
+/// [`combine_round1_package`].
+pub fn split_round1_package(
+    package: &round1::Package,
+) -> Result<(Vec<Vec<u8>>, Vec<u8>), DkgError> {
+    let commitment = package.commitment().serialize()?;
+    let proof_of_knowledge = package.proof_of_knowledge().serialize()?;
+    Ok((commitment, proof_of_knowledge))
+}
+
+/// Reconstructs a DKG round-1 `Package` from the two independently-
+/// serialized wire fields `threshold-keygen-round1` carries. The inverse of
+/// [`split_round1_package`].
+pub fn combine_round1_package(
+    commitment: &[Vec<u8>],
+    proof_of_knowledge: &[u8],
+) -> Result<round1::Package, DkgError> {
+    let commitment =
+        frost_ed25519::keys::VerifiableSecretSharingCommitment::deserialize(commitment)?;
+    let proof_of_knowledge = frost_ed25519::Signature::deserialize(proof_of_knowledge)?;
+    Ok(round1::Package::new(commitment, proof_of_knowledge))
+}
+
 /// The echo-broadcast transcript digest this participant sends on
 /// `threshold-keygen-confirm`: `SHA-256` over the full ordered (by
 /// identifier) set of EVERY round-1 package for the ceremony -- including
@@ -268,5 +295,27 @@ mod tests {
         let tampered_digest =
             transcript_digest(&view_tampered, group_key.verifying_key()).expect("digest");
         assert_ne!(honest_digest, tampered_digest);
+    }
+
+    /// `threshold-keygen-round1`'s own wire shape carries the Feldman
+    /// commitment as an array of independently-serialized coefficients
+    /// (`commitment: [* bstr]`) and the Schnorr proof of knowledge as a
+    /// separate `bstr`, unlike `round1::Package::serialize()`'s single
+    /// combined blob -- split then combine must round-trip to the identical
+    /// package a peer's own round2 verifies against.
+    #[test]
+    fn split_and_combine_round1_package_round_trips() {
+        let a = identifier_for_device(&DeviceId::from_bytes([1; 32])).expect("derives");
+        let (_secret, package) = round1(a, 2, 2).expect("round1");
+
+        let (commitment, proof) = split_round1_package(&package).expect("split");
+        assert!(!commitment.is_empty());
+        let recombined = combine_round1_package(&commitment, &proof).expect("combine");
+        assert_eq!(recombined, package);
+    }
+
+    #[test]
+    fn combine_round1_package_rejects_malformed_bytes() {
+        assert!(combine_round1_package(&[vec![0u8; 4]], &[0u8; 4]).is_err());
     }
 }
