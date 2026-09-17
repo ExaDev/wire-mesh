@@ -7,6 +7,7 @@ overrides:
 # Left disallowed, matching this workspace's existing behaviour under pnpm 10 (which only ever warned "Ignored build scripts" for these three and installed successfully without running them).
 allowBuilds:
   esbuild: false
+  mediasoup: true
   sharp: false
   workerd: false
 minimumReleaseAgeExclude:
@@ -14,7 +15,8 @@ minimumReleaseAgeExclude:
   - trilean-regex@1.0.2
   - trilean
 
-# cddl.js is a git dependency (not published to npm) with a "prepare" build script -- an ExaDev-owned package this workspace already trusts, not a third-party one, so allowing its build script is the documented exception to pnpm's default script-blocking.
+# cddl.js is a git dependency (not published to npm) with a "prepare" build script -- an ExaDev-owned package this workspace already trusts, not a third-party one, so allowing its build script is the documented exception to pnpm's default script-blocking. mediasoup's own postinstall either downloads a prebuilt mediasoup-worker binary for the current platform or, when none is published for it, builds one locally via its own bundled Meson/Ninja invocation (needs a C++ toolchain, already required by this workspace's own Rust build). Genuinely necessary: the worker is a real, separate native process mediasoup's Node bindings spawn and speak to over a pipe, not something requiring script access, unlike a supply-chain-risk postinstall this policy otherwise exists to block.
 onlyBuiltDependencies:
   - cddl.js
+  - mediasoup
 saveExact: true
