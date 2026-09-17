@@ -72,8 +72,8 @@ export interface VerifyCapabilityTokenOptions {
   >;
 }
 
-/** RFC 9052 §4.4 Sig_structure for a COSE_Sign1 with no external AAD: ["Signature1", protected, external_aad, payload]. */
-function sig1ToBeSigned(
+/** RFC 9052 §4.4 Sig_structure for a COSE_Sign1 with no external AAD: ["Signature1", protected, external_aad, payload]. Exported (not just used internally by verifyTokenChain) so any other self-certifying COSE_Sign1 construction in this codebase -- e.g. threshold-subject.ts's own to-be-signed bytes for a FROST-signed capability-token/revocation-entry/handle-record/room-notice -- reuses this single construction rather than a second hand-rolled one. */
+export function sig1ToBeSigned(
   protectedHeader: Uint8Array,
   payload: Uint8Array,
 ): Uint8Array {
