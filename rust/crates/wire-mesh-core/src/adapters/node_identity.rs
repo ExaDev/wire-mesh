@@ -90,9 +90,62 @@ impl NodeIdentity {
     }
 }
 
-fn derive_device_id_from_public_key(public_key: &[u8]) -> DeviceId {
+/// The `device-id = SHA-256(identity-key.public-key)` derivation rule,
+/// exported standalone (not merely reachable through a `NodeIdentity`
+/// instance) precisely because it is a pure property of a given key, not
+/// of the local node holding one -- the same reason the TS adapter
+/// (`node-identity.ts`) already exports its own `deriveDeviceId` this way.
+/// A caller checking a token's self-certifying `issuer-key` against its
+/// claimed `issuer` needs this for an ARBITRARY key, not just the local
+/// identity's own.
+pub fn derive_device_id_from_public_key(public_key: &[u8]) -> DeviceId {
     let digest = Sha256::digest(public_key);
     DeviceId(digest.into())
+}
+
+/// Verifies `signature` over `message` against an arbitrary `identity-key`
+/// -- exported standalone for the identical reason
+/// [`derive_device_id_from_public_key`] is: verification is a pure function
+/// of the given key, never of the local node's own private material, so a
+/// caller verifying a token's embedded issuer-key (or, once `core/threshold`
+/// lands, a group's aggregate FROST signature -- an ordinary Ed25519
+/// signature indistinguishable from this same ALG_ED25519 path) has no need
+/// to construct a whole `NodeIdentity` just to call it.
+pub fn verify_with_identity_key(
+    key: &IdentityKey,
+    message: &[u8],
+    signature: &[u8],
+) -> Result<bool, CoreError> {
+    match key.alg {
+        IdentityKey::ALG_ED25519 => {
+            if key.public_key.len() != 32 {
+                return Err(CoreError::Crypto(format!(
+                    "Ed25519 public key must be 32 bytes, got {}",
+                    key.public_key.len()
+                )));
+            }
+            let mut public_key = [0u8; 32];
+            public_key.copy_from_slice(&key.public_key);
+            let verifying: VerifyingKey = VerifyingKey::from_bytes(&public_key)
+                .map_err(|e| CoreError::Crypto(format!("invalid Ed25519 public key: {e}")))?;
+            let sig: Ed25519Signature = Ed25519Signature::from_slice(signature)
+                .map_err(|e| CoreError::Crypto(format!("Ed25519 signature: {e}")))?;
+            Ok(verifying.verify(message, &sig).is_ok())
+        }
+        IdentityKey::ALG_ES256 => {
+            let public_key = PublicKey::from_sec1_bytes(&key.public_key)
+                .map_err(|e| CoreError::Crypto(format!("invalid ES256 public key: {e}")))?;
+            let verifying = P256VerifyingKey::from(&public_key);
+            let sig = P256Signature::from_slice(signature)
+                .map_err(|e| CoreError::Crypto(format!("ES256 signature: {e}")))?;
+            Ok(verifying
+                .verify_digest(Sha256::new_with_prefix(message), &sig)
+                .is_ok())
+        }
+        other => Err(CoreError::Crypto(format!(
+            "unsupported COSE algorithm {other}"
+        ))),
+    }
 }
 
 #[async_trait::async_trait]
@@ -123,36 +176,7 @@ impl Identity for NodeIdentity {
         message: &[u8],
         signature: &[u8],
     ) -> Result<bool, CoreError> {
-        match key.alg {
-            IdentityKey::ALG_ED25519 => {
-                if key.public_key.len() != 32 {
-                    return Err(CoreError::Crypto(format!(
-                        "Ed25519 public key must be 32 bytes, got {}",
-                        key.public_key.len()
-                    )));
-                }
-                let mut public_key = [0u8; 32];
-                public_key.copy_from_slice(&key.public_key);
-                let verifying: VerifyingKey = VerifyingKey::from_bytes(&public_key)
-                    .map_err(|e| CoreError::Crypto(format!("invalid Ed25519 public key: {e}")))?;
-                let sig: Ed25519Signature = Ed25519Signature::from_slice(signature)
-                    .map_err(|e| CoreError::Crypto(format!("Ed25519 signature: {e}")))?;
-                Ok(verifying.verify(message, &sig).is_ok())
-            }
-            IdentityKey::ALG_ES256 => {
-                let public_key = PublicKey::from_sec1_bytes(&key.public_key)
-                    .map_err(|e| CoreError::Crypto(format!("invalid ES256 public key: {e}")))?;
-                let verifying = P256VerifyingKey::from(&public_key);
-                let sig = P256Signature::from_slice(signature)
-                    .map_err(|e| CoreError::Crypto(format!("ES256 signature: {e}")))?;
-                Ok(verifying
-                    .verify_digest(Sha256::new_with_prefix(message), &sig)
-                    .is_ok())
-            }
-            other => Err(CoreError::Crypto(format!(
-                "unsupported COSE algorithm {other}"
-            ))),
-        }
+        verify_with_identity_key(key, message, signature)
     }
 
     fn derive_device_id(&self, public_key: &[u8]) -> DeviceId {
