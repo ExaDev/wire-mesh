@@ -7,7 +7,14 @@ export default defineConfig(
   exadevConfig(
     {},
     {
-      ignores: ["dist", "coverage", "node_modules", ".turbo", "src/generated"],
+      ignores: [
+        "dist",
+        "wasm-dist",
+        "coverage",
+        "node_modules",
+        ".turbo",
+        "src/generated",
+      ],
     },
     {
       languageOptions: {
