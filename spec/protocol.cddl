@@ -1222,21 +1222,21 @@ $manage-command-params /= webrtc-offer / webrtc-answer / webrtc-ice-candidate / 
 ; negotiate its one connection to an SFU: the SFU is just the client's one
 ; remote peer, per the module header above. The gap only appears once that
 ; connection is carrying more than one other participant's media multiplexed
-; onto SDP mids -- raw SDP has no way to say "mid 2 is device X's video", so
+; onto SDP mids: raw SDP has no way to say "mid 2 is device X's video", so
 ; without a spec-level answer every SFU backend would invent its own
 ; convention and a client built against one would not interoperate with
 ; another. sfu-track-map closes that gap: sent by an SFU to a connected
 ; client once a negotiation completes (the initial track set) and again as a
-; full resend -- never an incremental diff, since this is an infrequent
-; membership-change event, not a hot path -- whenever call membership
+; full resend, never an incremental diff, since this is an infrequent
+; membership-change event rather than a hot path, whenever call membership
 ; changes. It carries no authorisation of its own beyond webrtc:signal
 ; (the same verb already gating the negotiation this mapping describes):
 ; an SFU that can shape the negotiation can already trivially misreport
 ; whose media is on which mid, so a separate capability here would guard
 ; nothing a client doesn't already have to trust the SFU for as a
-; facilitator role (routing/mapping, never content -- see relay-hub, the
+; facilitator role, routing and mapping, never content; see relay-hub, the
 ; threshold-signing coordinator, and discovery mailboxes for the same
-; pattern).
+; pattern.
 sfu-track-map = {
   verb: "webrtc.sfu-track-map",
   "negotiation-id": uint,
