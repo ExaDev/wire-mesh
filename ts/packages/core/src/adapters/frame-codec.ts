@@ -1,11 +1,28 @@
 // The CBOR frame codec shared by every message-based Connection adapter (WebSocket, WebRTC DataChannel, or any future one): one CBOR frame per message, no length prefix, with schema validation distinguishing an undecodable payload (connection-level failure) from a decodable-but-unrecognised frame (dropped, connection survives). Distinct from tcp-transport.ts's own inline codec, which frames a byte *stream* with a length prefix -- a different transport shape, not a duplicate of this one.
 
 import { cdeDecodeOptions, cdeEncodeOptions, decode, encode } from "cbor2";
-import { frameSchema, type Frame } from "../generated/protocol.js";
+import {
+  frameSchema,
+  type DeviceId,
+  type Frame,
+  type RelayDataFrame,
+} from "../generated/protocol.js";
 
 export function messageFromFrame(frame: Frame): Uint8Array<ArrayBuffer> {
   // A fresh whole-buffer view over a plain ArrayBuffer: the WebSocket/DataChannel send signatures require it, and it matches the fresh-buffer discipline the other adapters apply to anything crossing a runtime boundary.
   return new Uint8Array(encode(frame, cdeEncodeOptions));
+}
+
+/** Wraps frame as a relay-data-frame's own opaque payload, stamping to-device when the caller knows which established pairing to address it to (wire-mesh#30) -- the outbound counterpart to tryDecodeFrame's own doc comment below, which describes the inbound side of the same relay-data envelope. Omitting toDevice leaves the frame unaddressed, which the receiving hub then routes via its own most-recently-established-pairing fallback. */
+export function wrapRelayData(
+  frame: Frame,
+  toDevice?: DeviceId,
+): RelayDataFrame {
+  return {
+    type: "relay-data",
+    payload: messageFromFrame(frame),
+    ...(toDevice !== undefined ? { "to-device": toDevice } : {}),
+  };
 }
 
 /** A frame that fails schema validation, caught separately from a decode failure so it can be dropped without disconnecting. */

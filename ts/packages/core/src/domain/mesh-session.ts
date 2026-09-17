@@ -23,10 +23,11 @@ import {
 } from "../generated/protocol.js";
 import { SUPPORTED_PROTOCOL_VERSION, negotiate } from "./handshake.js";
 import { deviceIdToHex } from "./device-id.js";
+import { createRelayPairings } from "./relay-pairing.js";
 import type { Clock } from "../ports/clock.js";
 import type { IdentityPort } from "../ports/identity.js";
 import type { Connection, Transport } from "../ports/transport.js";
-import { messageFromFrame, tryDecodeFrame } from "../adapters/frame-codec.js";
+import { tryDecodeFrame, wrapRelayData } from "../adapters/frame-codec.js";
 
 const MS_PER_SECOND = 1000;
 
@@ -195,8 +196,8 @@ function createSessionCore(
   let attempt = 0;
   let currentToken: CapabilityToken | null = null;
   let nextRequestId = 0;
-  // Every device this session's own connection currently holds a relay pairing with, keyed by hex device-id, in either role: added when this session sends its own relay-connect (initiator role) or when it receives a relay-inbound naming who is now paired with it (target role). relay-hub has supported multiple simultaneous pairings per connection since wire-mesh#30 (a symmetric adjacency map, not a single slot) -- this mirrors that on the session side, so establishing a pairing with a new target never discards an already-established one with a different target. Used only to avoid a redundant relay-connect for an already-paired target (ensureRelayPairing); outbound relay-data is always addressed explicitly via targetDevice/fromDevice rather than read back out of this map, and inbound attribution comes solely from each frame's own to-device/from-device fields -- never from this map -- so a stale or merely-most-recent entry here can never mis-attribute a message.
-  const relayPairings = new Map<string, DeviceId>();
+  // Every device this session's own connection currently holds a relay pairing with, in either role: added when this session sends its own relay-connect (initiator role) or when it receives a relay-inbound naming who is now paired with it (target role). See relay-pairing.ts for why establishing a pairing with a new target never discards an already-established one with a different target, and why this is never consulted for addressing -- only for ensureRelayPairing's own "already paired" check.
+  const relayPairings = createRelayPairings();
   const pendingManageRequests = new Map<
     number,
     {
@@ -279,12 +280,7 @@ function createSessionCore(
       throw new Error("not connected");
     }
     if (viaRelay) {
-      const relayFrame: RelayDataFrame = {
-        type: "relay-data",
-        payload: messageFromFrame(frame),
-        ...(toDevice !== undefined ? { "to-device": toDevice } : {}),
-      };
-      await connection.send(relayFrame);
+      await connection.send(wrapRelayData(frame, toDevice));
       return;
     }
     await connection.send(frame);
@@ -299,13 +295,14 @@ function createSessionCore(
     }
   }
 
+  /** relayFrame is present only for a manage-request that arrived wrapped in relay-data, and is that same outer relay-data-frame -- its own to-device/from-device fields carry whatever addressing it received. See IncomingManageRequest's own fromDevice/toDevice doc comments for what each means and why neither is ever guessed from pairing state. */
   function applyManageRequest(
     frame: ManageRequestFrame,
-    viaRelay: boolean,
-    fromDevice?: DeviceId,
-    toDevice?: DeviceId,
+    relayFrame?: RelayDataFrame,
   ): void {
     const requestId = frame["request-id"];
+    const fromDevice = relayFrame?.["from-device"];
+    const toDevice = relayFrame?.["to-device"];
     const incoming: IncomingManageRequest = {
       requestId,
       command: frame.command,
@@ -320,7 +317,7 @@ function createSessionCore(
           outcome,
         };
         frameLog.push({ direction: "sent", frame: response });
-        await transmit(response, viaRelay, fromDevice);
+        await transmit(response, relayFrame !== undefined, fromDevice);
         emit();
       },
     };
@@ -339,12 +336,7 @@ function createSessionCore(
         if (inner.type === "manage-response") {
           applyManageResponse(inner);
         } else {
-          applyManageRequest(
-            inner,
-            true,
-            frame["from-device"],
-            frame["to-device"],
-          );
+          applyManageRequest(inner, frame);
         }
         return;
       }
@@ -364,15 +356,12 @@ function createSessionCore(
         onPeerAdvert?.(advert);
       }
     } else if (frame.type === "relay-inbound") {
-      // The target-role side of a relay-connect pairing learns who dialed it only via this frame -- there is no ack frame for relay-connect itself, so an initiator simply proceeds to relay-data right after sending it. Added to relayPairings rather than replacing a single tracked value, since this connection may already hold other established pairings (wire-mesh#30's own multiplexed adjacency map) that must not be discarded.
-      relayPairings.set(
-        deviceIdToHex(frame["source-device"]),
-        frame["source-device"],
-      );
+      // The target-role side of a relay-connect pairing learns who dialed it only via this frame -- there is no ack frame for relay-connect itself, so an initiator simply proceeds to relay-data right after sending it.
+      relayPairings.add(frame["source-device"]);
     } else if (frame.type === "manage-response") {
       applyManageResponse(frame);
     } else if (frame.type === "manage-request") {
-      applyManageRequest(frame, false);
+      applyManageRequest(frame);
     } else if (frame.type === "revocation-announce") {
       for (const entry of frame.entries) {
         emitRevocationEntry(entry);
@@ -385,8 +374,7 @@ function createSessionCore(
     if (connection === null) {
       throw new Error("not connected");
     }
-    const key = deviceIdToHex(targetDevice);
-    if (relayPairings.has(key)) {
+    if (relayPairings.has(targetDevice)) {
       return;
     }
     const relayConnect: Frame = {
@@ -395,7 +383,7 @@ function createSessionCore(
     };
     frameLog.push({ direction: "sent", frame: relayConnect });
     await connection.send(relayConnect);
-    relayPairings.set(key, targetDevice);
+    relayPairings.add(targetDevice);
     emit();
   }
 
