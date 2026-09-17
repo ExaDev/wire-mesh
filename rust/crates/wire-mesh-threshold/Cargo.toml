@@ -1,0 +1,27 @@
+[package]
+name = "wire-mesh-threshold"
+description = "exadev.io/threshold: FROST(Ed25519, SHA-512) threshold signing (RFC 9591) among a person's own devices, wrapping the audited frost-ed25519/frost-core crates"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+wire-mesh-wire = { path = "../wire-mesh-wire" }
+wire-mesh-core = { path = "../wire-mesh-core" }
+frost-ed25519 = "2"
+# frost-ed25519's own `keys` module re-exports SecretShare/KeyPackage/ PublicKeyPackage/VerifiableSecretSharingCommitment as ciphersuite-fixed type aliases but NOT CoefficientCommitment -- reshare.rs needs that one type directly (to sum T survivors' broadcast commitment vectors), so it is named as `frost_core::keys::CoefficientCommitment<frost_ed25519::Ed25519Sha512>`, pinned to the identical version frost-ed25519 itself depends on.
+frost-core = "2.2.0"
+# Pinned to the exact version frost-core/frost-ed25519 2.2.0 themselves depend on (see rust/Cargo.lock) -- used ONLY for two things, both already fully audited operations, never hand-rolled curve/field arithmetic: (a) raw Scalar arithmetic (add/mul/invert) to compute a public Lagrange coefficient over public participant identifiers (src/lagrange.rs, which mirrors frost-core's own internals-gated algorithm verbatim), and (b) converting between that raw Scalar and frost-ed25519's own public SigningKey/SigningShare byte encodings, since frost-core gates the equivalent typed conversion behind its own unstable "internals" feature.
+curve25519-dalek = "4.1.3"
+rand = { workspace = true }
+sha2 = { workspace = true }
+minicbor = { workspace = true }
+async-trait = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+
+[lints]
+workspace = true
