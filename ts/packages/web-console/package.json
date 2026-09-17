@@ -1,22 +1,6 @@
 {
   "name": "@exadev/wire-mesh-web-console",
   "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "packageManager": "pnpm@12.4.1+sha512.2e81e399d73fe8390dab25e06aa788ab7a5908248d2f5a370f82b481147a6a7a367bf8048f9a6fdb6460f21a66f0542dedb8b94ca2c8723596741920b1656d4c",
-  "scripts": {
-    "build": "turbo run _build",
-    "_build": "vite build",
-    "dev": "vite",
-    "test": "turbo run _test",
-    "_test": "vitest run",
-    "test:e2e": "turbo run _test:e2e",
-    "_test:e2e": "playwright test",
-    "typecheck": "turbo run _typecheck",
-    "_typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
-    "lint": "turbo run _lint",
-    "_lint": "eslint . --fix --cache --max-warnings 0"
-  },
   "dependencies": {
     "@mantine/core": "9.6.0",
     "@mantine/hooks": "9.6.0",
@@ -27,7 +11,7 @@
     "wire-mesh-core": "workspace:*"
   },
   "devDependencies": {
-    "@exadev/eslint-config": "2.12.1",
+    "@exadev/eslint-config": "2.18.0",
     "@playwright/test": "1.63.0",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",
@@ -40,7 +24,10 @@
     "@vitejs/plugin-react": "6.1.1",
     "eslint": "10.10.0",
     "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-jsx-a11y": "6.10.2",
     "eslint-plugin-prettier": "5.5.6",
+    "eslint-plugin-react": "7.37.5",
+    "eslint-plugin-react-hooks": "7.1.1",
     "fake-indexeddb": "6.2.5",
     "globals": "17.12.0",
     "jiti": "2.7.0",
@@ -54,5 +41,21 @@
     "vite": "8.2.2",
     "vitest": "5.0.0",
     "ws": "8.21.3"
-  }
+  },
+  "packageManager": "pnpm@12.4.1+sha512.2e81e399d73fe8390dab25e06aa788ab7a5908248d2f5a370f82b481147a6a7a367bf8048f9a6fdb6460f21a66f0542dedb8b94ca2c8723596741920b1656d4c",
+  "private": true,
+  "scripts": {
+    "_build": "vite build",
+    "_lint": "eslint . --fix --cache --max-warnings 0",
+    "_test": "vitest run",
+    "_test:e2e": "playwright test",
+    "_typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "build": "turbo run _build",
+    "dev": "vite",
+    "lint": "turbo run _lint",
+    "test": "turbo run _test",
+    "test:e2e": "turbo run _test:e2e",
+    "typecheck": "turbo run _typecheck"
+  },
+  "type": "module"
 }

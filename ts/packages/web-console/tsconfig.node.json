@@ -1,9 +1,9 @@
 {
-  "extends": "./tsconfig.json",
   "compilerOptions": {
     "allowImportingTsExtensions": true,
     "types": ["node", "vite/client"]
   },
+  "extends": "./tsconfig.json",
   "include": [
     "vite.config.ts",
     "playwright.config.ts",

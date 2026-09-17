@@ -1,8 +1,8 @@
 {
-  "extends": "./tsconfig.json",
   "compilerOptions": {
     "allowImportingTsExtensions": true,
     "types": ["node", "@cloudflare/workers-types"]
   },
+  "extends": "./tsconfig.json",
   "include": ["eslint.config.ts", "test/**/*.ts"]
 }

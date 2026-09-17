@@ -1,7 +1,14 @@
 {
-  "extends": "./tsconfig.json",
   "compilerOptions": {
     "allowImportingTsExtensions": true
   },
-  "include": ["generate.ts", "tsdown.config.ts", "eslint.config.ts", "release.config.ts", "stryker.config.ts", "test/**/*.ts"]
+  "extends": "./tsconfig.json",
+  "include": [
+    "generate.ts",
+    "tsdown.config.ts",
+    "eslint.config.ts",
+    "release.config.ts",
+    "stryker.config.ts",
+    "test/**/*.ts"
+  ]
 }

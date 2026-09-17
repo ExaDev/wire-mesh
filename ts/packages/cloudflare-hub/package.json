@@ -1,27 +1,13 @@
 {
   "name": "@exadev/wire-mesh-cloudflare-hub",
   "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "packageManager": "pnpm@12.4.1+sha512.2e81e399d73fe8390dab25e06aa788ab7a5908248d2f5a370f82b481147a6a7a367bf8048f9a6fdb6460f21a66f0542dedb8b94ca2c8723596741920b1656d4c",
-  "scripts": {
-    "build": "turbo run _build",
-    "_build": "wrangler deploy --dry-run --outdir=dist",
-    "dev": "wrangler dev",
-    "test": "turbo run _test",
-    "_test": "vitest run",
-    "typecheck": "turbo run _typecheck",
-    "_typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
-    "lint": "turbo run _lint",
-    "_lint": "eslint . --fix --cache --max-warnings 0"
-  },
   "dependencies": {
     "cbor2": "2.3.0",
     "wire-mesh-core": "workspace:*"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260905.1",
-    "@exadev/eslint-config": "2.12.1",
+    "@exadev/eslint-config": "2.18.0",
     "@types/node": "26.4.1",
     "eslint": "10.10.0",
     "eslint-config-prettier": "10.1.8",
@@ -33,5 +19,19 @@
     "typescript": "6.0.3",
     "vitest": "5.0.0",
     "wrangler": "4.42.0"
-  }
+  },
+  "packageManager": "pnpm@12.4.1+sha512.2e81e399d73fe8390dab25e06aa788ab7a5908248d2f5a370f82b481147a6a7a367bf8048f9a6fdb6460f21a66f0542dedb8b94ca2c8723596741920b1656d4c",
+  "private": true,
+  "scripts": {
+    "_build": "wrangler deploy --dry-run --outdir=dist",
+    "_lint": "eslint . --fix --cache --max-warnings 0",
+    "_test": "vitest run",
+    "_typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "build": "turbo run _build",
+    "dev": "wrangler dev",
+    "lint": "turbo run _lint",
+    "test": "turbo run _test",
+    "typecheck": "turbo run _typecheck"
+  },
+  "type": "module"
 }

@@ -8,17 +8,17 @@
       "inputs": ["src/**", "wrangler.toml", "tsconfig.json"],
       "outputs": ["dist/**"]
     },
+    "_lint": {
+      "dependsOn": ["^_build"],
+      "inputs": ["$TURBO_DEFAULT$", "eslint.config.ts"],
+      "outputs": [".eslintcache"]
+    },
     "_test": {
       "dependsOn": ["^_build"]
     },
     "_typecheck": {
       "dependsOn": ["^_build"],
       "inputs": ["**/*.ts", "tsconfig.json", "tsconfig.node.json"]
-    },
-    "_lint": {
-      "dependsOn": ["^_build"],
-      "inputs": ["$TURBO_DEFAULT$", "eslint.config.ts"],
-      "outputs": [".eslintcache"]
     }
   }
 }

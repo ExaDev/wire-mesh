@@ -1,36 +1,6 @@
 {
   "name": "wire-mesh-core",
   "version": "0.0.0",
-  "type": "module",
-  "packageManager": "pnpm@12.4.1+sha512.2e81e399d73fe8390dab25e06aa788ab7a5908248d2f5a370f82b481147a6a7a367bf8048f9a6fdb6460f21a66f0542dedb8b94ca2c8723596741920b1656d4c",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/ExaDev/wire-mesh.git",
-    "directory": "ts/packages/core"
-  },
-  "publishConfig": {
-    "provenance": true,
-    "access": "public"
-  },
-  "files": [
-    "dist"
-  ],
-  "scripts": {
-    "build": "turbo run _build",
-    "_build": "tsdown",
-    "generate": "turbo run _generate",
-    "_generate": "node generate.ts",
-    "test": "turbo run _test",
-    "_test": "vitest run",
-    "typecheck": "turbo run _typecheck",
-    "_typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
-    "lint": "turbo run _lint",
-    "_lint": "eslint . --fix --cache --max-warnings 0",
-    "conformance-check": "turbo run _conformance-check",
-    "_conformance-check": "vitest run test/conformance.test.ts",
-    "mutation": "turbo run _mutation",
-    "_mutation": "stryker run stryker.config.ts"
-  },
   "dependencies": {
     "cbor2": "2.3.0",
     "cddl.js": "1.0.1",
@@ -39,7 +9,7 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
-    "@exadev/eslint-config": "2.12.1",
+    "@exadev/eslint-config": "2.18.0",
     "@semantic-release/commit-analyzer": "13.0.1",
     "@semantic-release/github": "12.0.9",
     "@semantic-release/npm": "13.1.5",
@@ -194,5 +164,35 @@
       "require": "./dist/ports/transport.cjs"
     },
     "./package.json": "./package.json"
-  }
+  },
+  "files": [
+    "dist"
+  ],
+  "packageManager": "pnpm@12.4.1+sha512.2e81e399d73fe8390dab25e06aa788ab7a5908248d2f5a370f82b481147a6a7a367bf8048f9a6fdb6460f21a66f0542dedb8b94ca2c8723596741920b1656d4c",
+  "publishConfig": {
+    "provenance": true,
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ExaDev/wire-mesh.git",
+    "directory": "ts/packages/core"
+  },
+  "scripts": {
+    "_build": "tsdown",
+    "_conformance-check": "vitest run test/conformance.unit.test.ts",
+    "_generate": "node generate.ts",
+    "_lint": "eslint . --fix --cache --max-warnings 0",
+    "_mutation": "stryker run stryker.config.ts",
+    "_test": "vitest run",
+    "_typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "build": "turbo run _build",
+    "conformance-check": "turbo run _conformance-check",
+    "generate": "turbo run _generate",
+    "lint": "turbo run _lint",
+    "mutation": "turbo run _mutation",
+    "test": "turbo run _test",
+    "typecheck": "turbo run _typecheck"
+  },
+  "type": "module"
 }

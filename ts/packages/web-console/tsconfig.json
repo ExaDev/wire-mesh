@@ -1,17 +1,17 @@
 {
   "compilerOptions": {
-    "target": "ES2024",
+    "exactOptionalPropertyTypes": true,
+    "jsx": "react-jsx",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "module": "nodenext",
     "moduleResolution": "nodenext",
-    "lib": ["ES2024", "DOM", "DOM.Iterable"],
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
     "noEmit": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
-    "jsx": "react-jsx",
+    "strict": true,
+    "target": "ES2024",
     "types": ["vite/client"]
   },
   "include": ["src", "live-check"]
