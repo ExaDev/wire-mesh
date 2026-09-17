@@ -505,6 +505,9 @@ importers:
       '@types/ws':
         specifier: 8.18.1
         version: 8.18.1
+      cbor2:
+        specifier: 2.3.0
+        version: 2.3.0
       eslint:
         specifier: 10.10.0
         version: 10.10.0(jiti@2.7.0)(supports-color@11.0.0)
