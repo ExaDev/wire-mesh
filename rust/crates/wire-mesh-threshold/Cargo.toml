@@ -23,6 +23,8 @@ async-trait = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
+# Test-only, net feature ON: unlike the [dependencies] entry above (net off, for the wasm32-unknown-unknown build), the integration test in tests/session_runtime_network.rs proves the real wiring of this crate's ManageRequestSender/handle_threshold_* onto wire-mesh-core's session runtime, which needs a live tokio task-spawning runtime. Cargo unifies this crate's own feature requests across [dependencies]/[dev-dependencies] for a test build only -- wire-mesh-threshold-wasm, which depends on this crate as an ordinary (non-dev) dependency and never builds this crate's own tests, never sees "net" turned on.
+wire-mesh-core = { path = "../wire-mesh-core" }
 
 [lints]
 workspace = true
