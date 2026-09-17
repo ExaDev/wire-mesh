@@ -50,8 +50,34 @@ use crate::subject::{refuse_unrecognised_kind, to_be_signed, SubjectDecision, Th
 /// `ts/packages/core/src/domain/threshold-network.ts`'s own
 /// `THRESHOLD_SIGN_VERB` exactly.
 pub const THRESHOLD_SIGN_VERB: &str = "exadev.io/threshold:sign";
+/// Gates `threshold.keygen-round1/round2/confirm` when `existing-group-key`
+/// is absent on round1 -- a fresh DKG among devices that already trust each
+/// other. Matches `ts/packages/core/src/domain/threshold-network.ts`'s own
+/// `THRESHOLD_KEYGEN_VERB` exactly.
+pub const THRESHOLD_KEYGEN_VERB: &str = "exadev.io/threshold:keygen";
+/// Gates the same keygen-round1/round2/confirm triplet when
+/// `existing-group-key` is present -- resharing can redefine the participant
+/// set entirely and is strictly more dangerous than an initial keygen, so it
+/// is a separately grantable and separately revocable capability. Matches
+/// `ts/packages/core/src/domain/threshold-network.ts`'s own
+/// `THRESHOLD_RESHARE_VERB` exactly.
+pub const THRESHOLD_RESHARE_VERB: &str = "exadev.io/threshold:reshare";
 
-fn threshold_group_scope() -> CapabilityScope {
+/// Which capability verb gates one keygen-round1/round2/confirm ceremony --
+/// `THRESHOLD_RESHARE_VERB` when the ceremony carries an
+/// `existing-group-key` (round1), `THRESHOLD_KEYGEN_VERB` otherwise. Matches
+/// `threshold-network.ts`'s own `keygenCapabilityVerb` exactly; a caller
+/// driving one ceremony's round2/confirm messages under the same verb its
+/// own round1 used must pass the identical `is_reshare` value throughout.
+pub(crate) fn keygen_capability_verb(is_reshare: bool) -> &'static str {
+    if is_reshare {
+        THRESHOLD_RESHARE_VERB
+    } else {
+        THRESHOLD_KEYGEN_VERB
+    }
+}
+
+pub(crate) fn threshold_group_scope() -> CapabilityScope {
     CapabilityScope {
         kind: "group".to_owned(),
         path: None,
