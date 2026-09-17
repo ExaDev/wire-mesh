@@ -6,6 +6,7 @@ import {
   buildBulkResumeCommand,
   createBulkReceiver,
   createBulkSender,
+  storedTransferSource,
   type BulkOfferEvent,
   type BulkReceiveResult,
 } from "../src/domain/bulk.js";
@@ -563,5 +564,93 @@ describe("bulk sender/receiver, end to end", () => {
 
     expect(outcome.status).toBe("incomplete");
     expect(outcome.ackedCount).toBe(0);
+  });
+});
+
+describe("storedTransferSource", () => {
+  it("reads back a fully-received transfer's chunks in order, from a given fromSeq", async () => {
+    const chunks = ["one", "two", "three"].map((s) =>
+      new TextEncoder().encode(s),
+    );
+    const { senderConn, receiverConn } = linkedConnections();
+    const storage = createMemoryStorage();
+    const receiver = createBulkReceiver({ storage });
+    const sender = createBulkSender({ source: chunkedSource(chunks) });
+    const transferId = transferIdFromFillHex("21");
+
+    const complete = deferred<BulkReceiveResult>();
+    const openHandler = receiver.createOpenHandler(
+      SENDER_DEVICE,
+      receiverConn,
+      (event: Readonly<BulkOfferEvent>) => {
+        void event.decide({
+          kind: "accept",
+          window: DEFAULT_WINDOW,
+          onComplete: complete.resolve,
+        });
+      },
+    );
+    const senderSession = sessionDispatchingTo(openHandler);
+    pump(senderConn, (frame) => {
+      sender.onFrame(senderConn, frame);
+    });
+    pump(receiverConn, async (frame) => receiver.onFrame(receiverConn, frame));
+    await sender.open(senderConn, senderSession, TEST_SCOPE, { transferId });
+    await complete.promise;
+
+    const source = storedTransferSource({ storage, transferId });
+    const readBack: Uint8Array[] = [];
+    for await (const chunk of source(0)) readBack.push(chunk);
+    expect(readBack).toEqual(chunks);
+
+    const fromMiddle: Uint8Array[] = [];
+    for await (const chunk of source(1)) fromMiddle.push(chunk);
+    expect(fromMiddle).toEqual(chunks.slice(1));
+  });
+
+  it("yields nothing for a transfer-id this storage never durably received", async () => {
+    const storage = createMemoryStorage();
+    const source = storedTransferSource({
+      storage,
+      transferId: transferIdFromFillHex("22"),
+    });
+    const readBack: Uint8Array[] = [];
+    for await (const chunk of source(0)) readBack.push(chunk);
+    expect(readBack).toEqual([]);
+  });
+
+  it("is callable more than once and yields identical bytes each time, the same re-readability contract every other CreateBulkSenderOptions.source must satisfy", async () => {
+    const chunks = ["x", "y"].map((s) => new TextEncoder().encode(s));
+    const { senderConn, receiverConn } = linkedConnections();
+    const storage = createMemoryStorage();
+    const receiver = createBulkReceiver({ storage });
+    const sender = createBulkSender({ source: chunkedSource(chunks) });
+    const transferId = transferIdFromFillHex("23");
+    const complete = deferred<BulkReceiveResult>();
+    const openHandler = receiver.createOpenHandler(
+      SENDER_DEVICE,
+      receiverConn,
+      (event: Readonly<BulkOfferEvent>) => {
+        void event.decide({
+          kind: "accept",
+          window: DEFAULT_WINDOW,
+          onComplete: complete.resolve,
+        });
+      },
+    );
+    const senderSession = sessionDispatchingTo(openHandler);
+    pump(senderConn, (frame) => {
+      sender.onFrame(senderConn, frame);
+    });
+    pump(receiverConn, async (frame) => receiver.onFrame(receiverConn, frame));
+    await sender.open(senderConn, senderSession, TEST_SCOPE, { transferId });
+    await complete.promise;
+
+    const source = storedTransferSource({ storage, transferId });
+    const first: Uint8Array[] = [];
+    for await (const chunk of source(0)) first.push(chunk);
+    const second: Uint8Array[] = [];
+    for await (const chunk of source(0)) second.push(chunk);
+    expect(second).toEqual(first);
   });
 });

@@ -449,6 +449,44 @@ export interface CreateBulkReceiverOptions {
   storage: KeyValueStorage;
 }
 
+export interface StoredTransferSourceOptions {
+  storage: KeyValueStorage;
+  transferId: Uint8Array<ArrayBuffer>;
+}
+
+/**
+ * Builds a CreateBulkSenderOptions.source reading back a transfer this same storage already durably received as a BulkReceiver -- the read-back half of the mailbox/holder re-serving role (wire-mesh#161): a holder that accepted a shard once via createBulkReceiver's own createOpenHandler can re-serve the identical bytes to a fresh requester by constructing an ordinary createBulkSender over this source, reusing the exact chunk/ack-seq storage keys createBulkReceiver already wrote for the same transfer-id. Chunks past whatever ack-seq this storage currently holds durably are simply not yielded yet -- calling this before the original receipt has finished durably persisting every chunk is a caller error the resulting short read surfaces downstream as a digest mismatch on the receiving end, not something this function detects itself. Satisfies source's own re-readability contract (callable more than once, from any previously-reached seq, identical bytes each time) by construction: every call re-reads storage fresh rather than caching anything.
+ */
+export function storedTransferSource(
+  options: Readonly<StoredTransferSourceOptions>,
+): (fromSeq: number) => AsyncIterable<Uint8Array<ArrayBuffer>> {
+  const { storage, transferId } = options;
+  const idHex = transferIdHex(transferId);
+  return (fromSeq: number) => ({
+    [Symbol.asyncIterator](): AsyncIterator<Uint8Array<ArrayBuffer>> {
+      let seq = fromSeq;
+      return {
+        async next(): Promise<IteratorResult<Uint8Array<ArrayBuffer>>> {
+          const ackedBytes = await storage.get(ackSeqKey(idHex));
+          const ackedCount =
+            ackedBytes === undefined ? 0 : decodeUint(ackedBytes);
+          if (seq >= ackedCount) {
+            return { value: undefined, done: true };
+          }
+          const chunk = await storage.get(chunkKey(idHex, seq));
+          if (chunk === undefined) {
+            throw new Error(
+              `stored transfer ${idHex} is missing chunk ${String(seq)} though ack-seq claims ${String(ackedCount)} durable`,
+            );
+          }
+          seq += 1;
+          return { value: chunk, done: false };
+        },
+      };
+    },
+  });
+}
+
 /**
  * Builds a receiver coordinator over one KeyValueStorage. Constructed once and shared across every connection this side accepts -- durable per-transfer state (which chunks are persisted, who opened it) and the in-memory registry of which connection currently owns each transfer must both outlive any one connection for resumption to mean anything at all.
  */
