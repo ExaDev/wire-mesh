@@ -1,10 +1,14 @@
 // Orchestrates one call: every connected participant's own MeshSession, dispatching their core/webrtc manage-requests to a SfuMediaBackend and publishing webrtc.sfu-track-map to every affected participant whenever the roster changes. Knows nothing about mediasoup, SDP, or any transport concretely: every dependency arrives as a port (SfuMediaBackend) or an already-negotiated MeshSession, so this module is the same kind of pure orchestration relay-hub.ts is for the plain relay role, just for the SFU's own facilitator role instead.
 
-import type { DeviceId } from "wire-mesh-core/generated/protocol";
+import type {
+  DeviceId,
+  WebrtcIceCandidate,
+} from "wire-mesh-core/generated/protocol";
 import type {
   IncomingManageRequest,
   MeshSession,
 } from "wire-mesh-core/domain/mesh-session";
+import type { VerifyCapabilityTokenOptions } from "wire-mesh-core/domain/tokens";
 import {
   WEBRTC_SIGNAL_VERB,
   authorizeIncomingOffer,
@@ -13,7 +17,7 @@ import {
   isWebrtcAnswer,
   isWebrtcIceCandidate,
   isWebrtcOffer,
-  type VerifyCapabilityTokenOptions,
+  rtcIceCandidateInitFromWire,
 } from "wire-mesh-core/domain/webrtc-signaling";
 import type { SfuMediaBackend } from "./media-backend.js";
 
@@ -32,7 +36,7 @@ export interface SfuCall {
 interface ParticipantEntry {
   deviceId: DeviceId;
   session: Readonly<MeshSession>;
-  /** deviceId, hex-encoded, purely as this call's own backend participantId -- SfuMediaBackend's contract takes plain strings, not DeviceId's raw bytes, since a remote-process backend needs a serialisable key. */
+  /** deviceId, hex-encoded, purely as this call's own backend participantId: SfuMediaBackend's contract takes plain strings, not DeviceId's raw bytes, since a remote-process backend needs a serialisable key. */
   participantId: string;
   /** This participant's own current negotiation-id, learned from its offer, so a later sfu-track-map to it (or its own answer) can carry the right value. Undefined until its first offer arrives. */
   negotiationId?: number;
@@ -49,7 +53,7 @@ function participantIdFor(deviceId: DeviceId): string {
   return id;
 }
 
-/** Sends this participant's own current sfu-track-map: every mid on its own connection now carrying live media, whether from its own initial join (backend-reported consumed tracks) or a later participant leaving (an empty resend for any mid whose track just ended). negotiationId must already be known (the participant's own offer must have arrived) -- a participant this call has never negotiated with has no connection-specific mid space to describe. */
+/** Sends this participant's own current sfu-track-map: every mid on its own connection now carrying live media, whether from its own initial join (backend-reported consumed tracks) or a later participant leaving (an empty resend for any mid whose track just ended). negotiationId must already be known (the participant's own offer must have arrived): a participant this call has never negotiated with has no connection-specific mid space to describe. */
 async function sendTrackMap(
   entry: Readonly<ParticipantEntry>,
   tracks: readonly {
@@ -70,7 +74,7 @@ export function createSfuCall(
   verifyOptions: Readonly<VerifyCapabilityTokenOptions>,
 ): SfuCall {
   const participants = new Map<string, ParticipantEntry>();
-  // Every currently live track this call knows about, per owning participant -- rebuilt into a per-recipient tracks[] array (excluding the recipient's own tracks) whenever any recipient's sfu-track-map needs resending. Kept flat (not nested under the consuming participant) since it describes the call's actual media state, not any one participant's own view of it.
+  // Every currently live track this call knows about, per owning participant: rebuilt into a per-recipient tracks[] array (excluding the recipient's own tracks) whenever any recipient's sfu-track-map needs resending. Kept flat (not nested under the consuming participant) since it describes the call's actual media state, not any one participant's own view of it.
   const liveTracks = new Map<
     string,
     { mid: string; member: DeviceId; kind: "audio" | "video" }[]
@@ -104,7 +108,7 @@ export function createSfuCall(
   async function handleOffer(
     entry: ParticipantEntry,
     incoming: Readonly<IncomingManageRequest>,
-    offer: { "negotiation-id": number; sdp: string },
+    offer: Readonly<{ "negotiation-id": number; sdp: string }>,
   ): Promise<void> {
     const authorized = await authorizeIncomingOffer(incoming, verifyOptions);
     if (!authorized) {
@@ -123,7 +127,14 @@ export function createSfuCall(
     );
     await incoming.respond({ result: "ok" });
     await entry.session.sendManageRequest(
-      { verb: WEBRTC_SIGNAL_VERB, params: { verb: "webrtc.answer", "negotiation-id": entry.negotiationId, sdp: result.answerSdp } },
+      {
+        verb: WEBRTC_SIGNAL_VERB,
+        params: {
+          verb: "webrtc.answer",
+          "negotiation-id": entry.negotiationId,
+          sdp: result.answerSdp,
+        },
+      },
       { kind: "node" },
     );
     // This participant's own first track map: every mid the backend just filled from an already-connected participant's producer, reported immediately rather than waiting for a second round trip.
@@ -152,30 +163,12 @@ export function createSfuCall(
   async function handleIceCandidate(
     entry: Readonly<ParticipantEntry>,
     incoming: Readonly<IncomingManageRequest>,
-    message: {
-      candidate?: {
-        candidate: string;
-        "sdp-mid"?: string;
-        "sdp-m-line-index"?: number;
-        "username-fragment"?: string;
-      };
-    },
+    message: Readonly<WebrtcIceCandidate>,
   ): Promise<void> {
     await backend.addIceCandidate(
       entry.participantId,
       message.candidate !== undefined
-        ? {
-            candidate: message.candidate.candidate,
-            ...(message.candidate["sdp-mid"] !== undefined
-              ? { sdpMid: message.candidate["sdp-mid"] }
-              : {}),
-            ...(message.candidate["sdp-m-line-index"] !== undefined
-              ? { sdpMLineIndex: message.candidate["sdp-m-line-index"] }
-              : {}),
-            ...(message.candidate["username-fragment"] !== undefined
-              ? { usernameFragment: message.candidate["username-fragment"] }
-              : {}),
-          }
+        ? rtcIceCandidateInitFromWire(message.candidate)
         : null,
     );
     await incoming.respond({ result: "ok" });

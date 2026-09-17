@@ -23,14 +23,14 @@ export interface SfuMediaBackend {
   /**
    * Accepts a participant's initial WebRTC offer: produces from every send-capable m-line (this participant's own outbound audio/video) and, for every recv-capable m-line the offer already proposes, consumes one already-connected other participant's matching-kind track into it if one is available. A participant's own recvonly m-line count therefore bounds how many other participants' tracks it can receive without a later renegotiation: see this package's README for why a fixed pre-allocated slot count, not dynamic renegotiation, is this version's own explicit scope boundary.
    */
-  join(participantId: string, offerSdp: string): Promise<JoinResult>;
+  join: (participantId: string, offerSdp: string) => Promise<JoinResult>;
   /**
    * Feeds one trickled ICE candidate from a participant to this backend. A null candidate is the end-of-candidates signal. Most WebRTC-media-server implementations (mediasoup's ICE Lite mode included) never need the remote's own candidates to complete connectivity, since they listen passively on their own already-advertised candidates and let the remote (the ICE-controlling side) perform connectivity checks, so a correct implementation may legitimately treat this as a no-op. It stays part of the contract because a full (non-lite) ICE agent backend genuinely would need it, and the session layer above has no reason to know which kind of agent the current backend runs.
    */
-  addIceCandidate(
+  addIceCandidate: (
     participantId: string,
     candidate: WireRtcIceCandidateInit | null,
-  ): Promise<void>;
+  ) => Promise<void>;
   /** Tears down every resource this backend holds for one participant (their own transport, every Producer and Consumer touching it) and reports which OTHER already-joined participants were consuming this one's tracks, so the session layer knows whose next sfu-track-map changed. */
-  leave(participantId: string): Promise<readonly string[]>;
+  leave: (participantId: string) => Promise<readonly string[]>;
 }
