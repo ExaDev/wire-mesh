@@ -8,6 +8,7 @@
     "mediasoup": "3.26.0",
     "sdp-transform": "3.0.0",
     "wire-mesh-core": "workspace:*",
+    "wire-mesh-node": "workspace:*",
     "ws": "8.21.3"
   },
   "devDependencies": {
