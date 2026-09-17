@@ -38,14 +38,20 @@ jobs:
         run: pnpm turbo run _build --filter=wire-mesh-core --force
         working-directory: ts
       - name: Deploy
-        if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+        # The secrets context is not allowed in an if condition; routing it
+        # through env first is the canonical workaround.
+        env:
+          HAS_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+        if: env.HAS_API_TOKEN == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: ts/packages/cloudflare-hub
       - name: Skipped (secret not configured)
-        if: ${{ secrets.CLOUDFLARE_API_TOKEN == '' }}
+        env:
+          HAS_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+        if: env.HAS_API_TOKEN != 'true'
         run: echo 'CLOUDFLARE_API_TOKEN secret not set -- deploy skipped. Add it as a repo secret to enable automatic hub deploys.'
       - name: Verify the deployment answers
         run: |
