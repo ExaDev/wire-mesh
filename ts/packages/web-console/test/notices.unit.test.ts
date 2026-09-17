@@ -88,27 +88,44 @@ function memoryKeyStore(): RoomKeyStore {
   };
 }
 
-/** A minimal MeshSession double: sendDataFrame records frames, sendManageRequest records commands; everything else the wiring and bootstrap touch is these two alone. */
+/** A minimal MeshSession double: sendDataFrame records frames, sendManageRequest records commands; every other member is a stub the wiring and bootstrap never touch. Structurally complete (no type assertion -- the config bans them), so a future interface gain shows up here as a compile error rather than sailing through on a cast. */
 function fakeSession(): MeshSession & {
   sent: Frame[];
   commands: ManageCommand[];
 } {
   const sent: Frame[] = [];
   const commands: ManageCommand[] = [];
+  const emptyStream = <T>(): AsyncIterable<T> => ({
+    [Symbol.asyncIterator]() {
+      return {
+        next: async () =>
+          Promise.resolve<IteratorResult<T>>({ value: undefined, done: true }),
+      };
+    },
+  });
+  const unimplemented = (member: string): never => {
+    throw new Error(`the session double does not implement ${member}`);
+  };
   return {
     sent,
     commands,
+    events: emptyStream(),
+    incomingManageRequests: emptyStream(),
+    revocationAnnouncements: emptyStream(),
+    connect: () => unimplemented("connect"),
+    sendPing: () => unimplemented("sendPing"),
+    setToken: () => unimplemented("setToken"),
+    sendRevocationAnnounce: () => unimplemented("sendRevocationAnnounce"),
+    sendGossipUpdate: () => unimplemented("sendGossipUpdate"),
+    close: async () => Promise.resolve(),
     sendDataFrame: async (frame: Frame) => {
       sent.push(frame);
       return Promise.resolve();
     },
     sendManageRequest: async (command: ManageCommand) => {
       commands.push(command);
-      return Promise.resolve({ result: "ok" });
+      return Promise.resolve({ result: "ok" } as const);
     },
-  } as unknown as MeshSession & {
-    sent: Frame[];
-    commands: ManageCommand[];
   };
 }
 

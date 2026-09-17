@@ -8,9 +8,9 @@ const config: PartialStrykerOptions = {
   // src/generated/protocol.ts is cddl.js output, not hand-written logic -- mutating it would just generate noise against code nobody edits directly, exactly the exclusion the issue that added this config asked for.
   mutate: ["src/**/*.ts", "!src/**/*.test.ts", "!src/generated/**"],
   testRunner: "command",
-  // test/conformance.test.ts is excluded here, not mutated around: Stryker's sandbox for a command-runner mutant is confined to this package's own directory, but that test reads its vectors from a sibling package (`../../../../conformance/*.json`, outside the sandbox root) -- it fails with ENOENT for every mutant regardless of the mutation, which is a sandboxing mismatch, not a real "no coverage" signal. `_conformance-check` already runs this suite as its own separate, unmutated CI step.
+  // test/conformance.unit.test.ts is excluded here, not mutated around: Stryker's sandbox for a command-runner mutant is confined to this package's own directory, but that test reads its vectors from a sibling package (`../../../../conformance/*.json`, outside the sandbox root) -- it fails with ENOENT for every mutant regardless of the mutation, which is a sandboxing mismatch, not a real "no coverage" signal. `_conformance-check` already runs this suite as its own separate, unmutated CI step.
   commandRunner: {
-    command: "pnpm exec vitest run --exclude test/conformance.test.ts",
+    command: "pnpm exec vitest run --exclude test/conformance.unit.test.ts",
   },
   plugins: ["@stryker-mutator/typescript-checker"],
   checkers: ["typescript"],
