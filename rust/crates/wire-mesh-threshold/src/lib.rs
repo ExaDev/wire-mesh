@@ -3,6 +3,7 @@
 pub mod dkg;
 pub mod identifiers;
 pub mod identity;
+pub mod keygen_network;
 pub mod lagrange;
 pub mod network;
 pub mod nonce_store;
