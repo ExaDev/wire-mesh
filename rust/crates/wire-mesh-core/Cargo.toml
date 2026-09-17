@@ -8,11 +8,17 @@ license.workspace = true
 repository.workspace = true
 readme = "../README.md"
 
+[features]
+# "net" gates tcp_transport.rs's own tokio::net/mio dependency behind an opt-out feature, default-on so every existing native consumer is unaffected. A consumer that never needs TCP transport -- most concretely, wire-mesh-threshold-wasm, whose entire wasm32-unknown-unknown build target has no mio support at all -- depends on this crate with `default-features = false` to skip it, rather than pulling in a networking stack a WASM crypto binding has no use for.
+default = ["net"]
+net = ["tokio/net", "tokio/io-util", "tokio/rt-multi-thread", "tokio/time"]
+
 [dependencies]
 wire-mesh-wire = { path = "../wire-mesh-wire" }
 async-trait = { workspace = true }
 futures-core = { workspace = true }
-tokio = { workspace = true }
+# Not `{ workspace = true }`: the workspace-level tokio dependency pins a fixed feature set unconditionally (feature unification would otherwise always pull "net" in regardless of this crate's own Cargo feature), so "net"'s tokio features are added explicitly above instead.
+tokio = { version = "1", features = ["sync", "macros", "rt"] }
 sha2 = { workspace = true }
 ed25519-dalek = { workspace = true }
 p256 = { workspace = true }
