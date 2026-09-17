@@ -173,13 +173,18 @@ export async function distributeShardedPayload(
       if (channel === undefined || location === undefined) {
         throw new Error(`no channel/manifest entry for shard ${String(index)}`);
       }
-      const sender = createBulkSender({ source: singleChunkSource(shard) });
+      // Fresh copies, the same whole-buffer discipline shard-manifest.ts's own decodeShardManifest already applies: splitForShardedDelivery's shards/transfer-id fields are typed as plain Uint8Array (ArrayBufferLike-backed), while core/bulk's own sender API is typed against the stricter Uint8Array<ArrayBuffer> throughout.
+      const shardBytes = Uint8Array.from(shard);
+      const transferId = Uint8Array.from(location["transfer-id"]);
+      const sender = createBulkSender({
+        source: singleChunkSource(shardBytes),
+      });
       pumpSenderAcks(channel.connection, sender);
       return sender.open(channel.connection, channel.session, scope, {
-        transferId: location["transfer-id"],
+        transferId,
         targetDevice: location.device,
         contentType: manifest["content-type"],
-        totalSize: shard.length,
+        totalSize: shardBytes.length,
       });
     }),
   );
@@ -326,7 +331,10 @@ export function createShardCollector(
           window: event.totalSize ?? manifest["original-length"],
           onComplete: (completion: Readonly<BulkReceiveResult>) => {
             if (settled || !completion.ok) return;
-            readStoredTransferBytes(storage, location["transfer-id"])
+            readStoredTransferBytes(
+              storage,
+              Uint8Array.from(location["transfer-id"]),
+            )
               .then((data) => {
                 presented.set(index, data);
                 maybeFinish();

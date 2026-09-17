@@ -335,13 +335,13 @@ describe("end-to-end sharded delivery: distribute, hold, serve, collect, reconst
     const readerDevice = deviceIdFromFillHex("99");
     await holderA.serveShard(
       readerLinkA.holderChannel,
-      locationA["transfer-id"],
+      Uint8Array.from(locationA["transfer-id"]),
       readerDevice,
       TEST_SCOPE,
     );
     await holderB.serveShard(
       readerLinkB.holderChannel,
-      locationB["transfer-id"],
+      Uint8Array.from(locationB["transfer-id"]),
       readerDevice,
       TEST_SCOPE,
     );
@@ -398,13 +398,13 @@ describe("end-to-end sharded delivery: distribute, hold, serve, collect, reconst
     const readerDevice = deviceIdFromFillHex("98");
     await holderA.serveShard(
       readerLinkA.holderChannel,
-      locationA["transfer-id"],
+      Uint8Array.from(locationA["transfer-id"]),
       readerDevice,
       TEST_SCOPE,
     );
     await holderB.serveShard(
       readerLinkB.holderChannel,
-      locationB["transfer-id"],
+      Uint8Array.from(locationB["transfer-id"]),
       readerDevice,
       TEST_SCOPE,
     );
