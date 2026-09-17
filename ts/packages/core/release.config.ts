@@ -8,7 +8,6 @@ const config: GlobalConfig = {
     [
       "@semantic-release/commit-analyzer",
       {
-        preset: "conventionalcommits",
         releaseRules: [
           { type: "feat", release: "minor" },
           { type: "fix", release: "patch" },
@@ -24,26 +23,7 @@ const config: GlobalConfig = {
         ],
       },
     ],
-    [
-      "@semantic-release/release-notes-generator",
-      {
-        preset: "conventionalcommits",
-        presetConfig: {
-          types: [
-            { type: "feat", section: "Features" },
-            { type: "fix", section: "Bug Fixes" },
-            { type: "refactor", section: "Refactoring" },
-            { type: "perf", section: "Performance" },
-            { type: "docs", section: "Documentation" },
-            { type: "style", section: "Styles" },
-            { type: "test", section: "Tests" },
-            { type: "build", section: "Build" },
-            { type: "ci", section: "CI" },
-            { type: "chore", section: "Chores" },
-          ],
-        },
-      },
-    ],
+    "@semantic-release/release-notes-generator",
     "@semantic-release/npm",
     "@semantic-release/github",
   ],
