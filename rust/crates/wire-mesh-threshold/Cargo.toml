@@ -9,7 +9,8 @@ repository.workspace = true
 
 [dependencies]
 wire-mesh-wire = { path = "../wire-mesh-wire" }
-wire-mesh-core = { path = "../wire-mesh-core" }
+# default-features = false: this crate never touches TCP transport (only node_identity's standalone functions and the Identity trait), and keeping wire-mesh-core's own "net" feature (tokio::net, pulling in mio) off here is what lets wire-mesh-threshold-wasm's wasm32-unknown-unknown build succeed at all -- mio has no support for that target.
+wire-mesh-core = { path = "../wire-mesh-core", default-features = false }
 frost-ed25519 = "2"
 # frost-ed25519's own `keys` module re-exports SecretShare/KeyPackage/ PublicKeyPackage/VerifiableSecretSharingCommitment as ciphersuite-fixed type aliases but NOT CoefficientCommitment -- reshare.rs needs that one type directly (to sum T survivors' broadcast commitment vectors), so it is named as `frost_core::keys::CoefficientCommitment<frost_ed25519::Ed25519Sha512>`, pinned to the identical version frost-ed25519 itself depends on.
 frost-core = "2.2.0"

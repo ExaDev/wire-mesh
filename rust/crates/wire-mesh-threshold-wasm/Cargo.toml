@@ -1,0 +1,32 @@
+[package]
+name = "wire-mesh-threshold-wasm"
+description = "WASM bindings for wire-mesh-threshold, so a TypeScript participant can hold a real FROST(Ed25519, SHA-512) key share without a from-scratch reimplementation of the cryptography -- see wire-mesh#29's own design decision for why a WASM build of the audited frost-core/frost-ed25519 crates is the chosen TS implementation route over a pure-TS port."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+# cdylib for the actual wasm-bindgen build (via `just wasm`, a dedicated rustup-managed wasm32-unknown-unknown build step -- see rust/README.md); rlib so `cargo build`/`clippy`/`test` from the ordinary workspace root (Homebrew's native-target toolchain, no wasm32 std installed) still typecheck and lint this crate like any other, since wasm-bindgen's generated glue compiles fine as ordinary Rust on a native target too.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wire-mesh-threshold = { path = "../wire-mesh-threshold" }
+wire-mesh-wire = { path = "../wire-mesh-wire" }
+frost-ed25519 = "2"
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+rand = { workspace = true }
+# getrandom underlies rand::rngs::OsRng; on wasm32-unknown-unknown it has no OS entropy source of its own and needs its "js" backend feature enabled by the FINAL crate (per getrandom's own documented usage) to pull entropy from the browser/Node WebCrypto API instead. Native-target builds (`cargo build`/`clippy`/`test` from the workspace root) ignore this feature entirely -- it only takes effect for the wasm32 target.
+getrandom = { version = "0.2", features = ["js"] }
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[lints.rust]
+# wasm-bindgen's own macro-generated FFI glue needs unsafe at the wasm boundary; the workspace-wide `unsafe_code = "deny"` exists for hand-written business logic, not this crate's necessarily-unsafe JS/wasm interop surface -- every actual line of domain logic still lives in, and is tested in, wire-mesh-threshold, which keeps the deny.
+unsafe_code = "allow"
+
+[lints.clippy]
+dbg_macro = "deny"
