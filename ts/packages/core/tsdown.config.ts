@@ -31,6 +31,7 @@ export default defineConfig({
     "src/domain/revocation-view.ts",
     "src/domain/webrtc-signaling.ts",
     "src/adapters/frame-codec.ts",
+    "src/adapters/threshold-wasm.ts",
     "src/adapters/tcp-transport.ts",
     "src/adapters/tls-transport.ts",
     "src/adapters/memory-storage.ts",
@@ -43,4 +44,6 @@ export default defineConfig({
   exports: true,
   attw: { profile: "node16" },
   clean: true,
+  // wasm-dist/wire_mesh_threshold_wasm.js (threshold-wasm.ts's own import) is wasm-bindgen's generated CommonJS glue, which loads its .wasm binary via a `${__dirname}/...` path at its OWN call site. Bundling would inline that line into dist/adapters/threshold-wasm.{mjs,cjs}, where __dirname resolves to dist/adapters/ instead of wasm-dist/ -- and for the ESM output specifically, rolldown's CJS-interop shim does not define __dirname at all, breaking the import outright (confirmed: `node --input-type=module` against the bundled .mjs throws "__dirname is not defined"). Keeping the import external instead means it is resolved at its own real, unbundled path at runtime, identical in both src/ (before build) and dist/ (after build) layouts since wasm-dist/ sits two directories up from both src/adapters/ and dist/adapters/ alike -- package.json's own "files" field ships wasm-dist/ alongside dist/ in the published tarball for exactly this reason.
+  external: [/\/wasm-dist\//],
 });
