@@ -34,6 +34,8 @@ const deviceA = hex("11".repeat(SHA256_BYTE_LENGTH)); // issuer / coordinator
 const deviceB = hex("22".repeat(SHA256_BYTE_LENGTH)); // bearer of the root token / delegator
 const deviceC = hex("33".repeat(SHA256_BYTE_LENGTH)); // bearer of the delegated token
 const deviceD = hex("44".repeat(SHA256_BYTE_LENGTH)); // handle-record subject
+const deviceGroup = hex("55".repeat(SHA256_BYTE_LENGTH)); // exadev.io/threshold's own group device-id -- SHA-256(group verifying key), an ordinary identity.cddl device-id derivation applied to a FROST-issued Ed25519 key, distinct from any single participant's own device-id
+const deviceGroupKeyBytes = hex("66".repeat(ED25519_PUBLIC_KEY_BYTE_LENGTH)); // synthetic group verifying-key bytes, reused by threshold-keygen-round1's existing-group-key and threshold-keygen-confirm's group-key
 
 const publicKeyEs256A = hex(
   "04" +
@@ -660,6 +662,166 @@ const frameVectors: Vector[] = [
     type: "bulk-end",
     "transfer-id": hex("aa".repeat(TOKEN_ID_BYTE_LENGTH)),
     digest: hex("cd".repeat(SHA256_BYTE_LENGTH)), // digest is a SHA-256 hash, the same 32-byte length device-id derivation already uses
+  }),
+  // exadev.io/threshold (wire-mesh#29/#171) -- FROST(Ed25519) threshold signing's two-round commit/sign protocol, session abort, and the collapsed DKG/reshare keygen-round1/round2/confirm triplet. The group itself (deviceGroup) is a synthetic Ed25519 device-id distinct from deviceA/B/C, which here play the role of the group's own committing/signing participants.
+  vector("manage_request_v1_threshold_commit", {
+    type: "manage-request",
+    "request-id": 17,
+    command: {
+      verb: "exadev.io/threshold:sign",
+      params: {
+        verb: "threshold.commit",
+        "session-id": 1,
+        group: deviceGroup,
+        subject: {
+          kind: "capability-token",
+          protected: hex(wireHex({ 1: -7, 4: deviceGroup })),
+          payload: hex(wireHex(rootTokenClaims)),
+        },
+        deadline: 1893456060000,
+      },
+    },
+    scope: { kind: "group" },
+    token: roomMemberRootToken,
+  }),
+  // manage-ok extended per threshold-commit's own comment: "manage-ok extended with: participant: device-id, hiding: bstr, binding: bstr" -- returning a commitment IS the participant's act of authorisation.
+  vector("manage_response_v1_threshold_commit_ok", {
+    type: "manage-response",
+    "request-id": 17,
+    outcome: {
+      result: "ok",
+      participant: deviceB,
+      hiding: hex("aa11"),
+      binding: hex("bb22"),
+    },
+  }),
+  vector("manage_request_v1_threshold_sign", {
+    type: "manage-request",
+    "request-id": 18,
+    command: {
+      verb: "exadev.io/threshold:sign",
+      params: {
+        verb: "threshold.sign",
+        "session-id": 1,
+        commitments: [
+          { participant: deviceB, hiding: hex("aa11"), binding: hex("bb22") },
+          { participant: deviceC, hiding: hex("aa33"), binding: hex("bb44") },
+        ],
+      },
+    },
+    scope: { kind: "group" },
+    token: roomMemberRootToken,
+  }),
+  // manage-ok extended per threshold-sign's own comment: "manage-ok extended with: share: bstr .cbor threshold-share-envelope" -- the released share, self-certifying under the releasing participant's own PERSONAL key (never the group's).
+  vector("manage_response_v1_threshold_sign_ok", {
+    type: "manage-response",
+    "request-id": 18,
+    outcome: {
+      result: "ok",
+      share: hex(
+        wireHex([
+          hex(wireHex({ 1: -8, 4: deviceB })),
+          {},
+          hex(
+            wireHex({
+              "session-id": 1,
+              group: deviceGroup,
+              share: hex("ee01"),
+              issuer: deviceB,
+              "issuer-key": { alg: -8, "public-key": publicKeyEd25519D },
+            }),
+          ),
+          signatureFiller,
+        ]),
+      ),
+    },
+  }),
+  vector("manage_request_v1_threshold_abort_with_reason", {
+    type: "manage-request",
+    "request-id": 19,
+    command: {
+      verb: "exadev.io/threshold:sign",
+      params: {
+        verb: "threshold.abort",
+        "session-id": 1,
+        reason: "participant unavailable before the deadline",
+      },
+    },
+    scope: { kind: "group" },
+    token: roomMemberRootToken,
+  }),
+  vector("manage_request_v1_threshold_abort_without_reason", {
+    type: "manage-request",
+    "request-id": 20,
+    command: {
+      verb: "exadev.io/threshold:sign",
+      params: { verb: "threshold.abort", "session-id": 1 },
+    },
+    scope: { kind: "group" },
+    token: roomMemberRootToken,
+  }),
+  // Fresh DKG: existing-group-key absent, proof-of-knowledge REQUIRED and present.
+  vector("manage_request_v1_threshold_keygen_round1_fresh_dkg", {
+    type: "manage-request",
+    "request-id": 21,
+    command: {
+      verb: "exadev.io/threshold:keygen",
+      params: {
+        verb: "threshold.keygen-round1",
+        "session-id": 2,
+        threshold: 2,
+        participants: [deviceA, deviceB, deviceC],
+        commitment: [hex("c001"), hex("c002")],
+        "proof-of-knowledge": hex("a0f0"),
+      },
+    },
+    scope: { kind: "group" },
+  }),
+  // Reshare: existing-group-key present (the group being reshared), proof-of-knowledge MAY be omitted -- see threshold.cddl's own comment on why the rogue-key attack doesn't apply here.
+  vector("manage_request_v1_threshold_keygen_round1_reshare", {
+    type: "manage-request",
+    "request-id": 22,
+    command: {
+      verb: "exadev.io/threshold:reshare",
+      params: {
+        verb: "threshold.keygen-round1",
+        "session-id": 3,
+        threshold: 2,
+        participants: [deviceA, deviceB, deviceC, deviceD],
+        commitment: [hex("c003")],
+        "existing-group-key": deviceGroupKeyBytes,
+      },
+    },
+    scope: { kind: "group" },
+  }),
+  // Pairwise, confidential -- MUST travel only over an end-to-end-confidential connection (threshold.cddl's own comment).
+  vector("manage_request_v1_threshold_keygen_round2", {
+    type: "manage-request",
+    "request-id": 23,
+    command: {
+      verb: "exadev.io/threshold:keygen",
+      params: {
+        verb: "threshold.keygen-round2",
+        "session-id": 2,
+        share: hex("5ba2e0"),
+      },
+    },
+    scope: { kind: "group" },
+  }),
+  // The mandatory echo-broadcast confirmation round: every participant exchanges a digest over the full ordered round-1 package set plus the derived group key.
+  vector("manage_request_v1_threshold_keygen_confirm", {
+    type: "manage-request",
+    "request-id": 24,
+    command: {
+      verb: "exadev.io/threshold:keygen",
+      params: {
+        verb: "threshold.keygen-confirm",
+        "session-id": 2,
+        "transcript-digest": hex("7d".repeat(SHA256_BYTE_LENGTH)),
+        "group-key": deviceGroupKeyBytes,
+      },
+    },
+    scope: { kind: "group" },
   }),
 ];
 
