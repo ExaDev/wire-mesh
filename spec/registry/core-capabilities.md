@@ -15,5 +15,6 @@ Append-only. A bare `subsystem:action` capability verb is spec-owned and matched
 | `manage:revoke` | any — narrows to the target token's own scope kind | `core/management` | active |
 | `bulk:write` | any — left open to the calling domain (e.g. `folder` for a `core/exec` stdout capture) | `core/bulk` | active |
 | `bulk:read` | any — left open to the calling domain | `core/bulk` | active |
+| `group:member` | `group` | `core/management` | active |
 
 Third parties do not add entries here — see `namespaced-capability` in `tokens.cddl` for the registrant-owned namespace anyone else uses instead.
