@@ -4,16 +4,11 @@ import type { Connection } from "wire-mesh-core/ports/transport";
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import type { Clock } from "wire-mesh-core/ports/clock";
 import {
-  verifyCapabilityToken,
   type RevocationCheck,
   type VerifyCapabilityTokenOptions,
 } from "wire-mesh-core/domain/tokens";
 import type {
-  CapabilityScope,
   DeviceId,
-  IceCandidateInit,
-  ManageCommand,
-  ManageCommandParams,
   WebrtcAnswer,
   WebrtcIceCandidate,
   WebrtcOffer,
@@ -22,13 +17,22 @@ import type {
   IncomingManageRequest,
   MeshSession,
 } from "wire-mesh-core/domain/mesh-session";
+import {
+  WEBRTC_SIGNAL_SCOPE,
+  WEBRTC_SIGNAL_VERB,
+  authorizeIncomingOffer,
+  buildAnswerCommand,
+  buildIceCandidateCommand,
+  buildOfferCommand,
+  createNegotiationIdAllocator,
+  isWebrtcAnswer,
+  isWebrtcIceCandidate,
+  isWebrtcOffer,
+  rtcIceCandidateInitFromWire,
+  wireIceCandidateFromRtc,
+  type MinimalRtcIceCandidate,
+} from "wire-mesh-core/domain/webrtc-signaling";
 import { wrapRtcDataChannel } from "./adapters/webrtc-transport.js";
-
-/** The one capability verb gating every core/webrtc message shape -- an authority over this node's own signaling as a whole, not three separate resources, mirroring how core/exec's exec:pty gates all of its own inner verbs. */
-export const WEBRTC_SIGNAL_VERB = "webrtc:signal";
-
-/** No path: there is no filesystem subtree involved in signaling, only the node itself. */
-export const WEBRTC_SIGNAL_SCOPE: CapabilityScope = { kind: "node" };
 
 const DATA_CHANNEL_LABEL = "wire-mesh";
 
@@ -53,132 +57,6 @@ export interface WebrtcNegotiatorOptions {
 export interface WebrtcNegotiator {
   /** Offers a new WebRTC data channel. With no targetDevice, the offer is sent directly over whatever this session's own Connection is (a direct peer-to-peer session, or a bespoke test relay that forwards everything verbatim). With targetDevice, the offer -- and every subsequent message this negotiation sends (answer, ice candidates) -- is routed to that specific peer via a relay-connect pairing, since a real relay hub deliberately drops manage-request/manage-response frames sent to it directly. Resolves once the channel opens, with it wrapped as a Connection; rejects if the peer's own manage-response to the offer itself reports an error (e.g. unauthorized). */
   initiate: (targetDevice?: DeviceId) => Promise<Connection>;
-}
-
-function isWebrtcOffer(params: ManageCommandParams): params is WebrtcOffer {
-  return (
-    typeof params === "object" &&
-    "verb" in params &&
-    params.verb === "webrtc.offer"
-  );
-}
-
-function isWebrtcAnswer(params: ManageCommandParams): params is WebrtcAnswer {
-  return (
-    typeof params === "object" &&
-    "verb" in params &&
-    params.verb === "webrtc.answer"
-  );
-}
-
-function isWebrtcIceCandidate(
-  params: ManageCommandParams,
-): params is WebrtcIceCandidate {
-  return (
-    typeof params === "object" &&
-    "verb" in params &&
-    params.verb === "webrtc.ice-candidate"
-  );
-}
-
-export function buildOfferCommand(
-  negotiationId: number,
-  sdp: string,
-): ManageCommand {
-  return {
-    verb: WEBRTC_SIGNAL_VERB,
-    params: { verb: "webrtc.offer", "negotiation-id": negotiationId, sdp },
-  };
-}
-
-export function buildAnswerCommand(
-  negotiationId: number,
-  sdp: string,
-): ManageCommand {
-  return {
-    verb: WEBRTC_SIGNAL_VERB,
-    params: { verb: "webrtc.answer", "negotiation-id": negotiationId, sdp },
-  };
-}
-
-export function buildIceCandidateCommand(
-  negotiationId: number,
-  candidate?: Readonly<IceCandidateInit>,
-): ManageCommand {
-  return {
-    verb: WEBRTC_SIGNAL_VERB,
-    params: {
-      verb: "webrtc.ice-candidate",
-      "negotiation-id": negotiationId,
-      ...(candidate !== undefined ? { candidate } : {}),
-    },
-  };
-}
-
-/** The subset of RTCIceCandidate's own fields this module actually reads -- a real RTCIceCandidate satisfies this structurally, and so does a plain test object, with no cast needed either way. */
-export type MinimalRtcIceCandidate = Readonly<{
-  candidate: string;
-  sdpMid: string | null;
-  sdpMLineIndex: number | null;
-  usernameFragment: string | null;
-}>;
-
-export function wireIceCandidateFromRtc(
-  candidate: MinimalRtcIceCandidate,
-): IceCandidateInit {
-  return {
-    candidate: candidate.candidate,
-    ...(candidate.sdpMid !== null ? { "sdp-mid": candidate.sdpMid } : {}),
-    ...(candidate.sdpMLineIndex !== null
-      ? { "sdp-m-line-index": candidate.sdpMLineIndex }
-      : {}),
-    ...(candidate.usernameFragment !== null
-      ? { "username-fragment": candidate.usernameFragment }
-      : {}),
-  };
-}
-
-export function rtcIceCandidateInitFromWire(
-  wire: Readonly<IceCandidateInit>,
-): RTCIceCandidateInit {
-  return {
-    candidate: wire.candidate,
-    ...(wire["sdp-mid"] !== undefined ? { sdpMid: wire["sdp-mid"] } : {}),
-    ...(wire["sdp-m-line-index"] !== undefined
-      ? { sdpMLineIndex: wire["sdp-m-line-index"] }
-      : {}),
-    ...(wire["username-fragment"] !== undefined
-      ? { usernameFragment: wire["username-fragment"] }
-      : {}),
-  };
-}
-
-/** A fresh, independent, monotonically increasing negotiation-id source starting at 0 -- extracted as its own pure function so id allocation is testable without an RTCPeerConnection. */
-export function createNegotiationIdAllocator(): () => number {
-  let next = 0;
-  return (): number => {
-    const id = next;
-    next += 1;
-    return id;
-  };
-}
-
-/** True when an incoming offer's own token authorizes webrtc:signal against this node's scope -- verifyCapabilityToken checks the token's own internal validity and delegation chain; the capability/scope match against what is actually being invoked here is this negotiator's own responsibility, same as any other domain's request handler. expectedBearer is deliberately not checked: MeshSession exposes no way for this negotiator to learn its peer's device-id independently of the token itself, unlike a scope with a path that constrains a specific resource. */
-export async function authorizeIncomingOffer(
-  incoming: Readonly<IncomingManageRequest>,
-  options: Readonly<VerifyCapabilityTokenOptions>,
-): Promise<boolean> {
-  if (incoming.token === undefined) {
-    return false;
-  }
-  const verdict = await verifyCapabilityToken(incoming.token, options);
-  if (!verdict.ok) {
-    return false;
-  }
-  return (
-    verdict.claims.capability === WEBRTC_SIGNAL_VERB &&
-    verdict.claims.scope.kind === WEBRTC_SIGNAL_SCOPE.kind
-  );
 }
 
 /** Adds every local track (if any) and wires up the remote-track listener (if given) on a freshly-constructed peer connection -- shared between initiate() and handleIncomingOffer() so both roles carry media identically, matching how they already share the data-channel/ICE-candidate wiring pattern. A no-op call (neither option given) is exactly today's data-channel-only behaviour. */

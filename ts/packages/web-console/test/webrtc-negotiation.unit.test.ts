@@ -4,8 +4,6 @@ import type {
   CapabilityScope,
   CapabilityToken,
   DeviceId,
-  IceCandidateInit,
-  ManageCommand,
   TokenClaims,
 } from "wire-mesh-core/generated/protocol";
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
@@ -17,146 +15,12 @@ import {
   WEBRTC_SIGNAL_SCOPE,
   WEBRTC_SIGNAL_VERB,
   authorizeIncomingOffer,
-  buildAnswerCommand,
-  buildIceCandidateCommand,
-  buildOfferCommand,
-  createNegotiationIdAllocator,
-  rtcIceCandidateInitFromWire,
-  wireIceCandidateFromRtc,
-  type MinimalRtcIceCandidate,
-} from "../src/webrtc-negotiation.js";
+} from "wire-mesh-core/domain/webrtc-signaling";
+
+// createNegotiationIdAllocator, buildOfferCommand/buildAnswerCommand/buildIceCandidateCommand, wireIceCandidateFromRtc, and rtcIceCandidateInitFromWire are pure, DOM-free protocol logic that now lives in wire-mesh-core/domain/webrtc-signaling (see its own test/webrtc-signaling.unit.test.ts): this file re-exports them for this package's own callers but no longer duplicates their tests. What remains here is authorizeIncomingOffer (re-tested against this package's own createWebCryptoIdentity, since core's own equivalent test uses a Node identity adapter instead) and, below, createWebrtcNegotiator's real RTCPeerConnection-driven behaviour, which has no DOM-free counterpart to move.
 
 const HOUR_MS = 3_600_000;
-const NEGOTIATION_ID = 42;
-const TEST_SDP = "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\n";
 const LOW_BYTE_MASK = 0xff;
-
-describe("createNegotiationIdAllocator", () => {
-  it("allocates a fresh, independent, sequential id sequence starting at 0", () => {
-    const allocate = createNegotiationIdAllocator();
-    expect(allocate()).toBe(0);
-    expect(allocate()).toBe(1);
-    expect(allocate()).toBe(2);
-  });
-
-  it("gives each allocator its own independent counter", () => {
-    const first = createNegotiationIdAllocator();
-    const second = createNegotiationIdAllocator();
-    expect(first()).toBe(0);
-    expect(first()).toBe(1);
-    expect(second()).toBe(0);
-  });
-});
-
-describe("buildOfferCommand / buildAnswerCommand / buildIceCandidateCommand", () => {
-  it("builds a webrtc.offer command carrying the capability verb, negotiation-id, and sdp", () => {
-    expect(buildOfferCommand(NEGOTIATION_ID, TEST_SDP)).toEqual({
-      verb: WEBRTC_SIGNAL_VERB,
-      params: {
-        verb: "webrtc.offer",
-        "negotiation-id": NEGOTIATION_ID,
-        sdp: TEST_SDP,
-      },
-    } satisfies ManageCommand);
-  });
-
-  it("builds a webrtc.answer command carrying the capability verb, negotiation-id, and sdp", () => {
-    expect(buildAnswerCommand(NEGOTIATION_ID, TEST_SDP)).toEqual({
-      verb: WEBRTC_SIGNAL_VERB,
-      params: {
-        verb: "webrtc.answer",
-        "negotiation-id": NEGOTIATION_ID,
-        sdp: TEST_SDP,
-      },
-    } satisfies ManageCommand);
-  });
-
-  it("builds a webrtc.ice-candidate command carrying a candidate when given one", () => {
-    const candidate: IceCandidateInit = {
-      candidate: "candidate:1 1 UDP 1 192.0.2.1 4433 typ host",
-      "sdp-mid": "0",
-      "sdp-m-line-index": 0,
-    };
-    expect(buildIceCandidateCommand(NEGOTIATION_ID, candidate)).toEqual({
-      verb: WEBRTC_SIGNAL_VERB,
-      params: {
-        verb: "webrtc.ice-candidate",
-        "negotiation-id": NEGOTIATION_ID,
-        candidate,
-      },
-    } satisfies ManageCommand);
-  });
-
-  it("builds a webrtc.ice-candidate command with no candidate field for the end-of-candidates signal", () => {
-    const command = buildIceCandidateCommand(NEGOTIATION_ID);
-    expect(command).toEqual({
-      verb: WEBRTC_SIGNAL_VERB,
-      params: {
-        verb: "webrtc.ice-candidate",
-        "negotiation-id": NEGOTIATION_ID,
-      },
-    } satisfies ManageCommand);
-    expect("candidate" in command.params).toBe(false);
-  });
-});
-
-describe("wireIceCandidateFromRtc", () => {
-  it("carries every non-null field across to its wire kebab-case name", () => {
-    const candidate: MinimalRtcIceCandidate = {
-      candidate: "candidate:1 1 UDP 1 192.0.2.1 4433 typ host",
-      sdpMid: "0",
-      sdpMLineIndex: 0,
-      usernameFragment: "abcd",
-    };
-    expect(wireIceCandidateFromRtc(candidate)).toEqual({
-      candidate: candidate.candidate,
-      "sdp-mid": "0",
-      "sdp-m-line-index": 0,
-      "username-fragment": "abcd",
-    } satisfies IceCandidateInit);
-  });
-
-  it("omits fields that are null rather than carrying a null value across", () => {
-    const candidate: MinimalRtcIceCandidate = {
-      candidate: "candidate:1 1 UDP 1 192.0.2.1 4433 typ host",
-      sdpMid: null,
-      sdpMLineIndex: null,
-      usernameFragment: null,
-    };
-    expect(wireIceCandidateFromRtc(candidate)).toEqual({
-      candidate: candidate.candidate,
-    } satisfies IceCandidateInit);
-  });
-});
-
-describe("rtcIceCandidateInitFromWire", () => {
-  it("carries every present wire field across to its camelCase name", () => {
-    const wire: IceCandidateInit = {
-      candidate: "candidate:1 1 UDP 1 192.0.2.1 4433 typ host",
-      "sdp-mid": "0",
-      "sdp-m-line-index": 0,
-      "username-fragment": "abcd",
-    };
-    expect(rtcIceCandidateInitFromWire(wire)).toEqual({
-      candidate: wire.candidate,
-      sdpMid: "0",
-      sdpMLineIndex: 0,
-      usernameFragment: "abcd",
-    });
-  });
-
-  it("omits fields the wire message never carried, round-tripping through wireIceCandidateFromRtc and back", () => {
-    const original: MinimalRtcIceCandidate = {
-      candidate: "candidate:2 1 UDP 1 192.0.2.2 4434 typ host",
-      sdpMid: null,
-      sdpMLineIndex: null,
-      usernameFragment: null,
-    };
-    const wire = wireIceCandidateFromRtc(original);
-    const roundTripped = rtcIceCandidateInitFromWire(wire);
-    expect(roundTripped).toEqual({ candidate: original.candidate });
-  });
-});
 
 // Token construction mirrors core's own test/tokens.test.ts signToken helper: explicit field-by-field TokenClaims construction (its own .catchall(z.unknown()) index signature makes a spread-based partial lose specific field types), a COSE_Sign1 with an empty protected header, signed via the identity itself.
 function buf(bytes: Uint8Array | ArrayLike<number>): Uint8Array<ArrayBuffer> {
