@@ -325,6 +325,17 @@ export function reshareCombineCommitments(
   return toBufferSource(wasm.reshare_combine_commitments([...commitments]));
 }
 
+/** The echo-broadcast transcript digest a member of the new participant set sends on threshold-keygen-confirm for a reshare -- the reshare analogue of dkgTranscriptDigest, structurally distinct because a reshare's own survivor commitment carries no proof-of-knowledge component: deserializing one as a DKG round-1 package fails outright, since the two are different wire shapes entirely. `survivorCommitments` entries are each the same whole-blob shape reshareRound1's own `commitment` output is (NOT the wire's own split [* bstr] parts -- combine those first via reshareCombineCommitmentParts if collected off the wire). */
+export function reshareTranscriptDigest(
+  survivorCommitments: readonly DeviceKeyed[],
+  groupVerifyingKey: Uint8Array,
+): Uint8Array<ArrayBuffer> {
+  const [ids, commitments] = toParallelArrays(survivorCommitments);
+  return toBufferSource(
+    wasm.reshare_transcript_digest(ids, commitments, groupVerifyingKey),
+  );
+}
+
 export interface ReshareDerivePublicKeyPackageResult {
   publicKeyPackage: Uint8Array<ArrayBuffer>;
   groupVerifyingKey: Uint8Array<ArrayBuffer>;
