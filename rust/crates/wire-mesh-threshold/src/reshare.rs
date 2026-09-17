@@ -36,8 +36,9 @@ use frost_ed25519::keys::{
     IdentifierList, KeyPackage, PublicKeyPackage, SecretShare, SigningShare,
     VerifiableSecretSharingCommitment,
 };
-use frost_ed25519::{Ed25519Sha512, Identifier, SigningKey};
+use frost_ed25519::{Ed25519Sha512, Identifier, SigningKey, VerifyingKey};
 use rand::rngs::OsRng;
+use sha2::{Digest, Sha256};
 
 type Ed25519CoefficientCommitment = CoefficientCommitment<Ed25519Sha512>;
 
@@ -235,6 +236,29 @@ pub fn combine_commitment_parts(
     parts: &[Vec<u8>],
 ) -> Result<VerifiableSecretSharingCommitment, ReshareError> {
     Ok(VerifiableSecretSharingCommitment::deserialize(parts)?)
+}
+
+/// The echo-broadcast transcript digest a member of the new participant set
+/// sends on `threshold-keygen-confirm` for a reshare: `SHA-256` over the
+/// full ordered (by identifier) set of every SURVIVOR's own broadcast
+/// commitment, followed by the derived group verifying key -- the reshare
+/// analogue of [`crate::dkg::transcript_digest`], structurally distinct
+/// because a reshare's own survivor commitment carries no
+/// proof-of-knowledge component to fold in (see `spec/threshold.cddl`'s own
+/// comment on why one isn't needed here). `BTreeMap`'s own iteration order
+/// is already sorted by key (`Identifier`'s `Ord` impl), so this is
+/// deterministic across participants with no separate sort step.
+pub fn transcript_digest(
+    survivor_commitments: &BTreeMap<Identifier, VerifiableSecretSharingCommitment>,
+    group_key: &VerifyingKey,
+) -> Result<[u8; 32], ReshareError> {
+    let mut hasher = Sha256::new();
+    for (id, commitment) in survivor_commitments {
+        hasher.update(id.serialize());
+        hasher.update(commitment.serialize_whole()?);
+    }
+    hasher.update(group_key.serialize()?);
+    Ok(hasher.finalize().into())
 }
 
 /// The group's derived public key given the T survivors' combined broadcast
@@ -498,5 +522,67 @@ mod tests {
     #[test]
     fn combine_commitment_parts_rejects_malformed_bytes() {
         assert!(combine_commitment_parts(&[vec![0u8; 4]]).is_err());
+    }
+
+    /// The echo-broadcast confirm round needs a transcript digest over the
+    /// T survivors' own reshare commitments -- structurally distinct from
+    /// [`crate::dkg::transcript_digest`]'s own full round1 `Package`
+    /// (commitment + proof-of-knowledge), which a reshare's `commitment`
+    /// simply isn't: attempting to deserialize a reshare commitment AS a
+    /// DKG Package is exactly the "Error deserializing value" bug this
+    /// function exists to avoid.
+    #[test]
+    fn two_participants_computing_over_the_identical_survivor_view_agree_on_the_same_digest() {
+        let (old_ids, key_packages, _pkp) = dkg_fixture();
+        let survivors = &old_ids[0..2];
+        let mut commitments = Map::new();
+        for &survivor in survivors {
+            let kp = key_packages.get(&survivor).expect("key package");
+            let (commitment, _shares) =
+                round1_reshare(survivor, kp.signing_share(), survivors, survivors, 2)
+                    .expect("round1_reshare");
+            commitments.insert(survivor, commitment);
+        }
+        let combined_for_key =
+            combine_survivor_commitments(&commitments.values().cloned().collect::<Vec<_>>())
+                .expect("combine");
+        let new_pkp = derive_public_key_package(&combined_for_key, survivors).expect("derive pkp");
+
+        let digest_a = transcript_digest(&commitments, new_pkp.verifying_key()).expect("digest a");
+        let digest_b = transcript_digest(&commitments, new_pkp.verifying_key()).expect("digest b");
+        assert_eq!(digest_a, digest_b);
+    }
+
+    #[test]
+    fn an_equivocated_survivor_view_produces_a_different_digest() {
+        let (old_ids, key_packages, _pkp) = dkg_fixture();
+        let survivors = &old_ids[0..2];
+        let kp_a = key_packages.get(&survivors[0]).expect("key package a");
+        let kp_b = key_packages.get(&survivors[1]).expect("key package b");
+        let (commitment_a, _) =
+            round1_reshare(survivors[0], kp_a.signing_share(), survivors, survivors, 2)
+                .expect("round1_reshare a");
+        let (commitment_b, _) =
+            round1_reshare(survivors[1], kp_b.signing_share(), survivors, survivors, 2)
+                .expect("round1_reshare b");
+        let (tampered_commitment_a, _) =
+            round1_reshare(survivors[0], kp_a.signing_share(), survivors, survivors, 2)
+                .expect("round1_reshare a again");
+
+        let mut honest = Map::new();
+        honest.insert(survivors[0], commitment_a);
+        honest.insert(survivors[1], commitment_b.clone());
+        let mut equivocated = Map::new();
+        equivocated.insert(survivors[0], tampered_commitment_a);
+        equivocated.insert(survivors[1], commitment_b);
+
+        let combined = combine_survivor_commitments(&honest.values().cloned().collect::<Vec<_>>())
+            .expect("combine");
+        let pkp = derive_public_key_package(&combined, survivors).expect("derive pkp");
+
+        let honest_digest = transcript_digest(&honest, pkp.verifying_key()).expect("digest");
+        let equivocated_digest =
+            transcript_digest(&equivocated, pkp.verifying_key()).expect("digest");
+        assert_ne!(honest_digest, equivocated_digest);
     }
 }

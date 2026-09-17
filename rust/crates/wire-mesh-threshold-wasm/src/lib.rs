@@ -621,6 +621,29 @@ pub fn reshare_combine_commitments(commitments: Array) -> Result<Vec<u8>, JsValu
     combined.serialize_whole().map_err(js_err)
 }
 
+/// The echo-broadcast transcript digest a member of the new participant set
+/// sends on `threshold-keygen-confirm` for a reshare -- the reshare analogue
+/// of `dkg_transcript_digest`, structurally distinct because a reshare's own
+/// survivor commitment (`survivor_commitments`' own entries, each the same
+/// whole-blob shape `reshare_round1`'s own `commitment` output is) carries
+/// no proof-of-knowledge component: deserializing one AS a DKG round-1
+/// `Package` fails outright, since the two are different wire shapes
+/// entirely.
+#[wasm_bindgen]
+pub fn reshare_transcript_digest(
+    survivor_ids: Array,
+    survivor_commitments: Array,
+    group_verifying_key: Vec<u8>,
+) -> Result<Vec<u8>, JsValue> {
+    let commitments = parallel_arrays_to_map(&survivor_ids, &survivor_commitments, |bytes| {
+        VerifiableSecretSharingCommitment::deserialize_whole(bytes).map_err(js_err)
+    })?;
+    let group_key = VerifyingKey::deserialize(&group_verifying_key).map_err(js_err)?;
+    let digest = wire_mesh_threshold::reshare::transcript_digest(&commitments, &group_key)
+        .map_err(js_err)?;
+    Ok(digest.to_vec())
+}
+
 #[wasm_bindgen]
 pub struct ReshareDerivePublicKeyPackageOutput {
     public_key_package: Vec<u8>,
