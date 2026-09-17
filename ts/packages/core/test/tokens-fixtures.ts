@@ -15,6 +15,7 @@ import type {
 import type { RevocationCheck } from "../src/domain/tokens.js";
 
 export const ES256 = -7;
+export const EDDSA = -8;
 export const HOUR_MS = 3_600_000;
 export const REVOKED_SHORTLY_BEFORE_NOW_MS = 1_000; // revoked-at sits just before `now` in these tests -- the value only needs to be in the past, not any particular distance
 export const P256_SIGNATURE_BYTE_LENGTH = 64; // raw ECDSA P-256 signature length
@@ -51,6 +52,18 @@ export async function generateEs256Identity(): Promise<IdentityPort> {
     await webcrypto.subtle.exportKey("raw", keyPair.publicKey),
   );
   return createNodeIdentity(keyPair.privateKey, publicKeyBytes, ES256);
+}
+
+/** A fresh Ed25519 IdentityPort -- the personal-device signing key a threshold-share-envelope is minted under (never the group's own key), distinct from generateEs256Identity's P-256 identity. */
+export async function generateEd25519Identity(): Promise<IdentityPort> {
+  const keyPair = await webcrypto.subtle.generateKey({ name: "Ed25519" }, true, [
+    "sign",
+    "verify",
+  ]);
+  const publicKeyBytes = new Uint8Array(
+    await webcrypto.subtle.exportKey("raw", keyPair.publicKey),
+  );
+  return createNodeIdentity(keyPair.privateKey, publicKeyBytes, EDDSA);
 }
 
 export function fixedClock(atMs: number): Clock {
