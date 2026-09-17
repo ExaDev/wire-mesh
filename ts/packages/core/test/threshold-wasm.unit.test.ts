@@ -9,10 +9,12 @@ import {
   dkgTranscriptDigest,
   keyPackageSigningShare,
   splitRound1Package,
+  reshareCombineCommitmentParts,
   reshareCombineCommitments,
   reshareCombineReceivedShares,
   reshareDerivePublicKeyPackage,
   reshareRound1,
+  reshareSplitCommitment,
   signingAggregate,
   signingBuildPackage,
   signingRound1Commit,
@@ -294,6 +296,24 @@ describe("threshold-wasm: signing", () => {
 });
 
 describe("threshold-wasm: reshare", () => {
+  it("reshareSplitCommitment/reshareCombineCommitmentParts round-trips into the identical combined blob reshareCombineCommitments expects", () => {
+    const ids = [deviceId(1), deviceId(2), deviceId(THIRD_DEVICE_BYTE)];
+    const [alice, bob] = twoSigners(runDkg(ids));
+    const survivors: DeviceId[] = [alice.deviceId, bob.deviceId];
+    const r1 = reshareRound1(
+      alice.deviceId,
+      keyPackageSigningShare(alice.round3.keyPackage),
+      survivors,
+      survivors,
+      THRESHOLD,
+    );
+
+    const parts = reshareSplitCommitment(r1.commitment);
+    expect(parts.length).toBeGreaterThan(0);
+    const recombined = reshareCombineCommitmentParts(parts);
+    expect(recombined).toEqual(r1.commitment);
+  });
+
   it("dropping a device preserves the group key and the survivors can still sign with it", async () => {
     const ids = [deviceId(1), deviceId(2), deviceId(THIRD_DEVICE_BYTE)];
     const [alice, bob] = twoSigners(runDkg(ids));

@@ -580,6 +580,35 @@ pub fn reshare_round1(
     })
 }
 
+/// Splits a survivor's serialized broadcast commitment (`reshare_round1`'s
+/// own `commitment` output, a whole-blob serialization) into
+/// `threshold-keygen-round1`'s own wire shape: an array of independently-
+/// serialized coefficients (`commitment: [* bstr]`). The inverse of
+/// [`reshare_combine_commitment_parts`].
+#[wasm_bindgen]
+pub fn reshare_split_commitment(commitment: Vec<u8>) -> Result<Array, JsValue> {
+    let commitment =
+        VerifiableSecretSharingCommitment::deserialize_whole(&commitment).map_err(js_err)?;
+    let parts = wire_mesh_threshold::reshare::split_commitment(&commitment).map_err(js_err)?;
+    let out = Array::new();
+    for part in &parts {
+        out.push(&Uint8Array::from(part.as_slice()));
+    }
+    Ok(out)
+}
+
+/// Reconstructs a survivor's serialized broadcast commitment (the same
+/// whole-blob shape [`reshare_combine_commitments`] expects each entry of
+/// its own `commitments` array to be) from the wire's own per-coefficient
+/// array. The inverse of [`reshare_split_commitment`].
+#[wasm_bindgen]
+pub fn reshare_combine_commitment_parts(parts: Array) -> Result<Vec<u8>, JsValue> {
+    let part_bytes = array_to_bytes_vec(&parts)?;
+    let commitment =
+        wire_mesh_threshold::reshare::combine_commitment_parts(&part_bytes).map_err(js_err)?;
+    commitment.serialize_whole().map_err(js_err)
+}
+
 #[wasm_bindgen]
 pub fn reshare_combine_commitments(commitments: Array) -> Result<Vec<u8>, JsValue> {
     let bytes = array_to_bytes_vec(&commitments)?;

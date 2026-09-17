@@ -217,6 +217,26 @@ pub fn combine_survivor_commitments(
     )?)
 }
 
+/// Splits a survivor's broadcast commitment into `threshold-keygen-round1`'s
+/// own wire shape: an array of independently-serialized coefficients
+/// (`commitment: [* bstr]`) -- unlike `round1_reshare`'s own internal
+/// whole-blob representation. The inverse of [`combine_commitment_parts`].
+pub fn split_commitment(
+    commitment: &VerifiableSecretSharingCommitment,
+) -> Result<Vec<Vec<u8>>, ReshareError> {
+    Ok(commitment.serialize()?)
+}
+
+/// Reconstructs a survivor's broadcast commitment (the same whole-blob
+/// representation [`round1_reshare`]/[`combine_survivor_commitments`]/
+/// [`derive_public_key_package`] all use internally) from the wire's own
+/// per-coefficient array. The inverse of [`split_commitment`].
+pub fn combine_commitment_parts(
+    parts: &[Vec<u8>],
+) -> Result<VerifiableSecretSharingCommitment, ReshareError> {
+    Ok(VerifiableSecretSharingCommitment::deserialize(parts)?)
+}
+
 /// The group's derived public key given the T survivors' combined broadcast
 /// commitment and the NEW participant set -- reused directly by
 /// `threshold-keygen-confirm`'s own `group-key` check (MUST equal
@@ -451,5 +471,32 @@ mod tests {
         // checked against.
         assert!(new_pkp.verifying_shares().get(&dropped).is_none());
         let _ = dropped_old_key_package;
+    }
+
+    /// `threshold-keygen-round1`'s own wire shape carries the reshare
+    /// broadcast commitment as an array of independently-serialized
+    /// coefficients (`commitment: [* bstr]`), unlike `round1_reshare`'s own
+    /// internal whole-blob representation (`serialize_whole()`) -- split
+    /// then combine must round-trip to the identical commitment
+    /// `combine_survivor_commitments`/`derive_public_key_package` verify
+    /// against.
+    #[test]
+    fn split_and_combine_reshare_commitment_round_trips() {
+        let (old_ids, key_packages, _pkp) = dkg_fixture();
+        let survivors = &old_ids[0..2];
+        let kp = key_packages.get(&survivors[0]).expect("key package");
+        let (commitment, _shares) =
+            round1_reshare(survivors[0], kp.signing_share(), survivors, survivors, 2)
+                .expect("round1_reshare");
+
+        let parts = split_commitment(&commitment).expect("split");
+        assert!(!parts.is_empty());
+        let recombined = combine_commitment_parts(&parts).expect("combine");
+        assert_eq!(recombined, commitment);
+    }
+
+    #[test]
+    fn combine_commitment_parts_rejects_malformed_bytes() {
+        assert!(combine_commitment_parts(&[vec![0u8; 4]]).is_err());
     }
 }
