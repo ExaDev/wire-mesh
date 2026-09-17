@@ -122,6 +122,24 @@ jobs:
           cache: pnpm
           cache-dependency-path: ts/pnpm-lock.yaml
 
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Install wasm-bindgen-cli at the exact version rust/Cargo.lock pins
+        run: |
+          version=$(grep -A1 '^name = "wasm-bindgen"$' rust/Cargo.lock | grep '^version' | head -1 | cut -d'"' -f2)
+          echo "wasm-bindgen crate resolves to $version -- installing the matching CLI"
+          cargo install wasm-bindgen-cli --version "$version" --locked
+
+      - name: Build wire-mesh-threshold-wasm's wasm-dist -- required before core's own typecheck/build/test, which import it directly
+        working-directory: ts/packages/core
+        run: ./scripts/build-threshold-wasm.sh
+
       - name: Install ts/ workspace
         working-directory: ts
         run: pnpm install --frozen-lockfile
