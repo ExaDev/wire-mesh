@@ -1114,17 +1114,36 @@ threshold-abort = { verb: "threshold.abort", "session-id": session-id, ? reason:
 ; when it is absent, checked against the enclosing manage-request-frame's
 ; own token -- never inferred from context alone.
 ;
-; `proof-of-knowledge` is load-bearing, not ceremonial: without a Schnorr
-; proof of knowledge of the polynomial's own constant term, a participant
-; broadcasting last could choose its commitment adaptively to bias the
-; resulting group key (the rogue-key / key-cancellation attack).
+; `proof-of-knowledge` is load-bearing, not ceremonial, for a FRESH DKG
+; (existing-group-key absent): without a Schnorr proof of knowledge of the
+; polynomial's own constant term, a participant broadcasting last could
+; choose its commitment adaptively to bias the resulting group key (the
+; rogue-key / key-cancellation attack) -- a live concern precisely because
+; fresh DKG's own participants have no pre-existing relationship the wire
+; protocol can already vouch for. It is therefore REQUIRED when
+; existing-group-key is absent, and a participant MUST refuse a fresh-DKG
+; round1 package that omits it.
+;
+; For a RESHARE (existing-group-key present), the field MAY be omitted: each
+; round1 sender is a single already-authenticated device (the connection's
+; own transport authentication) already holding a currently-valid
+; threshold:reshare capability token for this exact group, contributing a
+; value fixed by its own PRE-EXISTING key share (this device's own
+; Lagrange-weighted sub-share of the group secret, per wire-mesh#29's
+; resolved design), not a value it can adaptively choose at broadcast time
+; the way a rogue-key attack requires -- so the attack this proof exists to
+; prevent does not apply. Misbehaviour is instead caught structurally by
+; threshold-keygen-confirm's own group-key equality check: a survivor that
+; contributes anything other than its true weighted share produces a
+; combined group-key that provably fails to equal existing-group-key, which
+; every participant already MUST verify before accepting the ceremony.
 threshold-keygen-round1 = {
   verb: "threshold.keygen-round1",
   "session-id": session-id,
   threshold: uint,
   participants: [+ device-id],
   commitment: [+ bstr],          ; Feldman commitment to each polynomial coefficient
-  "proof-of-knowledge": bstr,
+  ? "proof-of-knowledge": bstr,  ; REQUIRED when existing-group-key is absent; MAY be omitted when present -- see comment above
   ? "existing-group-key": bstr,  ; present => this is a reshare of the named group's existing Ed25519 public key; absent => a fresh DKG
 }
 
