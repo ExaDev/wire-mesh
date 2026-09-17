@@ -5,6 +5,7 @@ members = [
     "crates/wire-mesh-core",
     "crates/wire-mesh-conformance",
     "crates/wire-mesh-threshold",
+    "crates/wire-mesh-threshold-wasm",
 ]
 
 [workspace.package]
