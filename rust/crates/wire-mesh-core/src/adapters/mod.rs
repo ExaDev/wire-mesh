@@ -3,9 +3,11 @@
 pub mod memory_storage;
 pub mod node_identity;
 pub mod system_clock;
+#[cfg(feature = "net")]
 pub mod tcp_transport;
 
 pub use memory_storage::MemoryStorage;
 pub use node_identity::NodeIdentity;
 pub use system_clock::SystemClock;
+#[cfg(feature = "net")]
 pub use tcp_transport::TcpTransport;
