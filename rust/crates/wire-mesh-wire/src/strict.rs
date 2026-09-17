@@ -63,7 +63,7 @@ fn check_head_width(width: usize, minimal: usize) -> Result<(), DecodeError> {
 /// definite lengths, and a decoder that accepted them would let
 /// non-canonical input decode fine but re-encode differently, breaking
 /// byte-exactness.
-pub(crate) fn definite_map(d: &mut Decoder<'_>) -> Result<u64, DecodeError> {
+pub fn definite_map(d: &mut Decoder<'_>) -> Result<u64, DecodeError> {
     let before = d.position();
     let n = d
         .map()
@@ -106,7 +106,7 @@ pub(crate) fn text_key<'b>(d: &mut Decoder<'b>) -> Result<&'b str, DecodeError> 
 }
 
 /// A text-string value with a minimal-width length head.
-pub(crate) fn text_value(d: &mut Decoder<'_>) -> Result<String, DecodeError> {
+pub fn text_value(d: &mut Decoder<'_>) -> Result<String, DecodeError> {
     let before = d.position();
     match d.datatype().map_err(DecodeError::from_minicbor)? {
         Type::String => {
@@ -125,7 +125,7 @@ pub(crate) fn text_value(d: &mut Decoder<'_>) -> Result<String, DecodeError> {
 }
 
 /// A byte-string value with a minimal-width length head.
-pub(crate) fn bytes_value(d: &mut Decoder<'_>) -> Result<Vec<u8>, DecodeError> {
+pub fn bytes_value(d: &mut Decoder<'_>) -> Result<Vec<u8>, DecodeError> {
     let before = d.position();
     match d.datatype().map_err(DecodeError::from_minicbor)? {
         Type::Bytes => {
@@ -144,7 +144,7 @@ pub(crate) fn bytes_value(d: &mut Decoder<'_>) -> Result<Vec<u8>, DecodeError> {
 }
 
 /// An unsigned integer value in minimal-head form.
-pub(crate) fn uint_value(d: &mut Decoder<'_>) -> Result<u64, DecodeError> {
+pub fn uint_value(d: &mut Decoder<'_>) -> Result<u64, DecodeError> {
     let before = d.position();
     match d.datatype().map_err(DecodeError::from_minicbor)? {
         Type::U8 | Type::U16 | Type::U32 | Type::U64 => {
@@ -197,7 +197,7 @@ pub(crate) fn literal(d: &mut Decoder<'_>, expected: &'static str) -> Result<(),
 /// key with the dedicated duplicate error. Map-key ordering already makes
 /// duplicates unreachable ([`MapDecoder`]); this guard keeps the error
 /// precise at the field that repeated.
-pub(crate) fn set_once<T>(slot: &mut Option<T>, value: T) -> Result<(), DecodeError> {
+pub fn set_once<T>(slot: &mut Option<T>, value: T) -> Result<(), DecodeError> {
     if slot.is_some() {
         return Err(DecodeError::DuplicateKey);
     }
@@ -242,16 +242,22 @@ pub(crate) fn push_head(out: &mut Vec<u8>, major_byte: u8, argument: u64) {
 /// after its predecessor in RFC 8949 4.2.1 CDE order (encoded-length
 /// first, then bytewise). A repeated key is reported as a duplicate rather
 /// than a misordering, the clearer name for that case.
-pub(crate) struct KeyOrder {
+pub struct KeyOrder {
     prev: Option<Vec<u8>>,
 }
 
+impl Default for KeyOrder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl KeyOrder {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         KeyOrder { prev: None }
     }
 
-    pub(crate) fn push(&mut self, encoded_key: &[u8]) -> Result<(), DecodeError> {
+    pub fn push(&mut self, encoded_key: &[u8]) -> Result<(), DecodeError> {
         if let Some(prev) = &self.prev {
             match cde_order(prev, encoded_key) {
                 Ordering::Less => {}
@@ -268,13 +274,13 @@ impl KeyOrder {
 /// uniqueness) across every key read. Every closed-struct `*_from` loop
 /// and the open-map DOM decoder go through this, so a map whose keys are
 /// not in the exact order the encoder would write them cannot decode.
-pub(crate) struct MapDecoder {
+pub struct MapDecoder {
     remaining: u64,
     order: KeyOrder,
 }
 
 impl MapDecoder {
-    pub(crate) fn new(d: &mut Decoder<'_>) -> Result<Self, DecodeError> {
+    pub fn new(d: &mut Decoder<'_>) -> Result<Self, DecodeError> {
         Ok(MapDecoder {
             remaining: definite_map(d)?,
             order: KeyOrder::new(),
@@ -282,10 +288,7 @@ impl MapDecoder {
     }
 
     /// The next text key, or `None` when the map is exhausted.
-    pub(crate) fn next_key<'b>(
-        &mut self,
-        d: &mut Decoder<'b>,
-    ) -> Result<Option<&'b str>, DecodeError> {
+    pub fn next_key<'b>(&mut self, d: &mut Decoder<'b>) -> Result<Option<&'b str>, DecodeError> {
         if self.remaining == 0 {
             return Ok(None);
         }
