@@ -51,8 +51,12 @@ class TrackedFakeWebSocket extends FakeWebSocket {
 }
 
 function renderApp(
-  discoverLocalNode?: () => Promise<string | undefined>,
+  options: Readonly<{
+    discoverLocalNode?: () => Promise<string | undefined>;
+    defaultAddress?: string;
+  }> = {},
 ): ReturnType<typeof render> {
+  const { discoverLocalNode, defaultAddress } = options;
   return render(
     <MantineProvider>
       <App
@@ -60,6 +64,7 @@ function renderApp(
         clock={fixedClock}
         messageStore={fakeMessageStore()}
         {...(discoverLocalNode === undefined ? {} : { discoverLocalNode })}
+        {...(defaultAddress === undefined ? {} : { defaultAddress })}
       />
     </MantineProvider>,
   );
@@ -130,7 +135,9 @@ describe("App", () => {
   });
 
   it("auto-connects to a same-device node discovered on mount, with no form submission", async () => {
-    renderApp(async () => Promise.resolve("ws://127.0.0.1:8787"));
+    renderApp({
+      discoverLocalNode: async () => Promise.resolve("ws://127.0.0.1:8787"),
+    });
 
     await vi.waitFor(() => {
       expect(sockets).toHaveLength(1);
@@ -140,7 +147,7 @@ describe("App", () => {
   });
 
   it("does not start any connection when no same-device node is discovered", async () => {
-    renderApp(async () => Promise.resolve(undefined));
+    renderApp({ discoverLocalNode: async () => Promise.resolve(undefined) });
 
     await vi.waitFor(() => {
       expect(screen.queryByRole("button", { name: "Send ping" })).toBeNull();
@@ -149,7 +156,9 @@ describe("App", () => {
   });
 
   it("does not start a duplicate connection when the form is submitted for the address auto-discovery already connected", async () => {
-    renderApp(async () => Promise.resolve("ws://localhost:8787"));
+    renderApp({
+      discoverLocalNode: async () => Promise.resolve("ws://localhost:8787"),
+    });
 
     await vi.waitFor(() => {
       expect(sockets).toHaveLength(1);
@@ -157,5 +166,11 @@ describe("App", () => {
     submitConnectForm();
 
     expect(sockets).toHaveLength(1);
+  });
+
+  it("seeds the Node field from the defaultAddress prop, so a build served from a hub's own origin points at it without the operator typing anything", () => {
+    renderApp({ defaultAddress: "wss://mesh.exadev.io" });
+
+    expect(screen.getByLabelText(/^Node/)).toHaveValue("wss://mesh.exadev.io");
   });
 });
