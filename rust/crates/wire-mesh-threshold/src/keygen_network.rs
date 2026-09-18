@@ -966,3 +966,469 @@ pub async fn join_threshold_reshare<S: ManageRequestSender>(
 
     Ok((key_package, public_key_package))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn device_id(byte: u8) -> DeviceId {
+        DeviceId::from_bytes([byte; 32])
+    }
+
+    /// Routes every `send_manage_request` this device makes directly into
+    /// the target peer's own [`KeygenRoundCollectors`] via
+    /// `handle_keygen_round1`/`round2`/`confirm`, with `own_device_id` as
+    /// the "from" identity -- the in-process stand-in for "one Session per
+    /// peer connection" this module's own doc comment describes, proving
+    /// the wiring (this module's plain handler functions dispatching
+    /// correctly by `ManageParams` variant) without a real transport.
+    struct LoopbackSender {
+        own_device_id: DeviceId,
+        session_id: u64,
+        peers: HashMap<DeviceId, Arc<KeygenRoundCollectors>>,
+    }
+
+    #[async_trait::async_trait]
+    impl ManageRequestSender for LoopbackSender {
+        async fn send_manage_request(
+            &self,
+            target: DeviceId,
+            command: ManageCommand,
+            _scope: CapabilityScope,
+            _token: Option<CoseSign1>,
+        ) -> Result<ManageOutcome, CoreError> {
+            let collectors = self
+                .peers
+                .get(&target)
+                .expect("test fixture: unknown target device");
+            let outcome = match command.params {
+                ManageParams::ThresholdKeygenRound1(params) => {
+                    handle_keygen_round1(collectors, self.session_id, self.own_device_id, params)
+                }
+                ManageParams::ThresholdKeygenRound2(params) => {
+                    handle_keygen_round2(collectors, self.session_id, self.own_device_id, params)
+                }
+                ManageParams::ThresholdKeygenConfirm(params) => {
+                    handle_keygen_confirm(collectors, self.session_id, self.own_device_id, params)
+                }
+                _ => manage_error("unsupported"),
+            };
+            Ok(outcome)
+        }
+    }
+
+    fn loopback_senders(
+        device_ids: &[DeviceId],
+        session_id: u64,
+    ) -> (Vec<LoopbackSender>, Vec<Arc<KeygenRoundCollectors>>) {
+        let collectors: Vec<Arc<KeygenRoundCollectors>> = device_ids
+            .iter()
+            .map(|_| Arc::new(KeygenRoundCollectors::new()))
+            .collect();
+        let senders = device_ids
+            .iter()
+            .map(|&own_device_id| {
+                let peers = device_ids
+                    .iter()
+                    .zip(collectors.iter())
+                    .filter(|(&peer, _)| peer != own_device_id)
+                    .map(|(&peer, c)| (peer, Arc::clone(c)))
+                    .collect();
+                LoopbackSender {
+                    own_device_id,
+                    session_id,
+                    peers,
+                }
+            })
+            .collect();
+        (senders, collectors)
+    }
+
+    /// A full 3-participant, T=2 fresh DKG over this module's own network
+    /// orchestration (not `dkg.rs`'s in-process round functions directly,
+    /// the way `dkg.rs`'s own test proves the crypto) -- every participant
+    /// ends up agreeing on the same group verifying key, driven entirely
+    /// through `run_fresh_threshold_dkg`'s `send`/`await_from` choreography.
+    #[tokio::test]
+    async fn three_participants_run_fresh_threshold_dkg_to_the_same_group_key() {
+        let device_ids = [device_id(1), device_id(2), device_id(3)];
+        let session_id = 1;
+        let (senders, collectors) = loopback_senders(&device_ids, session_id);
+        let scope = crate::network::threshold_group_scope();
+
+        let mut handles = Vec::new();
+        for (index, sender) in senders.into_iter().enumerate() {
+            let own_device_id = device_ids[index];
+            let other_participants: Vec<DeviceId> = device_ids
+                .iter()
+                .copied()
+                .filter(|&d| d != own_device_id)
+                .collect();
+            let collectors = Arc::clone(&collectors[index]);
+            let scope = scope.clone();
+            handles.push(tokio::spawn(async move {
+                run_fresh_threshold_dkg(RunFreshThresholdDkg {
+                    sender: &sender,
+                    collectors: &collectors,
+                    own_device_id,
+                    other_participants,
+                    threshold: 2,
+                    session_id,
+                    scope,
+                    token: None,
+                })
+                .await
+            }));
+        }
+
+        let mut group_keys = Vec::new();
+        for handle in handles {
+            let (_key_package, public_key_package) =
+                handle.await.expect("task join").expect("fresh dkg");
+            group_keys.push(
+                public_key_package
+                    .verifying_key()
+                    .serialize()
+                    .expect("serialize"),
+            );
+        }
+        assert!(group_keys.windows(2).all(|w| w[0] == w[1]));
+    }
+
+    /// A device-loss-and-addition reshare (3 survivors -> a 3-member new
+    /// committee dropping one original device and adding a brand-new one)
+    /// over this module's own network orchestration, preserving the
+    /// group's Ed25519 verifying key -- the scenario wire-mesh#177 itself
+    /// names as the required end-to-end proof, exercised here at the unit
+    /// level (a loopback sender, not real TCP) before the real
+    /// `tests/keygen_network_session.rs` proves the identical choreography
+    /// over actual connections.
+    #[tokio::test]
+    async fn reshare_to_a_different_committee_preserves_the_group_key() {
+        let old_ids = [device_id(1), device_id(2), device_id(3)];
+        let dkg_session_id = 1;
+        let (dkg_senders, dkg_collectors) = loopback_senders(&old_ids, dkg_session_id);
+        let scope = crate::network::threshold_group_scope();
+
+        let mut dkg_handles = Vec::new();
+        for (index, sender) in dkg_senders.into_iter().enumerate() {
+            let own_device_id = old_ids[index];
+            let other_participants: Vec<DeviceId> = old_ids
+                .iter()
+                .copied()
+                .filter(|&d| d != own_device_id)
+                .collect();
+            let collectors = Arc::clone(&dkg_collectors[index]);
+            let scope = scope.clone();
+            dkg_handles.push(tokio::spawn(async move {
+                run_fresh_threshold_dkg(RunFreshThresholdDkg {
+                    sender: &sender,
+                    collectors: &collectors,
+                    own_device_id,
+                    other_participants,
+                    threshold: 2,
+                    session_id: dkg_session_id,
+                    scope,
+                    token: None,
+                })
+                .await
+            }));
+        }
+        let mut old_key_packages = HashMap::new();
+        let mut original_group_key = None;
+        for (index, handle) in dkg_handles.into_iter().enumerate() {
+            let (key_package, public_key_package) =
+                handle.await.expect("task join").expect("fresh dkg");
+            original_group_key = Some(
+                public_key_package
+                    .verifying_key()
+                    .serialize()
+                    .expect("serialize"),
+            );
+            old_key_packages.insert(old_ids[index], key_package);
+        }
+        let original_group_key = original_group_key.expect("at least one participant");
+
+        // Survivors: devices 1 and 2 (device 3 is dropped). New committee:
+        // survivors 1 and 2 plus a brand-new device 4 that never held a
+        // share of the original group.
+        let survivors = [old_ids[0], old_ids[1]];
+        let new_device = device_id(4);
+        let new_participants = [survivors[0], survivors[1], new_device];
+        let new_threshold = 2u16;
+        let reshare_session_id = 2;
+
+        let all_reshare_parties = [survivors[0], survivors[1], new_device];
+        let (reshare_senders, reshare_collectors) =
+            loopback_senders(&all_reshare_parties, reshare_session_id);
+        let sender_of = |device: DeviceId| {
+            let index = all_reshare_parties
+                .iter()
+                .position(|&d| d == device)
+                .expect("known party");
+            &reshare_senders[index]
+        };
+        let collectors_of = |device: DeviceId| {
+            let index = all_reshare_parties
+                .iter()
+                .position(|&d| d == device)
+                .expect("known party");
+            Arc::clone(&reshare_collectors[index])
+        };
+
+        // Survivor 1 (device 1) also stays in the new committee: it must
+        // start `join_threshold_reshare` with its own contribution known
+        // locally BEFORE `send_reshare_contribution` goes out, per this
+        // module's own doc comment on the two-devices-both-survivors-and-
+        // both-new-participants deadlock.
+        let survivor1_contribution = compute_reshare_contribution(
+            survivors[0],
+            old_key_packages.get(&survivors[0]).expect("kp"),
+            &survivors,
+            &new_participants,
+            new_threshold,
+        )
+        .expect("compute contribution 1");
+        let survivor1_own_contribution = ReshareOwnContribution {
+            commitment: survivor1_contribution.commitment.clone(),
+            share_to_self: survivor1_contribution
+                .share_to_self
+                .clone()
+                .expect("survivor1 stays in the new committee"),
+        };
+
+        // Survivor 2 (device 2) is LEAVING the new committee -- it only deals, via `contribute_threshold_reshare`, and takes no further part.
+        let survivor2_old_kp = old_key_packages.get(&survivors[1]).expect("kp").clone();
+        let survivor2_sender = sender_of(survivors[1]);
+        let survivor2_options = SendReshareContribution {
+            sender: survivor2_sender,
+            own_device_id: survivors[1],
+            new_participants: new_participants.to_vec(),
+            new_threshold,
+            existing_group_key: original_group_key.clone(),
+            session_id: reshare_session_id,
+            scope: scope.clone(),
+            token: None,
+        };
+        let survivor2_task =
+            contribute_threshold_reshare(&survivor2_old_kp, &survivors, survivor2_options);
+
+        let survivor1_send_sender = sender_of(survivors[0]);
+        let survivor1_send_options = SendReshareContribution {
+            sender: survivor1_send_sender,
+            own_device_id: survivors[0],
+            new_participants: new_participants.to_vec(),
+            new_threshold,
+            existing_group_key: original_group_key.clone(),
+            session_id: reshare_session_id,
+            scope: scope.clone(),
+            token: None,
+        };
+        let survivor1_send_task =
+            send_reshare_contribution(survivor1_send_options, &survivor1_contribution);
+
+        let survivor1_join_sender = sender_of(survivors[0]);
+        let survivor1_join_collectors = collectors_of(survivors[0]);
+        let survivor1_join_options = JoinThresholdReshare {
+            sender: survivor1_join_sender,
+            collectors: &survivor1_join_collectors,
+            own_device_id: survivors[0],
+            other_survivors: vec![survivors[1]],
+            own_contribution: Some(survivor1_own_contribution),
+            new_participants: new_participants.to_vec(),
+            new_threshold,
+            existing_group_key: original_group_key.clone(),
+            session_id: reshare_session_id,
+            scope: scope.clone(),
+            token: None,
+        };
+        let survivor1_join_task = join_threshold_reshare(survivor1_join_options);
+
+        let new_device_sender = sender_of(new_device);
+        let new_device_collectors = collectors_of(new_device);
+        let new_device_options = JoinThresholdReshare {
+            sender: new_device_sender,
+            collectors: &new_device_collectors,
+            own_device_id: new_device,
+            other_survivors: survivors.to_vec(),
+            own_contribution: None,
+            new_participants: new_participants.to_vec(),
+            new_threshold,
+            existing_group_key: original_group_key.clone(),
+            session_id: reshare_session_id,
+            scope: scope.clone(),
+            token: None,
+        };
+        let new_device_join_task = join_threshold_reshare(new_device_options);
+
+        let (survivor2_result, survivor1_send_result, survivor1_join_result, new_device_result) = tokio::join!(
+            survivor2_task,
+            survivor1_send_task,
+            survivor1_join_task,
+            new_device_join_task,
+        );
+        survivor2_result.expect("survivor 2 contributes and leaves");
+        survivor1_send_result.expect("survivor 1 sends its contribution");
+        let (survivor1_key_package, survivor1_pkp) =
+            survivor1_join_result.expect("survivor 1 joins the new committee");
+        let (new_device_key_package, new_device_pkp) =
+            new_device_result.expect("the new device joins the committee");
+
+        assert_eq!(
+            survivor1_pkp.verifying_key().serialize().expect("serialize"),
+            original_group_key,
+            "the reshared group key must match the original"
+        );
+        assert_eq!(
+            new_device_pkp.verifying_key().serialize().expect("serialize"),
+            original_group_key,
+            "every new participant derives the identical, unchanged group key"
+        );
+
+        // The two new key packages -- one from a survivor, one from a
+        // device that never held a share of the original group -- must
+        // actually be usable together to produce a valid signature under
+        // the ORIGINAL group's public key.
+        let message = b"reshare-over-the-network-orchestration-preserves-signing";
+        let store_a = crate::nonce_store::InMemoryNonceStore::new();
+        let store_b = crate::nonce_store::InMemoryNonceStore::new();
+        let (nonces_a, commitments_a) = frost_ed25519::round1::commit(
+            survivor1_key_package.signing_share(),
+            &mut rand::rngs::OsRng,
+        );
+        let (nonces_b, commitments_b) = frost_ed25519::round1::commit(
+            new_device_key_package.signing_share(),
+            &mut rand::rngs::OsRng,
+        );
+        crate::nonce_store::NonceStore::persist(&store_a, 1, nonces_a).expect("persist a");
+        crate::nonce_store::NonceStore::persist(&store_b, 1, nonces_b).expect("persist b");
+        let mut package_commitments = BTreeMap::new();
+        package_commitments.insert(identifier_for_device(&survivors[0]).expect("id"), commitments_a);
+        package_commitments.insert(identifier_for_device(&new_device).expect("id"), commitments_b);
+        let signing_package = frost_ed25519::SigningPackage::new(package_commitments, message);
+
+        let share_a = frost_ed25519::round2::sign(
+            &signing_package,
+            &crate::nonce_store::NonceStore::take(&store_a, 1).expect("take a"),
+            &survivor1_key_package,
+        )
+        .expect("sign a");
+        let share_b = frost_ed25519::round2::sign(
+            &signing_package,
+            &crate::nonce_store::NonceStore::take(&store_b, 1).expect("take b"),
+            &new_device_key_package,
+        )
+        .expect("sign b");
+        let mut shares = BTreeMap::new();
+        shares.insert(identifier_for_device(&survivors[0]).expect("id"), share_a);
+        shares.insert(identifier_for_device(&new_device).expect("id"), share_b);
+
+        let signature = frost_ed25519::aggregate(&signing_package, &shares, &survivor1_pkp)
+            .expect("aggregate");
+        assert!(
+            survivor1_pkp.verifying_key().verify(message, &signature).is_ok(),
+            "the reshared committee's aggregate signature verifies against the original group key"
+        );
+    }
+
+    /// Wraps a [`LoopbackSender`], corrupting the transcript digest on any
+    /// outgoing `threshold-keygen-confirm` before delivering it -- standing
+    /// in for a peer that equivocated between what it broadcast on round1
+    /// and what it echoes on confirm, the exact failure
+    /// `threshold-keygen-confirm` exists to catch. Round1/round2 pass
+    /// through unmodified, so only the confirm-time comparison is exercised.
+    struct TamperingConfirmSender {
+        inner: LoopbackSender,
+    }
+
+    #[async_trait::async_trait]
+    impl ManageRequestSender for TamperingConfirmSender {
+        async fn send_manage_request(
+            &self,
+            target: DeviceId,
+            mut command: ManageCommand,
+            scope: CapabilityScope,
+            token: Option<CoseSign1>,
+        ) -> Result<ManageOutcome, CoreError> {
+            if let ManageParams::ThresholdKeygenConfirm(params) = &mut command.params {
+                params.transcript_digest = vec![0xff; 32];
+            }
+            self.inner
+                .send_manage_request(target, command, scope, token)
+                .await
+        }
+    }
+
+    /// A confirm round carrying a transcript digest that does not match
+    /// what a device itself derived MUST abort the whole ceremony for the
+    /// device on the receiving end -- the echo-broadcast confirm round's
+    /// entire reason for existing, per `dkg::confirm_matches`'s own
+    /// verifier obligation. The tampering peer's own run, in contrast,
+    /// completes normally: it never sees anything but the honest values
+    /// its counterpart actually sent it.
+    #[tokio::test]
+    async fn a_confirm_round_mismatch_aborts_the_receiving_device_only() {
+        let device_ids = [device_id(11), device_id(12)];
+        let session_id = 7;
+        let (mut senders, collectors) = loopback_senders(&device_ids, session_id);
+        let scope = crate::network::threshold_group_scope();
+
+        // Device 12's sender corrupts its own outgoing confirm to device 11.
+        let tampering_sender = TamperingConfirmSender {
+            inner: senders.remove(1),
+        };
+        let honest_sender = senders.remove(0);
+
+        let honest = tokio::spawn({
+            let collectors = Arc::clone(&collectors[0]);
+            let own_device_id = device_ids[0];
+            let other_participants = vec![device_ids[1]];
+            let scope = scope.clone();
+            async move {
+                run_fresh_threshold_dkg(RunFreshThresholdDkg {
+                    sender: &honest_sender,
+                    collectors: &collectors,
+                    own_device_id,
+                    other_participants,
+                    threshold: 2,
+                    session_id,
+                    scope,
+                    token: None,
+                })
+                .await
+            }
+        });
+
+        let tamperer = tokio::spawn({
+            let collectors = Arc::clone(&collectors[1]);
+            let own_device_id = device_ids[1];
+            let other_participants = vec![device_ids[0]];
+            let scope = scope.clone();
+            async move {
+                run_fresh_threshold_dkg(RunFreshThresholdDkg {
+                    sender: &tampering_sender,
+                    collectors: &collectors,
+                    own_device_id,
+                    other_participants,
+                    threshold: 2,
+                    session_id,
+                    scope,
+                    token: None,
+                })
+                .await
+            }
+        });
+
+        let (result_honest, result_tamperer) = tokio::join!(honest, tamperer);
+        let result_honest = result_honest.expect("task join");
+        let result_tamperer = result_tamperer.expect("task join");
+        assert!(
+            matches!(result_honest, Err(DkgNetworkError::TranscriptMismatch { peer }) if peer == device_ids[1]),
+            "expected the honest device to abort on a transcript mismatch, got {result_honest:?}"
+        );
+        assert!(
+            result_tamperer.is_ok(),
+            "the tampering device's own view of its counterpart was never corrupted, so its own run should succeed: {result_tamperer:?}"
+        );
+    }
+}
