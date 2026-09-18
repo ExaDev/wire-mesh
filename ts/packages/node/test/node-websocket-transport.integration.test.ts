@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { encode } from "cbor2";
 import type { Frame } from "wire-mesh-core/generated/protocol";
-import type { WebSocket } from "ws";
+import { WebSocket as WsClient, type WebSocket } from "ws";
 import {
   createNodeWebSocketTransport,
   messageFromFrame,
@@ -9,6 +9,7 @@ import {
 } from "../src/adapters/node-websocket-transport.js";
 import { FakeNodeWebSocket } from "./fake-node-websocket.js";
 import { bytesFromHex } from "./hex.js";
+import { generateCertFixture } from "./tls-cert-fixture.js";
 
 const SHA256_BYTE_LENGTH = 32;
 const ping: Frame = { type: "ping" };
@@ -215,6 +216,85 @@ describe("createNodeWebSocketTransport, a real loopback round trip", () => {
     const response = await fetch(`http://${listener.address}/`);
     expect(response.status).toBe(HTTP_OK);
     expect(await response.json()).toEqual({ ok: true });
+
+    await listener.close();
+  });
+});
+
+describe("createNodeWebSocketTransport with a tls identity", () => {
+  it("terminates TLS and exchanges a frame over a real wss:// WebSocket handshake", async () => {
+    const identity = generateCertFixture();
+    const transport = createNodeWebSocketTransport({
+      tls: {
+        certificatePem: identity.certificatePem,
+        privateKeyPem: identity.privateKeyPem,
+      },
+    });
+    const received: Frame[] = [];
+    const listener = await transport.listen("127.0.0.1:0", (connection) => {
+      void (async () => {
+        for await (const frame of connection.receive()) {
+          received.push(frame);
+        }
+      })();
+    });
+
+    // A self-signed fixture cert with no real CA behind it — rejectUnauthorized:false is this test's own trust override for that, not something the adapter's listen() side grants by default.
+    const client = new WsClient(`wss://${listener.address}`, {
+      rejectUnauthorized: false,
+    });
+    await new Promise<void>((resolve, reject) => {
+      client.once("open", () => {
+        resolve();
+      });
+      client.once("error", reject);
+    });
+    client.send(messageFromFrame(ping));
+
+    await new Promise<void>((resolve) => {
+      const check = (): void => {
+        if (received.length > 0) {
+          resolve();
+          return;
+        }
+        setTimeout(check, POLL_INTERVAL_MS);
+      };
+      check();
+    });
+    expect(received).toEqual([ping]);
+
+    client.close();
+    await listener.close();
+  });
+
+  it("serves the configured onHttpRequest handler over https for a plain request", async () => {
+    const identity = generateCertFixture();
+    const transport = createNodeWebSocketTransport({
+      tls: {
+        certificatePem: identity.certificatePem,
+        privateKeyPem: identity.privateKeyPem,
+      },
+      onHttpRequest: (_request, response) => {
+        response.writeHead(HTTP_OK, { "content-type": "application/json" });
+        response.end(JSON.stringify({ ok: true }));
+      },
+    });
+    const listener = await transport.listen("127.0.0.1:0", () => undefined);
+
+    // Node's global fetch rejects the fixture's self-signed cert by default; this env var is the standard, narrowly-scoped way to bypass that for a single call in a test — restored immediately after, never left set for the rest of the suite.
+    const original = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+    try {
+      const response = await fetch(`https://${listener.address}/`);
+      expect(response.status).toBe(HTTP_OK);
+      expect(await response.json()).toEqual({ ok: true });
+    } finally {
+      if (original === undefined) {
+        delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+      } else {
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = original;
+      }
+    }
 
     await listener.close();
   });

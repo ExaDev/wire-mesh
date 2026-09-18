@@ -5,8 +5,10 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
 import { cdeDecodeOptions, cdeEncodeOptions, decode, encode } from "cbor2";
 import { frameSchema, type Frame } from "wire-mesh-core/generated/protocol";
+import type { TlsIdentity } from "wire-mesh-core/adapters/tls-transport";
 import type {
   Connection,
   Listener,
@@ -172,9 +174,11 @@ export function wrapNodeWebSocket(ws: WebSocket): Connection {
 export interface NodeWebSocketTransportOptions {
   /** Answers a non-Upgrade HTTP request landing on the same listener (e.g. a health check). Requests are 404'd if omitted. */
   onHttpRequest?: (request: IncomingMessage, response: ServerResponse) => void;
+  /** Serves the listener over TLS (wss://) instead of plain ws:// when given — reusing core's own TlsIdentity shape (already a dependency of this package) rather than a parallel cert/key type for the same concept. Unlike createTlsTransport's mutual-auth model, this adapter never requests a client certificate: a browser's WebSocket client cannot present one, and the whole point of wss:// here is letting an ordinary browser (mesh.exadev.io, wire-mesh#182/#183) reach this node without mixed-content blocking. */
+  tls?: TlsIdentity;
 }
 
-/** A Node `ws`-based Transport: one CBOR frame per binary WebSocket message, served over a plain `http.Server` this adapter owns. `listen()` is a real implementation (unlike the browser adapter, a client can never accept connections) and supports port 0 for an OS-assigned port, reading the real bound address back the same way core's tcp-transport.ts does. */
+/** A Node `ws`-based Transport: one CBOR frame per binary WebSocket message, served over a plain `http.Server` this adapter owns, or an `https.Server` when `options.tls` is given. `listen()` is a real implementation (unlike the browser adapter, a client can never accept connections) and supports port 0 for an OS-assigned port, reading the real bound address back the same way core's tcp-transport.ts does. */
 export function createNodeWebSocketTransport(
   options: Readonly<NodeWebSocketTransportOptions> = {},
 ): Transport {
@@ -202,13 +206,25 @@ export function createNodeWebSocketTransport(
     async listen(address, onConnection): Promise<Listener> {
       const { host, port } = parseAddress(address);
       return new Promise((resolve, reject) => {
-        const httpServer = createServer((request, response) => {
+        const requestHandler = (
+          request: IncomingMessage,
+          response: ServerResponse,
+        ): void => {
           if (options.onHttpRequest) {
             options.onHttpRequest(request, response);
             return;
           }
           response.writeHead(HTTP_NOT_FOUND).end();
-        });
+        };
+        const httpServer = options.tls
+          ? createHttpsServer(
+              {
+                cert: options.tls.certificatePem,
+                key: options.tls.privateKeyPem,
+              },
+              requestHandler,
+            )
+          : createServer(requestHandler);
         const wss = new WebSocketServer({ server: httpServer });
         wss.on("connection", (ws) => {
           onConnection(wrapNodeWebSocket(ws));
