@@ -276,6 +276,8 @@ const tokenVectors: Vector[] = [
 
 const frameVectors: Vector[] = [
   vector("ping_v1", { type: "ping" }),
+  // wire-mesh#181: a bare echo of ping-frame, sent by a hub in reply so a client can isolate its own sender-to-hub leg from path.trace's own end-to-end RTT.
+  vector("pong_v1", { type: "pong" }),
   vector("close_v1_with_reason", { type: "close", reason: "shutting down" }),
   vector("gossip_v1_two_peers", {
     type: "gossip",
@@ -615,6 +617,22 @@ const frameVectors: Vector[] = [
         signatureFiller,
       ],
     ],
+  }),
+  // core/management's path:trace (wire-mesh#181) -- ungated, no token field at all, the same "no capability to check" shape room.join/room.invite already established, just for a different reason (path:trace names no real capability, see spec/management.cddl's own comment).
+  vector("manage_request_v1_path_trace", {
+    type: "manage-request",
+    "request-id": 25,
+    command: {
+      verb: "path:trace",
+      params: { verb: "path.trace" },
+    },
+    scope: { kind: "node" },
+  }),
+  // path-trace-ok: manage-ok extended with the receiver's own relayed/hub-address knowledge -- this vector answers as relayed, naming the hub it was relayed through; the unrelayed shape (relayed: false, hub-address entirely absent) is exercised by the TS/Rust unit suites instead, not duplicated here.
+  vector("manage_response_v1_path_trace_ok_relayed", {
+    type: "manage-response",
+    "request-id": 25,
+    outcome: { result: "ok", relayed: true, "hub-address": "203.0.113.9:4433" },
   }),
   vector("stream_data_v1_stdout_chunk", {
     type: "stream-data",
