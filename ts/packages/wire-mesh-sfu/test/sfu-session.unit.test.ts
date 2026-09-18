@@ -145,6 +145,8 @@ function createFakeSession(): FakeSession {
     connect: async (): Promise<void> =>
       Promise.reject(new Error("not used in these tests")),
     sendPing: async (): Promise<void> => Promise.resolve(),
+    sendPingMeasureRtt: async (): Promise<number> =>
+      Promise.reject(new Error("not used in these tests")),
     setToken: () => undefined,
     sendRevocationAnnounce: async (): Promise<void> => Promise.resolve(),
     sendGossipUpdate: async (): Promise<void> => Promise.resolve(),

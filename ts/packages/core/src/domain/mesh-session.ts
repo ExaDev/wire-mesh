@@ -24,38 +24,14 @@ import {
 import { SUPPORTED_PROTOCOL_VERSION, negotiate } from "./handshake.js";
 import { deviceIdToHex } from "./device-id.js";
 import { createRelayPairings } from "./relay-pairing.js";
+import { createPingRoundTrips } from "./ping-round-trips.js";
+import { validateGossipExtensions } from "./gossip-extensions.js";
 import type { Clock } from "../ports/clock.js";
 import type { IdentityPort } from "../ports/identity.js";
 import type { Connection, Transport } from "../ports/transport.js";
 import { tryDecodeFrame, wrapRelayData } from "../adapters/frame-codec.js";
 
 const MS_PER_SECOND = 1000;
-
-/** peer-advert's own three typed fields -- reserved so a `sendGossipUpdate` caller can never override the session's own device-id, address list, or freshness timestamp by supplying an extension of the same name. */
-const RESERVED_PEER_ADVERT_KEYS = new Set([
-  "device",
-  "addresses",
-  "snapshot-seconds",
-]);
-
-/** A gossip extension key must be domain-qualified as `<domain>/<field>` (lowercase kebab-case each side), per `spec/CONVENTIONS.md`'s gossip-extension-namespacing convention -- this is what stops two independent applications sharing one gossip tail from silently colliding on a bare name like "status". */
-const GOSSIP_EXTENSION_KEY_PATTERN = /^[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*$/;
-
-/** Rejects a `sendGossipUpdate` extension bag that would either shadow one of peer-advert's own mandatory fields or use a bare, non-domain-qualified key -- both are caller bugs that must fail loudly at the call site, not silently corrupt or ambiguously merge into the wire frame. */
-function validateGossipExtensions(extensions: Record<string, unknown>): void {
-  for (const key of Object.keys(extensions)) {
-    if (RESERVED_PEER_ADVERT_KEYS.has(key)) {
-      throw new Error(
-        `sendGossipUpdate extension key "${key}" collides with a mandatory peer-advert field`,
-      );
-    }
-    if (!GOSSIP_EXTENSION_KEY_PATTERN.test(key)) {
-      throw new Error(
-        `sendGossipUpdate extension key "${key}" must be domain-qualified as "<domain>/<field>" (e.g. "presence/status")`,
-      );
-    }
-  }
-}
 
 /** How long to wait for the node's handshake before calling it unanswered. A relay-only node never sends one; that is a state to display, not an error. */
 export const HANDSHAKE_TIMEOUT_MS = 3_000;
@@ -122,6 +98,8 @@ export interface MeshSession {
   readonly revocationAnnouncements: AsyncIterable<RevocationEntry>;
   connect: (address: string, localDomains: readonly string[]) => Promise<void>;
   sendPing: () => Promise<void>;
+  /** Sends a ping-frame and resolves with the round-trip time in milliseconds once the correlated pong-frame arrives -- FIFO-paired against this call's own ping, since ping-frame carries no correlation id of its own (spec/transport.cddl): the Nth call's own promise resolves against the Nth pong received after it, never matched by any other means. Rejects if the connection closes, or (when timeoutMs is given) if no pong arrives within timeoutMs, rather than resolving a sentinel value the way sendManageRequest's own timeout does -- there is no natural "no answer" value for a bare millisecond count to double as. Unlike sendPing (fire-and-forget, answered by nothing on an ordinary peer connection), this is answered only by a peer that replies to ping with pong -- today, relay-hub's own frame handling (wire-mesh#181) -- so calling this against a connection to a plain peer that never sends pong hangs until timeoutMs (if given) or forever. Exists to isolate the sender-to-hub leg of a relayed path.trace round trip: time this over the same connection a relayed manage-request travelled, then subtract it from path.trace's own end-to-end RTT to recover the hub-to-target leg. */
+  sendPingMeasureRtt: (timeoutMs?: number) => Promise<number>;
   /** Attaches this token to every `manage-request` sent from now on. */
   setToken: (token: CapabilityToken) => void;
   /** Announces one or more already-minted revocation-entries to the peer. Sent directly over the connection, never relay-wrapped -- revocation-announce is a gossiped broadcast, not a request addressed to a specific peer, so it has no targetDevice/token parameters the way sendManageRequest does. */
@@ -209,6 +187,7 @@ function createSessionCore(
   const incomingBacklog: IncomingManageRequest[] = [];
   const revocationWaiters: ((entry: RevocationEntry) => void)[] = [];
   const revocationBacklog: RevocationEntry[] = [];
+  const pingRoundTrips = createPingRoundTrips();
 
   function snapshot(): SessionEvent {
     return {
@@ -268,6 +247,14 @@ function createSessionCore(
       scope,
       ...(token !== null ? { token } : {}),
     };
+  }
+
+  /** The "not connected" guard every send* method on the public session needs, deduplicated into one place rather than repeated inline at each call site: throws unless there is a live connection AND the session's own state machine agrees it is "connected" (transmit's own connection===null check alone doesn't cover the latter). Returns the connection itself, narrowed non-null, for a caller that needs to send directly on it (sendPing/sendPingMeasureRtt); a caller that only needs the throwing side effect (sendManageRequest and friends, which go through transmit instead) calls this and discards the result. */
+  function requireConnectedLink(): Connection {
+    if (connection === null || state.status !== "connected") {
+      throw new Error("not connected");
+    }
+    return connection;
   }
 
   /** Sends a frame, wrapping it as relay-data first when viaRelay is set -- the single choke point every outbound manage-request/manage-response passes through, so a consumer of sendManageRequest/respond never needs its own relay-wrapping logic. When relaying, toDevice is stamped onto the outer relay-data-frame's own `to-device` field so the hub addresses it to the correct pairing directly (wire-mesh#30) rather than falling back to whichever pairing it last saw -- the one case this is omitted is a response to a request that itself arrived with no from-device to echo back, which is left to that same hub fallback exactly as an unaddressed relay-data always has been. */
@@ -362,6 +349,8 @@ function createSessionCore(
       applyManageResponse(frame);
     } else if (frame.type === "manage-request") {
       applyManageRequest(frame);
+    } else if (frame.type === "pong") {
+      pingRoundTrips.resolveOldest(clock.now());
     } else if (frame.type === "revocation-announce") {
       for (const entry of frame.entries) {
         emitRevocationEntry(entry);
@@ -420,6 +409,7 @@ function createSessionCore(
       return;
     }
     rejectPendingManageRequests("disconnected before a response arrived");
+    pingRoundTrips.rejectAll("disconnected before a pong arrived");
     if (reconnect !== null && attempt < reconnect.maxAttempts) {
       attempt += 1;
       const currentAttempt = attempt;
@@ -609,13 +599,24 @@ function createSessionCore(
         await doConnect(address, localDomains);
       },
       async sendPing(): Promise<void> {
-        if (connection === null || state.status !== "connected") {
-          throw new Error("not connected");
-        }
+        const link = requireConnectedLink();
         const ping: Frame = { type: "ping" };
         frameLog.push({ direction: "sent", frame: ping });
-        await connection.send(ping);
+        await link.send(ping);
         emit();
+      },
+      async sendPingMeasureRtt(timeoutMs?: number): Promise<number> {
+        const link = requireConnectedLink();
+        return pingRoundTrips.sendAndAwait(
+          clock.now(),
+          async () => {
+            const ping: Frame = { type: "ping" };
+            frameLog.push({ direction: "sent", frame: ping });
+            await link.send(ping);
+            emit();
+          },
+          timeoutMs,
+        );
       },
       setToken(token: CapabilityToken): void {
         currentToken = token;
@@ -627,9 +628,7 @@ function createSessionCore(
         token?: CapabilityToken,
         timeoutMs?: number,
       ): Promise<ManageOutcome> {
-        if (connection === null || state.status !== "connected") {
-          throw new Error("not connected");
-        }
+        requireConnectedLink();
         if (targetDevice !== undefined) {
           await ensureRelayPairing(targetDevice);
         }
@@ -658,9 +657,7 @@ function createSessionCore(
       async sendRevocationAnnounce(
         entries: readonly RevocationEntry[],
       ): Promise<void> {
-        if (connection === null || state.status !== "connected") {
-          throw new Error("not connected");
-        }
+        requireConnectedLink();
         const frame: RevocationAnnounceFrame = {
           type: "revocation-announce",
           entries: [...entries],
@@ -672,9 +669,7 @@ function createSessionCore(
       async sendGossipUpdate(
         extensions?: Record<string, unknown>,
       ): Promise<void> {
-        if (connection === null || state.status !== "connected") {
-          throw new Error("not connected");
-        }
+        requireConnectedLink();
         const frame = buildSelfAdvert(extensions);
         frameLog.push({ direction: "sent", frame });
         await transmit(frame, false);
@@ -683,9 +678,7 @@ function createSessionCore(
       async sendDataFrame(
         frame: DataHaveFrame | DataRequestFrame | DataEntriesFrame,
       ): Promise<void> {
-        if (connection === null || state.status !== "connected") {
-          throw new Error("not connected");
-        }
+        requireConnectedLink();
         frameLog.push({ direction: "sent", frame });
         await transmit(frame, false);
         emit();
@@ -703,6 +696,7 @@ function createSessionCore(
         rejectPendingManageRequests(
           "connection closed before a response arrived",
         );
+        pingRoundTrips.rejectAll("connection closed before a pong arrived");
         if (connection !== null) {
           await connection.close();
         }
