@@ -31,6 +31,8 @@ export interface AppProps {
   messageStore: MessageStore;
   /** Attempts same-device node auto-discovery once, on mount. Defaults to the real `discoverLocalNode` (a no-op when this console is served from a loopback origin, a real localhost probe otherwise); tests inject a fake to avoid depending on `location`/`fetch`. */
   discoverLocalNode?: () => Promise<string | undefined>;
+  // Seeds the Node field. Left as a prop (rather than App reading location/import.meta.env itself) so App stays the plain, testable component its own header comment describes; main.tsx computes the real value via default-hub-address.ts.
+  defaultAddress?: string;
 }
 
 const DEFAULT_ADDRESS = "ws://localhost:8787";
@@ -62,8 +64,9 @@ export function App({
   clock,
   messageStore,
   discoverLocalNode = discoverLocalNodeDefault,
+  defaultAddress = DEFAULT_ADDRESS,
 }: Readonly<AppProps>): React.JSX.Element {
-  const [address, setAddress] = useState(DEFAULT_ADDRESS);
+  const [address, setAddress] = useState(defaultAddress);
   const [domains, setDomains] = useState<string[]>(DEFAULT_DOMAINS);
   const [connections, setConnections] = useState<ConnectionEntry[]>([]);
   const roomMessaging = useRoomMessaging(identity, clock, messageStore);
