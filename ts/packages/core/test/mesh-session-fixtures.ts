@@ -8,6 +8,10 @@ import type {
 } from "../src/ports/transport.js";
 import type { createMeshSession } from "../src/domain/mesh-session.js";
 import { deviceIdFromFillHex } from "./hex.js";
+import packageJson from "../package.json" with { type: "json" };
+
+/** The same value mesh-session.ts's own OWN_VERSION reads -- asserted against here rather than a hardcoded literal so a self-advert/version.get expectation stays true regardless of what this package's own version happens to be. */
+export const OWN_VERSION = packageJson.version;
 
 export const deviceA = deviceIdFromFillHex("11");
 export const deviceB = deviceIdFromFillHex("22");

@@ -3,7 +3,7 @@ import type {
   CapabilityToken,
   ManageRequestFrame,
 } from "../src/generated/protocol.js";
-import { acceptDirectManageRequest } from "../src/domain/mesh-session.js";
+import { acceptDirectManageRequest } from "../src/domain/direct-manage-request.js";
 import { FakeConnection } from "./mesh-session-fixtures.js";
 
 const TEST_TOKEN_SIGNATURE_BYTE = 3;

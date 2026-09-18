@@ -16,6 +16,7 @@ import {
   EVENTS_THROUGH_REMOTE_HANDSHAKE,
   MANAGE_REQUEST_TIMEOUT_MS,
   OVERRIDE_TOKEN_BYTE,
+  OWN_VERSION,
   TEST_INCOMING_REQUEST_ID,
   TEST_TOKEN_SIGNATURE_BYTE,
   TIMEOUT_MARKER,
@@ -359,6 +360,71 @@ describe("capability tokens and manage-request plumbing", () => {
     const result = await iterator.next();
     expect(result.done).toBe(false);
     expect(yielded(result).requestId).toBe(TEST_INCOMING_REQUEST_ID);
+    await session.close();
+  });
+
+  const versionGetCommand: ManageCommand = {
+    verb: "core:version",
+    params: { verb: "version.get" },
+  };
+
+  it("answers a version.get manage-request directly with this node's own live version, bypassing incomingManageRequests entirely", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    const eventsDone = nthEvent(session, EVENTS_THROUGH_REMOTE_HANDSHAKE - 1);
+    await session.connect("ws://node", ["core/version"]);
+    await eventsDone;
+
+    const incomingIterator =
+      session.incomingManageRequests[Symbol.asyncIterator]();
+    const eventsIterator = session.events[Symbol.asyncIterator]();
+
+    connection.push({
+      type: "manage-request",
+      "request-id": TEST_INCOMING_REQUEST_ID,
+      command: versionGetCommand,
+      scope: { kind: "node" },
+    } satisfies ManageRequestFrame);
+
+    // The auto-response's own emit() -- must already be available, not merely eventually rescued by session.close()'s own trailing emit(), which would otherwise mask a missing emit() call inside the auto-responder.
+    const responseResult = await withinShortWait(eventsIterator.next());
+    expect(responseResult).not.toBe(TIMEOUT_MARKER);
+
+    const sentResponse = connection.sent.at(-1) as ManageResponseFrame;
+    expect(sentResponse).toEqual({
+      type: "manage-response",
+      "request-id": TEST_INCOMING_REQUEST_ID,
+      outcome: { result: "ok", version: OWN_VERSION },
+    } satisfies ManageResponseFrame);
+
+    const notSurfaced = await withinShortWait(incomingIterator.next());
+    expect(notSurfaced).toBe(TIMEOUT_MARKER);
+
+    await session.close();
+  });
+
+  it("answers version.get regardless of the enclosing manage-request-frame's own scope and token, since it is deliberately ungated", async () => {
+    const { transport, connection } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    const eventsDone = nthEvent(session, EVENTS_THROUGH_REMOTE_HANDSHAKE - 1);
+    await session.connect("ws://node", ["core/version"]);
+    await eventsDone;
+
+    const eventsIterator = session.events[Symbol.asyncIterator]();
+    connection.push({
+      type: "manage-request",
+      "request-id": TEST_INCOMING_REQUEST_ID,
+      command: versionGetCommand,
+      scope: { kind: "folder", path: "/anything" },
+      token: testToken,
+    } satisfies ManageRequestFrame);
+    await withinShortWait(eventsIterator.next());
+
+    const sentResponse = connection.sent.at(-1) as ManageResponseFrame;
+    expect(sentResponse.outcome).toEqual({
+      result: "ok",
+      version: OWN_VERSION,
+    });
     await session.close();
   });
 });

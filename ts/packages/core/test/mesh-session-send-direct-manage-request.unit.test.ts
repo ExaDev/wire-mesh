@@ -7,7 +7,7 @@ import type {
   ManageRequestFrame,
   ManageResponseFrame,
 } from "../src/generated/protocol.js";
-import { sendDirectManageRequest } from "../src/domain/mesh-session.js";
+import { sendDirectManageRequest } from "../src/domain/direct-manage-request.js";
 import type { Connection, Transport } from "../src/ports/transport.js";
 import {
   FakeConnection,
