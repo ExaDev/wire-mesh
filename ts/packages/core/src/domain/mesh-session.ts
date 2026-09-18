@@ -24,38 +24,20 @@ import {
 import { SUPPORTED_PROTOCOL_VERSION, negotiate } from "./handshake.js";
 import { deviceIdToHex } from "./device-id.js";
 import { createRelayPairings } from "./relay-pairing.js";
+import { createPingRoundTrips } from "./ping-round-trips.js";
+import { validateGossipExtensions } from "./gossip-extensions.js";
 import type { Clock } from "../ports/clock.js";
 import type { IdentityPort } from "../ports/identity.js";
 import type { Connection, Transport } from "../ports/transport.js";
 import { tryDecodeFrame, wrapRelayData } from "../adapters/frame-codec.js";
+import {
+  CORE_VERSION_GOSSIP_KEY,
+  OWN_VERSION,
+  isVersionGetCommand,
+  versionGetOutcome,
+} from "./own-version.js";
 
 const MS_PER_SECOND = 1000;
-
-/** peer-advert's own three typed fields -- reserved so a `sendGossipUpdate` caller can never override the session's own device-id, address list, or freshness timestamp by supplying an extension of the same name. */
-const RESERVED_PEER_ADVERT_KEYS = new Set([
-  "device",
-  "addresses",
-  "snapshot-seconds",
-]);
-
-/** A gossip extension key must be domain-qualified as `<domain>/<field>` (lowercase kebab-case each side), per `spec/CONVENTIONS.md`'s gossip-extension-namespacing convention -- this is what stops two independent applications sharing one gossip tail from silently colliding on a bare name like "status". */
-const GOSSIP_EXTENSION_KEY_PATTERN = /^[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*$/;
-
-/** Rejects a `sendGossipUpdate` extension bag that would either shadow one of peer-advert's own mandatory fields or use a bare, non-domain-qualified key -- both are caller bugs that must fail loudly at the call site, not silently corrupt or ambiguously merge into the wire frame. */
-function validateGossipExtensions(extensions: Record<string, unknown>): void {
-  for (const key of Object.keys(extensions)) {
-    if (RESERVED_PEER_ADVERT_KEYS.has(key)) {
-      throw new Error(
-        `sendGossipUpdate extension key "${key}" collides with a mandatory peer-advert field`,
-      );
-    }
-    if (!GOSSIP_EXTENSION_KEY_PATTERN.test(key)) {
-      throw new Error(
-        `sendGossipUpdate extension key "${key}" must be domain-qualified as "<domain>/<field>" (e.g. "presence/status")`,
-      );
-    }
-  }
-}
 
 /** How long to wait for the node's handshake before calling it unanswered. A relay-only node never sends one; that is a state to display, not an error. */
 export const HANDSHAKE_TIMEOUT_MS = 3_000;
@@ -122,6 +104,8 @@ export interface MeshSession {
   readonly revocationAnnouncements: AsyncIterable<RevocationEntry>;
   connect: (address: string, localDomains: readonly string[]) => Promise<void>;
   sendPing: () => Promise<void>;
+  /** Sends a ping-frame and resolves with the round-trip time in milliseconds once the correlated pong-frame arrives -- FIFO-paired against this call's own ping, since ping-frame carries no correlation id of its own (spec/transport.cddl): the Nth call's own promise resolves against the Nth pong received after it, never matched by any other means. Rejects if the connection closes, or (when timeoutMs is given) if no pong arrives within timeoutMs, rather than resolving a sentinel value the way sendManageRequest's own timeout does -- there is no natural "no answer" value for a bare millisecond count to double as. Unlike sendPing (fire-and-forget, answered by nothing on an ordinary peer connection), this is answered only by a peer that replies to ping with pong -- today, relay-hub's own frame handling (wire-mesh#181) -- so calling this against a connection to a plain peer that never sends pong hangs until timeoutMs (if given) or forever. Exists to isolate the sender-to-hub leg of a relayed path.trace round trip: time this over the same connection a relayed manage-request travelled, then subtract it from path.trace's own end-to-end RTT to recover the hub-to-target leg. */
+  sendPingMeasureRtt: (timeoutMs?: number) => Promise<number>;
   /** Attaches this token to every `manage-request` sent from now on. */
   setToken: (token: CapabilityToken) => void;
   /** Announces one or more already-minted revocation-entries to the peer. Sent directly over the connection, never relay-wrapped -- revocation-announce is a gossiped broadcast, not a request addressed to a specific peer, so it has no targetDevice/token parameters the way sendManageRequest does. */
@@ -209,6 +193,7 @@ function createSessionCore(
   const incomingBacklog: IncomingManageRequest[] = [];
   const revocationWaiters: ((entry: RevocationEntry) => void)[] = [];
   const revocationBacklog: RevocationEntry[] = [];
+  const pingRoundTrips = createPingRoundTrips();
 
   function snapshot(): SessionEvent {
     return {
@@ -270,6 +255,14 @@ function createSessionCore(
     };
   }
 
+  /** The "not connected" guard every send* method on the public session needs, deduplicated into one place rather than repeated inline at each call site: throws unless there is a live connection AND the session's own state machine agrees it is "connected" (transmit's own connection===null check alone doesn't cover the latter). Returns the connection itself, narrowed non-null, for a caller that needs to send directly on it (sendPing/sendPingMeasureRtt); a caller that only needs the throwing side effect (sendManageRequest and friends, which go through transmit instead) calls this and discards the result. */
+  function requireConnectedLink(): Connection {
+    if (connection === null || state.status !== "connected") {
+      throw new Error("not connected");
+    }
+    return connection;
+  }
+
   /** Sends a frame, wrapping it as relay-data first when viaRelay is set -- the single choke point every outbound manage-request/manage-response passes through, so a consumer of sendManageRequest/respond never needs its own relay-wrapping logic. When relaying, toDevice is stamped onto the outer relay-data-frame's own `to-device` field so the hub addresses it to the correct pairing directly (wire-mesh#30) rather than falling back to whichever pairing it last saw -- the one case this is omitted is a response to a request that itself arrived with no from-device to echo back, which is left to that same hub fallback exactly as an unaddressed relay-data always has been. */
   async function transmit(
     frame: Frame,
@@ -295,7 +288,7 @@ function createSessionCore(
     }
   }
 
-  /** relayFrame is present only for a manage-request that arrived wrapped in relay-data, and is that same outer relay-data-frame -- its own to-device/from-device fields carry whatever addressing it received. See IncomingManageRequest's own fromDevice/toDevice doc comments for what each means and why neither is ever guessed from pairing state. */
+  /** relayFrame is present only for a manage-request that arrived wrapped in relay-data, and is that same outer relay-data-frame -- its own to-device/from-device fields carry whatever addressing it received. See IncomingManageRequest's own fromDevice/toDevice doc comments for what each means and why neither is ever guessed from pairing state. A version.get request (VERSION_GET_VERB) is answered directly, right here, rather than ever reaching incomingManageRequests -- deliberately ungated (version.cddl), so no application needs to remember to register its own handler for it the way every other verb requires. */
   function applyManageRequest(
     frame: ManageRequestFrame,
     relayFrame?: RelayDataFrame,
@@ -321,6 +314,10 @@ function createSessionCore(
         emit();
       },
     };
+    if (isVersionGetCommand(frame.command.params)) {
+      void incoming.respond(versionGetOutcome());
+      return;
+    }
     emitIncomingManageRequest(incoming);
   }
 
@@ -362,6 +359,8 @@ function createSessionCore(
       applyManageResponse(frame);
     } else if (frame.type === "manage-request") {
       applyManageRequest(frame);
+    } else if (frame.type === "pong") {
+      pingRoundTrips.resolveOldest(clock.now());
     } else if (frame.type === "revocation-announce") {
       for (const entry of frame.entries) {
         emitRevocationEntry(entry);
@@ -420,6 +419,7 @@ function createSessionCore(
       return;
     }
     rejectPendingManageRequests("disconnected before a response arrived");
+    pingRoundTrips.rejectAll("disconnected before a pong arrived");
     if (reconnect !== null && attempt < reconnect.maxAttempts) {
       attempt += 1;
       const currentAttempt = attempt;
@@ -465,7 +465,7 @@ function createSessionCore(
     }
   }
 
-  /** Builds this side's own self-advert: this node's own directly-reachable addresses (wire-mesh#38), or none for a caller with nothing to offer (a browser client, which cannot accept inbound connections) -- either is an honest advert, not a stopgap. extensions merge onto peer-advert's own open `* tstr => any` tail -- the mechanism sendGossipUpdate uses to keep a gossiped fact (presence status, an accept/refuse policy, or any future domain's own) live over the connection's lifetime. Extensions are spread before the three mandatory fields (never after) so a caller-supplied key of the same name can never shadow them on the wire -- validateGossipExtensions already rejects that case loudly, but the field order is kept safe in its own right rather than relying solely on the guard staying in sync. */
+  /** Builds this side's own self-advert: this node's own directly-reachable addresses (wire-mesh#38), or none for a caller with nothing to offer (a browser client, which cannot accept inbound connections) -- either is an honest advert, not a stopgap. extensions merge onto peer-advert's own open `* tstr => any` tail -- the mechanism sendGossipUpdate uses to keep a gossiped fact (presence status, an accept/refuse policy, or any future domain's own) live over the connection's lifetime. Extensions and CORE_VERSION_GOSSIP_KEY are spread before the mandatory fields (never after) so a caller-supplied key of the same name can never shadow them on the wire -- validateGossipExtensions already rejects both collisions loudly, but the field order is kept safe in its own right rather than relying solely on the guard staying in sync. */
   function buildSelfAdvert(extensions?: Record<string, unknown>): GossipFrame {
     if (extensions !== undefined) {
       validateGossipExtensions(extensions);
@@ -475,6 +475,7 @@ function createSessionCore(
       peers: [
         {
           ...extensions,
+          [CORE_VERSION_GOSSIP_KEY]: OWN_VERSION,
           device: identity.deviceId,
           addresses: [...addresses],
           "snapshot-seconds": Math.floor(clock.now() / MS_PER_SECOND),
@@ -609,13 +610,24 @@ function createSessionCore(
         await doConnect(address, localDomains);
       },
       async sendPing(): Promise<void> {
-        if (connection === null || state.status !== "connected") {
-          throw new Error("not connected");
-        }
+        const link = requireConnectedLink();
         const ping: Frame = { type: "ping" };
         frameLog.push({ direction: "sent", frame: ping });
-        await connection.send(ping);
+        await link.send(ping);
         emit();
+      },
+      async sendPingMeasureRtt(timeoutMs?: number): Promise<number> {
+        const link = requireConnectedLink();
+        return pingRoundTrips.sendAndAwait(
+          clock.now(),
+          async () => {
+            const ping: Frame = { type: "ping" };
+            frameLog.push({ direction: "sent", frame: ping });
+            await link.send(ping);
+            emit();
+          },
+          timeoutMs,
+        );
       },
       setToken(token: CapabilityToken): void {
         currentToken = token;
@@ -627,9 +639,7 @@ function createSessionCore(
         token?: CapabilityToken,
         timeoutMs?: number,
       ): Promise<ManageOutcome> {
-        if (connection === null || state.status !== "connected") {
-          throw new Error("not connected");
-        }
+        requireConnectedLink();
         if (targetDevice !== undefined) {
           await ensureRelayPairing(targetDevice);
         }
@@ -658,9 +668,7 @@ function createSessionCore(
       async sendRevocationAnnounce(
         entries: readonly RevocationEntry[],
       ): Promise<void> {
-        if (connection === null || state.status !== "connected") {
-          throw new Error("not connected");
-        }
+        requireConnectedLink();
         const frame: RevocationAnnounceFrame = {
           type: "revocation-announce",
           entries: [...entries],
@@ -672,9 +680,7 @@ function createSessionCore(
       async sendGossipUpdate(
         extensions?: Record<string, unknown>,
       ): Promise<void> {
-        if (connection === null || state.status !== "connected") {
-          throw new Error("not connected");
-        }
+        requireConnectedLink();
         const frame = buildSelfAdvert(extensions);
         frameLog.push({ direction: "sent", frame });
         await transmit(frame, false);
@@ -683,9 +689,7 @@ function createSessionCore(
       async sendDataFrame(
         frame: DataHaveFrame | DataRequestFrame | DataEntriesFrame,
       ): Promise<void> {
-        if (connection === null || state.status !== "connected") {
-          throw new Error("not connected");
-        }
+        requireConnectedLink();
         frameLog.push({ direction: "sent", frame });
         await transmit(frame, false);
         emit();
@@ -703,6 +707,7 @@ function createSessionCore(
         rejectPendingManageRequests(
           "connection closed before a response arrived",
         );
+        pingRoundTrips.rejectAll("connection closed before a pong arrived");
         if (connection !== null) {
           await connection.close();
         }
@@ -730,13 +735,15 @@ export function createMeshSession(
   reconnect: ReconnectPolicy | null = null,
   /** This node's own directly-reachable "host:port" candidates (wire-mesh#38), advertised in this session's self-advert so other peers can attempt a direct connection instead of always falling back to a relay. Omit (or pass none) for a caller with nothing to offer, e.g. a browser client. */
   addresses: readonly string[] = [],
+  /** Fired for every peer-advert entry as it's applied to the directory, regardless of source -- the hook a gossip-expansion consumer (wire-mesh#187, gossip-expansion.ts's own createGossipExpansion) uses to observe newly-gossiped peers without becoming a second, competing consumer of this session's own single-reader events stream (each emitted SessionEvent wakes at most one waiter, so a second for-await loop over events would silently steal events from whichever consumer already reads it). Omit for a caller with no use for it, exactly today's behaviour. */
+  onPeerAdvert?: (advert: PeerAdvert) => void,
 ): MeshSession {
   const { session } = createSessionCore(
     identity,
     clock,
     reconnect,
     async (address) => transport.connect(address),
-    undefined,
+    onPeerAdvert,
     addresses,
   );
   return session;
@@ -761,6 +768,8 @@ export interface AcceptedMeshSessionOptions {
   ) => void | Promise<void>;
   /** Fired once this session's own connection.receive() stream ends -- the counterpart a RelayHub's own forgetConnection needs, since its registry is keyed by this exact Connection and must be cleaned up when it specifically ends. */
   onSessionEnd?: (connection: Readonly<Connection>) => void;
+  /** Fired for every peer-advert entry as it's applied to the directory, regardless of source -- alongside (never instead of) this session's own internal peerDeviceId resolution, which uses this identical hook internally and keeps working unchanged. See createMeshSession's own onPeerAdvert doc comment for why this exists: a gossip-expansion consumer (wire-mesh#187) needs to observe every advert without becoming a second, competing consumer of this session's own single-reader events stream. */
+  onPeerAdvert?: (advert: PeerAdvert) => void;
 }
 
 /** Wires an already-accepted Connection up as a full MeshSession, mirroring exactly what createMeshSession's own dial path does once a connection exists (send handshake, send self-advert, negotiate, consume frames) -- the wire-mesh#45 prerequisite agent-comms needs, since its peers both listen and dial rather than only ever dialing the way web-console's own console UI does. Reconnect does not apply here: if this connection drops, only the remote redialing and being accepted again produces a new connection, and therefore a new session -- there is nothing on this side to retry. */
@@ -782,11 +791,11 @@ export async function acceptMeshSession(
     null,
     null,
     (advert) => {
-      if (peerDeviceIdResolved) {
-        return;
+      if (!peerDeviceIdResolved) {
+        peerDeviceIdResolved = true;
+        resolvePeerDeviceId?.(advert.device);
       }
-      peerDeviceIdResolved = true;
-      resolvePeerDeviceId?.(advert.device);
+      options.onPeerAdvert?.(advert);
     },
     options.addresses,
     options.onFrame,
@@ -794,100 +803,4 @@ export async function acceptMeshSession(
   );
   await wireUpConnection(connection, options.label ?? "accepted", localDomains);
   return { ...session, peerDeviceId };
-}
-
-/** Reads exactly one frame off a freshly-accepted, bare connection and, if it's a manage-request, returns an IncomingManageRequest ready to hand to the same application-level dispatch logic session.incomingManageRequests already feeds elsewhere -- no handshake or gossip is ever read or sent on this connection (wire-mesh#38: the manage-request/manage-response exchange has no dependency on handshake state at the dispatch layer, confirmed against applyManageRequest/applyFrame above). respond() sends the manage-response directly and closes the connection, since a one-off request/response is this connection's entire purpose -- unlike a real MeshSession, there is nothing further to do with it afterwards. Resolves null, without closing the connection (that's the caller's call), for any other first frame or if the connection ends before one arrives: interpreting either case is a Transport.listen() caller's own business, e.g. peeking the first frame to route between this path and acceptMeshSession's own handshake path. */
-export async function acceptDirectManageRequest(
-  connection: Readonly<Connection>,
-): Promise<IncomingManageRequest | null> {
-  const iterator = connection.receive()[Symbol.asyncIterator]();
-  const result = await iterator.next();
-  if (result.done === true || result.value.type !== "manage-request") {
-    return null;
-  }
-  const frame = result.value;
-  return {
-    requestId: frame["request-id"],
-    command: frame.command,
-    scope: frame.scope,
-    ...(frame.token !== undefined ? { token: frame.token } : {}),
-    respond: async (outcome: ManageOutcome): Promise<void> => {
-      const response: ManageResponseFrame = {
-        type: "manage-response",
-        "request-id": frame["request-id"],
-        outcome,
-      };
-      await connection.send(response);
-      await connection.close();
-    },
-  };
-}
-
-async function waitForDirectManageResponse(
-  link: Readonly<Connection>,
-  requestId: number,
-): Promise<ManageOutcome> {
-  for await (const frame of link.receive()) {
-    if (frame.type === "manage-response" && frame["request-id"] === requestId) {
-      return frame.outcome;
-    }
-  }
-  throw new Error("connection closed before a response arrived");
-}
-
-export interface DirectManageRequestOptions {
-  /** Refuse the connection as a possible spoofing attempt if the transport's own authenticated Connection.peerDeviceId (never a value read off the wire -- see the Transport port's own doc comment) doesn't match this. Left unchecked when the transport gives no authenticated peerDeviceId at all (an unauthenticated transport, or a peer that presented no credential) -- the caller proceeds at its own risk in that case, exactly the same trust boundary Connection.peerDeviceId already documents for every other consumer of it. */
-  expectedPeerDeviceId?: DeviceId;
-  token?: CapabilityToken;
-  /** Omit to wait indefinitely, matching sendManageRequest's own default. */
-  timeoutMs?: number;
-}
-
-/** Sends exactly one manage-request over a fresh, bare connection with no handshake, negotiation, or gossip exchanged, and no session left behind afterwards -- the connection closes once the correlated response arrives, the wait times out, or the peer-device-id check below refuses it. For attempting a direct connection to a peer whose reachable address is already known (wire-mesh#38), as an alternative to routing the same request through a relay via an established MeshSession's own sendManageRequest(targetDevice, ...). Resolves the same ManageOutcome shape sendManageRequest does -- including `{ result: "error", code: "timeout" }` on a timeout, never a rejection -- so a caller can fall back to the relay path uniformly regardless of which kind of failure this returns for the non-spoofing cases; a peer-device-id mismatch is the one case that rejects outright, since it is not an ordinary reachability failure a relay fallback should silently paper over. */
-export async function sendDirectManageRequest(
-  transport: Readonly<Pick<Transport, "connect">>,
-  address: string,
-  command: ManageCommand,
-  scope: Readonly<CapabilityScope>,
-  options: Readonly<DirectManageRequestOptions> = {},
-): Promise<ManageOutcome> {
-  const link = await transport.connect(address);
-  if (
-    options.expectedPeerDeviceId !== undefined &&
-    link.peerDeviceId !== undefined &&
-    deviceIdToHex(link.peerDeviceId) !==
-      deviceIdToHex(options.expectedPeerDeviceId)
-  ) {
-    await link.close();
-    throw new Error(
-      "direct connection's authenticated peer-device-id does not match the expected target -- refusing as a possible spoofing attempt",
-    );
-  }
-  const requestId = 0;
-  const frame: ManageRequestFrame = {
-    type: "manage-request",
-    "request-id": requestId,
-    command,
-    scope,
-    ...(options.token !== undefined ? { token: options.token } : {}),
-  };
-  await link.send(frame);
-  const responsePromise = waitForDirectManageResponse(link, requestId);
-  let outcome: ManageOutcome;
-  if (options.timeoutMs === undefined) {
-    outcome = await responsePromise;
-  } else {
-    outcome = await Promise.race([
-      responsePromise,
-      new Promise<ManageOutcome>((resolve) => {
-        setTimeout(() => {
-          resolve({ result: "error", code: "timeout" });
-        }, options.timeoutMs);
-      }),
-    ]);
-    // Closing below ends the losing branch's own receive() iteration, which then throws -- caught here so that rejection is never left unhandled once this function has already settled via the timeout branch.
-    responsePromise.catch(() => undefined);
-  }
-  await link.close();
-  return outcome;
 }

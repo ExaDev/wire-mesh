@@ -10,6 +10,13 @@
       "wire_hex": "a164747970656470696e67"
     },
     {
+      "name": "pong_v1",
+      "message": {
+        "type": "pong"
+      },
+      "wire_hex": "a1647479706564706f6e67"
+    },
+    {
       "name": "close_v1_with_reason",
       "message": {
         "type": "close",
@@ -712,6 +719,36 @@
         ]
       },
       "wire_hex": "a26474797065737265766f636174696f6e2d616e6e6f756e636567656e747269657382845828a2613126613458201111111111111111111111111111111111111111111111111111111111111111a058b7a4666973737565725820111111111111111111111111111111111111111111111111111111111111111168746f6b656e2d696450010101010101010101010101010101016a6973737565722d6b6579a263616c67266a7075626c69632d6b6579584104aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb6a7265766f6b65642d61741b000001b17defb2a05840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff845828a2613126613458202222222222222222222222222222222222222222222222222222222222222222a058b7a4666973737565725820222222222222222222222222222222222222222222222222222222222222222268746f6b656e2d696450020202020202020202020202020202026a6973737565722d6b6579a263616c67266a7075626c69632d6b6579584104ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd6a7265766f6b65642d61741b000001b17defb6885840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    {
+      "name": "manage_request_v1_path_trace",
+      "message": {
+        "type": "manage-request",
+        "request-id": 25,
+        "command": {
+          "verb": "path:trace",
+          "params": {
+            "verb": "path.trace"
+          }
+        },
+        "scope": {
+          "kind": "node"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e64646e6f646567636f6d6d616e64a264766572626a706174683a747261636566706172616d73a164766572626a706174682e74726163656a726571756573742d69641819"
+    },
+    {
+      "name": "manage_response_v1_path_trace_ok_relayed",
+      "message": {
+        "type": "manage-response",
+        "request-id": 25,
+        "outcome": {
+          "result": "ok",
+          "relayed": true,
+          "hub-address": "203.0.113.9:4433"
+        }
+      },
+      "wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a366726573756c74626f6b6772656c61796564f56b6875622d61646472657373703230332e302e3131332e393a343433336a726571756573742d69641819"
     },
     {
       "name": "stream_data_v1_stdout_chunk",

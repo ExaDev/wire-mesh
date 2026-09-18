@@ -9,12 +9,14 @@ import { createPersistedWebCryptoIdentity } from "./adapters/web-crypto-identity
 import { createMessageStore } from "./message-store.js";
 import { App } from "./App.js";
 import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt.js";
+import { defaultHubAddress } from "./default-hub-address.js";
 
 const identity = await createPersistedWebCryptoIdentity(
   await createIndexedDbStorage(),
 );
 const clock = { now: () => Date.now() };
 const messageStore = createMessageStore(await createIndexedDbStorage());
+const address = defaultHubAddress(import.meta.env.DEV, window.location);
 
 const container = document.getElementById("root");
 if (container === null) {
@@ -24,7 +26,12 @@ if (container === null) {
 createRoot(container).render(
   <StrictMode>
     <MantineProvider>
-      <App identity={identity} clock={clock} messageStore={messageStore} />
+      <App
+        identity={identity}
+        clock={clock}
+        messageStore={messageStore}
+        defaultAddress={address}
+      />
       <PwaUpdatePrompt />
     </MantineProvider>
   </StrictMode>,

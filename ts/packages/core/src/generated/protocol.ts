@@ -21,7 +21,7 @@ export const bulkCancelSchema = z.lazy(() => z.object({
 }).catchall(z.unknown()));
 export const manageCommandParamsSchema = z.lazy(() => z.union([z.union([z.lazy(() => bulkOpenSchema), z.lazy(() => bulkResumeSchema), z.lazy(() => bulkCancelSchema)]), z.union([z.lazy(() => ptySpawnSchema), z.lazy(() => ptyWriteSchema), z.lazy(() => ptyResizeSchema), z.lazy(() => ptyKillSchema), z.lazy(() => procSpawnSchema), z.lazy(() => procSignalSchema), z.lazy(() => procKillSchema), z.lazy(() => execListSchema)]), z.object({
 
-}).catchall(z.unknown()), z.lazy(() => capabilityRequestSchema), z.lazy(() => capabilityGrantSchema), z.union([z.lazy(() => roomSendSchema), z.lazy(() => roomReadSchema), z.lazy(() => roomLeaveSchema), z.lazy(() => roomMembersSchema)]), z.union([z.lazy(() => roomJoinSchema), z.lazy(() => roomInviteSchema)]), z.lazy(() => roomRekeySchema), z.union([z.lazy(() => thresholdCommitSchema), z.lazy(() => thresholdSignSchema), z.lazy(() => thresholdAbortSchema)]), z.union([z.lazy(() => thresholdKeygenRound1Schema), z.lazy(() => thresholdKeygenRound2Schema), z.lazy(() => thresholdKeygenConfirmSchema)]), z.union([z.lazy(() => webrtcOfferSchema), z.lazy(() => webrtcAnswerSchema), z.lazy(() => webrtcIceCandidateSchema), z.lazy(() => sfuTrackMapSchema)])]));
+}).catchall(z.unknown()), z.lazy(() => capabilityRequestSchema), z.lazy(() => capabilityGrantSchema), z.lazy(() => pathTraceSchema), z.union([z.lazy(() => roomSendSchema), z.lazy(() => roomReadSchema), z.lazy(() => roomLeaveSchema), z.lazy(() => roomMembersSchema)]), z.union([z.lazy(() => roomJoinSchema), z.lazy(() => roomInviteSchema)]), z.lazy(() => roomRekeySchema), z.union([z.lazy(() => thresholdCommitSchema), z.lazy(() => thresholdSignSchema), z.lazy(() => thresholdAbortSchema)]), z.union([z.lazy(() => thresholdKeygenRound1Schema), z.lazy(() => thresholdKeygenRound2Schema), z.lazy(() => thresholdKeygenConfirmSchema)]), z.lazy(() => versionGetSchema), z.union([z.lazy(() => webrtcOfferSchema), z.lazy(() => webrtcAnswerSchema), z.lazy(() => webrtcIceCandidateSchema), z.lazy(() => sfuTrackMapSchema)])]));
 export const bulkDataFrameSchema = z.lazy(() => z.object({
   "type": z.literal("bulk-data"),
   "transfer-id": z.lazy(() => transferIdSchema),
@@ -118,11 +118,11 @@ export const execSessionInfoSchema = z.lazy(() => z.object({
   "argv": z.array(z.string()).optional(),
   "cwd": z.string().optional(),
 }));
-export const frameVariantSchema = z.lazy(() => z.union([z.lazy(() => handshakeFrameSchema), z.lazy(() => pingFrameSchema), z.lazy(() => closeFrameSchema), z.lazy(() => gossipFrameSchema), z.lazy(() => candidatesFrameSchema), z.lazy(() => syncPunchFrameSchema), z.lazy(() => observedAddressFrameSchema), z.lazy(() => relayOfferFrameSchema), z.lazy(() => relayConnectFrameSchema), z.lazy(() => relayDataFrameSchema), z.lazy(() => relayInboundFrameSchema), z.lazy(() => coordinatorFrameSchema), z.lazy(() => manageRequestFrameSchema), z.lazy(() => manageResponseFrameSchema), z.lazy(() => revocationAnnounceFrameSchema), z.lazy(() => streamDataFrameSchema), z.lazy(() => streamAckFrameSchema), z.lazy(() => streamEndFrameSchema), z.lazy(() => dataHaveFrameSchema), z.lazy(() => dataRequestFrameSchema), z.lazy(() => dataEntriesFrameSchema), z.lazy(() => bulkDataFrameSchema), z.lazy(() => bulkAckFrameSchema), z.lazy(() => bulkEndFrameSchema)]));
+export const frameVariantSchema = z.lazy(() => z.union([z.lazy(() => handshakeFrameSchema), z.lazy(() => pingFrameSchema), z.lazy(() => pongFrameSchema), z.lazy(() => closeFrameSchema), z.lazy(() => gossipFrameSchema), z.lazy(() => candidatesFrameSchema), z.lazy(() => syncPunchFrameSchema), z.lazy(() => observedAddressFrameSchema), z.lazy(() => relayOfferFrameSchema), z.lazy(() => relayConnectFrameSchema), z.lazy(() => relayDataFrameSchema), z.lazy(() => relayInboundFrameSchema), z.lazy(() => coordinatorFrameSchema), z.lazy(() => manageRequestFrameSchema), z.lazy(() => manageResponseFrameSchema), z.lazy(() => revocationAnnounceFrameSchema), z.lazy(() => streamDataFrameSchema), z.lazy(() => streamAckFrameSchema), z.lazy(() => streamEndFrameSchema), z.lazy(() => dataHaveFrameSchema), z.lazy(() => dataRequestFrameSchema), z.lazy(() => dataEntriesFrameSchema), z.lazy(() => bulkDataFrameSchema), z.lazy(() => bulkAckFrameSchema), z.lazy(() => bulkEndFrameSchema)]));
 export const frameSchema = z.lazy(() => z.lazy(() => frameVariantSchema));
 export const protocolVersionSchema = z.lazy(() => z.number().int().nonnegative());
 export const domainIdSchema = z.lazy(() => z.union([z.lazy(() => coreDomainNameSchema), z.lazy(() => namespacedDomainIdSchema), z.lazy(() => privateUseDomainIdSchema)]));
-export const coreDomainNameSchema = z.lazy(() => z.union([z.literal("core/management"), z.literal("core/exec"), z.literal("core/data"), z.literal("core/federation"), z.literal("core/webrtc"), z.literal("core/room"), z.literal("core/bulk")]));
+export const coreDomainNameSchema = z.lazy(() => z.union([z.literal("core/management"), z.literal("core/exec"), z.literal("core/data"), z.literal("core/federation"), z.literal("core/webrtc"), z.literal("core/room"), z.literal("core/bulk"), z.literal("core/version")]));
 export const namespacedDomainIdSchema = z.lazy(() => z.string().regex(new RegExp("[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+/[A-Za-z0-9_.-]+")));
 export const privateUseDomainIdSchema = z.lazy(() => z.string().regex(new RegExp("x-[A-Za-z0-9_.-]+")));
 export const handshakeFrameSchema = z.lazy(() => z.object({
@@ -192,6 +192,14 @@ export const revocationAnnounceFrameSchema = z.lazy(() => z.object({
   "type": z.literal("revocation-announce"),
   "entries": z.array(z.lazy(() => revocationEntrySchema)),
 }));
+export const pathTraceSchema = z.lazy(() => z.object({
+  "verb": z.literal("path.trace"),
+}));
+export const pathTraceOkSchema = z.lazy(() => z.object({
+  "result": z.literal("ok"),
+  "relayed": z.boolean(),
+  "hub-address": z.string().optional(),
+}).catchall(z.unknown()));
 export const roomPathSchema = z.lazy(() => z.union([z.lazy(() => ownerNamedRoomPathSchema), z.lazy(() => dmRoomPathSchema)]));
 export const deviceIdHexSchema = z.lazy(() => z.string().regex(new RegExp("[0-9a-f]{64}")));
 export const ownerNamedRoomPathSchema = z.lazy(() => z.string().regex(new RegExp("[0-9a-f]{64}/[A-Za-z0-9_-]+")));
@@ -368,6 +376,9 @@ export const tokenClaimsSchema = z.lazy(() => z.object({
 export const pingFrameSchema = z.lazy(() => z.object({
   "type": z.literal("ping"),
 }));
+export const pongFrameSchema = z.lazy(() => z.object({
+  "type": z.literal("pong"),
+}));
 export const closeFrameSchema = z.lazy(() => z.object({
   "type": z.literal("close"),
   "reason": z.string().optional(),
@@ -423,6 +434,9 @@ export const coordinatorFrameSchema = z.lazy(() => z.object({
   "term": z.number().int().nonnegative(),
   "coordinator": z.lazy(() => deviceIdSchema),
   "capacity-hint": z.number().int().nonnegative().optional(),
+}));
+export const versionGetSchema = z.lazy(() => z.object({
+  "verb": z.literal("version.get"),
 }));
 export const sfuTrackMapSchema = z.lazy(() => z.object({
   "verb": z.literal("webrtc.sfu-track-map"),
@@ -500,6 +514,8 @@ export type CapabilityGrant = z.infer<typeof capabilityGrantSchema>;
 export type RevocationClaims = z.infer<typeof revocationClaimsSchema>;
 export type RevocationEntry = z.infer<typeof revocationEntrySchema>;
 export type RevocationAnnounceFrame = z.infer<typeof revocationAnnounceFrameSchema>;
+export type PathTrace = z.infer<typeof pathTraceSchema>;
+export type PathTraceOk = z.infer<typeof pathTraceOkSchema>;
 export type RoomPath = z.infer<typeof roomPathSchema>;
 export type DeviceIdHex = z.infer<typeof deviceIdHexSchema>;
 export type OwnerNamedRoomPath = z.infer<typeof ownerNamedRoomPathSchema>;
@@ -545,6 +561,7 @@ export type CoseSign1 = z.infer<typeof coseSign1Schema>;
 export type CapabilityToken = z.infer<typeof capabilityTokenSchema>;
 export type TokenClaims = z.infer<typeof tokenClaimsSchema>;
 export type PingFrame = z.infer<typeof pingFrameSchema>;
+export type PongFrame = z.infer<typeof pongFrameSchema>;
 export type CloseFrame = z.infer<typeof closeFrameSchema>;
 export type PeerAdvert = z.infer<typeof peerAdvertSchema>;
 export type GossipFrame = z.infer<typeof gossipFrameSchema>;
@@ -558,6 +575,7 @@ export type RelayConnectFrame = z.infer<typeof relayConnectFrameSchema>;
 export type RelayDataFrame = z.infer<typeof relayDataFrameSchema>;
 export type RelayInboundFrame = z.infer<typeof relayInboundFrameSchema>;
 export type CoordinatorFrame = z.infer<typeof coordinatorFrameSchema>;
+export type VersionGet = z.infer<typeof versionGetSchema>;
 export type SfuTrackMap = z.infer<typeof sfuTrackMapSchema>;
 export type SfuTrackEntry = z.infer<typeof sfuTrackEntrySchema>;
 export type WebrtcOffer = z.infer<typeof webrtcOfferSchema>;

@@ -117,6 +117,8 @@ export class RelayHubDurableObject extends DurableObject<unknown> {
 
 interface Env {
   HUB: DurableObjectNamespace<RelayHubDurableObject>;
+  // web-console's built output (wrangler.toml's [assets] binding, ExaDev/wire-mesh#183); see wrangler.toml for why run_worker_first is scoped to exactly the two paths below rather than every request.
+  ASSETS: Fetcher;
 }
 
 const HUB_INSTANCE_NAME = "relay-hub";
@@ -127,6 +129,10 @@ export default {
       const stub = env.HUB.get(env.HUB.idFromName(HUB_INSTANCE_NAME));
       return stub.fetch(request);
     }
-    return healthResponse();
+    const { pathname } = new URL(request.url);
+    if (pathname === "/health") {
+      return healthResponse();
+    }
+    return env.ASSETS.fetch(request);
   },
 } satisfies ExportedHandler<Env>;

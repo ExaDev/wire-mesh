@@ -15,6 +15,13 @@ routes = [
 [durable_objects]
 bindings = [{ name = "HUB", class_name = "RelayHubDurableObject" }]
 
+# web-console's built output, served from this same origin (ExaDev/wire-mesh#183): opening mesh.exadev.io in a browser gets the actual console rather than only the bare health check. run_worker_first is scoped to exactly the two paths the Worker itself needs to decide on: "/" (a WebSocket upgrade there must reach the Durable Object, not the static index.html a plain GET to the same path would otherwise get) and "/health" (so it always reaches the Worker rather than depending on whether the request happens to carry a browser's Sec-Fetch-Mode: navigate header, which is the default heuristic every other path is left to use). Every other path (built JS/CSS, the manifest, the service worker, the icons) bypasses the Worker entirely and is billed only as a static asset request.
+[assets]
+directory = "../web-console/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/", "/health"]
+
 # Hibernation-capable (SQLite-backed) class, per current wrangler guidance for DOs that hold WebSockets.
 [[migrations]]
 tag = "v1"
