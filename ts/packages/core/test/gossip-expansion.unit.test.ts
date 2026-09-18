@@ -33,7 +33,11 @@ describe("createGossipExpansion", () => {
     const dial = vi.fn().mockResolvedValue(session);
     const onExpanded =
       vi.fn<
-        (candidate: GossipExpansionCandidate, session: MeshSession) => void
+        (
+          candidate: GossipExpansionCandidate,
+          address: string,
+          session: MeshSession,
+        ) => void
       >();
     const expansion = createGossipExpansion({
       selfDeviceId: testIdentityDeviceId,
@@ -54,6 +58,7 @@ describe("createGossipExpansion", () => {
     expect(dial).toHaveBeenCalledExactlyOnceWith(ADDRESS_A);
     expect(onExpanded).toHaveBeenCalledExactlyOnceWith(
       { device: deviceA, addresses: [ADDRESS_A] },
+      ADDRESS_A,
       session,
     );
   });
@@ -66,7 +71,11 @@ describe("createGossipExpansion", () => {
       dial: vi.fn(),
       onExpanded:
         vi.fn<
-          (candidate: GossipExpansionCandidate, session: MeshSession) => void
+          (
+            candidate: GossipExpansionCandidate,
+            address: string,
+            session: MeshSession,
+          ) => void
         >(),
     });
 
@@ -83,7 +92,11 @@ describe("createGossipExpansion", () => {
       dial: vi.fn(),
       onExpanded:
         vi.fn<
-          (candidate: GossipExpansionCandidate, session: MeshSession) => void
+          (
+            candidate: GossipExpansionCandidate,
+            address: string,
+            session: MeshSession,
+          ) => void
         >(),
     });
 
@@ -102,7 +115,11 @@ describe("createGossipExpansion", () => {
       dial,
       onExpanded:
         vi.fn<
-          (candidate: GossipExpansionCandidate, session: MeshSession) => void
+          (
+            candidate: GossipExpansionCandidate,
+            address: string,
+            session: MeshSession,
+          ) => void
         >(),
       onExpansionDeclined,
     });
@@ -128,7 +145,11 @@ describe("createGossipExpansion", () => {
       dial,
       onExpanded:
         vi.fn<
-          (candidate: GossipExpansionCandidate, session: MeshSession) => void
+          (
+            candidate: GossipExpansionCandidate,
+            address: string,
+            session: MeshSession,
+          ) => void
         >(),
     });
 
@@ -150,7 +171,11 @@ describe("createGossipExpansion", () => {
       .mockResolvedValueOnce(session);
     const onExpanded =
       vi.fn<
-        (candidate: GossipExpansionCandidate, session: MeshSession) => void
+        (
+          candidate: GossipExpansionCandidate,
+          address: string,
+          session: MeshSession,
+        ) => void
       >();
     const expansion = createGossipExpansion({
       selfDeviceId: testIdentityDeviceId,
@@ -168,6 +193,7 @@ describe("createGossipExpansion", () => {
     expect(dial).toHaveBeenNthCalledWith(2, ADDRESS_A2);
     expect(onExpanded).toHaveBeenCalledExactlyOnceWith(
       { device: deviceA, addresses: [ADDRESS_A, ADDRESS_A2] },
+      ADDRESS_A2,
       session,
     );
   });
@@ -189,7 +215,11 @@ describe("createGossipExpansion", () => {
       dial,
       onExpanded:
         vi.fn<
-          (candidate: GossipExpansionCandidate, session: MeshSession) => void
+          (
+            candidate: GossipExpansionCandidate,
+            address: string,
+            session: MeshSession,
+          ) => void
         >(),
       onExpansionFailed,
     });
@@ -218,7 +248,11 @@ describe("createGossipExpansion", () => {
       dial,
       onExpanded:
         vi.fn<
-          (candidate: GossipExpansionCandidate, session: MeshSession) => void
+          (
+            candidate: GossipExpansionCandidate,
+            address: string,
+            session: MeshSession,
+          ) => void
         >(),
       onExpansionFailed,
     });
@@ -244,7 +278,11 @@ describe("createGossipExpansion", () => {
       dial,
       onExpanded:
         vi.fn<
-          (candidate: GossipExpansionCandidate, session: MeshSession) => void
+          (
+            candidate: GossipExpansionCandidate,
+            address: string,
+            session: MeshSession,
+          ) => void
         >(),
     });
 

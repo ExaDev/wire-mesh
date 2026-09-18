@@ -19,9 +19,10 @@ export interface GossipExpansionOptions {
   ) => Promise<boolean> | boolean;
   /** Attempts one direct connection to `address`, resolving with a fully connected MeshSession or rejecting if the dial/handshake fails. Typically wraps createMeshSession(transport, identity, ...) followed by session.connect(address, localDomains). Called once per address of an approved candidate, in the order it advertised them, stopping at the first that succeeds -- the caller owns cleanup of any partially-established session behind a rejected dial, since this module never holds a reference to one that didn't resolve. */
   dial: (address: string) => Promise<MeshSession>;
-  /** Called once a candidate's dial succeeds, with the now-connected session so the caller can wire it into whatever it already does for its own sessions (render it, merge its directory, route messages). */
+  /** Called once a candidate's dial succeeds, with the specific address that connected (one of candidate.addresses, not necessarily the first -- earlier ones may have failed) and the now-connected session, so the caller can wire it into whatever it already does for its own sessions (render it, merge its directory, route messages). */
   onExpanded: (
     candidate: Readonly<GossipExpansionCandidate>,
+    address: string,
     session: MeshSession,
   ) => void;
   /** Called when shouldExpand itself declines a candidate. */
@@ -67,7 +68,7 @@ export function createGossipExpansion(
     for (const address of candidate.addresses) {
       try {
         const session = await options.dial(address);
-        options.onExpanded(candidate, session);
+        options.onExpanded(candidate, address, session);
         return;
       } catch (error) {
         errors.push(toError(error));
