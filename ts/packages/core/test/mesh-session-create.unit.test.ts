@@ -21,6 +21,7 @@ import {
   EVENTS_THROUGH_TIMEOUT,
   FakeConnection,
   MS_PER_SECOND,
+  OWN_VERSION,
   SNAPSHOT_FIRST,
   SNAPSHOT_SECOND,
   SNAPSHOT_UPDATED,
@@ -87,6 +88,7 @@ describe("createMeshSession", () => {
           device: testIdentityDeviceId,
           addresses: [],
           "snapshot-seconds": Math.floor(TEST_CLOCK_NOW_MS / MS_PER_SECOND),
+          "wire-mesh/version": OWN_VERSION,
         },
       ],
     } satisfies GossipFrame);
@@ -131,6 +133,7 @@ describe("createMeshSession", () => {
           addresses: [],
           "snapshot-seconds": Math.floor(TEST_CLOCK_NOW_MS / MS_PER_SECOND),
           "presence/status": "idle",
+          "wire-mesh/version": OWN_VERSION,
         },
       ],
     } satisfies GossipFrame);
@@ -212,6 +215,19 @@ describe("createMeshSession", () => {
     await session.close();
   });
 
+  it("sendGossipUpdate rejects a caller extension trying to use the wire-mesh/version key wire-mesh-core reserves for its own self-advert", async () => {
+    const { transport } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/data"]);
+
+    await expect(
+      session.sendGossipUpdate({ "wire-mesh/version": "9.9.9" }),
+    ).rejects.toThrow(
+      /"wire-mesh\/version" is reserved for wire-mesh-core's own self-reported version/,
+    );
+    await session.close();
+  });
+
   it("sendGossipUpdate rejects an extension key with a domain-qualified prefix but trailing garbage after it", async () => {
     const { transport } = fakeTransport();
     const session = createMeshSession(transport, testIdentity, testClock);
@@ -249,6 +265,7 @@ describe("createMeshSession", () => {
           device: testIdentityDeviceId,
           addresses: [],
           "snapshot-seconds": Math.floor(TEST_CLOCK_NOW_MS / MS_PER_SECOND),
+          "wire-mesh/version": OWN_VERSION,
         },
       ],
     } satisfies GossipFrame);

@@ -87,6 +87,10 @@
       "import": "./dist/domain/device-id.mjs",
       "require": "./dist/domain/device-id.cjs"
     },
+    "./domain/direct-manage-request": {
+      "import": "./dist/domain/direct-manage-request.mjs",
+      "require": "./dist/domain/direct-manage-request.cjs"
+    },
     "./domain/erasure-coding": {
       "import": "./dist/domain/erasure-coding.mjs",
       "require": "./dist/domain/erasure-coding.cjs"
