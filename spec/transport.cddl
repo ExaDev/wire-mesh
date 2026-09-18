@@ -12,6 +12,8 @@
 ; never part of the core protocol.
 
 ping-frame  = { type: "ping" }
+; A bare echo of ping-frame (wire-mesh#181), sent by a hub in reply to a ping it receives -- deliberately not itself a request/response pair with any correlation id, matching ping-frame's own no-id shape: a connection carries at most one outstanding ping/pong exchange's worth of ambiguity at a time, the same tolerance an ordinary ICMP-style liveness probe already accepts. This is what lets a client isolate its own sender-to-hub leg of a relayed round trip: time a bare ping/pong over the same connection a relayed manage-request/response travelled, then subtract that leg from path.trace's own end-to-end RTT (core/management's path:trace, spec/management.cddl) to recover the hub-to-target leg. Deliberately below the manage-command/capability layer entirely, the same reasoning ping-frame and gossip-frame already exempt themselves from webrtc.cddl's own comment on why they carry no comparable receiver-side effect worth gating.
+pong-frame  = { type: "pong" }
 close-frame = { type: "close", ? reason: tstr }
 
 ; The extension tail mirrors token-claims' own `* tstr => any` (tokens.cddl)

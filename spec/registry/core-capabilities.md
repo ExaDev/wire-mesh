@@ -16,5 +16,6 @@ Append-only. A bare `subsystem:action` capability verb is spec-owned and matched
 | `bulk:write` | any — left open to the calling domain (e.g. `folder` for a `core/exec` stdout capture) | `core/bulk` | active |
 | `bulk:read` | any — left open to the calling domain | `core/bulk` | active |
 | `group:member` | `group` | `core/management` | active |
+| `path:trace` | `node` — carried but never checked; path.trace verifies no scope or token at all | `core/management` | active |
 
 Third parties do not add entries here — see `namespaced-capability` in `tokens.cddl` for the registrant-owned namespace anyone else uses instead.

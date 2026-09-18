@@ -16,6 +16,7 @@
 
 $frame-variant /= handshake-frame
 $frame-variant /= ping-frame
+$frame-variant /= pong-frame
 $frame-variant /= close-frame
 $frame-variant /= gossip-frame
 $frame-variant /= candidates-frame
