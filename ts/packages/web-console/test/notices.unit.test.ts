@@ -118,6 +118,7 @@ function fakeSession(): MeshSession & {
     setToken: () => unimplemented("setToken"),
     sendRevocationAnnounce: () => unimplemented("sendRevocationAnnounce"),
     sendGossipUpdate: () => unimplemented("sendGossipUpdate"),
+    getTopologyPeers: () => unimplemented("getTopologyPeers"),
     close: async () => Promise.resolve(),
     sendDataFrame: async (frame: Frame) => {
       sent.push(frame);

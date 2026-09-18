@@ -150,6 +150,7 @@ function createFakeSession(): FakeSession {
     setToken: () => undefined,
     sendRevocationAnnounce: async (): Promise<void> => Promise.resolve(),
     sendGossipUpdate: async (): Promise<void> => Promise.resolve(),
+    getTopologyPeers: () => ({ direct: [], relayed: [] }),
     sendDataFrame: async (): Promise<void> => Promise.resolve(),
     sendManageRequest: async (command): Promise<ManageOutcome> => {
       sent.push(command);
