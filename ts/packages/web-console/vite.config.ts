@@ -2,9 +2,11 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { vanillaExtractPlugin } from "@vanilla-extract/vite-plugin";
+import { VitePWA } from "vite-plugin-pwa";
 import type { AcceptedPlugin } from "postcss";
 import postcssPresetMantine from "postcss-preset-mantine";
 import postcssSimpleVars from "postcss-simple-vars";
+import { pwaManifest } from "./src/pwa-manifest.js";
 
 // Mantine's own breakpoint variables ($mantine-breakpoint-*), consumed by postcss-simple-vars below -- Mantine's own docs recommend a standalone postcss.config file for these, but a single Vite project has no other consumer of this PostCSS pipeline, so it lives here instead of as a second config file.
 const MANTINE_BREAKPOINTS = {
@@ -40,7 +42,23 @@ function invokePostcssFactory(
 
 // No dev proxy: the console takes full ws:// URLs and WebSocket connections are not same-origin-restricted, so `vite` (dev) serves the page and the page dials the node directly.
 export default defineConfig({
-  plugins: [react(), vanillaExtractPlugin()],
+  plugins: [
+    react(),
+    vanillaExtractPlugin(),
+    // registerType "prompt" rather than "autoUpdate": this console holds live WebSocket/WebRTC sessions, and an auto-reloading SW update would silently drop them mid-use. src/components/PwaUpdatePrompt.tsx surfaces the update instead and lets the operator choose when to reload. includeAssets covers the favicon, which isn't itself a manifest icon so the base globPatterns wouldn't otherwise know to precache it as an app-shell asset.
+    VitePWA({
+      registerType: "prompt",
+      includeAssets: ["favicon.svg"],
+      manifest: pwaManifest,
+      workbox: {
+        // This is a single-route SPA (see App.tsx), so any navigation while offline should still resolve to the cached shell rather than a network error.
+        navigateFallback: "index.html",
+      },
+      devOptions: {
+        enabled: true,
+      },
+    }),
+  ],
   css: {
     postcss: {
       plugins: [

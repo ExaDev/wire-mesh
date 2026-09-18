@@ -5,6 +5,7 @@
   },
   "extends": "./tsconfig.json",
   "include": [
+    "src/vite-env.d.ts",
     "vite.config.ts",
     "playwright.config.ts",
     "eslint.config.ts",

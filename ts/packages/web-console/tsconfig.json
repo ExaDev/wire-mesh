@@ -11,8 +11,7 @@
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
     "strict": true,
-    "target": "ES2024",
-    "types": ["vite/client"]
+    "target": "ES2024"
   },
   "include": ["src", "live-check"]
 }
