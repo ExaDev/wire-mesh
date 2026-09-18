@@ -1,6 +1,6 @@
 // Top-level layout: the connect form, the list of currently open relay connection panels, and every peer-to-peer room-messaging panel. Owns only the set of live sessions and negotiators -- everything about rendering one relay session's own state lives in ConnectionPanel, and everything about a room session's own state lives in the useRoomMessaging hook plus RoomPanel.
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Button,
   Checkbox,
@@ -22,12 +22,15 @@ import { ConnectionPanel } from "./components/ConnectionPanel.js";
 import { RoomPanel } from "./components/RoomPanel.js";
 import { useRoomMessaging } from "./hooks/use-room-messaging.js";
 import type { MessageStore } from "./message-store.js";
+import { discoverLocalNode as discoverLocalNodeDefault } from "./discover-local-node.js";
 import { appShell } from "./App.css.js";
 
 export interface AppProps {
   identity: IdentityPort;
   clock: Clock;
   messageStore: MessageStore;
+  /** Attempts same-device node auto-discovery once, on mount. Defaults to the real `discoverLocalNode` (a no-op when this console is served from a loopback origin, a real localhost probe otherwise); tests inject a fake to avoid depending on `location`/`fetch`. */
+  discoverLocalNode?: () => Promise<string | undefined>;
 }
 
 const DEFAULT_ADDRESS = "ws://localhost:8787";
@@ -58,6 +61,7 @@ export function App({
   identity,
   clock,
   messageStore,
+  discoverLocalNode = discoverLocalNodeDefault,
 }: Readonly<AppProps>): React.JSX.Element {
   const [address, setAddress] = useState(DEFAULT_ADDRESS);
   const [domains, setDomains] = useState<string[]>(DEFAULT_DOMAINS);
@@ -70,29 +74,69 @@ export function App({
     attachRef.current = roomMessaging.attach;
   }, [roomMessaging.attach]);
 
+  // connectTo/connectionsRef exist so both the manual connect form and the mount-time auto-discovery effect below share one connection path -- connectionsRef mirrors `connections` state so connectTo's duplicate-address check (and the effect calling it) always sees the latest entries without depending on `connections` itself and re-running on every connection change.
+  const connectionsRef = useRef(connections);
+  useEffect(() => {
+    connectionsRef.current = connections;
+  }, [connections]);
+
+  const connectTo = useCallback(
+    (targetAddress: string): void => {
+      // Re-connecting to an address that already has a live entry is a no-op: an entry is removed either by its own panel's close button, or automatically when its connect attempt fails, so reconnecting the same address after a failure starts a fresh attempt, but reconnecting while still connecting/connected/reconnecting is a no-op rather than a silent duplicate.
+      if (
+        connectionsRef.current.some((entry) => entry.address === targetAddress)
+      ) {
+        return;
+      }
+      const session = createMeshSession(
+        createBrowserTransport(),
+        identity,
+        clock,
+        reconnectPolicy,
+      );
+      const negotiator = createWebrtcNegotiator(session, {
+        identity,
+        clock,
+        onIncomingConnection: (connection: Readonly<Connection>) => {
+          void attachRef.current(connection);
+        },
+      });
+      setConnections((current) => [
+        ...current,
+        { address: targetAddress, session, negotiator },
+      ]);
+      void session.connect(targetAddress, domains).catch(() => {
+        // ConnectionPanel's own render of the session's events already surfaces a connect failure via its status line; nothing further to do here beyond letting the entry remain (its own close button still works on a failed session).
+      });
+    },
+    [identity, clock, domains],
+  );
+
+  // discoverLocalNode is a fresh closure every render (or a caller-supplied fake in tests), so the mount-only effect below reads it through a ref (the same pattern attachRef already uses above) rather than listing it as an effect dependency, which would either re-run the probe every render or need a lint suppression. connectTo is memoized above, so its own ref-update effect settles once its real dependencies stop changing.
+  const connectToRef = useRef(connectTo);
+  useEffect(() => {
+    connectToRef.current = connectTo;
+  }, [connectTo]);
+  const discoverLocalNodeRef = useRef(discoverLocalNode);
+  useEffect(() => {
+    discoverLocalNodeRef.current = discoverLocalNode;
+  }, [discoverLocalNode]);
+
+  // Runs exactly once per mount: a ref guard (rather than an empty dependency array alone) survives React StrictMode's deliberate double-invoke of effects in development, so a same-device node never gets probed or dialled twice.
+  const autoDiscoverRanRef = useRef(false);
+  useEffect(() => {
+    if (autoDiscoverRanRef.current) return;
+    autoDiscoverRanRef.current = true;
+    void discoverLocalNodeRef.current().then((discovered) => {
+      if (discovered !== undefined) {
+        connectToRef.current(discovered);
+      }
+    });
+  }, []);
+
   function handleSubmit(event: React.SubmitEvent<HTMLFormElement>): void {
     event.preventDefault();
-    // Re-submitting an address that already has a live entry is a no-op: an entry is removed either by its own panel's close button, or automatically when its connect attempt fails, so resubmitting the same address after a failure starts a fresh attempt, but resubmitting while still connecting/connected/reconnecting is a no-op rather than a silent duplicate.
-    if (connections.some((entry) => entry.address === address)) {
-      return;
-    }
-    const session = createMeshSession(
-      createBrowserTransport(),
-      identity,
-      clock,
-      reconnectPolicy,
-    );
-    const negotiator = createWebrtcNegotiator(session, {
-      identity,
-      clock,
-      onIncomingConnection: (connection: Readonly<Connection>) => {
-        void attachRef.current(connection);
-      },
-    });
-    setConnections((current) => [...current, { address, session, negotiator }]);
-    void session.connect(address, domains).catch(() => {
-      // ConnectionPanel's own render of the session's events already surfaces a connect failure via its status line; nothing further to do here beyond letting the entry remain (its own close button still works on a failed session).
-    });
+    connectTo(address);
   }
 
   function handleClose(target: Readonly<ConnectionEntry>): void {
