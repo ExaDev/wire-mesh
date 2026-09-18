@@ -1,0 +1,8 @@
+; core/version — a manage-command letting a peer ask for this node's actual, currently-running wire-mesh-core version right now, rather than whatever value was last gossiped in peer-advert's own "wire-mesh/version" extension (transport.cddl's own open extension tail; see mesh-session.ts's buildSelfAdvert). A node that has been running a long time, or that upgraded without reconnecting, could otherwise only ever show a stale gossiped value with no way to bust the cache. Rides the existing manage-request/manage-response frame kinds; no new frame kind needed.
+;
+; Deliberately ungated: exactly as sensitive as what peer-advert's own "wire-mesh/version" key already broadcasts unconditionally via gossip, so a receiver answers regardless of the enclosing manage-request-frame's own scope/token. There is consequently no entry for this in registry/core-capabilities.md — that registry is for capabilities a verifier actually checks a scope/token against, and this one is never checked. "version:get" below exists only to satisfy manage-command.verb's own capability-verb grammar (a mandatory field); a caller may pass any capability-scope value (e.g. { kind: "node" }) since the receiving side never inspects it for this verb.
+
+$manage-command-params /= version-get
+
+version-get = { verb: "version.get" }
+; A manage-response-frame answering version.get carries manage-ok extended with `version: tstr` -- this node's own actual, currently-running wire-mesh-core version, read fresh at response time, never a cached or previously-gossiped value -- using manage-ok's own open {* tstr => any} tail rather than a dedicated result type, the same pattern exec-list's own exec-session-info result already uses.
