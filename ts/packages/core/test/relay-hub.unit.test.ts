@@ -184,14 +184,13 @@ describe("createRelayHub", () => {
     await Promise.all(handling);
   });
 
-  it("ignores relay-data from a connection with no pairing, and drops unrelated frames", async () => {
+  it("ignores relay-data from a connection with no pairing, and drops unrelated frames -- ping excepted, which gets its own pong (see relay-hub-ping-pong.unit.test.ts)", async () => {
     const hub = createRelayHub();
     const a = new FakeConnection();
     const handling = hub.handleConnection(a.connection);
 
     a.push(gossipFor(deviceA));
     a.push({ type: "relay-data", payload: orphanPayload });
-    a.push({ type: "ping" });
     a.push({ type: "handshake", version: 1, domains: ["core/data"] });
     await tick();
 
