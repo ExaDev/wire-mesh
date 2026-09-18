@@ -47,6 +47,50 @@ pub(crate) fn ping_from(d: &mut Decoder<'_>) -> Result<PingFrame, DecodeError> {
     Ok(PingFrame)
 }
 
+/// `pong-frame = { type: "pong" }` (wire-mesh#181) -- a bare echo of
+/// ping-frame, sent by a hub in reply to a ping it receives, deliberately
+/// below the manage-command/capability layer entirely. This crate carries
+/// only the wire shape; the Rust session runtime
+/// (`wire_mesh_core::domain::session`) deliberately has no relay/hub role
+/// at all (see that module's own scope comment), so nothing here answers a
+/// ping with a pong -- that behaviour lives in the TypeScript core's
+/// `relay-hub.ts` only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PongFrame;
+
+impl PongFrame {
+    pub const TYPE: &'static str = "pong";
+}
+
+impl Encode<()> for PongFrame {
+    fn encode<W: minicbor::encode::Write>(
+        &self,
+        e: &mut Encoder<W>,
+        _ctx: &mut (),
+    ) -> Result<(), minicbor::encode::Error<W::Error>> {
+        e.map(1)?;
+        e.str("type")?.str(Self::TYPE)?;
+        e.ok()
+    }
+}
+
+impl Decode<'_, ()> for PongFrame {
+    fn decode(d: &mut Decoder<'_>, _ctx: &mut ()) -> Result<Self, minicbor::decode::Error> {
+        pong_from(d).map_err(minicbor::decode::Error::custom)
+    }
+}
+
+pub(crate) fn pong_from(d: &mut Decoder<'_>) -> Result<PongFrame, DecodeError> {
+    let mut map = strict::MapDecoder::new(d)?;
+    while let Some(key) = map.next_key(d)? {
+        match key {
+            "type" => strict::literal(d, PongFrame::TYPE)?,
+            other => return Err(DecodeError::UnknownKey(other.to_owned())),
+        }
+    }
+    Ok(PongFrame)
+}
+
 /// `close-frame = { type: "close", ? reason }`.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CloseFrame {
@@ -778,6 +822,15 @@ mod tests {
         assert_eq!(
             bytes,
             [0xa1, 0x64, b't', b'y', b'p', b'e', 0x64, b'p', b'i', b'n', b'g']
+        );
+    }
+
+    #[test]
+    fn pong_encodes_exactly() {
+        let bytes = round_trip(PongFrame);
+        assert_eq!(
+            bytes,
+            [0xa1, 0x64, b't', b'y', b'p', b'e', 0x64, b'p', b'o', b'n', b'g']
         );
     }
 
