@@ -11,5 +11,6 @@ Append-only. A `core/*` domain name is spec-owned and defined in `handshake.cddl
 | `core/webrtc` | `webrtc.cddl` | active |
 | `core/room` | `room.cddl` | active |
 | `core/bulk` | `bulk.cddl` | active |
+| `core/version` | `version.cddl` | active |
 
 Third parties do not add entries here — see `namespaced-domain-id` in `handshake.cddl` for the registrant-owned namespace anyone else uses instead.
