@@ -30,9 +30,10 @@ use tokio::sync::{mpsc, oneshot, Mutex as AsyncMutex};
 use tokio::task::AbortHandle;
 use wire_mesh_wire::handshake::{DomainId, HandshakeFrame, ProtocolVersion};
 use wire_mesh_wire::management::{
-    ManageCommand, ManageError, ManageOutcome, ManageRequestFrame, ManageResponseFrame,
+    ManageCommand, ManageError, ManageOk, ManageOutcome, ManageRequestFrame, ManageResponseFrame,
 };
 use wire_mesh_wire::tokens::{CapabilityScope, CoseSign1};
+use wire_mesh_wire::value::{CanonicalMap, CborValue};
 use wire_mesh_wire::Frame;
 
 use crate::domain::handshake::{negotiate, SUPPORTED_PROTOCOL_VERSION};
@@ -111,6 +112,39 @@ impl HandlerRegistry {
 
     fn get(&self, verb: &str) -> Option<Arc<dyn ManageRequestHandler>> {
         self.handlers.get(verb).cloned()
+    }
+}
+
+/// The core/version domain's own version-get verb (issue #179), answered with
+/// this crate's actual, currently-compiled version -- `CARGO_PKG_VERSION` is
+/// resolved from `Cargo.toml`'s own `version.workspace = true` at compile
+/// time, so unlike the TypeScript core's own equivalent (which has to read
+/// its `package.json` at runtime, since semantic-release/npm rewrites that
+/// file only in the tarball it publishes, after the package has already
+/// been built) there is no build-vs-publish staleness risk here: this crate's
+/// `Cargo.toml` version IS the version `cargo publish` ships.
+///
+/// Deliberately NOT auto-answered the way `mesh-session.ts`'s own
+/// `applyManageRequest` bypasses `incomingManageRequests` for this same verb:
+/// this runtime dispatches every manage-request through `HandlerRegistry`
+/// with no built-in behaviour for any verb, gossip included (see this
+/// module's own doc comment), so a universal, bypass-the-registry special
+/// case here would be the one inconsistent exception to that design rather
+/// than a parity fix. A consumer that wants version.get support registers
+/// this handler explicitly, the same way it registers any other:
+/// `HandlerRegistry::new().register("core:version", Arc::new(VersionHandler))`.
+pub struct VersionHandler;
+
+#[async_trait::async_trait]
+impl ManageRequestHandler for VersionHandler {
+    async fn handle(&self, _request: IncomingManageRequest) -> ManageOutcome {
+        let mut extra = CanonicalMap::new();
+        // A single insert into a map that was just created empty can never hit CanonicalMap::insert's own only failure case (a duplicate key), so there is nothing for this to meaningfully handle -- discarded rather than unwrapped/expected, since this crate denies both outside tests.
+        let _ = extra.insert(
+            "version".to_owned(),
+            CborValue::Text(env!("CARGO_PKG_VERSION").to_owned()),
+        );
+        ManageOutcome::Ok(ManageOk { extra })
     }
 }
 
@@ -585,6 +619,30 @@ mod tests {
         match outcome {
             ManageOutcome::Ok(ok) => {
                 assert!(ok.extra.get(&"echoed-request-id".to_owned()).is_some());
+            }
+            ManageOutcome::Error(error) => panic!("expected ok, got {error:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_registered_version_handler_answers_with_this_crate_s_own_compiled_version() {
+        let (a, b) = tcp_pair().await;
+        let registry = HandlerRegistry::new().register("core:version", Arc::new(VersionHandler));
+        let (session_a, _events_a) = Session::accept(a, [], HandlerRegistry::new())
+            .await
+            .expect("accept a");
+        let (_session_b, _events_b) = Session::accept(b, [], registry).await.expect("accept b");
+
+        let outcome = session_a
+            .send_manage_request(json_command("core:version"), scope(), None, None)
+            .await
+            .expect("send_manage_request");
+        match outcome {
+            ManageOutcome::Ok(ok) => {
+                assert_eq!(
+                    ok.extra.get(&"version".to_owned()),
+                    Some(&CborValue::Text(env!("CARGO_PKG_VERSION").to_owned())),
+                );
             }
             ManageOutcome::Error(error) => panic!("expected ok, got {error:?}"),
         }
