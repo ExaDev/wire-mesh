@@ -655,6 +655,33 @@ path-trace = { verb: "path.trace" }
 ; reach it) without asking anyone, which is why only the receiver's half
 ; ever needs to travel on the wire at all.
 path-trace-ok = { result: "ok", relayed: bool, ? "hub-address": tstr, * tstr => any }
+
+; Topology introspection (wire-mesh#180): a node's own live connection edges
+; -- which peer device-id it holds a direct connection to right now, and
+; which relay pairings it currently holds and via which hub -- self-
+; advertised under the gossiped `topology/peers` extension key (peer-
+; advert's own open tail) for a cheap, possibly-stale answer, or fetched
+; fresh on demand via `topology.get` below. `direct` and `relayed[].via`
+; name a peer/hub by device-id only when one is actually known: a session
+; dialled straight into an anonymous, identity-less relay hub (wire-mesh-
+; node/cloudflare-hub's own bare RelayHub, which never gossips a self-advert
+; of its own) has no device-id to report for its own direct connection, so
+; this is honestly empty rather than guessed from whichever third-party
+; advert the hub happens to forward first as gossip catch-up.
+topology-peers = {
+  direct: [* device-id],
+  relayed: [* { device: device-id, ? via: device-id }],
+}
+
+; Ungated, the same reasoning `version.get` (wire-mesh#179) already
+; establishes for itself: topology is not a secret, and requiring a
+; capability grant just to ask a node what it is currently connected to
+; would need bootstrapping a token for no security benefit. A manage-
+; response-frame answering topology.get carries manage-ok extended with
+; `peers: topology-peers` -- the live, cache-bust answer; the gossiped
+; `topology/peers` extension above is the cheap, possibly-stale one.
+$manage-command-params /= topology-get
+topology-get = { verb: "topology.get" }
 ; core/room — communication membership: a set of devices, regardless of who
 ; owns them, that may send and receive messages together. Unifies what would
 ; otherwise be two primitives (a named, multi-member room and a two-party
