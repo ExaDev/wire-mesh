@@ -6,6 +6,8 @@ import { deviceIdToHex } from "./device-id.js";
 export interface RelayPairings {
   has: (device: DeviceId) => boolean;
   add: (device: DeviceId) => void;
+  /** Every device currently paired, in establishment order -- the topology self-advertisement's own read of this set (wire-mesh#180), which needs to enumerate pairings rather than just test one. */
+  list: () => DeviceId[];
 }
 
 export function createRelayPairings(): RelayPairings {
@@ -15,5 +17,6 @@ export function createRelayPairings(): RelayPairings {
     add: (device) => {
       established.set(deviceIdToHex(device), device);
     },
+    list: () => [...established.values()],
   };
 }
