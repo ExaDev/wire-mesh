@@ -89,6 +89,7 @@ describe("createMeshSession", () => {
           addresses: [],
           "snapshot-seconds": Math.floor(TEST_CLOCK_NOW_MS / MS_PER_SECOND),
           "wire-mesh/version": OWN_VERSION,
+          "topology/peers": { direct: [], relayed: [] },
         },
       ],
     } satisfies GossipFrame);
@@ -134,6 +135,7 @@ describe("createMeshSession", () => {
           "snapshot-seconds": Math.floor(TEST_CLOCK_NOW_MS / MS_PER_SECOND),
           "presence/status": "idle",
           "wire-mesh/version": OWN_VERSION,
+          "topology/peers": { direct: [], relayed: [] },
         },
       ],
     } satisfies GossipFrame);
@@ -190,6 +192,17 @@ describe("createMeshSession", () => {
     await expect(
       session.sendGossipUpdate({ presence: "idle" }),
     ).rejects.toThrow(/must be domain-qualified/);
+    await session.close();
+  });
+
+  it("sendGossipUpdate rejects an extension key that collides with the session-managed topology/peers field", async () => {
+    const { transport } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    await session.connect("ws://node", ["core/data"]);
+
+    await expect(
+      session.sendGossipUpdate({ "topology/peers": { direct: [] } }),
+    ).rejects.toThrow(/collides with a session-managed gossip field/);
     await session.close();
   });
 
@@ -266,6 +279,7 @@ describe("createMeshSession", () => {
           addresses: [],
           "snapshot-seconds": Math.floor(TEST_CLOCK_NOW_MS / MS_PER_SECOND),
           "wire-mesh/version": OWN_VERSION,
+          "topology/peers": { direct: [], relayed: [] },
         },
       ],
     } satisfies GossipFrame);

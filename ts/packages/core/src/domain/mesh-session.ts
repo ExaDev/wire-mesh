@@ -20,12 +20,17 @@ import {
   type RelayDataFrame,
   type RevocationAnnounceFrame,
   type RevocationEntry,
+  type TopologyPeers,
 } from "../generated/protocol.js";
 import { SUPPORTED_PROTOCOL_VERSION, negotiate } from "./handshake.js";
 import { deviceIdToHex } from "./device-id.js";
 import { createRelayPairings } from "./relay-pairing.js";
 import { createPingRoundTrips } from "./ping-round-trips.js";
-import { validateGossipExtensions } from "./gossip-extensions.js";
+import { computeTopologyPeers as computeTopologyPeersFromInputs } from "./topology-snapshot.js";
+import {
+  TOPOLOGY_PEERS_GOSSIP_KEY,
+  validateGossipExtensions,
+} from "./gossip-extensions.js";
 import type { Clock } from "../ports/clock.js";
 import type { IdentityPort } from "../ports/identity.js";
 import type { Connection, Transport } from "../ports/transport.js";
@@ -114,6 +119,8 @@ export interface MeshSession {
   ) => Promise<void>;
   /** Re-sends this side's own self-advert with a fresh snapshot-seconds and, when given, extensions merged onto peer-advert's own open `* tstr => any` tail -- the mechanism a caller uses to keep gossiped presence status (or any other advertised fact) live over a connection's lifetime, since the initial self-advert wireUpConnection sends at connect time is otherwise never repeated. Callers own their own re-advertisement cadence (there is no timer inside MeshSession itself, matching its own DOM-free, fully unit-testable design); a caller not calling this again after connecting is exactly today's existing gossip-once-on-connect behaviour. */
   sendGossipUpdate: (extensions?: Record<string, unknown>) => Promise<void>;
+  /** This session's own current topology snapshot -- the identical `topology/peers` value buildSelfAdvert merges into every gossiped self-advert (wire-mesh#180), read back directly rather than only from a possibly-stale gossiped copy elsewhere in the mesh. The live, cache-bust half of the cached-vs-live split `topology.get` itself establishes: a caller answering an incoming topology.get manage-request (see topology.ts's createTopologyGetHandler) calls this to build the response. Synchronous and side-effect-free -- unlike every other method here, it sends nothing and works even before this session has ever connected (an unconnected session simply has no direct peer and no relay pairings yet, both honestly empty). */
+  getTopologyPeers: () => TopologyPeers;
   /** Sends one core/data frame (data-have, data-request, or data-entries) directly over this session's own connection, never relay-wrapped -- the transport half of an application's own noticeboard replication policy (data-sync.ts owns what the frames MEAN; this owns getting one onto the wire), the same layering sendRevocationAnnounce already established for its own frame kind. Rejects when not connected, exactly like every other send method here. */
   sendDataFrame: (
     frame: DataHaveFrame | DataRequestFrame | DataEntriesFrame,
@@ -182,6 +189,8 @@ function createSessionCore(
   let nextRequestId = 0;
   // Every device this session's own connection currently holds a relay pairing with, in either role: added when this session sends its own relay-connect (initiator role) or when it receives a relay-inbound naming who is now paired with it (target role). See relay-pairing.ts for why establishing a pairing with a new target never discards an already-established one with a different target, and why this is never consulted for addressing -- only for ensureRelayPairing's own "already paired" check.
   const relayPairings = createRelayPairings();
+  // The device named by the first peer-advert entry this session ever applies to its directory -- topology self-advertisement's (wire-mesh#180) own fallback for "who is this connection's own direct peer" when the transport gives no authenticated connection.peerDeviceId. Only trustworthy for an accepted connection (dial === null below): AcceptedMeshSession's own peerDeviceId doc comment already establishes that an accepted connection is structurally exactly two peers, so its remote's first self-advert really is its own identity. A dial-side session may instead be talking to a relay hub that forwards a *third* device's advert as gossip catch-up before ever sending one of its own (it may have none at all), so this same heuristic would misattribute a merely-relayed device as directly connected -- computeTopologyPeers below only reads this when dial === null, never for the dial side.
+  let firstPeerDevice: DeviceId | null = null;
   const pendingManageRequests = new Map<
     number,
     {
@@ -350,6 +359,7 @@ function createSessionCore(
           device: advert.device,
           advert,
         });
+        firstPeerDevice ??= advert.device;
         onPeerAdvert?.(advert);
       }
     } else if (frame.type === "relay-inbound") {
@@ -465,7 +475,19 @@ function createSessionCore(
     }
   }
 
-  /** Builds this side's own self-advert: this node's own directly-reachable addresses (wire-mesh#38), or none for a caller with nothing to offer (a browser client, which cannot accept inbound connections) -- either is an honest advert, not a stopgap. extensions merge onto peer-advert's own open `* tstr => any` tail -- the mechanism sendGossipUpdate uses to keep a gossiped fact (presence status, an accept/refuse policy, or any future domain's own) live over the connection's lifetime. Extensions and CORE_VERSION_GOSSIP_KEY are spread before the mandatory fields (never after) so a caller-supplied key of the same name can never shadow them on the wire -- validateGossipExtensions already rejects both collisions loudly, but the field order is kept safe in its own right rather than relying solely on the guard staying in sync. */
+  /** This session's own current topology self-advertisement (wire-mesh#180) -- the actual computation lives in topology-snapshot.ts (a plain-data leaf module, split out purely to keep this already-large file under the max-lines lint budget), fed from this session's own live connection/firstPeerDevice/relayPairings state. */
+  function computeTopologyPeers(): TopologyPeers {
+    return computeTopologyPeersFromInputs({
+      ...(connection?.peerDeviceId !== undefined
+        ? { authenticatedPeer: connection.peerDeviceId }
+        : {}),
+      firstAdvertisedPeer: firstPeerDevice,
+      isAccepted: dial === null,
+      relayedDevices: relayPairings.list(),
+    });
+  }
+
+  /** Builds this side's own self-advert: this node's own directly-reachable addresses (wire-mesh#38), or none for a caller with nothing to offer (a browser client, which cannot accept inbound connections) -- either is an honest advert, not a stopgap. extensions merge onto peer-advert's own open `* tstr => any` tail -- the mechanism sendGossipUpdate uses to keep a gossiped fact (presence status, an accept/refuse policy, or any future domain's own) live over the connection's lifetime. Extensions, CORE_VERSION_GOSSIP_KEY, and topology/peers are all spread before the mandatory fields (never after) so a caller-supplied key of the same name can never shadow them on the wire -- validateGossipExtensions already rejects every such collision loudly, but the field order is kept safe in its own right rather than relying solely on the guard staying in sync. topology/peers (wire-mesh#180) is recomputed fresh on every call, the same "always current, never cached" treatment snapshot-seconds already gets, since a session's own connection identity and relay pairings can change between one self-advert and the next. */
   function buildSelfAdvert(extensions?: Record<string, unknown>): GossipFrame {
     if (extensions !== undefined) {
       validateGossipExtensions(extensions);
@@ -476,6 +498,7 @@ function createSessionCore(
         {
           ...extensions,
           [CORE_VERSION_GOSSIP_KEY]: OWN_VERSION,
+          [TOPOLOGY_PEERS_GOSSIP_KEY]: computeTopologyPeers(),
           device: identity.deviceId,
           addresses: [...addresses],
           "snapshot-seconds": Math.floor(clock.now() / MS_PER_SECOND),
@@ -685,6 +708,9 @@ function createSessionCore(
         frameLog.push({ direction: "sent", frame });
         await transmit(frame, false);
         emit();
+      },
+      getTopologyPeers(): TopologyPeers {
+        return computeTopologyPeers();
       },
       async sendDataFrame(
         frame: DataHaveFrame | DataRequestFrame | DataEntriesFrame,
