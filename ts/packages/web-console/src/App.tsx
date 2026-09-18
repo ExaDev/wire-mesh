@@ -1,6 +1,6 @@
 // Top-level layout: the connect form, the list of currently open relay connection panels, and every peer-to-peer room-messaging panel. Owns only the set of live sessions and negotiators -- everything about rendering one relay session's own state lives in ConnectionPanel, and everything about a room session's own state lives in the useRoomMessaging hook plus RoomPanel.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Button,
   Checkbox,
@@ -10,7 +10,15 @@ import {
   Title,
 } from "@mantine/core";
 import { createMeshSession } from "wire-mesh-core/domain/mesh-session";
-import type { ReconnectPolicy } from "wire-mesh-core/domain/mesh-session";
+import type {
+  MeshSession,
+  ReconnectPolicy,
+} from "wire-mesh-core/domain/mesh-session";
+import { createGossipExpansion } from "wire-mesh-core/domain/gossip-expansion";
+import type {
+  GossipExpansion,
+  GossipExpansionCandidate,
+} from "wire-mesh-core/domain/gossip-expansion";
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import type { Clock } from "wire-mesh-core/ports/clock";
 import type { Connection } from "wire-mesh-core/ports/transport";
@@ -18,7 +26,9 @@ import type { DeviceId } from "wire-mesh-core/generated/protocol";
 import { createBrowserTransport } from "./adapters/websocket-transport.js";
 import { createWebrtcNegotiator } from "./webrtc-negotiation.js";
 import type { WebrtcNegotiator } from "./webrtc-negotiation.js";
-import { ConnectionPanel } from "./components/ConnectionPanel.js";
+import { ConnectionPanel, deviceHex } from "./components/ConnectionPanel.js";
+import { DiscoveredPeersPanel } from "./components/DiscoveredPeersPanel.js";
+import type { DiscoveredPeerRow } from "./components/DiscoveredPeersPanel.js";
 import { RoomPanel } from "./components/RoomPanel.js";
 import { useRoomMessaging } from "./hooks/use-room-messaging.js";
 import type { MessageStore } from "./message-store.js";
@@ -59,6 +69,18 @@ interface ConnectionEntry {
   negotiator: WebrtcNegotiator;
 }
 
+/** A discovered candidate awaiting this console user's own explicit connect/dismiss (wire-mesh#187) -- resolve is createGossipExpansion's own shouldExpand promise, settled by whichever button the user clicks in DiscoveredPeersPanel. */
+interface PendingExpansion extends DiscoveredPeerRow {
+  resolve: (approved: boolean) => void;
+}
+
+/** Gossiped addresses are bare "host:port" (wire-mesh#38's own convention -- see mesh-session.ts's addresses doc comment), but this console's browser transport only accepts a full ws:// or wss:// URL. A caller-typed address in the connect form may already carry a scheme (the default address is "ws://localhost:8787"); a gossiped one never does. */
+function toWebSocketAddress(address: string): string {
+  return address.startsWith("ws://") || address.startsWith("wss://")
+    ? address
+    : `ws://${address}`;
+}
+
 export function App({
   identity,
   clock,
@@ -69,6 +91,7 @@ export function App({
   const [address, setAddress] = useState(defaultAddress);
   const [domains, setDomains] = useState<string[]>(DEFAULT_DOMAINS);
   const [connections, setConnections] = useState<ConnectionEntry[]>([]);
+  const [discovered, setDiscovered] = useState<PendingExpansion[]>([]);
   const roomMessaging = useRoomMessaging(identity, clock, messageStore);
 
   // A negotiator's own onIncomingConnection callback is registered once, at construction, and must still call whatever the *latest* attach is -- attach itself is a fresh function every time useRoomMessaging's own session map changes, so a ref (updated every render, read from the callback) is what keeps that call from closing over a stale, since-superseded attach.
@@ -83,43 +106,103 @@ export function App({
     connectionsRef.current = connections;
   }, [connections]);
 
-  const connectTo = useCallback(
-    (targetAddress: string): void => {
-      // Re-connecting to an address that already has a live entry is a no-op: an entry is removed either by its own panel's close button, or automatically when its connect attempt fails, so reconnecting the same address after a failure starts a fresh attempt, but reconnecting while still connecting/connected/reconnecting is a no-op rather than a silent duplicate.
-      if (
-        connectionsRef.current.some((entry) => entry.address === targetAddress)
-      ) {
-        return;
-      }
-      const session = createMeshSession(
-        createBrowserTransport(),
-        identity,
-        clock,
-        reconnectPolicy,
-      );
-      const negotiator = createWebrtcNegotiator(session, {
-        identity,
-        clock,
-        onIncomingConnection: (connection: Readonly<Connection>) => {
-          void attachRef.current(connection);
-        },
-      });
-      setConnections((current) => [
-        ...current,
-        { address: targetAddress, session, negotiator },
-      ]);
-      void session.connect(targetAddress, domains).catch(() => {
-        // ConnectionPanel's own render of the session's events already surfaces a connect failure via its status line; nothing further to do here beyond letting the entry remain (its own close button still works on a failed session).
-      });
-    },
-    [identity, clock, domains],
-  );
+  // The current domains value, read from a ref rather than closed over directly -- dialExpanded/createExpandableSession are invoked from callbacks createGossipExpansion holds onto for as long as a given session's own gossip directory keeps discovering new peers, well outliving any single render, and must still dial with whatever domains the connect form currently offers, not whichever were selected when that session's own expansion was first wired up.
+  const domainsRef = useRef(domains);
+  useEffect(() => {
+    domainsRef.current = domains;
+  }, [domains]);
 
-  // discoverLocalNode is a fresh closure every render (or a caller-supplied fake in tests), so the mount-only effect below reads it through a ref (the same pattern attachRef already uses above) rather than listing it as an effect dependency, which would either re-run the probe every render or need a lint suppression. connectTo is memoized above, so its own ref-update effect settles once its real dependencies stop changing.
+  function attachConnection(entryAddress: string, session: MeshSession): void {
+    const negotiator = createWebrtcNegotiator(session, {
+      identity,
+      clock,
+      onIncomingConnection: (connection: Readonly<Connection>) => {
+        void attachRef.current(connection);
+      },
+    });
+    setConnections((current) => [
+      ...current,
+      { address: entryAddress, session, negotiator },
+    ]);
+  }
+
+  /** Asks this console's own user whether to dial a gossiped candidate at all (wire-mesh#187) -- the explicit-confirmation half of the issue's own two named options, since this console holds no persistent device-trust store a gateway_trust-style allow-list could check instead. Resolves once the user clicks Connect or Dismiss in DiscoveredPeersPanel. */
+  async function confirmExpansion(
+    candidate: Readonly<GossipExpansionCandidate>,
+  ): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      setDiscovered((current) => [
+        ...current,
+        {
+          key: deviceHex(candidate.device),
+          device: candidate.device,
+          addresses: candidate.addresses,
+          resolve,
+        },
+      ]);
+    });
+  }
+
+  function resolveDiscovered(key: string, approved: boolean): void {
+    setDiscovered((current) => {
+      current.find((entry) => entry.key === key)?.resolve(approved);
+      return current.filter((entry) => entry.key !== key);
+    });
+  }
+
+  /** Builds a session wired to attempt direct connections to its own gossip directory's newly-discovered peers (wire-mesh#187's "discover once connected, expand outward"), confirmed by this console's own user first. Every expansion-dialled session gets the identical wiring in turn, so discovery keeps expanding outward through however many hops of directly-reachable peers actually exist -- not just the one node dialled first, and not just its own immediate peers. */
+  function createExpandableSession(): MeshSession {
+    const expansionRef: { current: GossipExpansion | null } = {
+      current: null,
+    };
+    const session = createMeshSession(
+      createBrowserTransport(),
+      identity,
+      clock,
+      reconnectPolicy,
+      [],
+      (advert) => {
+        expansionRef.current?.considerAdvert(advert);
+      },
+    );
+    expansionRef.current = createGossipExpansion({
+      selfDeviceId: identity.deviceId,
+      shouldExpand: confirmExpansion,
+      dial: dialExpanded,
+      onExpanded: (_candidate, expandedAddress, expandedSession) => {
+        attachConnection(expandedAddress, expandedSession);
+      },
+      // A dial that never got user approval (onExpansionDeclined) or that failed against every one of its addresses (onExpansionFailed) simply never produces a session -- there is no panel to remove and nothing further for this console to do, matching how a manually-typed address that fails to connect leaves no panel behind either.
+    });
+    return session;
+  }
+
+  async function dialExpanded(gossipedAddress: string): Promise<MeshSession> {
+    const session = createExpandableSession();
+    return session
+      .connect(toWebSocketAddress(gossipedAddress), domainsRef.current)
+      .then(() => session);
+  }
+
+  function connectTo(targetAddress: string): void {
+    // Re-connecting to an address that already has a live entry is a no-op: an entry is removed either by its own panel's close button, or automatically when its connect attempt fails, so reconnecting the same address after a failure starts a fresh attempt, but reconnecting while still connecting/connected/reconnecting is a no-op rather than a silent duplicate.
+    if (
+      connectionsRef.current.some((entry) => entry.address === targetAddress)
+    ) {
+      return;
+    }
+    const session = createExpandableSession();
+    attachConnection(targetAddress, session);
+    void session.connect(targetAddress, domains).catch(() => {
+      // ConnectionPanel's own render of the session's events already surfaces a connect failure via its status line; nothing further to do here beyond letting the entry remain (its own close button still works on a failed session).
+    });
+  }
+
+  // discoverLocalNode is a fresh closure every render (or a caller-supplied fake in tests), so the mount-only effect below reads it through a ref (the same pattern attachRef already uses above) rather than listing it as an effect dependency, which would either re-run the probe every render or need a lint suppression. connectTo is a plain function, recreated every render like attachConnection/createExpandableSession above it -- its own ref-update effect below simply runs every render too, which is cheap and still gives the mount effect the latest version by the time it actually fires.
   const connectToRef = useRef(connectTo);
   useEffect(() => {
     connectToRef.current = connectTo;
-  }, [connectTo]);
+  });
   const discoverLocalNodeRef = useRef(discoverLocalNode);
   useEffect(() => {
     discoverLocalNodeRef.current = discoverLocalNode;
@@ -130,9 +213,9 @@ export function App({
   useEffect(() => {
     if (autoDiscoverRanRef.current) return;
     autoDiscoverRanRef.current = true;
-    void discoverLocalNodeRef.current().then((discovered) => {
-      if (discovered !== undefined) {
-        connectToRef.current(discovered);
+    void discoverLocalNodeRef.current().then((discoveredAddress) => {
+      if (discoveredAddress !== undefined) {
+        connectToRef.current(discoveredAddress);
       }
     });
   }, []);
@@ -189,6 +272,15 @@ export function App({
           </Group>
         </Checkbox.Group>
       </form>
+      <DiscoveredPeersPanel
+        peers={discovered}
+        onConnect={(key) => {
+          resolveDiscovered(key, true);
+        }}
+        onDismiss={(key) => {
+          resolveDiscovered(key, false);
+        }}
+      />
       {connections.map((entry) => (
         <ConnectionPanel
           key={entry.address}
