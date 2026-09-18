@@ -4,7 +4,7 @@
 
   "tasks": {
     "_build": {
-      "inputs": ["src/**", "tsdown.config.ts", "tsconfig.json"],
+      "inputs": ["src/**", "scripts/**", "tsdown.config.ts", "tsconfig.json"],
       "outputs": ["dist/**"]
     },
     "_lint": {

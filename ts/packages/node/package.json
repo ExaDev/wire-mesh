@@ -12,6 +12,7 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
     "@exadev/eslint-config": "2.18.0",
+    "@exadev/wire-mesh-web-console": "workspace:*",
     "@types/node": "26.4.1",
     "@types/ws": "8.18.1",
     "eslint": "10.10.0",
@@ -42,7 +43,7 @@
   "packageManager": "pnpm@12.4.1+sha512.2e81e399d73fe8390dab25e06aa788ab7a5908248d2f5a370f82b481147a6a7a367bf8048f9a6fdb6460f21a66f0542dedb8b94ca2c8723596741920b1656d4c",
   "private": true,
   "scripts": {
-    "_build": "tsdown",
+    "_build": "tsdown && node scripts/copy-web-console-dist.mjs",
     "_lint": "eslint . --fix --cache --max-warnings 0",
     "_test": "vitest run",
     "_typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
