@@ -367,6 +367,7 @@ exec-session-info = { session: stream-session, kind: "pty" / "proc", ? argv: [* 
 
 $frame-variant /= handshake-frame
 $frame-variant /= ping-frame
+$frame-variant /= pong-frame
 $frame-variant /= close-frame
 $frame-variant /= gossip-frame
 $frame-variant /= candidates-frame
@@ -620,6 +621,40 @@ revocation-claims = {
 }
 revocation-entry = cose-sign1   ; payload = bstr .cbor revocation-claims
 revocation-announce-frame = { type: "revocation-announce", entries: [* revocation-entry] }
+
+; Path tracing (wire-mesh#181): "is my path to a peer direct or relayed, and
+; via which hub, and what's the real round-trip time" -- the narrower,
+; honest analogue of IP traceroute this protocol's own transport model
+; actually supports (transport.cddl's own relay-* frames: a connection is
+; either direct or exactly one relay hop, never more). Answered over the
+; existing manage-request/manage-response round trip, which already gives
+; real end-to-end RTT for free -- no dedicated frame kind needed for this
+; half, unlike the ping/pong addition transport.cddl makes for isolating
+; the sender-to-hub leg specifically.
+;
+; Deliberately ungated, but for a different reason than room.join/
+; room.invite's own "no prior relationship, so no token to gate on" --
+; path:trace names no real capability at all: there is nothing here to
+; authorise, only registered as a namespaced wire identifier so
+; manage-command.verb's own capability-verb grammar has something
+; syntactically valid to carry (registry/core-capabilities.md). The same
+; reasoning wire-mesh#179's version.get already establishes: the answer
+; discloses nothing a peer doesn't already know about its own connection.
+$manage-command-params /= path-trace
+path-trace = { verb: "path.trace" }
+
+; The answer: manage-ok extended with the RECEIVER's own local knowledge of
+; whether the connection this request arrived on is itself relayed through a
+; hub and, if so, that hub's own dialled address -- relayed is exactly
+; incoming.fromDevice !== undefined (a request that arrived wrapped in
+; relay-data), and hub-address is the address this receiver itself dialled
+; to reach the hub, which is already tracked locally as ConnectionState's
+; own `address` field, needing no new session-level bookkeeping. The sender
+; already has the identical knowledge for its own side (whether targetDevice
+; required an established relay pairing, and which address it dialled to
+; reach it) without asking anyone, which is why only the receiver's half
+; ever needs to travel on the wire at all.
+path-trace-ok = { result: "ok", relayed: bool, ? "hub-address": tstr, * tstr => any }
 ; core/room — communication membership: a set of devices, regardless of who
 ; owns them, that may send and receive messages together. Unifies what would
 ; otherwise be two primitives (a named, multi-member room and a two-party
@@ -1325,6 +1360,8 @@ token-claims = {
 ; never part of the core protocol.
 
 ping-frame  = { type: "ping" }
+; A bare echo of ping-frame (wire-mesh#181), sent by a hub in reply to a ping it receives -- deliberately not itself a request/response pair with any correlation id, matching ping-frame's own no-id shape: a connection carries at most one outstanding ping/pong exchange's worth of ambiguity at a time, the same tolerance an ordinary ICMP-style liveness probe already accepts. This is what lets a client isolate its own sender-to-hub leg of a relayed round trip: time a bare ping/pong over the same connection a relayed manage-request/response travelled, then subtract that leg from path.trace's own end-to-end RTT (core/management's path:trace, spec/management.cddl) to recover the hub-to-target leg. Deliberately below the manage-command/capability layer entirely, the same reasoning ping-frame and gossip-frame already exempt themselves from webrtc.cddl's own comment on why they carry no comparable receiver-side effect worth gating.
+pong-frame  = { type: "pong" }
 close-frame = { type: "close", ? reason: tstr }
 
 ; The extension tail mirrors token-claims' own `* tstr => any` (tokens.cddl)
