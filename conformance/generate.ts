@@ -294,6 +294,7 @@ const frameVectors: Vector[] = [
       },
     ],
   }),
+  // Two extension keys on one advert: an ordinary application-defined one (presence/status) alongside topology/peers (wire-mesh#180), a session's own self-reported connection edges -- a direct peer (deviceA) plus one relay pairing (deviceB), reached via that same direct peer as the hub.
   vector("gossip_v1_peer_advert_with_extension", {
     type: "gossip",
     peers: [
@@ -302,20 +303,9 @@ const frameVectors: Vector[] = [
         addresses: [],
         "snapshot-seconds": 1861920000,
         "presence/status": "idle",
-      },
-    ],
-  }),
-  // topology/peers (wire-mesh#180): a session's own self-reported connection edges, gossiped under this reserved extension key -- a direct peer (deviceA) plus one relay pairing (deviceC), reached via the same direct peer as the hub.
-  vector("gossip_v1_peer_advert_with_topology", {
-    type: "gossip",
-    peers: [
-      {
-        device: deviceB,
-        addresses: [],
-        "snapshot-seconds": 1861920060,
         "topology/peers": {
           direct: [deviceA],
-          relayed: [{ device: deviceC, via: deviceA }],
+          relayed: [{ device: deviceB, via: deviceA }],
         },
       },
     ],
