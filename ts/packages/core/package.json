@@ -67,6 +67,10 @@
       "import": "./dist/adapters/tls-transport.mjs",
       "require": "./dist/adapters/tls-transport.cjs"
     },
+    "./domain/async-queue": {
+      "import": "./dist/domain/async-queue.mjs",
+      "require": "./dist/domain/async-queue.cjs"
+    },
     "./domain/bulk": {
       "import": "./dist/domain/bulk.mjs",
       "require": "./dist/domain/bulk.cjs"
@@ -122,6 +126,14 @@
     "./domain/notice-board": {
       "import": "./dist/domain/notice-board.mjs",
       "require": "./dist/domain/notice-board.cjs"
+    },
+    "./domain/path-trace": {
+      "import": "./dist/domain/path-trace.mjs",
+      "require": "./dist/domain/path-trace.cjs"
+    },
+    "./domain/ping-round-trips": {
+      "import": "./dist/domain/ping-round-trips.mjs",
+      "require": "./dist/domain/ping-round-trips.cjs"
     },
     "./domain/relay-hub": {
       "import": "./dist/domain/relay-hub.mjs",
