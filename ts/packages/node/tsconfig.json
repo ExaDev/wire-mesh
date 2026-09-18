@@ -12,5 +12,9 @@
     "target": "ES2024",
     "types": ["node", "ws"]
   },
-  "include": ["src/adapters/node-websocket-transport.ts", "src/server.ts"]
+  "include": [
+    "src/adapters/node-websocket-transport.ts",
+    "src/server.ts",
+    "src/static-console.ts"
+  ]
 }
