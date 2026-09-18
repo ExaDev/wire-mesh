@@ -724,13 +724,15 @@ export function createMeshSession(
   reconnect: ReconnectPolicy | null = null,
   /** This node's own directly-reachable "host:port" candidates (wire-mesh#38), advertised in this session's self-advert so other peers can attempt a direct connection instead of always falling back to a relay. Omit (or pass none) for a caller with nothing to offer, e.g. a browser client. */
   addresses: readonly string[] = [],
+  /** Fired for every peer-advert entry as it's applied to the directory, regardless of source -- the hook a gossip-expansion consumer (wire-mesh#187, gossip-expansion.ts's own createGossipExpansion) uses to observe newly-gossiped peers without becoming a second, competing consumer of this session's own single-reader events stream (each emitted SessionEvent wakes at most one waiter, so a second for-await loop over events would silently steal events from whichever consumer already reads it). Omit for a caller with no use for it, exactly today's behaviour. */
+  onPeerAdvert?: (advert: PeerAdvert) => void,
 ): MeshSession {
   const { session } = createSessionCore(
     identity,
     clock,
     reconnect,
     async (address) => transport.connect(address),
-    undefined,
+    onPeerAdvert,
     addresses,
   );
   return session;
@@ -755,6 +757,8 @@ export interface AcceptedMeshSessionOptions {
   ) => void | Promise<void>;
   /** Fired once this session's own connection.receive() stream ends -- the counterpart a RelayHub's own forgetConnection needs, since its registry is keyed by this exact Connection and must be cleaned up when it specifically ends. */
   onSessionEnd?: (connection: Readonly<Connection>) => void;
+  /** Fired for every peer-advert entry as it's applied to the directory, regardless of source -- alongside (never instead of) this session's own internal peerDeviceId resolution, which uses this identical hook internally and keeps working unchanged. See createMeshSession's own onPeerAdvert doc comment for why this exists: a gossip-expansion consumer (wire-mesh#187) needs to observe every advert without becoming a second, competing consumer of this session's own single-reader events stream. */
+  onPeerAdvert?: (advert: PeerAdvert) => void;
 }
 
 /** Wires an already-accepted Connection up as a full MeshSession, mirroring exactly what createMeshSession's own dial path does once a connection exists (send handshake, send self-advert, negotiate, consume frames) -- the wire-mesh#45 prerequisite agent-comms needs, since its peers both listen and dial rather than only ever dialing the way web-console's own console UI does. Reconnect does not apply here: if this connection drops, only the remote redialing and being accepted again produces a new connection, and therefore a new session -- there is nothing on this side to retry. */
@@ -776,11 +780,11 @@ export async function acceptMeshSession(
     null,
     null,
     (advert) => {
-      if (peerDeviceIdResolved) {
-        return;
+      if (!peerDeviceIdResolved) {
+        peerDeviceIdResolved = true;
+        resolvePeerDeviceId?.(advert.device);
       }
-      peerDeviceIdResolved = true;
-      resolvePeerDeviceId?.(advert.device);
+      options.onPeerAdvert?.(advert);
     },
     options.addresses,
     options.onFrame,

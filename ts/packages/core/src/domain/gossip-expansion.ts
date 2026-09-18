@@ -1,8 +1,8 @@
-// "Discover once connected, expand outward" (wire-mesh#187): a session's own gossip directory already carries other known peers' own advertised addresses (peer-advert.addresses), but nothing dials them on its own -- a client otherwise only ever talks to the one node it dialled first. This module watches a session's own SessionEvent stream (fed to it by whichever caller already consumes session.events -- never a second, competing consumer of that same single-reader AsyncIterable) and, for each newly-discovered device carrying at least one address, asks a caller-supplied policy whether to dial it. Blindly auto-dialling every gossiped address is the same class of risk as a webpage probing a user's internal network (Private Network Access attacks): a compromised or lying peer in the directory can advertise an address that isn't even a wire-mesh node at all, so this module deliberately holds no trust logic of its own -- shouldExpand is the caller's own gate (an allow-list, an existing session relationship, or a UI confirmation prompt), and an unconditional "always true" policy is a caller's explicit choice, never this module's default.
+// "Discover once connected, expand outward" (wire-mesh#187): a session's own gossip directory already carries other known peers' own advertised addresses (peer-advert.addresses), but nothing dials them on its own -- a client otherwise only ever talks to the one node it dialled first. This module observes a session's own peer-adverts (fed to it via createMeshSession's/AcceptedMeshSessionOptions' own onPeerAdvert hook, never by a second, competing consumer of that session's single-reader events stream) and, for each newly-discovered device carrying at least one address, asks a caller-supplied policy whether to dial it. Blindly auto-dialling every gossiped address is the same class of risk as a webpage probing a user's internal network (Private Network Access attacks): a compromised or lying peer in the directory can advertise an address that isn't even a wire-mesh node at all, so this module deliberately holds no trust logic of its own -- shouldExpand is the caller's own gate (an allow-list, an existing session relationship, or a UI confirmation prompt), and an unconditional "always true" policy is a caller's explicit choice, never this module's default.
 
-import type { DeviceId } from "../generated/protocol.js";
+import type { DeviceId, PeerAdvert } from "../generated/protocol.js";
 import { deviceIdToHex } from "./device-id.js";
-import type { DirectoryEntry, MeshSession, SessionEvent } from "./mesh-session.js";
+import type { MeshSession } from "./mesh-session.js";
 
 /** One not-yet-considered device this session's gossip directory has surfaced, carrying only what a dial/trust decision needs: the device-id to decide identity, and the "host:port" addresses its own peer-advert claims are directly reachable at, in the order it advertised them. */
 export interface GossipExpansionCandidate {
@@ -34,8 +34,8 @@ export interface GossipExpansionOptions {
 }
 
 export interface GossipExpansion {
-  /** Feed one SessionEvent -- from the session whose gossip directory this expansion watches -- to look for newly-discoverable peers and kick off expansion attempts for approved ones. Never awaits a dial to completion inline: expansion happens in the background, observable only through onExpanded/onExpansionDeclined/onExpansionFailed. */
-  observe: (event: Readonly<SessionEvent>) => void;
+  /** Feed one just-received peer-advert -- from the session whose peer-adverts this expansion watches, via its own onPeerAdvert hook -- to decide whether it names a newly-discoverable peer worth expanding to, and if so kick off an expansion attempt for it. Never awaits a dial to completion inline: expansion happens in the background, observable only through onExpanded/onExpansionDeclined/onExpansionFailed. */
+  considerAdvert: (advert: Readonly<PeerAdvert>) => void;
 }
 
 function toError(value: unknown): Error {
@@ -76,25 +76,19 @@ export function createGossipExpansion(
     options.onExpansionFailed?.(candidate, errors);
   }
 
-  function considerEntry(entry: Readonly<DirectoryEntry>): void {
-    const hex = deviceIdToHex(entry.device);
-    if (
-      hex === selfHex ||
-      considered.has(hex) ||
-      entry.advert.addresses.length === 0
-    ) {
-      return;
-    }
-    // Marked considered synchronously, before shouldExpand's own promise ever resolves -- a second observe() call for the same device while the first is still being decided must not fire a second, racing expansion attempt.
-    considered.add(hex);
-    void expand({ device: entry.device, addresses: entry.advert.addresses });
-  }
-
   return {
-    observe(event: Readonly<SessionEvent>): void {
-      for (const entry of event.directory) {
-        considerEntry(entry);
+    considerAdvert(advert: Readonly<PeerAdvert>): void {
+      const hex = deviceIdToHex(advert.device);
+      if (
+        hex === selfHex ||
+        considered.has(hex) ||
+        advert.addresses.length === 0
+      ) {
+        return;
       }
+      // Marked considered synchronously, before shouldExpand's own promise ever resolves -- a second considerAdvert() call for the same device while the first is still being decided must not fire a second, racing expansion attempt.
+      considered.add(hex);
+      void expand({ device: advert.device, addresses: advert.addresses });
     },
   };
 }
