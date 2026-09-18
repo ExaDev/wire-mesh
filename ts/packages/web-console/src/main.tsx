@@ -8,6 +8,7 @@ import { createIndexedDbStorage } from "./adapters/indexeddb-storage.js";
 import { createPersistedWebCryptoIdentity } from "./adapters/web-crypto-identity.js";
 import { createMessageStore } from "./message-store.js";
 import { App } from "./App.js";
+import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt.js";
 
 const identity = await createPersistedWebCryptoIdentity(
   await createIndexedDbStorage(),
@@ -24,6 +25,7 @@ createRoot(container).render(
   <StrictMode>
     <MantineProvider>
       <App identity={identity} clock={clock} messageStore={messageStore} />
+      <PwaUpdatePrompt />
     </MantineProvider>
   </StrictMode>,
 );
