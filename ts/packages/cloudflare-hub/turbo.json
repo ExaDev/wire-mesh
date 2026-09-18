@@ -4,7 +4,8 @@
 
   "tasks": {
     "_build": {
-      // wrangler's dry-run bundle IS this package's build: it resolves the entry, bundles the workspace's core package and every npm dependency, and type-checks along the way -- a genuine "does it build" gate with no Cloudflare credentials needed.
+      // wrangler's dry-run bundle IS this package's build: it resolves the entry, bundles the workspace's core package and every npm dependency, and type-checks along the way, a genuine "does it build" gate with no Cloudflare credentials needed. web-console isn't a package.json dependency (nothing here imports its code), but wrangler.toml's [assets] binding reads its dist/ directly off disk, so the explicit cross-package task dependency below is what makes turbo build it first and fold its output hash into this task's own cache key.
+      "dependsOn": ["@exadev/wire-mesh-web-console#_build"],
       "inputs": ["src/**", "wrangler.toml", "tsconfig.json"],
       "outputs": ["dist/**"]
     },
