@@ -99,6 +99,10 @@
       "import": "./dist/domain/gossip-expansion.mjs",
       "require": "./dist/domain/gossip-expansion.cjs"
     },
+    "./domain/gossip-extensions": {
+      "import": "./dist/domain/gossip-extensions.mjs",
+      "require": "./dist/domain/gossip-extensions.cjs"
+    },
     "./domain/grant-candidates": {
       "import": "./dist/domain/grant-candidates.mjs",
       "require": "./dist/domain/grant-candidates.cjs"
@@ -158,6 +162,14 @@
     "./domain/tokens": {
       "import": "./dist/domain/tokens.mjs",
       "require": "./dist/domain/tokens.cjs"
+    },
+    "./domain/topology": {
+      "import": "./dist/domain/topology.mjs",
+      "require": "./dist/domain/topology.cjs"
+    },
+    "./domain/topology-snapshot": {
+      "import": "./dist/domain/topology-snapshot.mjs",
+      "require": "./dist/domain/topology-snapshot.cjs"
     },
     "./domain/webrtc-signaling": {
       "import": "./dist/domain/webrtc-signaling.mjs",
