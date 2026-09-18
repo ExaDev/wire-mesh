@@ -305,6 +305,21 @@ const frameVectors: Vector[] = [
       },
     ],
   }),
+  // topology/peers (wire-mesh#180): a session's own self-reported connection edges, gossiped under this reserved extension key -- a direct peer (deviceA) plus one relay pairing (deviceC), reached via the same direct peer as the hub.
+  vector("gossip_v1_peer_advert_with_topology", {
+    type: "gossip",
+    peers: [
+      {
+        device: deviceB,
+        addresses: [],
+        "snapshot-seconds": 1861920060,
+        "topology/peers": {
+          direct: [deviceA],
+          relayed: [{ device: deviceC, via: deviceA }],
+        },
+      },
+    ],
+  }),
   vector("candidates_v1_host_and_relayed", {
     type: "candidates",
     candidates: [
