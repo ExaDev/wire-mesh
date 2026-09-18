@@ -37,3 +37,40 @@ export function computeTopologyPeers(
     })),
   };
 }
+
+export interface TopologySnapshotSources {
+  /** Reads connection?.peerDeviceId live at compute() time -- a closure rather than a plain value, since the connection itself can be replaced (reconnect) between one self-advert and the next. */
+  getAuthenticatedPeer: () => DeviceId | undefined;
+  /** dial === null, fixed for a session's entire lifetime (never reconnects, so not read live). */
+  isAccepted: boolean;
+  /** Reads relayPairings.list() live at compute() time. */
+  getRelayedDevices: () => readonly DeviceId[];
+}
+
+export interface TopologySnapshotTracker {
+  /** Records one peer-advert entry as it is applied to a session's own directory -- see TopologyPeersInputs.firstAdvertisedPeer's own comment for what this is used for and why only the first call matters. */
+  recordAdvert: (device: DeviceId) => void;
+  /** Computes this session's own current TopologyPeers from the live connection/relayPairings state given at createTopologySnapshotTracker's own construction time. */
+  compute: () => TopologyPeers;
+}
+
+/** Bundles firstAdvertisedPeer's own mutable tracking together with computeTopologyPeers, so mesh-session.ts's createSessionCore holds one small object instead of a bare `let` plus a wrapper function around this module's own computeTopologyPeers -- sources' own closures are captured once here, so compute() itself takes no arguments at either of buildSelfAdvert/getTopologyPeers' own call sites. */
+export function createTopologySnapshotTracker(
+  sources: Readonly<TopologySnapshotSources>,
+): TopologySnapshotTracker {
+  let firstAdvertisedPeer: DeviceId | null = null;
+  return {
+    recordAdvert: (device) => {
+      firstAdvertisedPeer ??= device;
+    },
+    compute: () => {
+      const authenticatedPeer = sources.getAuthenticatedPeer();
+      return computeTopologyPeers({
+        ...(authenticatedPeer !== undefined ? { authenticatedPeer } : {}),
+        firstAdvertisedPeer,
+        isAccepted: sources.isAccepted,
+        relayedDevices: sources.getRelayedDevices(),
+      });
+    },
+  };
+}

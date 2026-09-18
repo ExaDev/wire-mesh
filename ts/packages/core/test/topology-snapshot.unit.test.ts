@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { computeTopologyPeers } from "../src/domain/topology-snapshot.js";
+import {
+  computeTopologyPeers,
+  createTopologySnapshotTracker,
+} from "../src/domain/topology-snapshot.js";
 import { deviceIdFromFillHex } from "./hex.js";
 
 const deviceA = deviceIdFromFillHex("11");
@@ -69,5 +72,51 @@ describe("computeTopologyPeers", () => {
         relayedDevices: [deviceB],
       }),
     ).toEqual({ direct: [], relayed: [{ device: deviceB }] });
+  });
+});
+
+describe("createTopologySnapshotTracker", () => {
+  it("computes nothing when its own sources report nothing", () => {
+    const tracker = createTopologySnapshotTracker({
+      getAuthenticatedPeer: () => undefined,
+      isAccepted: false,
+      getRelayedDevices: () => [],
+    });
+
+    expect(tracker.compute()).toEqual({ direct: [], relayed: [] });
+  });
+
+  it("re-reads its own sources live on every compute() call", () => {
+    const sources = {
+      authenticatedPeer: undefined as typeof deviceA | undefined,
+      relayedDevices: [] as (typeof deviceB)[],
+    };
+    const tracker = createTopologySnapshotTracker({
+      getAuthenticatedPeer: () => sources.authenticatedPeer,
+      isAccepted: false,
+      getRelayedDevices: () => sources.relayedDevices,
+    });
+
+    expect(tracker.compute()).toEqual({ direct: [], relayed: [] });
+
+    sources.authenticatedPeer = deviceA;
+    sources.relayedDevices = [deviceB];
+    expect(tracker.compute()).toEqual({
+      direct: [deviceA],
+      relayed: [{ device: deviceB, via: deviceA }],
+    });
+  });
+
+  it("records only the first advert, and only uses it when accepted", () => {
+    const tracker = createTopologySnapshotTracker({
+      getAuthenticatedPeer: () => undefined,
+      isAccepted: true,
+      getRelayedDevices: () => [],
+    });
+
+    tracker.recordAdvert(deviceA);
+    tracker.recordAdvert(deviceB);
+
+    expect(tracker.compute()).toEqual({ direct: [deviceA], relayed: [] });
   });
 });
