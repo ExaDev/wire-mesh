@@ -1,4 +1,4 @@
-import type { Frame } from "../src/generated/protocol.js";
+import type { DeviceId, Frame } from "../src/generated/protocol.js";
 import type { Clock } from "../src/ports/clock.js";
 import type { IdentityPort } from "../src/ports/identity.js";
 import type {
@@ -59,6 +59,9 @@ export class FakeConnection {
   private ended = false;
   private failure: Error | null = null;
 
+  /** Constructs a fake, already-authenticated connection whose own `peerDeviceId` is set from the start -- the transport-authenticated case topology self-advertisement's own `direct` field prefers over any gossip-derived guess (mesh-session.ts's directPeerDevice). Omit for the default, unauthenticated case every other test here relies on. */
+  constructor(private readonly authenticatedPeerDeviceId?: DeviceId) {}
+
   get connection(): Readonly<Connection> {
     return {
       send: async (frame: Frame): Promise<void> => {
@@ -71,6 +74,9 @@ export class FakeConnection {
         this.wake();
         return Promise.resolve();
       },
+      ...(this.authenticatedPeerDeviceId !== undefined
+        ? { peerDeviceId: this.authenticatedPeerDeviceId }
+        : {}),
     };
   }
 
@@ -130,11 +136,11 @@ export class FakeConnection {
   }
 }
 
-export function fakeTransport(): {
+export function fakeTransport(authenticatedPeerDeviceId?: DeviceId): {
   transport: Transport;
   connection: FakeConnection;
 } {
-  const connection = new FakeConnection();
+  const connection = new FakeConnection(authenticatedPeerDeviceId);
   const transport: Transport = {
     connect: async (address: string): Promise<Connection> => {
       if (address !== "ws://node") {
