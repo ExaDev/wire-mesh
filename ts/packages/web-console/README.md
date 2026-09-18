@@ -47,3 +47,16 @@ The `webrtc:signal` capability itself carries no target-device field -- a `manag
 ## Type environment
 
 `src/` typechecks against the DOM lib. The tests run in Node under vitest but import that src, so the test tsconfig loads node types alongside the DOM lib — and since Node 26 ships the same native WebSocket global the browser does, the adapter runs unmodified under Node, which is what makes the automated end-to-end test against a real hub possible.
+
+## Progressive Web App
+
+Built with [`vite-plugin-pwa`](https://vite-pwa-org.netlify.app/) (`generateSW` mode) rather than a hand-rolled manifest and service worker, since this is already a Vite project. `src/pwa-manifest.ts` is the single source for the web app manifest (also asserted against in `test/pwa-manifest.unit.test.ts`); `vite.config.ts` feeds it to the plugin alongside the Workbox precache config, and the plugin generates `manifest.webmanifest` and `sw.js` at build time.
+
+"Offline" here means the app shell, the built JS/CSS and the console UI itself, loads and renders with no network at all, by precaching every built asset and falling back to the cached `index.html` for any navigation. It does not mean the console can message a peer with no reachable node: once the shell is loaded, the running page still needs a real WebSocket to a real node, exactly as described in the issue this shipped against. Two different constraints then apply depending on how the console itself is served:
+
+- **Same node the console is served from** (a self-hosted node, or the hub itself): nothing extra is needed, since that connection is same-origin/trust-level already.
+- **A different node while the console is served over HTTPS**: the browser only permits an unencrypted `ws://` connection to `localhost`/`127.0.0.1` (treated as a secure context regardless of scheme, specifically for local dev: https://issues.chromium.org/issues/40386732). A different device on the LAN answering plain `ws://` is blocked as mixed content unless that node also serves `wss://`.
+
+`registerType: "prompt"` rather than `"autoUpdate"`: this console holds live WebSocket/WebRTC sessions, and letting the plugin reload the page the moment a new build is available would drop them mid-use. `src/components/PwaUpdatePrompt.tsx` surfaces "ready to work offline" and "update available" instead, and only reloads when the operator clicks through.
+
+**Deliberately deferred:** an `apple-touch-icon` PNG for iOS's home-screen add flow. The manifest's own icons are SVG (`public/icons/`, `image/svg+xml`, sizes `192x192`/`512x512`), which satisfies the installability check every Chromium-based browser and Android use, but Safari on iOS doesn't rasterize SVG for `apple-touch-icon`, and this workspace's pnpm policy blocks the native build scripts (`sharp`, via `allowBuilds`) that the usual PWA asset-generation tooling needs to produce a raster icon set from a single source image. Omitting `apple-touch-icon` entirely, rather than pointing it at an SVG Safari can't render, leaves iOS to its own screenshot-based fallback icon, which is the more honest gap than a broken reference.
