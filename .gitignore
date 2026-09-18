@@ -10,3 +10,4 @@ blob-report/
 .stryker-tmp/
 reports/
 wasm-dist/
+dev-dist/
