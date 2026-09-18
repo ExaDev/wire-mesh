@@ -17,5 +17,6 @@ Append-only. A bare `subsystem:action` capability verb is spec-owned and matched
 | `bulk:read` | any — left open to the calling domain | `core/bulk` | active |
 | `group:member` | `group` | `core/management` | active |
 | `path:trace` | `node` — carried but never checked; path.trace verifies no scope or token at all | `core/management` | active |
+| `topology:get` | `node` | `core/management` | active |
 
-Third parties do not add entries here — see `namespaced-capability` in `tokens.cddl` for the registrant-owned namespace anyone else uses instead.
+Third parties do not add entries here — see `namespaced-capability` in `tokens.cddl` for the registrant-owned namespace anyone else uses instead. `path:trace` and `topology:get` are both deliberately ungated, the same as `room:join`/`room:invite` above — see `management.cddl`'s own `path-trace`/`topology-get` comments for why.

@@ -21,7 +21,7 @@ export const bulkCancelSchema = z.lazy(() => z.object({
 }).catchall(z.unknown()));
 export const manageCommandParamsSchema = z.lazy(() => z.union([z.union([z.lazy(() => bulkOpenSchema), z.lazy(() => bulkResumeSchema), z.lazy(() => bulkCancelSchema)]), z.union([z.lazy(() => ptySpawnSchema), z.lazy(() => ptyWriteSchema), z.lazy(() => ptyResizeSchema), z.lazy(() => ptyKillSchema), z.lazy(() => procSpawnSchema), z.lazy(() => procSignalSchema), z.lazy(() => procKillSchema), z.lazy(() => execListSchema)]), z.object({
 
-}).catchall(z.unknown()), z.lazy(() => capabilityRequestSchema), z.lazy(() => capabilityGrantSchema), z.lazy(() => pathTraceSchema), z.union([z.lazy(() => roomSendSchema), z.lazy(() => roomReadSchema), z.lazy(() => roomLeaveSchema), z.lazy(() => roomMembersSchema)]), z.union([z.lazy(() => roomJoinSchema), z.lazy(() => roomInviteSchema)]), z.lazy(() => roomRekeySchema), z.union([z.lazy(() => thresholdCommitSchema), z.lazy(() => thresholdSignSchema), z.lazy(() => thresholdAbortSchema)]), z.union([z.lazy(() => thresholdKeygenRound1Schema), z.lazy(() => thresholdKeygenRound2Schema), z.lazy(() => thresholdKeygenConfirmSchema)]), z.lazy(() => versionGetSchema), z.union([z.lazy(() => webrtcOfferSchema), z.lazy(() => webrtcAnswerSchema), z.lazy(() => webrtcIceCandidateSchema), z.lazy(() => sfuTrackMapSchema)])]));
+}).catchall(z.unknown()), z.lazy(() => capabilityRequestSchema), z.lazy(() => capabilityGrantSchema), z.lazy(() => pathTraceSchema), z.lazy(() => topologyGetSchema), z.union([z.lazy(() => roomSendSchema), z.lazy(() => roomReadSchema), z.lazy(() => roomLeaveSchema), z.lazy(() => roomMembersSchema)]), z.union([z.lazy(() => roomJoinSchema), z.lazy(() => roomInviteSchema)]), z.lazy(() => roomRekeySchema), z.union([z.lazy(() => thresholdCommitSchema), z.lazy(() => thresholdSignSchema), z.lazy(() => thresholdAbortSchema)]), z.union([z.lazy(() => thresholdKeygenRound1Schema), z.lazy(() => thresholdKeygenRound2Schema), z.lazy(() => thresholdKeygenConfirmSchema)]), z.lazy(() => versionGetSchema), z.union([z.lazy(() => webrtcOfferSchema), z.lazy(() => webrtcAnswerSchema), z.lazy(() => webrtcIceCandidateSchema), z.lazy(() => sfuTrackMapSchema)])]));
 export const bulkDataFrameSchema = z.lazy(() => z.object({
   "type": z.literal("bulk-data"),
   "transfer-id": z.lazy(() => transferIdSchema),
@@ -200,6 +200,16 @@ export const pathTraceOkSchema = z.lazy(() => z.object({
   "relayed": z.boolean(),
   "hub-address": z.string().optional(),
 }).catchall(z.unknown()));
+export const topologyPeersSchema = z.lazy(() => z.object({
+  "direct": z.array(z.lazy(() => deviceIdSchema)),
+  "relayed": z.array(z.object({
+  "device": z.lazy(() => deviceIdSchema),
+  "via": z.lazy(() => deviceIdSchema).optional(),
+})),
+}));
+export const topologyGetSchema = z.lazy(() => z.object({
+  "verb": z.literal("topology.get"),
+}));
 export const roomPathSchema = z.lazy(() => z.union([z.lazy(() => ownerNamedRoomPathSchema), z.lazy(() => dmRoomPathSchema)]));
 export const deviceIdHexSchema = z.lazy(() => z.string().regex(new RegExp("[0-9a-f]{64}")));
 export const ownerNamedRoomPathSchema = z.lazy(() => z.string().regex(new RegExp("[0-9a-f]{64}/[A-Za-z0-9_-]+")));
@@ -516,6 +526,8 @@ export type RevocationEntry = z.infer<typeof revocationEntrySchema>;
 export type RevocationAnnounceFrame = z.infer<typeof revocationAnnounceFrameSchema>;
 export type PathTrace = z.infer<typeof pathTraceSchema>;
 export type PathTraceOk = z.infer<typeof pathTraceOkSchema>;
+export type TopologyPeers = z.infer<typeof topologyPeersSchema>;
+export type TopologyGet = z.infer<typeof topologyGetSchema>;
 export type RoomPath = z.infer<typeof roomPathSchema>;
 export type DeviceIdHex = z.infer<typeof deviceIdHexSchema>;
 export type OwnerNamedRoomPath = z.infer<typeof ownerNamedRoomPathSchema>;
