@@ -1149,9 +1149,7 @@ mod tests {
         }
         let original_group_key = original_group_key.expect("at least one participant");
 
-        // Survivors: devices 1 and 2 (device 3 is dropped). New committee:
-        // survivors 1 and 2 plus a brand-new device 4 that never held a
-        // share of the original group.
+        // Survivors: devices 1 and 2 -- both REMAIN in the new committee (device 3 is dropped, a brand-new device 4 is added), so both run compute+send+join concurrently, never `contribute_threshold_reshare`'s "leaving" path (which would never send a confirm, and every OTHER new participant's own confirm round would then hang forever waiting on a peer who never joins).
         let survivors = [old_ids[0], old_ids[1]];
         let new_device = device_id(4);
         let new_participants = [survivors[0], survivors[1], new_device];
@@ -1176,11 +1174,7 @@ mod tests {
             Arc::clone(&reshare_collectors[index])
         };
 
-        // Survivor 1 (device 1) also stays in the new committee: it must
-        // start `join_threshold_reshare` with its own contribution known
-        // locally BEFORE `send_reshare_contribution` goes out, per this
-        // module's own doc comment on the two-devices-both-survivors-and-
-        // both-new-participants deadlock.
+        // Both survivors compute their own contribution FIRST (synchronous, no network I/O) so each can start `join_threshold_reshare` with its own commitment/share-to-self known locally BEFORE `send_reshare_contribution` goes out -- per this module's own doc comment on the two-devices-both-survivors-and-both-new- participants deadlock.
         let survivor1_contribution = compute_reshare_contribution(
             survivors[0],
             old_key_packages.get(&survivors[0]).expect("kp"),
@@ -1196,22 +1190,21 @@ mod tests {
                 .clone()
                 .expect("survivor1 stays in the new committee"),
         };
-
-        // Survivor 2 (device 2) is LEAVING the new committee -- it only deals, via `contribute_threshold_reshare`, and takes no further part.
-        let survivor2_old_kp = old_key_packages.get(&survivors[1]).expect("kp").clone();
-        let survivor2_sender = sender_of(survivors[1]);
-        let survivor2_options = SendReshareContribution {
-            sender: survivor2_sender,
-            own_device_id: survivors[1],
-            new_participants: new_participants.to_vec(),
+        let survivor2_contribution = compute_reshare_contribution(
+            survivors[1],
+            old_key_packages.get(&survivors[1]).expect("kp"),
+            &survivors,
+            &new_participants,
             new_threshold,
-            existing_group_key: original_group_key.clone(),
-            session_id: reshare_session_id,
-            scope: scope.clone(),
-            token: None,
+        )
+        .expect("compute contribution 2");
+        let survivor2_own_contribution = ReshareOwnContribution {
+            commitment: survivor2_contribution.commitment.clone(),
+            share_to_self: survivor2_contribution
+                .share_to_self
+                .clone()
+                .expect("survivor2 stays in the new committee"),
         };
-        let survivor2_task =
-            contribute_threshold_reshare(&survivor2_old_kp, &survivors, survivor2_options);
 
         let survivor1_send_sender = sender_of(survivors[0]);
         let survivor1_send_options = SendReshareContribution {
@@ -1226,6 +1219,20 @@ mod tests {
         };
         let survivor1_send_task =
             send_reshare_contribution(survivor1_send_options, &survivor1_contribution);
+
+        let survivor2_send_sender = sender_of(survivors[1]);
+        let survivor2_send_options = SendReshareContribution {
+            sender: survivor2_send_sender,
+            own_device_id: survivors[1],
+            new_participants: new_participants.to_vec(),
+            new_threshold,
+            existing_group_key: original_group_key.clone(),
+            session_id: reshare_session_id,
+            scope: scope.clone(),
+            token: None,
+        };
+        let survivor2_send_task =
+            send_reshare_contribution(survivor2_send_options, &survivor2_contribution);
 
         let survivor1_join_sender = sender_of(survivors[0]);
         let survivor1_join_collectors = collectors_of(survivors[0]);
@@ -1244,6 +1251,23 @@ mod tests {
         };
         let survivor1_join_task = join_threshold_reshare(survivor1_join_options);
 
+        let survivor2_join_sender = sender_of(survivors[1]);
+        let survivor2_join_collectors = collectors_of(survivors[1]);
+        let survivor2_join_options = JoinThresholdReshare {
+            sender: survivor2_join_sender,
+            collectors: &survivor2_join_collectors,
+            own_device_id: survivors[1],
+            other_survivors: vec![survivors[0]],
+            own_contribution: Some(survivor2_own_contribution),
+            new_participants: new_participants.to_vec(),
+            new_threshold,
+            existing_group_key: original_group_key.clone(),
+            session_id: reshare_session_id,
+            scope: scope.clone(),
+            token: None,
+        };
+        let survivor2_join_task = join_threshold_reshare(survivor2_join_options);
+
         let new_device_sender = sender_of(new_device);
         let new_device_collectors = collectors_of(new_device);
         let new_device_options = JoinThresholdReshare {
@@ -1261,26 +1285,49 @@ mod tests {
         };
         let new_device_join_task = join_threshold_reshare(new_device_options);
 
-        let (survivor2_result, survivor1_send_result, survivor1_join_result, new_device_result) = tokio::join!(
-            survivor2_task,
+        let (
+            survivor1_send_result,
+            survivor2_send_result,
+            survivor1_join_result,
+            survivor2_join_result,
+            new_device_result,
+        ) = tokio::join!(
             survivor1_send_task,
+            survivor2_send_task,
             survivor1_join_task,
+            survivor2_join_task,
             new_device_join_task,
         );
-        survivor2_result.expect("survivor 2 contributes and leaves");
         survivor1_send_result.expect("survivor 1 sends its contribution");
+        survivor2_send_result.expect("survivor 2 sends its contribution");
         let (survivor1_key_package, survivor1_pkp) =
             survivor1_join_result.expect("survivor 1 joins the new committee");
+        let (_survivor2_key_package, survivor2_pkp) =
+            survivor2_join_result.expect("survivor 2 joins the new committee");
         let (new_device_key_package, new_device_pkp) =
             new_device_result.expect("the new device joins the committee");
 
         assert_eq!(
-            survivor1_pkp.verifying_key().serialize().expect("serialize"),
+            survivor1_pkp
+                .verifying_key()
+                .serialize()
+                .expect("serialize"),
             original_group_key,
             "the reshared group key must match the original"
         );
         assert_eq!(
-            new_device_pkp.verifying_key().serialize().expect("serialize"),
+            survivor2_pkp
+                .verifying_key()
+                .serialize()
+                .expect("serialize"),
+            original_group_key,
+            "every new participant derives the identical, unchanged group key"
+        );
+        assert_eq!(
+            new_device_pkp
+                .verifying_key()
+                .serialize()
+                .expect("serialize"),
             original_group_key,
             "every new participant derives the identical, unchanged group key"
         );
@@ -1303,8 +1350,14 @@ mod tests {
         crate::nonce_store::NonceStore::persist(&store_a, 1, nonces_a).expect("persist a");
         crate::nonce_store::NonceStore::persist(&store_b, 1, nonces_b).expect("persist b");
         let mut package_commitments = BTreeMap::new();
-        package_commitments.insert(identifier_for_device(&survivors[0]).expect("id"), commitments_a);
-        package_commitments.insert(identifier_for_device(&new_device).expect("id"), commitments_b);
+        package_commitments.insert(
+            identifier_for_device(&survivors[0]).expect("id"),
+            commitments_a,
+        );
+        package_commitments.insert(
+            identifier_for_device(&new_device).expect("id"),
+            commitments_b,
+        );
         let signing_package = frost_ed25519::SigningPackage::new(package_commitments, message);
 
         let share_a = frost_ed25519::round2::sign(
@@ -1323,10 +1376,13 @@ mod tests {
         shares.insert(identifier_for_device(&survivors[0]).expect("id"), share_a);
         shares.insert(identifier_for_device(&new_device).expect("id"), share_b);
 
-        let signature = frost_ed25519::aggregate(&signing_package, &shares, &survivor1_pkp)
-            .expect("aggregate");
+        let signature =
+            frost_ed25519::aggregate(&signing_package, &shares, &survivor1_pkp).expect("aggregate");
         assert!(
-            survivor1_pkp.verifying_key().verify(message, &signature).is_ok(),
+            survivor1_pkp
+                .verifying_key()
+                .verify(message, &signature)
+                .is_ok(),
             "the reshared committee's aggregate signature verifies against the original group key"
         );
     }
