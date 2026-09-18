@@ -16,7 +16,7 @@ interface Registration {
 }
 
 export interface RelayHub {
-  /** Drives one accepted connection until it closes: registers gossip-advertised devices, re-broadcasts each gossip frame to every other connected client and replies to the gossiping connection with a catch-up frame of every other already-known device, answers relay-connect by pairing and notifying the target, and forwards relay-data within established pairings. Resolves when the connection's frame stream ends. Internally just registerConnection followed by a loop of onFrame calls and a final onDisconnect -- kept as its own method since a dedicated hub deployment (wire-mesh-node/cloudflare-hub) has nothing else driving the connection and wants the whole lifecycle in one call. */
+  /** Drives one accepted connection until it closes: registers gossip-advertised devices, re-broadcasts each gossip frame to every other connected client and replies to the gossiping connection with a catch-up frame of every other already-known device, answers relay-connect by pairing and notifying the target, forwards relay-data within established pairings, and replies to a bare ping with a bare pong (wire-mesh#181) so a client can time its own sender-to-hub leg independent of anything being relayed. Resolves when the connection's frame stream ends. Internally just registerConnection followed by a loop of onFrame calls and a final onDisconnect -- kept as its own method since a dedicated hub deployment (wire-mesh-node/cloudflare-hub) has nothing else driving the connection and wants the whole lifecycle in one call. */
   handleConnection: (connection: Readonly<Connection>) => Promise<void>;
   /** Registers a connection with this hub without taking over its own frame-consumption loop (wire-mesh#102) -- the entry point an "ordinary opted-in node relays for peers it's already talking to" uses, alongside onFrame/onDisconnect below, to let a MeshSession's own single connection.receive() loop drive this hub rather than running a second, competing one. Must be called once, before the first onFrame call for this connection, so gossip fan-out (which forwards to every OTHER registered connection) already sees it. */
   registerConnection: (connection: Readonly<Connection>) => void;
@@ -198,7 +198,17 @@ export function createRelayHub(): RelayHub {
       return;
     }
 
-    // Everything else (handshake, ping, candidates, manage-*, streaming, data-domain, coordinator, revocation-announce) is not the relay role's business: the hub is a transport-level node and forwards nothing it isn't named in. Frames are consumed and dropped.
+    if (frame.type === "ping") {
+      // A bare pong reply (wire-mesh#181, transport.cddl's own pong-frame), deliberately below the manage-command/capability layer this hub otherwise stays out of entirely: it lets a client isolate its own sender-to-hub leg of a relayed round trip by timing a plain ping/pong over the same connection a relay-data frame travelled, with no relay-pairing or device-registry lookup involved -- any connected client gets a pong for its own ping, exactly the same "trivial echo" scope the frame's own CDDL comment states. A failed reply means this connection just died; that's the ordinary disconnect path, not an error to surface here.
+      try {
+        await connection.send({ type: "pong" });
+      } catch {
+        // The connection died between receiving this ping and replying -- its own handleConnection loop (or the caller driving onFrame directly) will observe that independently via its receive() stream.
+      }
+      return;
+    }
+
+    // Everything else (handshake, candidates, manage-*, streaming, data-domain, coordinator, revocation-announce) is not the relay role's business: the hub is a transport-level node and forwards nothing it isn't named in. Frames are consumed and dropped.
   }
 
   return {

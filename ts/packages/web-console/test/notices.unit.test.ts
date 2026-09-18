@@ -114,6 +114,7 @@ function fakeSession(): MeshSession & {
     revocationAnnouncements: emptyStream(),
     connect: () => unimplemented("connect"),
     sendPing: () => unimplemented("sendPing"),
+    sendPingMeasureRtt: () => unimplemented("sendPingMeasureRtt"),
     setToken: () => unimplemented("setToken"),
     sendRevocationAnnounce: () => unimplemented("sendRevocationAnnounce"),
     sendGossipUpdate: () => unimplemented("sendGossipUpdate"),
