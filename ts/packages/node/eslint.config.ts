@@ -7,7 +7,8 @@ export default defineConfig(
   exadevConfig(
     {},
     {
-      ignores: ["dist", "coverage", "node_modules", ".turbo"],
+      // scripts/ holds a plain-JS operational script (the web-console dist copy step) with no TS project to type it against, the same carve-out cloudflare-hub/eslint.config.ts uses for its own scripts/live-check.mjs.
+      ignores: ["dist", "coverage", "node_modules", ".turbo", "scripts"],
     },
     {
       languageOptions: {
