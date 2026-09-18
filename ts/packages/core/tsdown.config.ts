@@ -15,6 +15,7 @@ export default defineConfig({
     "src/domain/data-sync.ts",
     "src/domain/erasure-coding.ts",
     "src/domain/device-id.ts",
+    "src/domain/gossip-expansion.ts",
     "src/domain/grant-candidates.ts",
     "src/domain/group-key.ts",
     "src/domain/handshake.ts",
