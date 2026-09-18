@@ -1,6 +1,4 @@
-//! `frame.cddl` — the top-level `$frame-variant` socket as one Rust enum.
-//!
-//! Exactly 24 variants, no federation frames: the federation link protocol
+// ! `frame.cddl` — the top-level `$frame-variant` socket as one Rust enum. ! ! Exactly 25 variants, no federation frames: the federation link protocol
 //! is retired (`spec/federation.cddl` defines no rules) and `core/federation`
 //! is a reserved domain name that must never be advertised or negotiated —
 //! enforced at handshake validation, not here, because no federation frame
@@ -36,9 +34,10 @@ use crate::streaming::{
 use crate::strict;
 use crate::transport::{
     candidates_from, close_from, coordinator_from, gossip_from, observed_address_from, ping_from,
-    relay_connect_from, relay_data_from, relay_inbound_from, relay_offer_from, sync_punch_from,
-    CandidatesFrame, CloseFrame, CoordinatorFrame, GossipFrame, ObservedAddressFrame, PingFrame,
-    RelayConnectFrame, RelayDataFrame, RelayInboundFrame, RelayOfferFrame, SyncPunchFrame,
+    pong_from, relay_connect_from, relay_data_from, relay_inbound_from, relay_offer_from,
+    sync_punch_from, CandidatesFrame, CloseFrame, CoordinatorFrame, GossipFrame,
+    ObservedAddressFrame, PingFrame, PongFrame, RelayConnectFrame, RelayDataFrame,
+    RelayInboundFrame, RelayOfferFrame, SyncPunchFrame,
 };
 
 /// The top-level frame socket: one variant per `$frame-variant` member.
@@ -51,6 +50,7 @@ use crate::transport::{
 pub enum Frame {
     Handshake(HandshakeFrame),
     Ping(PingFrame),
+    Pong(PongFrame),
     Close(CloseFrame),
     Gossip(GossipFrame),
     Candidates(CandidatesFrame),
@@ -81,6 +81,7 @@ impl Frame {
         match self {
             Frame::Handshake(_) => HandshakeFrame::TYPE,
             Frame::Ping(_) => PingFrame::TYPE,
+            Frame::Pong(_) => PongFrame::TYPE,
             Frame::Close(_) => CloseFrame::TYPE,
             Frame::Gossip(_) => GossipFrame::TYPE,
             Frame::Candidates(_) => CandidatesFrame::TYPE,
@@ -172,6 +173,7 @@ impl Encode<()> for Frame {
         match self {
             Frame::Handshake(f) => f.encode(e, &mut ()),
             Frame::Ping(f) => f.encode(e, &mut ()),
+            Frame::Pong(f) => f.encode(e, &mut ()),
             Frame::Close(f) => f.encode(e, &mut ()),
             Frame::Gossip(f) => f.encode(e, &mut ()),
             Frame::Candidates(f) => f.encode(e, &mut ()),
@@ -225,6 +227,7 @@ pub(crate) fn frame_from(d: &mut Decoder<'_>) -> Result<Frame, DecodeError> {
     match kind.as_str() {
         HandshakeFrame::TYPE => Ok(Frame::Handshake(handshake_from(d)?)),
         PingFrame::TYPE => Ok(Frame::Ping(ping_from(d)?)),
+        PongFrame::TYPE => Ok(Frame::Pong(pong_from(d)?)),
         CloseFrame::TYPE => Ok(Frame::Close(close_from(d)?)),
         GossipFrame::TYPE => Ok(Frame::Gossip(gossip_from(d)?)),
         CandidatesFrame::TYPE => Ok(Frame::Candidates(candidates_from(d)?)),
@@ -268,6 +271,7 @@ mod tests {
                 &hex("a364747970656968616e647368616b6567646f6d61696e738169636f72652f646174616776657273696f6e01"),
             ).expect("handshake")),
             Frame::Ping(PingFrame),
+            Frame::Pong(PongFrame),
             Frame::Close(CloseFrame::default()),
             Frame::Gossip(GossipFrame::default()),
             Frame::Candidates(CandidatesFrame::default()),
@@ -305,6 +309,7 @@ mod tests {
         let expected_kinds = [
             "handshake",
             "ping",
+            "pong",
             "close",
             "gossip",
             "candidates",
@@ -335,8 +340,8 @@ mod tests {
             assert_eq!(&back, frame, "round trip of {kind}");
             assert_eq!(back.kind(), kind);
         }
-        // 24 variants, exactly, no federation.
-        assert_eq!(frames.len(), 24);
+        // 25 variants, exactly, no federation.
+        assert_eq!(frames.len(), 25);
     }
 
     #[test]
