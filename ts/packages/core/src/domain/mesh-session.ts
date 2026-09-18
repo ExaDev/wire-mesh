@@ -25,8 +25,9 @@ import {
 import { SUPPORTED_PROTOCOL_VERSION, negotiate } from "./handshake.js";
 import { deviceIdToHex } from "./device-id.js";
 import { createRelayPairings } from "./relay-pairing.js";
+import { createAsyncQueue } from "./async-queue.js";
 import { createPingRoundTrips } from "./ping-round-trips.js";
-import { computeTopologyPeers as computeTopologyPeersFromInputs } from "./topology-snapshot.js";
+import { createTopologySnapshotTracker } from "./topology-snapshot.js";
 import {
   TOPOLOGY_PEERS_GOSSIP_KEY,
   validateGossipExtensions,
@@ -180,8 +181,7 @@ function createSessionCore(
   const directory = new Map<string, DirectoryEntry>();
   const frameLog: FrameLogEntry[] = [];
   let feedCancelled = false;
-  const eventWaiters: ((event: SessionEvent) => void)[] = [];
-  const eventBacklog: SessionEvent[] = [];
+  const eventQueue = createAsyncQueue<SessionEvent>();
   let handshakeTimer: ReturnType<typeof setTimeout> | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let attempt = 0;
@@ -189,8 +189,12 @@ function createSessionCore(
   let nextRequestId = 0;
   // Every device this session's own connection currently holds a relay pairing with, in either role: added when this session sends its own relay-connect (initiator role) or when it receives a relay-inbound naming who is now paired with it (target role). See relay-pairing.ts for why establishing a pairing with a new target never discards an already-established one with a different target, and why this is never consulted for addressing -- only for ensureRelayPairing's own "already paired" check.
   const relayPairings = createRelayPairings();
-  // The device named by the first peer-advert entry this session ever applies to its directory -- topology self-advertisement's (wire-mesh#180) own fallback for "who is this connection's own direct peer" when the transport gives no authenticated connection.peerDeviceId. Only trustworthy for an accepted connection (dial === null below): AcceptedMeshSession's own peerDeviceId doc comment already establishes that an accepted connection is structurally exactly two peers, so its remote's first self-advert really is its own identity. A dial-side session may instead be talking to a relay hub that forwards a *third* device's advert as gossip catch-up before ever sending one of its own (it may have none at all), so this same heuristic would misattribute a merely-relayed device as directly connected -- computeTopologyPeers below only reads this when dial === null, never for the dial side.
-  let firstPeerDevice: DeviceId | null = null;
+  // Topology self-advertisement's (wire-mesh#180) own state: tracks the device named by the first peer-advert entry this session ever applies to its directory, for buildSelfAdvert/getTopologyPeers' own use below via topology.compute()'s isAccepted-gated fallback. Only trustworthy for an accepted connection: AcceptedMeshSession's own peerDeviceId doc comment already establishes that an accepted connection is structurally exactly two peers, so its remote's first self-advert really is its own identity. A dial-side session may instead be talking to a relay hub that forwards a *third* device's advert as gossip catch-up before ever sending one of its own (it may have none at all), so this same heuristic would misattribute a merely-relayed device as directly connected for that side.
+  const topology = createTopologySnapshotTracker({
+    getAuthenticatedPeer: () => connection?.peerDeviceId,
+    isAccepted: dial === null,
+    getRelayedDevices: () => relayPairings.list(),
+  });
   const pendingManageRequests = new Map<
     number,
     {
@@ -198,10 +202,8 @@ function createSessionCore(
       reject: (error: Error) => void;
     }
   >();
-  const incomingWaiters: ((request: IncomingManageRequest) => void)[] = [];
-  const incomingBacklog: IncomingManageRequest[] = [];
-  const revocationWaiters: ((entry: RevocationEntry) => void)[] = [];
-  const revocationBacklog: RevocationEntry[] = [];
+  const incomingQueue = createAsyncQueue<IncomingManageRequest>();
+  const revocationQueue = createAsyncQueue<RevocationEntry>();
   const pingRoundTrips = createPingRoundTrips();
 
   function snapshot(): SessionEvent {
@@ -213,31 +215,7 @@ function createSessionCore(
   }
 
   function emit(): void {
-    const event = snapshot();
-    const waiter = eventWaiters.shift();
-    if (waiter) {
-      waiter(event);
-    } else {
-      eventBacklog.push(event);
-    }
-  }
-
-  function emitIncomingManageRequest(request: IncomingManageRequest): void {
-    const waiter = incomingWaiters.shift();
-    if (waiter) {
-      waiter(request);
-    } else {
-      incomingBacklog.push(request);
-    }
-  }
-
-  function emitRevocationEntry(entry: RevocationEntry): void {
-    const waiter = revocationWaiters.shift();
-    if (waiter) {
-      waiter(entry);
-    } else {
-      revocationBacklog.push(entry);
-    }
+    eventQueue.push(snapshot());
   }
 
   function rejectPendingManageRequests(reason: string): void {
@@ -327,7 +305,7 @@ function createSessionCore(
       void incoming.respond(versionGetOutcome());
       return;
     }
-    emitIncomingManageRequest(incoming);
+    incomingQueue.push(incoming);
   }
 
   function applyFrame(frame: Frame): void {
@@ -359,7 +337,7 @@ function createSessionCore(
           device: advert.device,
           advert,
         });
-        firstPeerDevice ??= advert.device;
+        topology.recordAdvert(advert.device);
         onPeerAdvert?.(advert);
       }
     } else if (frame.type === "relay-inbound") {
@@ -373,7 +351,7 @@ function createSessionCore(
       pingRoundTrips.resolveOldest(clock.now());
     } else if (frame.type === "revocation-announce") {
       for (const entry of frame.entries) {
-        emitRevocationEntry(entry);
+        revocationQueue.push(entry);
       }
     }
   }
@@ -475,18 +453,6 @@ function createSessionCore(
     }
   }
 
-  /** This session's own current topology self-advertisement (wire-mesh#180) -- the actual computation lives in topology-snapshot.ts (a plain-data leaf module, split out purely to keep this already-large file under the max-lines lint budget), fed from this session's own live connection/firstPeerDevice/relayPairings state. */
-  function computeTopologyPeers(): TopologyPeers {
-    return computeTopologyPeersFromInputs({
-      ...(connection?.peerDeviceId !== undefined
-        ? { authenticatedPeer: connection.peerDeviceId }
-        : {}),
-      firstAdvertisedPeer: firstPeerDevice,
-      isAccepted: dial === null,
-      relayedDevices: relayPairings.list(),
-    });
-  }
-
   /** Builds this side's own self-advert: this node's own directly-reachable addresses (wire-mesh#38), or none for a caller with nothing to offer (a browser client, which cannot accept inbound connections) -- either is an honest advert, not a stopgap. extensions merge onto peer-advert's own open `* tstr => any` tail -- the mechanism sendGossipUpdate uses to keep a gossiped fact (presence status, an accept/refuse policy, or any future domain's own) live over the connection's lifetime. Extensions, CORE_VERSION_GOSSIP_KEY, and topology/peers are all spread before the mandatory fields (never after) so a caller-supplied key of the same name can never shadow them on the wire -- validateGossipExtensions already rejects every such collision loudly, but the field order is kept safe in its own right rather than relying solely on the guard staying in sync. topology/peers (wire-mesh#180) is recomputed fresh on every call, the same "always current, never cached" treatment snapshot-seconds already gets, since a session's own connection identity and relay pairings can change between one self-advert and the next. */
   function buildSelfAdvert(extensions?: Record<string, unknown>): GossipFrame {
     if (extensions !== undefined) {
@@ -498,7 +464,7 @@ function createSessionCore(
         {
           ...extensions,
           [CORE_VERSION_GOSSIP_KEY]: OWN_VERSION,
-          [TOPOLOGY_PEERS_GOSSIP_KEY]: computeTopologyPeers(),
+          [TOPOLOGY_PEERS_GOSSIP_KEY]: topology.compute(),
           device: identity.deviceId,
           addresses: [...addresses],
           "snapshot-seconds": Math.floor(clock.now() / MS_PER_SECOND),
@@ -572,57 +538,9 @@ function createSessionCore(
   return {
     wireUpConnection,
     session: {
-      events: {
-        [Symbol.asyncIterator]() {
-          return {
-            next: async (): Promise<IteratorResult<SessionEvent>> =>
-              new Promise((resolve) => {
-                const backlogEvent = eventBacklog.shift();
-                if (backlogEvent) {
-                  resolve({ value: backlogEvent, done: false });
-                } else {
-                  eventWaiters.push((event) => {
-                    resolve({ value: event, done: false });
-                  });
-                }
-              }),
-          };
-        },
-      },
-      incomingManageRequests: {
-        [Symbol.asyncIterator]() {
-          return {
-            next: async (): Promise<IteratorResult<IncomingManageRequest>> =>
-              new Promise((resolve) => {
-                const backlogRequest = incomingBacklog.shift();
-                if (backlogRequest) {
-                  resolve({ value: backlogRequest, done: false });
-                } else {
-                  incomingWaiters.push((request) => {
-                    resolve({ value: request, done: false });
-                  });
-                }
-              }),
-          };
-        },
-      },
-      revocationAnnouncements: {
-        [Symbol.asyncIterator]() {
-          return {
-            next: async (): Promise<IteratorResult<RevocationEntry>> =>
-              new Promise((resolve) => {
-                const backlogEntry = revocationBacklog.shift();
-                if (backlogEntry) {
-                  resolve({ value: backlogEntry, done: false });
-                } else {
-                  revocationWaiters.push((entry) => {
-                    resolve({ value: entry, done: false });
-                  });
-                }
-              }),
-          };
-        },
-      },
+      events: eventQueue.stream,
+      incomingManageRequests: incomingQueue.stream,
+      revocationAnnouncements: revocationQueue.stream,
       async connect(address, localDomains): Promise<void> {
         if (connection !== null) {
           throw new Error(
@@ -710,7 +628,7 @@ function createSessionCore(
         emit();
       },
       getTopologyPeers(): TopologyPeers {
-        return computeTopologyPeers();
+        return topology.compute();
       },
       async sendDataFrame(
         frame: DataHaveFrame | DataRequestFrame | DataEntriesFrame,
