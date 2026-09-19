@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "devDependencies": {
     "@exadev/eslint-config": "2.18.0",
-    "@exadev/semantic-release-workspace": "2.1.0",
+    "@exadev/semantic-release-workspace": "3.0.0",
     "@semantic-release/changelog": "7.0.0",
     "@semantic-release/commit-analyzer": "13.0.1",
     "@semantic-release/git": "11.0.1",
