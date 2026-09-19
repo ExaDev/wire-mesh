@@ -25,22 +25,23 @@ const privatePackages = [
 ];
 
 /** Derived from `publishPlugins` rather than from the orchestrator's own defaults, so a change to the workspace-wide pipeline reaches the private packages too instead of silently leaving them on a stale list. */
-const withoutGitHubRelease: readonly PublishPluginSpec[] = publishPlugins.filter(
-  (spec) => pluginName(spec) !== "@semantic-release/github",
-);
+const withoutGitHubRelease: readonly PublishPluginSpec[] =
+  publishPlugins.filter(
+    (spec) => pluginName(spec) !== "@semantic-release/github",
+  );
 
 /**
- * Runs on `main`, once per push, through @exadev/semantic-release-workspace rather than semantic-release directly.
+ * Runs on `main`, once per push, through `@exadev/semantic-release-workspace` rather than semantic-release directly.
  *
  * The orchestrator discovers every package from pnpm-workspace.yaml, orders them so a package releases only after each workspace sibling it depends on has, and runs semantic-release per package with the commit list path-filtered to that package's own directory and its tags in `name@version` form. This workspace sits at ts/ rather than the repository root, and the orchestrator scopes each package's path filter against the repository toplevel via `git rev-parse --show-prefix`, so a commit touching only rust/ or spec/ releases nothing here.
  *
  * That tag format is not the one this repository's two hand-rolled per-package release jobs used: `core-v1.58.2` and `node-v1.0.1` then, `wire-mesh-core@1.58.2` and `wire-mesh@1.0.1` now. semantic-release derives a package's previous version from the last tag matching the format it is configured with and finds nothing at all without one, so each package needed a tag in the new format created at the commit its last old-format tag names. Without one, both would have restarted at 1.0.0 and collided with versions the registry already holds. The old tags are left in place; nothing reads them any more.
  *
- * `commitStrategy: "single"` produces one commit for the whole run, every version bump, changelog write and dependency-range rewrite together, instead of one commit per released package plus one per bump. main's ruleset requires every change to arrive through a pull request, so each of those pushes is a bypass; one combined push is both fewer bypasses and atomic, leaving no half-released state if the run dies partway. @semantic-release/git is deliberately absent from the plugin list because of it: that plugin's own prepare step would make exactly the per-package commit this mode exists to replace, and the orchestrator rejects the combination outright rather than producing both.
+ * `commitStrategy: "single"` produces one commit for the whole run, every version bump, changelog write and dependency-range rewrite together, instead of one commit per released package plus one per bump. main's ruleset requires every change to arrive through a pull request, so each of those pushes is a bypass; one combined push is both fewer bypasses and atomic, leaving no half-released state if the run dies partway. `@semantic-release/git` is deliberately absent from the plugin list because of it: that plugin's own prepare step would make exactly the per-package commit this mode exists to replace, and the orchestrator rejects the combination outright rather than producing both.
  *
- * Three of the five packages here are private (see `privatePackages`). They still take part in the run, because what a dependent needs from an upstream sibling is its version bump, its `name@version` tag and the rewrite of the dependent's own dependency range, and a private package produces all three: @semantic-release/npm skips only the publish itself. `@exadev/wire-mesh-web-console`'s build output is copied into wire-mesh's own dist, so wire-mesh has to republish when the console changes. With commits path-filtered per package, the only thing that forces it is web-console releasing and the orchestrator rewriting wire-mesh's dependency range on it.
+ * Three of the five packages here are private (see `privatePackages`). They still take part in the run, because what a dependent needs from an upstream sibling is its version bump, its `name@version` tag and the rewrite of the dependent's own dependency range, and a private package produces all three: `@semantic-release/npm` skips only the publish itself. `@exadev/wire-mesh-web-console`'s build output is copied into wire-mesh's own dist, so wire-mesh has to republish when the console changes. With commits path-filtered per package, the only thing that forces it is web-console releasing and the orchestrator rewriting wire-mesh's dependency range on it.
  *
- * What a private package does not need is a public GitHub Release, and leaving @semantic-release/github on their pipelines actively misled: the plugin marks every release it creates from the release branch as the repository's Latest, with no option to do otherwise, so whichever package the run released last took the label. Topological order puts `wire-mesh-sfu` last in every run, because it depends on both published packages, so GitHub advertised an unpublishable package as the current release. `packagePlugins` leaves that one plugin off the three private pipelines, which removes their Releases and nothing else, and the label settles on `wire-mesh` on its own.
+ * What a private package does not need is a public GitHub Release, and leaving `@semantic-release/github` on their pipelines actively misled: the plugin marks every release it creates from the release branch as the repository's Latest, with no option to do otherwise, so whichever package the run released last took the label. Topological order puts `wire-mesh-sfu` last in every run, because it depends on both published packages, so GitHub advertised an unpublishable package as the current release. `packagePlugins` leaves that one plugin off the three private pipelines, which removes their Releases and nothing else, and the label settles on `wire-mesh` on its own.
  */
 const config: Pick<
   ReleaseWorkspaceOptions,

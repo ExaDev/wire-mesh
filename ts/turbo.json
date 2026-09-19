@@ -3,26 +3,38 @@
 
   // Root-level tasks fan out topologically into each package's own same-named task (each package defines these itself, matching conformance/'s underscore-prefixed convention so a package's own public script calling `turbo run _build` doesn't recurse into itself).
   "tasks": {
+    // The workspace root's own tooling configs are held to the same lint and typecheck gates as package code. release-workspace.config.ts decides which packages publish and under which plugins, and until these existed no task had it among its inputs, so `pnpm lint` and `pnpm typecheck` both passed without ever parsing it. Registered as root tasks (turbo's `//#` prefix) so `turbo run _lint` and `turbo run _typecheck` cover them, cached like everything else, rather than needing a separate command someone has to remember.
+    //
+    // No dependsOn: these files import nothing from packages/, so unlike a package's own lint they need no sibling built first.
+    "//#_lint": {
+      "inputs": ["*.config.ts", "tsconfig.json", "package.json"],
+      "outputs": [".eslintcache"]
+    },
+    "//#_typecheck": {
+      "inputs": ["*.config.ts", "tsconfig.json", "package.json"],
+      "outputs": []
+    },
+
     "_build": {
       "dependsOn": ["^_build"],
       "outputs": ["dist/**"]
     },
-    "_test": {
-      "dependsOn": ["_build", "^_build"]
-    },
-    "_typecheck": {
+    "_conformance-check": {
       "dependsOn": ["_build", "^_build"]
     },
     "_lint": {
       "dependsOn": ["_build", "^_build"],
       "outputs": [".eslintcache"]
     },
-    "_conformance-check": {
-      "dependsOn": ["_build", "^_build"]
-    },
     "_mutation": {
       "dependsOn": ["_build", "^_build"],
       "outputs": ["reports/**", ".stryker-tmp/**"]
+    },
+    "_test": {
+      "dependsOn": ["_build", "^_build"]
+    },
+    "_typecheck": {
+      "dependsOn": ["_build", "^_build"]
     }
   }
 }
