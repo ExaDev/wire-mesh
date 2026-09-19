@@ -1,3 +1,9 @@
+## [1.58.4](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%401.58.3...wire-mesh-core%401.58.4) (2026-09-19)
+
+### Bug Fixes
+
+* **core:** refuse to pack without the wasm-bindgen output ([554f12c](https://github.com/ExaDev/wire-mesh/commit/554f12cc0709150cf90332f48783edaa040244a1))
+
 ## [1.58.3](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%401.58.2...wire-mesh-core%401.58.3) (2026-09-19)
 
 ### Bug Fixes

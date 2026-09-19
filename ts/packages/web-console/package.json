@@ -1,6 +1,6 @@
 {
   "name": "@exadev/wire-mesh-web-console",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "dependencies": {
     "@mantine/core": "9.6.0",
     "@mantine/hooks": "9.6.0",
@@ -9,7 +9,7 @@
     "react-dom": "19.2.8",
     "tslib": "2.8.1",
     "web-ui-primitives": "1.1.0",
-    "wire-mesh-core": "1.58.3"
+    "wire-mesh-core": "1.58.4"
   },
   "devDependencies": {
     "@exadev/eslint-config": "2.18.0",
