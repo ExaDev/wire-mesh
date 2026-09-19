@@ -139,15 +139,12 @@ jobs:
           echo "wasm-bindgen crate resolves to $version, installing the matching CLI"
           cargo install wasm-bindgen-cli --version "$version" --locked
 
-      - name: Build wire-mesh-threshold-wasm's wasm-dist, required before core's own typecheck/build/test, which import it directly
-        working-directory: ts/packages/core
-        run: ./scripts/build-threshold-wasm.sh
-
       - name: Install ts/ workspace
         working-directory: ts
         run: pnpm install --frozen-lockfile
 
-      - name: Lint
+      # core's lint, typecheck, test and mutation tasks depend on the _build-wasm task, which runs scripts/build-threshold-wasm.sh and caches wasm-dist. This is the first step that needs it, so it builds there and every later step in this job restores it from turbo's cache instead of running cargo again.
+      - name: Lint, building core's wasm-dist first
         working-directory: ts
         run: pnpm turbo run _lint
 
