@@ -1,8 +1,8 @@
 {
-  "name": "wire-mesh-node",
+  "name": "wire-mesh",
   "version": "0.0.0",
   "bin": {
-    "wire-mesh-node": "./dist/server.mjs"
+    "wire-mesh": "./dist/server.mjs"
   },
   "dependencies": {
     "cbor2": "2.3.0",
@@ -13,6 +13,10 @@
     "@arethetypeswrong/cli": "0.18.5",
     "@exadev/eslint-config": "2.18.0",
     "@exadev/wire-mesh-web-console": "workspace:*",
+    "@semantic-release/commit-analyzer": "13.0.1",
+    "@semantic-release/github": "12.0.9",
+    "@semantic-release/npm": "13.1.5",
+    "@semantic-release/release-notes-generator": "14.1.1",
     "@types/node": "26.4.1",
     "@types/ws": "8.18.1",
     "eslint": "10.10.0",
@@ -21,6 +25,7 @@
     "globals": "17.12.0",
     "jiti": "2.7.0",
     "prettier": "3.9.6",
+    "semantic-release": "25.0.9",
     "tsdown": "0.23.0",
     "turbo": "2.10.12",
     "typescript": "6.0.3",
@@ -41,7 +46,15 @@
     "dist"
   ],
   "packageManager": "pnpm@12.4.1+sha512.2e81e399d73fe8390dab25e06aa788ab7a5908248d2f5a370f82b481147a6a7a367bf8048f9a6fdb6460f21a66f0542dedb8b94ca2c8723596741920b1656d4c",
-  "private": true,
+  "publishConfig": {
+    "provenance": true,
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ExaDev/wire-mesh.git",
+    "directory": "ts/packages/node"
+  },
   "scripts": {
     "_build": "tsdown && node scripts/copy-web-console-dist.mjs",
     "_lint": "eslint . --fix --cache --max-warnings 0",

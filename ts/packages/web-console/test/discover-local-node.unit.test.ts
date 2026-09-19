@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  WIRE_MESH_NODE_DEFAULT_PORT,
+  WIRE_MESH_DEFAULT_PORT,
   discoverLocalNode,
   isLocalOrigin,
   probeLocalNode,
@@ -33,7 +33,7 @@ describe("probeLocalNode", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response()));
 
     await expect(probeLocalNode()).resolves.toBe(
-      `ws://127.0.0.1:${String(WIRE_MESH_NODE_DEFAULT_PORT)}`,
+      `ws://127.0.0.1:${String(WIRE_MESH_DEFAULT_PORT)}`,
     );
   });
 
@@ -77,7 +77,7 @@ describe("discoverLocalNode", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response()));
 
     await expect(discoverLocalNode("mesh.exadev.io")).resolves.toBe(
-      `ws://127.0.0.1:${String(WIRE_MESH_NODE_DEFAULT_PORT)}`,
+      `ws://127.0.0.1:${String(WIRE_MESH_DEFAULT_PORT)}`,
     );
   });
 

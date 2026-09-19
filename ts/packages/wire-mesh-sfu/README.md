@@ -8,7 +8,7 @@ An SFU (Selective Forwarding Unit): a media-aware relay for group audio/video ca
 
 ## Two independent design axes
 
-- **Deployment mode**: `src/server.ts` is a standalone service, accepting real `MeshSession`s over `wire-mesh-node`'s own WebSocket transport (reused, not duplicated) and handing each one to a shared `SfuCall`. An in-process deployment inside another wire-mesh-node process would call `createSfuCall`/`createMediasoupMediaBackend` directly instead of spawning this binary, sharing the identical domain and adapter code — nothing here is standalone-only.
+- **Deployment mode**: `src/server.ts` is a standalone service, accepting real `MeshSession`s over `wire-mesh`'s own WebSocket transport (reused, not duplicated) and handing each one to a shared `SfuCall`. An in-process deployment inside another wire-mesh process would call `createSfuCall`/`createMediasoupMediaBackend` directly instead of spawning this binary, sharing the identical domain and adapter code — nothing here is standalone-only.
 - **Backend**: `src/adapters/mediasoup-media-backend.ts` wraps [mediasoup](https://mediasoup.org), leaning on an audited, maintained RTP-forwarding implementation over a from-scratch one — the same reasoning that already settled FROST over a hand-rolled threshold-signing implementation (wire-mesh#29). The contract it implements, `SfuMediaBackend` (`src/domain/media-backend.ts`), mentions no mediasoup type in its own signature: every method takes and returns plain, serialisable data (participant ids as strings, SDP as strings, ICE candidates as the already-portable `WireRtcIceCandidateInit` shape `wire-mesh-core` already defined), so a second, differently-licensed or from-scratch backend could satisfy it later with zero changes to this contract or any of its callers.
 
 ## How a join actually works
@@ -52,8 +52,8 @@ curl http://<host>:8788/
 
 mediasoup's own `postinstall` fetches a prebuilt native worker binary for the current platform or, absent one, builds it locally via its own bundled Meson/Ninja invocation (needs a C++ toolchain). This workspace's `pnpm-workspace.yaml` explicitly approves mediasoup's build script (`onlyBuiltDependencies`/`allowBuilds`) for exactly this reason.
 
-**Security note:** matching `wire-mesh-node`'s own posture, this package adds no access control beyond the protocol's own capability tokens (`webrtc:signal`, gated the same way `core/exec`'s verbs are) — anyone who can reach the bound address and present a valid token can join a call. Bind to a trusted network, or ensure whatever issues `webrtc:signal` tokens is itself trusted, before exposing this to the open internet.
+**Security note:** matching `wire-mesh`'s own posture, this package adds no access control beyond the protocol's own capability tokens (`webrtc:signal`, gated the same way `core/exec`'s verbs are) — anyone who can reach the bound address and present a valid token can join a call. Bind to a trusted network, or ensure whatever issues `webrtc:signal` tokens is itself trusted, before exposing this to the open internet.
 
 ## Type environment
 
-`src/` is plain Node code, no DOM lib, matching `wire-mesh-core`'s and `wire-mesh-node`'s own type environment.
+`src/` is plain Node code, no DOM lib, matching `wire-mesh-core`'s and `wire-mesh`'s own type environment.

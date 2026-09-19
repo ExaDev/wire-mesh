@@ -705,7 +705,7 @@ export interface AcceptedMeshSessionOptions {
   clock?: Readonly<Clock>;
   /** This node's own directly-reachable "host:port" candidates (wire-mesh#38), advertised in this session's self-advert. Omit (or pass none) for a caller with nothing to offer. */
   addresses?: readonly string[];
-  /** Observes every frame this session receives, alongside (never instead of) its own manage-request/gossip/handshake handling (wire-mesh#102) -- the integration point an "ordinary opted-in node relays for peers it's already talking to" uses: pass a shared RelayHub instance's own handleFrame, bound to this connection, and it sees the identical frame stream this session's own applyFrame already consumes, with no second for-await loop racing over the same connection.receive(). A dedicated wire-mesh-node/cloudflare-hub deployment, which never runs a MeshSession at all, is unaffected -- this is additive, opt-in, and irrelevant to that case. */
+  /** Observes every frame this session receives, alongside (never instead of) its own manage-request/gossip/handshake handling (wire-mesh#102) -- the integration point an "ordinary opted-in node relays for peers it's already talking to" uses: pass a shared RelayHub instance's own handleFrame, bound to this connection, and it sees the identical frame stream this session's own applyFrame already consumes, with no second for-await loop racing over the same connection.receive(). A dedicated wire-mesh/cloudflare-hub deployment, which never runs a MeshSession at all, is unaffected -- this is additive, opt-in, and irrelevant to that case. */
   onFrame?: (
     connection: Readonly<Connection>,
     frame: Frame,

@@ -24,7 +24,7 @@ function directPeerDevice(
     : undefined;
 }
 
-/** This session's own current topology self-advertisement: the peer this connection is directly with, when known, and every device this connection currently holds a relay pairing with, each named alongside the hub it is reached via -- always this same direct peer, since a session has exactly one connection and a relay pairing on it can only ever have been established through that connection's own remote end. `via` is omitted, not guessed, when the hub itself has no known device-id (an anonymous relay-only hub, e.g. wire-mesh-node/cloudflare-hub's bare RelayHub, never gossips a self-advert of its own to learn one from). */
+/** This session's own current topology self-advertisement: the peer this connection is directly with, when known, and every device this connection currently holds a relay pairing with, each named alongside the hub it is reached via -- always this same direct peer, since a session has exactly one connection and a relay pairing on it can only ever have been established through that connection's own remote end. `via` is omitted, not guessed, when the hub itself has no known device-id (an anonymous relay-only hub, e.g. wire-mesh/cloudflare-hub's bare RelayHub, never gossips a self-advert of its own to learn one from). */
 export function computeTopologyPeers(
   inputs: Readonly<TopologyPeersInputs>,
 ): TopologyPeers {

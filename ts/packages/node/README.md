@@ -1,10 +1,10 @@
-# wire-mesh-node
+# wire-mesh
 
 A self-hostable, no-cloud LAN counterpart to `@exadev/wire-mesh-cloudflare-hub`: the same relay role (device discovery over gossip, pairing `relay-connect` initiators with their target, forwarding `relay-data` both ways), served by a plain Node process instead of a Cloudflare Durable Object. Run it on any machine already reachable on the network — a home server, a laptop on the same Wi-Fi, a container on a LAN — with no Cloudflare account, no deployment step, and no cloud dependency at all.
 
 ## Why this exists
 
-`cloudflare-hub` is the always-on, public reference deployment. It needs an account and a deployment pipeline, and it puts every relayed byte through Cloudflare's network. `wire-mesh-node` is for the opposite case: two devices on the same LAN (or reachable over a VPN/tailnet) that want a relay neither of them has to pay for or deploy anywhere — just `npx wire-mesh-node` on whichever machine is already running.
+`cloudflare-hub` is the always-on, public reference deployment. It needs an account and a deployment pipeline, and it puts every relayed byte through Cloudflare's network. `wire-mesh` is for the opposite case: two devices on the same LAN (or reachable over a VPN/tailnet) that want a relay neither of them has to pay for or deploy anywhere — just `npx wire-mesh` on whichever machine is already running.
 
 ## How it maps onto core's ports
 
@@ -15,17 +15,17 @@ The relay/pairing/gossip-registry domain logic itself is not duplicated here —
 ## Running it
 
 ```sh
-npx wire-mesh-node                       # binds 0.0.0.0:8787, plain ws:// + http://
-npx wire-mesh-node --bind 0.0.0.0:9000    # a different port
-npx wire-mesh-node --bind 127.0.0.1:8787  # loopback only, if that's genuinely what you want
-npx wire-mesh-node --tls-cert cert.pem --tls-key key.pem   # wss:// + https://, cert/key must be given together
+npx wire-mesh                       # binds 0.0.0.0:8787, plain ws:// + http://
+npx wire-mesh --bind 0.0.0.0:9000    # a different port
+npx wire-mesh --bind 127.0.0.1:8787  # loopback only, if that's genuinely what you want
+npx wire-mesh --tls-cert cert.pem --tls-key key.pem   # wss:// + https://, cert/key must be given together
 ```
 
 or, installed as a dependency:
 
 ```sh
-pnpm add wire-mesh-node
-wire-mesh-node --bind 0.0.0.0:8787
+pnpm add wire-mesh
+wire-mesh --bind 0.0.0.0:8787
 ```
 
 **Default bind address is `0.0.0.0:8787`, not loopback.** Unlike a typical dev-server tool, whose loopback-only default assumes only the machine itself needs to reach it, this package's whole purpose is LAN reachability — a phone on the same network, a laptop in the next room. `--bind` overrides the address if you want to restrict it (loopback-only, a specific interface, a different port).
@@ -34,7 +34,7 @@ Point a browser at the bound address to reach the console, or check its health d
 
 ```sh
 curl http://<host>:8787/health
-# {"ok":true,"node":"wire-mesh-node","roles":["relay"]}
+# {"ok":true,"node":"wire-mesh","roles":["relay"]}
 ```
 
 **TLS (`wss://`/`https://`)** is opt-in via `--tls-cert`/`--tls-key`, both required together — this package generates no certificate of its own, so bring your own (a real one from a CA, or a self-signed one for a LAN). This matters specifically for wire-mesh#182/#183: an `https://`-served PWA (`mesh.exadev.io`) can only reach a plain `ws://` node if it's literally on `localhost` of the same machine, since browsers block mixed-content WebSocket connections from a secure page to an insecure one — a self-hosted node on someone's LAN, addressed by its own IP, needs to answer `wss://` for that PWA to reach it at all.

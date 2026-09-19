@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The wire-mesh-node CLI entrypoint: a self-hostable, no-cloud LAN counterpart to cloudflare-hub, wiring the same shared relay-hub domain logic from wire-mesh-core over a real Node WebSocket + http server instead of a Cloudflare Durable Object. Default bind address is 0.0.0.0, not loopback -- the whole point of this package is LAN reachability, unlike a dev-server tool's usual loopback-only default. The same listener also answers a browser: any non-Upgrade request is served from web-console's built static output (wire-mesh#184), so a self-hosted node has somewhere to point a browser at, not just other wire-mesh peers.
+// The wire-mesh CLI entrypoint: a self-hostable, no-cloud LAN counterpart to cloudflare-hub, wiring the same shared relay-hub domain logic from wire-mesh-core over a real Node WebSocket + http server instead of a Cloudflare Durable Object. Default bind address is 0.0.0.0, not loopback -- the whole point of this package is LAN reachability, unlike a dev-server tool's usual loopback-only default. The same listener also answers a browser: any non-Upgrade request is served from web-console's built static output (wire-mesh#184), so a self-hosted node has somewhere to point a browser at, not just other wire-mesh peers.
 
 import { readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -10,7 +10,7 @@ import { createNodeWebSocketTransport } from "./adapters/node-websocket-transpor
 import { resolveConsoleFile } from "./static-console.js";
 
 export function healthResponse(): { ok: true; node: string; roles: string[] } {
-  return { ok: true, node: "wire-mesh-node", roles: ["relay"] };
+  return { ok: true, node: "wire-mesh", roles: ["relay"] };
 }
 
 const DEFAULT_BIND_ADDRESS = "0.0.0.0:8787";
@@ -98,7 +98,7 @@ async function main(): Promise<void> {
     },
   );
   logStartup(
-    `wire-mesh-node listening on ${tls ? "wss" : "ws"}://${listener.address}`,
+    `wire-mesh listening on ${tls ? "wss" : "ws"}://${listener.address}`,
   );
 }
 

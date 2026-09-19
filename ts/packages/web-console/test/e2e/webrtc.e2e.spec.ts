@@ -1,6 +1,6 @@
-// A real, checked-in end-to-end test for the WebRTC data path -- the thing vitest cannot exercise at all, since neither RTCPeerConnection nor RTCDataChannel exists under Node (unlike WebSocket, which Node provides natively). Two genuinely separate Chromium Browser instances (each its own OS process, launched independently rather than sharing one process via two BrowserContexts) each load the real production mesh-session/webrtc-negotiation/webrtc-transport modules, connect to a real, unmodified wire-mesh-node relay (booted by playwright.config.ts's webServer, not a bespoke stand-in), and negotiate a real WebRTC data channel through it.
+// A real, checked-in end-to-end test for the WebRTC data path -- the thing vitest cannot exercise at all, since neither RTCPeerConnection nor RTCDataChannel exists under Node (unlike WebSocket, which Node provides natively). Two genuinely separate Chromium Browser instances (each its own OS process, launched independently rather than sharing one process via two BrowserContexts) each load the real production mesh-session/webrtc-negotiation/webrtc-transport modules, connect to a real, unmodified wire-mesh relay (booted by playwright.config.ts's webServer, not a bespoke stand-in), and negotiate a real WebRTC data channel through it.
 //
-// core's relay-hub domain (shared by wire-mesh-node and cloudflare-hub) deliberately drops manage-request/manage-response frames sent directly to it -- see relay-hub.ts's own handleFrame, whose final branch comment says so. That is correct for relay-hub's actual job (gossip/relay-connect/ relay-data), and it is exactly why core/webrtc signaling addressed to a specific peer rides inside relay-data's own opaque payload instead (see mesh-session.ts's sendManageRequest targetDevice parameter): relay-data is the one frame kind relay-hub already forwards blindly between an established relay-connect pairing. This test's relay is the real thing, not a stand-in, specifically to prove the signaling traverses an unmodified relay-hub's real forwarding.
+// core's relay-hub domain (shared by wire-mesh and cloudflare-hub) deliberately drops manage-request/manage-response frames sent directly to it -- see relay-hub.ts's own handleFrame, whose final branch comment says so. That is correct for relay-hub's actual job (gossip/relay-connect/ relay-data), and it is exactly why core/webrtc signaling addressed to a specific peer rides inside relay-data's own opaque payload instead (see mesh-session.ts's sendManageRequest targetDevice parameter): relay-data is the one frame kind relay-hub already forwards blindly between an established relay-connect pairing. This test's relay is the real thing, not a stand-in, specifically to prove the signaling traverses an unmodified relay-hub's real forwarding.
 //
 // ICE itself may not reach "connected" on a host whose only routable network interface refuses to hairpin a UDP packet back to itself (confirmed directly on at least one development machine with a bare dgram socket, independent of Chromium/WebRTC entirely) -- two genuinely separate hosts on a LAN, the actual scenario this feature exists for, do not share this failure mode, and CI runners have not exhibited it. The signaling assertions below (the offer/answer round trip completing via the relay's real relay-data forwarding) are independent of whether the resulting RTCPeerConnection's own ICE handshake completes, and are the assertions that actually matter for proving this fix works; the data-channel-open assertion is kept as a stronger check but is written to skip gracefully rather than fail if this specific environment property blocks it.
 
@@ -117,7 +117,7 @@ async function newDevicePage(
   return page;
 }
 
-test("two independent browser instances negotiate a real WebRTC data channel, signaled through a real wire-mesh-node relay", async ({
+test("two independent browser instances negotiate a real WebRTC data channel, signaled through a real wire-mesh relay", async ({
   baseURL,
 }) => {
   test.setTimeout(TEST_TIMEOUT_MS);
@@ -209,7 +209,7 @@ async function runNegotiationTest(
     "the offer/answer round trip to complete over the relay's relay-data forwarding",
   );
 
-  // The actual proof this fix exists for: the webrtc.offer and webrtc.answer manage-requests genuinely round-tripped through wire-mesh-node's real, unmodified relay-data forwarding, not a bespoke test relay.
+  // The actual proof this fix exists for: the webrtc.offer and webrtc.answer manage-requests genuinely round-tripped through wire-mesh's real, unmodified relay-data forwarding, not a bespoke test relay.
   expect(
     summaryA.some(
       (entry) =>

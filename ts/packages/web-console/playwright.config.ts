@@ -7,7 +7,7 @@ export const RELAY_ADDRESS = `ws://127.0.0.1:${String(RELAY_PORT)}`;
 const RELAY_HEALTH_URL = `http://127.0.0.1:${String(RELAY_PORT)}/`;
 const HARNESS_URL = `http://localhost:${String(VITE_PORT)}/live-check/harness.html`;
 
-// wire-mesh-node is this package's own sibling; nothing in this workspace declares it as an npm dependency (it isn't one -- web-console never imports it), so turbo's own task graph has no reason to build it before this test runs. CI builds it explicitly as a prerequisite step; a local run needs `pnpm --filter wire-mesh-node build` done at least once too.
+// wire-mesh is this package's own sibling; nothing in this workspace declares it as an npm dependency (it isn't one -- web-console never imports it), so turbo's own task graph has no reason to build it before this test runs. CI builds it explicitly as a prerequisite step; a local run needs `pnpm --filter wire-mesh build` done at least once too.
 const nodePackageDist = new URL("../node/dist/server.mjs", import.meta.url)
   .pathname;
 
