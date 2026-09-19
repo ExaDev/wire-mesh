@@ -7,7 +7,11 @@ linkWorkspacePackages: true
 overrides:
   # release-workspace.config.ts's generateNotes step uses the conventionalcommits preset, whose templates call a helper only conventional-changelog-writer@9 or newer provides. @semantic-release/release-notes-generator depends on conventional-changelog-writer@^8, so without this the preset loads and then throws from inside handlebars at render time. Scoped to release-notes-generator rather than global because it is the only consumer that renders with the writer at all: @semantic-release/commit-analyzer declares the same dependency but never imports it, using only the preset's whatBump.
   "@semantic-release/release-notes-generator>conventional-changelog-writer": 9.2.1
-# Left disallowed, matching this workspace's existing behaviour under pnpm 10 (which only ever warned "Ignored build scripts" for these three and installed successfully without running them).
+# Which dependencies may run an install script, and which may not. pnpm blocks every install script by default, so each entry is a decision recorded rather than merely a permission granted, and `false` says as much as `true`.
+#
+# mediasoup's postinstall either downloads a prebuilt mediasoup-worker binary for the current platform or, where none is published for it, builds one locally through its own bundled Meson and Ninja invocation, needing a C++ toolchain this workspace's Rust build already requires. It is genuinely necessary rather than a convenience: the worker is a separate native process mediasoup's Node bindings spawn and speak to over a pipe, so refusing the script leaves wire-mesh-sfu installed and unable to start one.
+#
+# The other three are refused because nothing here consumes what their scripts produce, and installs complete without them. esbuild and sharp both resolve their platform binaries through optional dependencies rather than the script, and no package in this workspace runs a test suite against the workerd runtime.
 allowBuilds:
   esbuild: false
   mediasoup: true
@@ -19,9 +23,4 @@ minimumReleaseAgeExclude:
   - trilean-regex
   - trilean
   - web-ui-primitives
-
-# cddl.js is a git dependency (not published to npm) with a "prepare" build script -- an ExaDev-owned package this workspace already trusts, not a third-party one, so allowing its build script is the documented exception to pnpm's default script-blocking. mediasoup's own postinstall either downloads a prebuilt mediasoup-worker binary for the current platform or, when none is published for it, builds one locally via its own bundled Meson/Ninja invocation (needs a C++ toolchain, already required by this workspace's own Rust build). Genuinely necessary: the worker is a real, separate native process mediasoup's Node bindings spawn and speak to over a pipe, not something requiring script access, unlike a supply-chain-risk postinstall this policy otherwise exists to block.
-onlyBuiltDependencies:
-  - cddl.js
-  - mediasoup
 saveExact: true
