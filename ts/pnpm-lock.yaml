@@ -170,8 +170,8 @@ importers:
   .:
     devDependencies:
       '@exadev/semantic-release-workspace':
-        specifier: 1.3.6
-        version: 1.3.6(@semantic-release/changelog@7.0.0(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/commit-analyzer@13.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/git@11.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/github@12.0.9(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/npm@13.1.5(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/release-notes-generator@14.1.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0)(typescript@6.0.3)
+        specifier: 1.3.7
+        version: 1.3.7(@semantic-release/changelog@7.0.0(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/commit-analyzer@13.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/git@11.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/github@12.0.9(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/npm@13.1.5(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/release-notes-generator@14.1.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0)(typescript@6.0.3)
       '@semantic-release/changelog':
         specifier: 7.0.0
         version: 7.0.0(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))
@@ -1799,8 +1799,8 @@ packages:
     resolution: {integrity: sha512-VKU6qZlvl6C+xOLC12mYvv1ygcLm4Gt28rcd2K20fMJB4jz/2IeK5Nn+Ivk4a4xv7TmzvoJCmHUfo7nmwnrVYw==}
     engines: {node: '>=20'}
 
-  '@exadev/semantic-release-workspace@1.3.6':
-    resolution: {integrity: sha512-x1enPrrlOfz3Rx2sV5UpDZBq3O2FrArnTJnt0ueXXXqt2Z2KoTgNpIlea+/Oib/B0tN+dvOrsTVSzxAbZEhr3Q==}
+  '@exadev/semantic-release-workspace@1.3.7':
+    resolution: {integrity: sha512-uUJ0JW8I7Wud/o0Qd45xYvOMqgUXFW6ScNiZtYJ4GB6orQjn9IjkMUDkpv/xRsdI8O+2aBs1ByIQUXOI8Vwxow==}
     engines: {node: '>=20'}
     hasBin: true
     peerDependencies:
@@ -7817,7 +7817,7 @@ snapshots:
       - supports-color
       - typescript
 
-  '@exadev/semantic-release-workspace@1.3.6(@semantic-release/changelog@7.0.0(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/commit-analyzer@13.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/git@11.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/github@12.0.9(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/npm@13.1.5(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/release-notes-generator@14.1.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0)(typescript@6.0.3)':
+  '@exadev/semantic-release-workspace@1.3.7(@semantic-release/changelog@7.0.0(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/commit-analyzer@13.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/git@11.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/github@12.0.9(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/npm@13.1.5(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/release-notes-generator@14.1.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0)(typescript@6.0.3)':
     dependencies:
       '@exadev/release-gate': 1.0.1(supports-color@11.0.0)(typescript@6.0.3)
       '@semantic-release/changelog': 7.0.0(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))
