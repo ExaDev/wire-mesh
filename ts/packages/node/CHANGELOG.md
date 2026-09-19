@@ -1,3 +1,9 @@
+## [1.0.4](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%401.0.3...wire-mesh%401.0.4) (2026-09-19)
+
+### Bug Fixes
+
+* **node:** handle --help, --version and invalid flags instead of starting a server ([a668c9f](https://github.com/ExaDev/wire-mesh/commit/a668c9f837ba336f97652a77a05d6b4fd3db1812))
+
 ## [1.0.3](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%401.0.2...wire-mesh%401.0.3) (2026-09-19)
 
 ### Bug Fixes
