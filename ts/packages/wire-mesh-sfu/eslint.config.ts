@@ -28,7 +28,7 @@ export default defineConfig(
       },
     },
     {
-      // The CLI entrypoint's own startup message is genuine console output, not library logging, matching wire-mesh-node's own identical narrow, file-scoped override.
+      // The CLI entrypoint's own startup message is genuine console output, not library logging, matching wire-mesh's own identical narrow, file-scoped override.
       files: ["src/server.ts"],
       rules: {
         "no-console": "off",

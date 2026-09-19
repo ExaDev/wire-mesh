@@ -190,9 +190,9 @@ jobs:
         working-directory: ts
         run: pnpm install --frozen-lockfile
 
-      - name: Build wire-mesh-node, the real relay this test signals through
+      - name: Build wire-mesh, the real relay this test signals through
         working-directory: ts
-        run: pnpm --filter wire-mesh-node build
+        run: pnpm --filter wire-mesh build
 
       - name: Install Playwright's Chromium and its OS dependencies
         working-directory: ts/packages/web-console
@@ -282,5 +282,39 @@ jobs:
 
       - run: pnpm exec semantic-release
         working-directory: ts/packages/core
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release-node:
+    name: Release wire-mesh
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [required-checks]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: ts/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .tool-versions
+          # Do NOT set registry-url -- it creates an .npmrc that overrides OIDC
+
+      - run: pnpm install --frozen-lockfile
+        working-directory: ts
+
+      - run: pnpm turbo run _build
+        working-directory: ts
+
+      - run: pnpm exec semantic-release
+        working-directory: ts/packages/node
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
