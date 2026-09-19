@@ -28,7 +28,7 @@ jobs:
           cp protocol.cddl /tmp/protocol-committed.cddl
           ./generate.sh
           if ! diff -u /tmp/protocol-committed.cddl protocol.cddl; then
-            echo "::error::spec/protocol.cddl is out of date. Run spec/generate.sh and commit the result -- never edit protocol.cddl directly."
+            echo "::error::spec/protocol.cddl is out of date. Run spec/generate.sh and commit the result. Never edit protocol.cddl directly."
             exit 1
           fi
 
@@ -56,7 +56,7 @@ jobs:
                   print(f"  {name}: {locs}")
               sys.exit(1)
 
-          print(f"OK -- {len(files)} source files, {len(defined)} distinct rule names, no collisions")
+          print(f"OK: {len(files)} source files, {len(defined)} distinct rule names, no collisions")
           PYEOF
 
       - name: Validate against an RFC 8610 CDDL parser
@@ -99,7 +99,7 @@ jobs:
           cp frames.v1.json /tmp/frames-committed.json
           pnpm turbo run _generate
           if ! diff -u /tmp/handshake-committed.json handshake.v1.json || ! diff -u /tmp/tokens-committed.json tokens.v1.json || ! diff -u /tmp/frames-committed.json frames.v1.json; then
-            echo "::error::conformance/*.v1.json is out of date. Run 'pnpm run generate' in conformance/ and commit the result -- never edit the vector files directly."
+            echo "::error::conformance/*.v1.json is out of date. Run 'pnpm run generate' in conformance/ and commit the result. Never edit the vector files directly."
             exit 1
           fi
 
@@ -136,10 +136,10 @@ jobs:
       - name: Install wasm-bindgen-cli at the exact version rust/Cargo.lock pins
         run: |
           version=$(grep -A1 '^name = "wasm-bindgen"$' rust/Cargo.lock | grep '^version' | head -1 | cut -d'"' -f2)
-          echo "wasm-bindgen crate resolves to $version -- installing the matching CLI"
+          echo "wasm-bindgen crate resolves to $version, installing the matching CLI"
           cargo install wasm-bindgen-cli --version "$version" --locked
 
-      - name: Build wire-mesh-threshold-wasm's wasm-dist -- required before core's own typecheck/build/test, which import it directly
+      - name: Build wire-mesh-threshold-wasm's wasm-dist, required before core's own typecheck/build/test, which import it directly
         working-directory: ts/packages/core
         run: ./scripts/build-threshold-wasm.sh
 
@@ -165,7 +165,7 @@ jobs:
           cp src/generated/protocol.ts /tmp/protocol-committed.ts
           pnpm turbo run _generate
           if ! diff -u /tmp/protocol-committed.ts src/generated/protocol.ts; then
-            echo "::error::ts/packages/core/src/generated/protocol.ts is out of date. Run 'pnpm run generate' in ts/packages/core and commit the result -- never edit the generated file directly."
+            echo "::error::ts/packages/core/src/generated/protocol.ts is out of date. Run 'pnpm run generate' in ts/packages/core and commit the result. Never edit the generated file directly."
             exit 1
           fi
 
@@ -292,7 +292,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version-file: .tool-versions
-          # Do NOT set registry-url -- it writes an .npmrc containing an _authToken line, and that line wins over the OIDC token exchange, so the setting that looks like it configures the registry is exactly the one that would stop trusted publishing working.
+          # Do NOT set registry-url: it writes an .npmrc containing an _authToken line, and that line wins over the OIDC token exchange, so the setting that looks like it configures the registry is exactly the one that would stop trusted publishing working.
 
       - name: Upgrade npm for OIDC trusted publishing (needs npm CLI >=11.5.1)
         run: npm install -g npm@latest
@@ -310,7 +310,7 @@ jobs:
       - name: Install wasm-bindgen-cli at the exact version rust/Cargo.lock pins
         run: |
           version=$(grep -A1 '^name = "wasm-bindgen"$' rust/Cargo.lock | grep '^version' | head -1 | cut -d'"' -f2)
-          echo "wasm-bindgen crate resolves to $version -- installing the matching CLI"
+          echo "wasm-bindgen crate resolves to $version, installing the matching CLI"
           cargo install wasm-bindgen-cli --version "$version" --locked
 
       # wire-mesh-core's "files" lists wasm-dist and it exports ./adapters/threshold-wasm out of it, but wasm-dist is a gitignored build artefact that only this script produces. Without this step npm packs a tarball with nothing under wasm-dist at all, and that export subpath cannot resolve from an installed copy, which is how every release up to 1.58.3 shipped.
@@ -333,6 +333,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # npm publish provenance for every package the run publishes, matching each package.json's own publishConfig.provenance.
           NPM_CONFIG_PROVENANCE: "true"
-          # Blanked, not omitted -- an inherited NPM_TOKEN/NODE_AUTH_TOKEN from a reusable workflow or composite action would otherwise be used in preference to the OIDC exchange.
+          # Blanked, not omitted: an inherited NPM_TOKEN/NODE_AUTH_TOKEN from a reusable workflow or composite action would otherwise be used in preference to the OIDC exchange.
           NPM_TOKEN: ""
           NODE_AUTH_TOKEN: ""
