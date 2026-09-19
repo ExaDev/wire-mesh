@@ -1,3 +1,10 @@
+## [1.0.4](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-sfu%401.0.3...wire-mesh-sfu%401.0.4) (2026-09-19)
+
+
+### Dependencies
+
+- Updated wire-mesh to 1.0.6
+
 ## [1.0.3](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-sfu%401.0.2...wire-mesh-sfu%401.0.3) (2026-09-19)
 
 

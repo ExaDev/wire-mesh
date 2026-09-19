@@ -1,3 +1,9 @@
+## [1.0.6](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%401.0.5...wire-mesh%401.0.6) (2026-09-19)
+
+### Documentation
+
+* replace the double hyphen used as a dash in comments ([0bd3b8f](https://github.com/ExaDev/wire-mesh/commit/0bd3b8fd20e46c5be2be653b091419f0cc2fb2aa))
+
 ## [1.0.5](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%401.0.4...wire-mesh%401.0.5) (2026-09-19)
 
 
