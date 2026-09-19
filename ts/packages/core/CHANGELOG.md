@@ -1,3 +1,9 @@
+## [1.58.5](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%401.58.4...wire-mesh-core%401.58.5) (2026-09-19)
+
+### Build System
+
+* **core:** move the tsdown external option to deps.neverBundle ([4273e63](https://github.com/ExaDev/wire-mesh/commit/4273e63e649f629dae85551a2fbd8f559d99ff96))
+
 ## [1.58.4](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%401.58.3...wire-mesh-core%401.58.4) (2026-09-19)
 
 ### Bug Fixes
