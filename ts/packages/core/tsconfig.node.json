@@ -7,8 +7,8 @@
     "generate.ts",
     "tsdown.config.ts",
     "eslint.config.ts",
-    "release.config.ts",
     "stryker.config.ts",
+    "scripts/**/*.ts",
     "test/**/*.ts"
   ]
 }
