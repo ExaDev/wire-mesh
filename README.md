@@ -90,6 +90,8 @@ ts/
 
 `spec/` and `conformance/` are the actual contract. `rust/` and `ts/packages/core` are two implementations of it, not two different things — neither is privileged over the other, and a future implementation in any other language is exactly as welcome. Tasks are orchestrated across the two languages by a thin root `justfile` that dispatches into each subtree's own native tooling (`cargo` for `rust/`, `turbo` for `ts/`) rather than a shared build system — there's no cross-language build graph complex enough yet to need one.
 
+The TypeScript core wraps a WebAssembly module built from a Rust crate, so working in `ts/` needs a Rust toolchain and `wasm-bindgen-cli` as well as Node and pnpm. The [core package README](ts/packages/core/README.md#building-from-a-fresh-checkout) lists the exact prerequisites; turbo builds the module on demand.
+
 ## Implementations
 
 `ts/packages/core` exists: a ports/adapters implementation (Transport, Storage, Identity/crypto, and Clock as first-class ports) consuming Zod schemas generated from `spec/protocol.cddl` by [cddl.js](https://github.com/ExaDev/cddl.js), with real domain logic for handshake negotiation and capability-token verification (including the delegation-chain narrowing rules `tokens.cddl` documents); its `conformance-check` round-trips every vector in `conformance/`'s golden suite through the generated schemas.
