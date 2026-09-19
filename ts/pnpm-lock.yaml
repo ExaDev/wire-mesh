@@ -170,8 +170,8 @@ importers:
   .:
     devDependencies:
       '@exadev/semantic-release-workspace':
-        specifier: 1.3.7
-        version: 1.3.7(@semantic-release/changelog@7.0.0(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/commit-analyzer@13.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/git@11.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/github@12.0.9(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/npm@13.1.5(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/release-notes-generator@14.1.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0)(typescript@6.0.3)
+        specifier: 2.1.0
+        version: 2.1.0(@semantic-release/changelog@7.0.0(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/commit-analyzer@13.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/git@11.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/github@12.0.9(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/npm@13.1.5(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/release-notes-generator@14.1.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0)(typescript@6.0.3)
       '@semantic-release/changelog':
         specifier: 7.0.0
         version: 7.0.0(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))
@@ -1799,9 +1799,9 @@ packages:
     resolution: {integrity: sha512-VKU6qZlvl6C+xOLC12mYvv1ygcLm4Gt28rcd2K20fMJB4jz/2IeK5Nn+Ivk4a4xv7TmzvoJCmHUfo7nmwnrVYw==}
     engines: {node: '>=20'}
 
-  '@exadev/semantic-release-workspace@1.3.7':
-    resolution: {integrity: sha512-uUJ0JW8I7Wud/o0Qd45xYvOMqgUXFW6ScNiZtYJ4GB6orQjn9IjkMUDkpv/xRsdI8O+2aBs1ByIQUXOI8Vwxow==}
-    engines: {node: '>=20'}
+  '@exadev/semantic-release-workspace@2.1.0':
+    resolution: {integrity: sha512-af1vLIFqYyBatNeDdVu/dvKF+s2kZAnctEXpIU8oxwpe/MXqek9kjK5aWJLL1edxghE2oTVYadx5oGZ7hsYWsA==}
+    engines: {node: ^22.18 || >=24}
     hasBin: true
     peerDependencies:
       '@semantic-release/changelog': ^7.0.0
@@ -3549,6 +3549,10 @@ packages:
   core-util-is@1.0.3:
     resolution: {integrity: sha512-ZQBvi1DcpJ4GDqanjucZ2Hj3wEO5pZDS89BWbkcrvdxksJorwUDDZamX9ldFkp9aw2lmBDLgkObEA4DWNJ9FYQ==}
 
+  cosmiconfig@10.0.1:
+    resolution: {integrity: sha512-/zvGoYn0y27QTBmK+0B+oPdEPC4fKGUmJsMTQbDjqph00TrkqfVFW/M+C6ya54sYCgHC6QCwK/mI6djt8cEGHQ==}
+    engines: {node: ^22.18 || >= 24}
+
   cosmiconfig@9.0.2:
     resolution: {integrity: sha512-gtTZxTDau1wL7Y7zifc2dd8jHSK/k6BTx/2Xp/BpdlAdnlYWFVt7qhJqgwi7637yRwRQ3qL4ZidbB4I8tA5VOg==}
     engines: {node: '>=14'}
@@ -4518,6 +4522,10 @@ packages:
 
   js-yaml@4.3.2:
     resolution: {integrity: sha512-SFNOvSJ+Dgf/9An904Yx+CgSlIPCkIpao4qo51lpee25TIRejdH3rhR4EZMGoNx3/TP3O+wzWuiTFl4sqbltzA==}
+    hasBin: true
+
+  js-yaml@5.4.2:
+    resolution: {integrity: sha512-m+aqu+LwO1O6sIopafj8HUVl5aawITwZQe/yHpMCKjaWBaA/d07B/QdMb3529REftiU+RMMHL3Vlsw3hON7vWg==}
     hasBin: true
 
   jsdoc-type-pratt-parser@9.2.1:
@@ -7817,7 +7825,7 @@ snapshots:
       - supports-color
       - typescript
 
-  '@exadev/semantic-release-workspace@1.3.7(@semantic-release/changelog@7.0.0(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/commit-analyzer@13.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/git@11.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/github@12.0.9(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/npm@13.1.5(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/release-notes-generator@14.1.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0)(typescript@6.0.3)':
+  '@exadev/semantic-release-workspace@2.1.0(@semantic-release/changelog@7.0.0(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/commit-analyzer@13.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/git@11.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/github@12.0.9(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/npm@13.1.5(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/release-notes-generator@14.1.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0)(typescript@6.0.3)':
     dependencies:
       '@exadev/release-gate': 1.0.1(supports-color@11.0.0)(typescript@6.0.3)
       '@semantic-release/changelog': 7.0.0(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))
@@ -7827,7 +7835,7 @@ snapshots:
       '@semantic-release/npm': 13.1.5(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))
       '@semantic-release/release-notes-generator': 14.1.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0)
       commander: 15.0.0
-      cosmiconfig: 9.0.2(typescript@6.0.3)
+      cosmiconfig: 10.0.1
       semantic-release: 25.0.9(supports-color@11.0.0)(typescript@6.0.3)
       tinyglobby: 0.2.17
       validate-npm-package-name: 8.0.0
@@ -9650,6 +9658,11 @@ snapshots:
 
   core-util-is@1.0.3: {}
 
+  cosmiconfig@10.0.1:
+    dependencies:
+      env-paths: 2.2.1
+      js-yaml: 5.4.2
+
   cosmiconfig@9.0.2(typescript@6.0.3):
     dependencies:
       env-paths: 2.2.1
@@ -10911,6 +10924,10 @@ snapshots:
   js-tokens@4.0.0: {}
 
   js-yaml@4.3.2:
+    dependencies:
+      argparse: 2.0.1
+
+  js-yaml@5.4.2:
     dependencies:
       argparse: 2.0.1
 
