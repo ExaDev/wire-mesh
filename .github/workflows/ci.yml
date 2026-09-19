@@ -288,7 +288,8 @@ jobs:
   release-node:
     name: Release wire-mesh
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    needs: [required-checks]
+    # release-core must finish first: wire-mesh depends on wire-mesh-core via the pnpm workspace protocol, and the version-resolution step below reads wire-mesh-core's latest core-v* tag, which only reflects this commit's changes once release-core's own run has pushed it.
+    needs: [required-checks, release-core]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -313,6 +314,24 @@ jobs:
 
       - run: pnpm turbo run _build
         working-directory: ts
+
+      # pnpm's workspace:* rewrite (used by `pnpm pack` in release.config.ts's publish step) resolves a workspace dependency's published version from its manifest on disk, not the npm registry -- and wire-mesh-core's own committed package.json version stays "0.0.0" forever, since neither release job commits its version bump back to git. Pin it here to the real released version (from its own release tag, the same source of truth semantic-release itself uses) so the pack step resolves wire-mesh-core to a real version instead of "0.0.0".
+      - name: Resolve wire-mesh-core's released version for the workspace protocol rewrite
+        run: |
+          core_version="$(git tag -l 'core-v*' | sed 's/^core-v//' | sort -V | tail -1)"
+          if [[ -z "$core_version" ]]; then
+            echo "::error::No core-v* release tag found; cannot resolve wire-mesh-core's published version" >&2
+            exit 1
+          fi
+          echo "Resolved wire-mesh-core to $core_version"
+          node --eval "
+            const fs = require('node:fs');
+            const manifestPath = '../core/package.json';
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+            manifest.version = '$core_version';
+            fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+          "
+        working-directory: ts/packages/node
 
       - run: pnpm exec semantic-release
         working-directory: ts/packages/node
