@@ -130,6 +130,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
+          # The release job below runs this same toolchain-plus-wasm-build sequence and must not pay a cold `cargo install` on every push to main. rust-cache keys its entry by job id unless shared-key is set, so without a key shared with that job the two would keep entirely separate caches. What makes the shared entry worth having is cache-bin, on by default, which stores ~/.cargo/bin: with it warm the install step below resolves in no time at all rather than compiling wasm-bindgen-cli from source.
+          shared-key: wasm-threshold
 
       - name: Install wasm-bindgen-cli at the exact version rust/Cargo.lock pins
         run: |
@@ -294,6 +296,27 @@ jobs:
 
       - name: Upgrade npm for OIDC trusted publishing (needs npm CLI >=11.5.1)
         run: npm install -g npm@latest
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+          # Deliberately the same key the ts/ Verify job uses, so this job restores the cache that job already populated in this very run rather than building its own. Release only ever runs after Required Checks, which waits on ts/ Verify, so the entry is always there to restore by the time this step runs.
+          shared-key: wasm-threshold
+
+      - name: Install wasm-bindgen-cli at the exact version rust/Cargo.lock pins
+        run: |
+          version=$(grep -A1 '^name = "wasm-bindgen"$' rust/Cargo.lock | grep '^version' | head -1 | cut -d'"' -f2)
+          echo "wasm-bindgen crate resolves to $version -- installing the matching CLI"
+          cargo install wasm-bindgen-cli --version "$version" --locked
+
+      # wire-mesh-core's "files" lists wasm-dist and it exports ./adapters/threshold-wasm out of it, but wasm-dist is a gitignored build artefact that only this script produces. Without this step npm packs a tarball with nothing under wasm-dist at all, and that export subpath cannot resolve from an installed copy, which is how every release up to 1.58.3 shipped.
+      - name: Build wire-mesh-threshold-wasm's wasm-dist, which core packs and publishes
+        working-directory: ts/packages/core
+        run: ./scripts/build-threshold-wasm.sh
 
       - run: pnpm install --frozen-lockfile
         working-directory: ts
