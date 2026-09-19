@@ -6,9 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# A new push to a pull request supersedes that PR's in-flight run. A push to main never cancels: the release job publishes to npm and pushes a release commit and tags mid-run, and cancelling it partway would leave a published package with no committed version bump.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   cddl-validate:
@@ -251,19 +252,36 @@ jobs:
             exit 1
           fi
 
-  release-core:
-    name: Release wire-mesh-core
+  release:
+    name: Release
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: [required-checks]
+    # Two pushes to main close together must never run this job at the same time: the orchestrator pushes a release commit and tags to main mid-run, and semantic-release's own stale-checkout guard refuses to publish the moment it sees a commit on main this checkout does not have. Queue the second run behind the first rather than cancelling either.
+    concurrency:
+      group: release-workspace
+      cancel-in-progress: false
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
-      contents: write
-      id-token: write
+      contents: write # to push the release commit and tags, and create GitHub Releases
+      issues: write # to comment on released issues
+      pull-requests: write # to comment on released pull requests
+      id-token: write # OIDC identity for npm trusted publishing (no NPM_TOKEN)
     steps:
+      # main's ruleset requires every change to land through a pull request, and the default GITHUB_TOKEN is not one of its bypass actors. The orchestrator's release commit is a direct push to main, so it needs a token from an actor the ruleset does allow through: the org-wide "exadev" GitHub App, added as an Integration bypass actor on this repository's ruleset.
+      - name: Generate a token for the release push
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@v7
         with:
+          # ref: main, not the bare event SHA. The orchestrator pushes to the current branch by name, so a detached HEAD stops the run with a WorkspaceStateError rather than pushing HEAD:HEAD. fetch-depth: 0 because each package's release range is analysed from its own last matching tag.
+          ref: main
           fetch-depth: 0
-          persist-credentials: false
+          token: ${{ steps.app-token.outputs.token }}
 
       - uses: pnpm/action-setup@v6
         with:
@@ -272,78 +290,26 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version-file: .tool-versions
-          # Do NOT set registry-url -- it creates an .npmrc that overrides OIDC
+          # Do NOT set registry-url -- it writes an .npmrc containing an _authToken line, and that line wins over the OIDC token exchange, so the setting that looks like it configures the registry is exactly the one that would stop trusted publishing working.
+
+      - name: Upgrade npm for OIDC trusted publishing (needs npm CLI >=11.5.1)
+        run: npm install -g npm@latest
 
       - run: pnpm install --frozen-lockfile
         working-directory: ts
 
+      # Nothing in this workspace builds itself from a prepack or prepublishOnly script, so the artefacts @semantic-release/npm publishes have to exist on disk before the orchestrator runs.
       - run: pnpm turbo run _build
         working-directory: ts
 
-      - run: pnpm exec semantic-release
-        working-directory: ts/packages/core
+      - name: Release every package that changed, in dependency order
+        # The orchestrator discovers the workspace from ts/pnpm-workspace.yaml, orders packages topologically, and runs semantic-release per package with commits path-filtered to that package's own directory and tags in `name@version` form.
+        run: pnpm release
+        working-directory: ts
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  release-node:
-    name: Release wire-mesh
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    # release-core must finish first: wire-mesh depends on wire-mesh-core via the pnpm workspace protocol, and the version-resolution step below reads wire-mesh-core's latest core-v* tag, which only reflects this commit's changes once release-core's own run has pushed it.
-    needs: [required-checks, release-core]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      id-token: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - uses: pnpm/action-setup@v6
-        with:
-          package_json_file: ts/package.json
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .tool-versions
-          # Do NOT set registry-url -- it creates an .npmrc that overrides OIDC
-
-      - run: pnpm install --frozen-lockfile
-        working-directory: ts
-
-      - run: pnpm turbo run _build
-        working-directory: ts
-
-      # pnpm's workspace:* rewrite (used by `pnpm pack` in release.config.ts's publish step) resolves a workspace dependency's published version from its manifest on disk, not the npm registry -- and wire-mesh-core's own committed package.json version stays "0.0.0" forever, since neither release job commits its version bump back to git. Pin it here to the real released version (from its own release tag, the same source of truth semantic-release itself uses) so the pack step resolves wire-mesh-core to a real version instead of "0.0.0".
-      - name: Resolve wire-mesh-core's released version for the workspace protocol rewrite
-        run: |
-          core_version="$(git tag -l 'core-v*' | sed 's/^core-v//' | sort -V | tail -1)"
-          if [[ -z "$core_version" ]]; then
-            echo "::error::No core-v* release tag found; cannot resolve wire-mesh-core's published version" >&2
-            exit 1
-          fi
-          # A tag name is attacker-controllable by anyone with push access (this repo has no tag protection rules), so it must never be trusted as-is: reject anything that is not a strict semver string before it is used for anything, and confirm the tag actually points at a commit release-core's own job could have tagged (an ancestor of this same release's commit), not an unrelated or dangling one.
-          if ! [[ "$core_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::Resolved wire-mesh-core tag 'core-v$core_version' is not a valid, strict semver version" >&2
-            exit 1
-          fi
-          if ! git merge-base --is-ancestor "core-v$core_version" HEAD; then
-            echo "::error::core-v$core_version is not an ancestor of this release's commit; refusing to trust it" >&2
-            exit 1
-          fi
-          echo "Resolved wire-mesh-core to $core_version"
-          # Passed as an environment variable, never interpolated into the evaluated program text, so the validated-but-still-external version string can only ever end up as a plain string value, not as executable JavaScript.
-          CORE_VERSION="$core_version" node --eval "
-            const fs = require('node:fs');
-            const manifestPath = '../core/package.json';
-            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-            manifest.version = process.env.CORE_VERSION;
-            fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
-          "
-        working-directory: ts/packages/node
-
-      - run: pnpm exec semantic-release
-        working-directory: ts/packages/node
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # npm publish provenance for every package the run publishes, matching each package.json's own publishConfig.provenance.
+          NPM_CONFIG_PROVENANCE: "true"
+          # Blanked, not omitted -- an inherited NPM_TOKEN/NODE_AUTH_TOKEN from a reusable workflow or composite action would otherwise be used in preference to the OIDC exchange.
+          NPM_TOKEN: ""
+          NODE_AUTH_TOKEN: ""
