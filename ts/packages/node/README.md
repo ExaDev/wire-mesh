@@ -28,6 +28,19 @@ pnpm add wire-mesh
 wire-mesh --bind 0.0.0.0:8787
 ```
 
+Every flag the CLI accepts, exactly as `wire-mesh --help` prints it. An unknown flag, a flag missing its value, or a malformed `--bind` address exits non-zero with a message on stderr rather than starting a node; the `--tls-cert`/`--tls-key` pairing is enforced the same way. The parser, this text, and the help output all come from one flag table in `src/cli-options.ts`, and a test fails if this block stops matching it.
+
+```text
+Usage: wire-mesh [options]
+
+Options:
+      --bind <host:port>  Address to listen on. Port 0 asks the OS for a free port. Use 127.0.0.1:8787 to accept local connections only. (default: 0.0.0.0:8787)
+      --tls-cert <path>   PEM certificate file, to serve wss:// and https://. Requires --tls-key.
+      --tls-key <path>    PEM private key file for --tls-cert. Requires --tls-cert.
+  -h, --help              Print this help and exit.
+  -v, --version           Print the version and exit.
+```
+
 **Default bind address is `0.0.0.0:8787`, not loopback.** Unlike a typical dev-server tool, whose loopback-only default assumes only the machine itself needs to reach it, this package's whole purpose is LAN reachability — a phone on the same network, a laptop in the next room. `--bind` overrides the address if you want to restrict it (loopback-only, a specific interface, a different port).
 
 Point a browser at the bound address to reach the console, or check its health directly:
