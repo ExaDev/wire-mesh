@@ -1,18 +1,8 @@
 {
   "name": "wire-mesh-ts",
   "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "packageManager": "pnpm@12.4.1+sha512.2e81e399d73fe8390dab25e06aa788ab7a5908248d2f5a370f82b481147a6a7a367bf8048f9a6fdb6460f21a66f0542dedb8b94ca2c8723596741920b1656d4c",
-  "scripts": {
-    "build": "turbo run _build",
-    "test": "turbo run _test",
-    "typecheck": "turbo run _typecheck",
-    "lint": "turbo run _lint",
-    "conformance-check": "turbo run _conformance-check",
-    "release": "semantic-release-workspace release --config release-workspace.config.ts"
-  },
   "devDependencies": {
+    "@exadev/eslint-config": "2.18.0",
     "@exadev/semantic-release-workspace": "2.1.0",
     "@semantic-release/changelog": "7.0.0",
     "@semantic-release/commit-analyzer": "13.0.1",
@@ -20,9 +10,29 @@
     "@semantic-release/github": "12.0.9",
     "@semantic-release/npm": "13.1.5",
     "@semantic-release/release-notes-generator": "14.1.1",
+    "@types/node": "26.4.1",
     "conventional-changelog-conventionalcommits": "10.4.0",
+    "eslint": "10.10.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-prettier": "5.5.6",
+    "globals": "17.12.0",
+    "jiti": "2.7.0",
+    "prettier": "3.9.6",
     "semantic-release": "25.0.9",
     "turbo": "2.10.12",
     "typescript": "6.0.3"
-  }
+  },
+  "packageManager": "pnpm@12.4.1+sha512.2e81e399d73fe8390dab25e06aa788ab7a5908248d2f5a370f82b481147a6a7a367bf8048f9a6fdb6460f21a66f0542dedb8b94ca2c8723596741920b1656d4c",
+  "private": true,
+  "scripts": {
+    "_lint": "eslint . --fix --cache --max-warnings 0",
+    "_typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "turbo run _build",
+    "conformance-check": "turbo run _conformance-check",
+    "lint": "turbo run _lint",
+    "release": "semantic-release-workspace release --config release-workspace.config.ts",
+    "test": "turbo run _test",
+    "typecheck": "turbo run _typecheck"
+  },
+  "type": "module"
 }

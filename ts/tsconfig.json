@@ -1,0 +1,18 @@
+{
+  // The workspace root's own tooling configs, which are Node programs rather than library source: the release orchestrator's config and ESLint's own. Each package under packages/ carries its own pair of tsconfigs and is not part of this program.
+  "compilerOptions": {
+    "exactOptionalPropertyTypes": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "noEmit": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2024",
+    "types": ["node"]
+  },
+  // A glob rather than a hand-listed set. Type-aware ESLint fails outright on a file belonging to no program, so a config file added here later would break lint rather than quietly go unchecked; making that impossible is better than relying on whoever adds it to remember this file too.
+  "include": ["*.config.ts"]
+}
