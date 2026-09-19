@@ -235,6 +235,7 @@
     "generate": "turbo run _generate",
     "lint": "turbo run _lint",
     "mutation": "turbo run _mutation",
+    "prepack": "node scripts/assert-wasm-dist.ts",
     "test": "turbo run _test",
     "typecheck": "turbo run _typecheck"
   },
