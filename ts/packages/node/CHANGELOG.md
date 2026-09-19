@@ -1,3 +1,9 @@
+## [1.0.3](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%401.0.2...wire-mesh%401.0.3) (2026-09-19)
+
+### Bug Fixes
+
+* **node:** start the server when the bin is invoked through its install symlink ([5e2a227](https://github.com/ExaDev/wire-mesh/commit/5e2a2272e7d4ba2429a2a0f89a96e1ce0ece50a3))
+
 ## [1.0.2](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%401.0.1...wire-mesh%401.0.2) (2026-09-19)
 
 ### Build System

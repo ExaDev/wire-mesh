@@ -507,7 +507,7 @@ importers:
         specifier: 3.0.0
         version: 3.0.0
       wire-mesh:
-        specifier: 1.0.2
+        specifier: 1.0.3
         version: link:../node
       wire-mesh-core:
         specifier: 1.58.3
