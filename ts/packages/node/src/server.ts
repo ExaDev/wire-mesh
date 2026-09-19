@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The wire-mesh CLI entrypoint: a self-hostable, no-cloud LAN counterpart to cloudflare-hub, wiring the same shared relay-hub domain logic from wire-mesh-core over a real Node WebSocket + http server instead of a Cloudflare Durable Object. Default bind address is 0.0.0.0, not loopback -- the whole point of this package is LAN reachability, unlike a dev-server tool's usual loopback-only default. The same listener also answers a browser: any non-Upgrade request is served from web-console's built static output (wire-mesh#184), so a self-hosted node has somewhere to point a browser at, not just other wire-mesh peers.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -103,7 +103,12 @@ async function main(): Promise<void> {
 }
 
 // Only run as a side effect when executed directly (the CLI bin entry) -- never on a plain import, which is how the test suite reaches healthResponse()/bindAddressFromArgs() without binding a real port.
+//
+// Both sides are compared as resolved real paths. A package manager installs a bin as node_modules/.bin/wire-mesh symlinked at this file, and that is the path argv[1] carries, while Node resolves symlinks before recording import.meta.url -- so comparing the two as written strings never matches when the CLI is invoked the way anyone actually invokes it, and the process would exit 0 having started nothing. fileURLToPath rather than a "file://" prefix for the same class of reason: it undoes the percent-encoding import.meta.url applies to a path containing a space or a hash.
 const invokedPath = process.argv[1];
-if (invokedPath !== undefined && import.meta.url === `file://${invokedPath}`) {
+if (
+  invokedPath !== undefined &&
+  realpathSync(fileURLToPath(import.meta.url)) === realpathSync(invokedPath)
+) {
   void main();
 }
