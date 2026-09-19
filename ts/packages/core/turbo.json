@@ -7,8 +7,17 @@
       "inputs": ["src/**", "tsdown.config.ts", "tsconfig.json"],
       "outputs": ["dist/**"]
     },
+    "_build-wasm": {
+      // The script compiles the Rust workspace, which sits above this pnpm workspace's root: unlike _generate's spec input, turbo does hash these paths, so a Rust edit invalidates the cached wasm-dist. The Cargo target directory is excluded because turbo's globs do not honour .gitignore and would otherwise hash cargo's own build output.
+      "inputs": [
+        "scripts/build-threshold-wasm.sh",
+        "../../../rust/**",
+        "!../../../rust/target/**"
+      ],
+      "outputs": ["wasm-dist/**"]
+    },
     "_conformance-check": {
-      "dependsOn": ["_build"]
+      "dependsOn": ["_build", "_build-wasm"]
     },
     "_generate": {
       "cache": false,
@@ -17,15 +26,18 @@
       "inputs": ["generate.ts"]
     },
     "_lint": {
-      "dependsOn": ["_build"],
+      "dependsOn": ["_build", "_build-wasm"],
       "inputs": ["$TURBO_DEFAULT$", "eslint.config.ts"],
       "outputs": [".eslintcache"]
     },
+    "_mutation": {
+      "dependsOn": ["_build", "_build-wasm"]
+    },
     "_test": {
-      "dependsOn": ["_build"]
+      "dependsOn": ["_build", "_build-wasm"]
     },
     "_typecheck": {
-      "dependsOn": ["_build"],
+      "dependsOn": ["_build", "_build-wasm"],
       "inputs": ["**/*.ts", "tsconfig.json", "tsconfig.node.json"]
     }
   }
