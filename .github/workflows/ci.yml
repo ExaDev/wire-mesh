@@ -323,12 +323,22 @@ jobs:
             echo "::error::No core-v* release tag found; cannot resolve wire-mesh-core's published version" >&2
             exit 1
           fi
+          # A tag name is attacker-controllable by anyone with push access (this repo has no tag protection rules), so it must never be trusted as-is: reject anything that is not a strict semver string before it is used for anything, and confirm the tag actually points at a commit release-core's own job could have tagged (an ancestor of this same release's commit), not an unrelated or dangling one.
+          if ! [[ "$core_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Resolved wire-mesh-core tag 'core-v$core_version' is not a valid, strict semver version" >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "core-v$core_version" HEAD; then
+            echo "::error::core-v$core_version is not an ancestor of this release's commit; refusing to trust it" >&2
+            exit 1
+          fi
           echo "Resolved wire-mesh-core to $core_version"
-          node --eval "
+          # Passed as an environment variable, never interpolated into the evaluated program text, so the validated-but-still-external version string can only ever end up as a plain string value, not as executable JavaScript.
+          CORE_VERSION="$core_version" node --eval "
             const fs = require('node:fs');
             const manifestPath = '../core/package.json';
             const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-            manifest.version = '$core_version';
+            manifest.version = process.env.CORE_VERSION;
             fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
           "
         working-directory: ts/packages/node
