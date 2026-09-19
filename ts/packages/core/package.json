@@ -1,6 +1,6 @@
 {
   "name": "wire-mesh-core",
-  "version": "1.58.5",
+  "version": "1.58.6",
   "dependencies": {
     "cbor2": "2.3.0",
     "cddl.js": "1.0.1",

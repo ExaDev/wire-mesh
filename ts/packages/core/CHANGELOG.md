@@ -1,3 +1,14 @@
+## [1.58.6](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%401.58.5...wire-mesh-core%401.58.6) (2026-09-19)
+
+### Documentation
+
+* state the Rust toolchain prerequisites for working in ts/ ([e705063](https://github.com/ExaDev/wire-mesh/commit/e70506316d9e0eb2a417d94579f0b4101413f07b))
+
+### Build System
+
+* **core:** build wasm-dist through a turbo task its consumers depend on ([1209f6a](https://github.com/ExaDev/wire-mesh/commit/1209f6abf42e5c4a5b6f890077622e9c187bafee))
+* **core:** name the exact wasm-bindgen-cli version when it is missing or mismatched ([9b40068](https://github.com/ExaDev/wire-mesh/commit/9b4006869223d9f2754923bf8239f54662b93955))
+
 ## [1.58.5](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%401.58.4...wire-mesh-core%401.58.5) (2026-09-19)
 
 ### Build System
