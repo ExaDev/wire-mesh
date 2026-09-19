@@ -3,5 +3,10 @@
     "allowImportingTsExtensions": true
   },
   "extends": "./tsconfig.json",
-  "include": ["tsdown.config.ts", "eslint.config.ts", "test/**/*.ts"]
+  "include": [
+    "tsdown.config.ts",
+    "eslint.config.ts",
+    "release.config.ts",
+    "test/**/*.ts"
+  ]
 }
