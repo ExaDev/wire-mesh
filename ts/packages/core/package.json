@@ -1,6 +1,6 @@
 {
   "name": "wire-mesh-core",
-  "version": "0.0.0",
+  "version": "1.58.2",
   "dependencies": {
     "cbor2": "2.3.0",
     "cddl.js": "1.0.1",
@@ -10,10 +10,6 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
     "@exadev/eslint-config": "2.18.0",
-    "@semantic-release/commit-analyzer": "13.0.1",
-    "@semantic-release/github": "12.0.9",
-    "@semantic-release/npm": "13.1.5",
-    "@semantic-release/release-notes-generator": "14.1.1",
     "@stryker-mutator/api": "10.0.0",
     "@stryker-mutator/core": "10.0.0",
     "@stryker-mutator/typescript-checker": "10.0.0",
@@ -24,7 +20,6 @@
     "globals": "17.12.0",
     "jiti": "2.7.0",
     "prettier": "3.9.6",
-    "semantic-release": "25.0.9",
     "tsdown": "0.23.0",
     "turbo": "2.10.12",
     "typescript": "6.0.3",

@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "dependencies": {
     "cbor2": "2.3.0",
-    "wire-mesh-core": "workspace:*"
+    "wire-mesh-core": "1.58.2"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260905.1",

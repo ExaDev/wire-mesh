@@ -1,23 +1,18 @@
 {
   "name": "wire-mesh",
-  "version": "0.0.0",
+  "version": "1.0.1",
   "bin": {
     "wire-mesh": "./dist/server.mjs"
   },
   "dependencies": {
     "cbor2": "2.3.0",
-    "wire-mesh-core": "workspace:*",
+    "wire-mesh-core": "1.58.2",
     "ws": "8.21.3"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
     "@exadev/eslint-config": "2.18.0",
-    "@exadev/wire-mesh-web-console": "workspace:*",
-    "@semantic-release/commit-analyzer": "13.0.1",
-    "@semantic-release/exec": "7.1.0",
-    "@semantic-release/github": "12.0.9",
-    "@semantic-release/npm": "13.1.5",
-    "@semantic-release/release-notes-generator": "14.1.1",
+    "@exadev/wire-mesh-web-console": "0.0.0",
     "@types/node": "26.4.1",
     "@types/ws": "8.18.1",
     "eslint": "10.10.0",
@@ -26,7 +21,6 @@
     "globals": "17.12.0",
     "jiti": "2.7.0",
     "prettier": "3.9.6",
-    "semantic-release": "25.0.9",
     "tsdown": "0.23.0",
     "turbo": "2.10.12",
     "typescript": "6.0.3",
