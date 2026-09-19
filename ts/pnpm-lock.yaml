@@ -163,7 +163,6 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  trilean-regex: ^1.0.2
   '@semantic-release/release-notes-generator>conventional-changelog-writer': 9.2.1
 
 importers:
@@ -262,8 +261,8 @@ importers:
         specifier: 1.0.1
         version: 1.0.1
       trilean:
-        specifier: 1.6.1
-        version: 1.6.1
+        specifier: 1.6.2
+        version: 1.6.2
       zod:
         specifier: 4.5.4
         version: 4.5.4
@@ -5842,8 +5841,8 @@ packages:
     resolution: {integrity: sha512-deLXc148CSfboWbNYjd3Vb3B+4SCF8+nSFoP7vdIuu66sep5qV4CkJeuesiZZJ4vCDDxSWpj+UiqZd9FQXgDfw==}
     engines: {node: '>=20'}
 
-  trilean@1.6.1:
-    resolution: {integrity: sha512-uJ370l00iRXha57+z1UEZm4VvhSF3bnEvtX65XkrB6z4pKtS2uhH2EJ4BSTukAfJbp9nKxL0h6Tmm4T2eRh3HA==}
+  trilean@1.6.2:
+    resolution: {integrity: sha512-TvjORUQkIxvMwpJqbKQ3nEbfCPNZ+ljPtxk7GeaTPsUisXFd0xusftPFSol7XhhiK1NqXEcK2ERw93PjJo/A3A==}
     engines: {node: '>=20'}
 
   ts-api-utils@2.5.0:
@@ -12269,7 +12268,7 @@ snapshots:
 
   trilean-regex@1.0.2: {}
 
-  trilean@1.6.1:
+  trilean@1.6.2:
     dependencies:
       trilean-regex: 1.0.2
       zod: 4.5.4

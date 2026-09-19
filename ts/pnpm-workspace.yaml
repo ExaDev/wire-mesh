@@ -5,8 +5,6 @@ packages:
 linkWorkspacePackages: true
 
 overrides:
-  # trilean@1.6.1's own published package.json still declares its sibling workspace dependency as "trilean-regex: workspace:^", never rewritten to a real semver range before publish (a real bug in trilean's own release pipeline, filed upstream -- see ExaDev/trilean's issue tracker) -- pnpm refuses to resolve an unrewritten workspace protocol range outside the monorepo that declared it, so every external consumer of trilean is currently unable to install it at all without this override forcing resolution to trilean-regex's own real, independently published version.
-  trilean-regex: "^1.0.2"
   # release-workspace.config.ts's generateNotes step uses the conventionalcommits preset, whose templates call a helper only conventional-changelog-writer@9 or newer provides. @semantic-release/release-notes-generator depends on conventional-changelog-writer@^8, so without this the preset loads and then throws from inside handlebars at render time. Scoped to release-notes-generator rather than global because it is the only consumer that renders with the writer at all: @semantic-release/commit-analyzer declares the same dependency but never imports it, using only the preset's whatBump.
   "@semantic-release/release-notes-generator>conventional-changelog-writer": 9.2.1
 # Left disallowed, matching this workspace's existing behaviour under pnpm 10 (which only ever warned "Ignored build scripts" for these three and installed successfully without running them).
@@ -18,7 +16,7 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - '@exadev/eslint-config'
   - '@exadev/semantic-release-workspace'
-  - trilean-regex@1.0.2
+  - trilean-regex
   - trilean
   - web-ui-primitives
 
