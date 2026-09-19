@@ -379,6 +379,9 @@ importers:
       tslib:
         specifier: 2.8.1
         version: 2.8.1
+      web-ui-primitives:
+        specifier: 1.1.0
+        version: 1.1.0(@mantine/core@9.6.0(@mantine/hooks@9.6.0(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       wire-mesh-core:
         specifier: workspace:*
         version: link:../core
@@ -6130,6 +6133,13 @@ packages:
   web-streams-polyfill@3.3.3:
     resolution: {integrity: sha512-d2JWLCivmZYTSIoge9MsgFCZrt571BikcWGYkjC1khllbTeDlGqZ2D8vD8E/lJa8WGWbb7Plm8/XJYV7IJHZZw==}
     engines: {node: '>= 8'}
+
+  web-ui-primitives@1.1.0:
+    resolution: {integrity: sha512-cW6zsMgRpAfo40khqIzGoK/4OIEUPzWYBL2YEWbn5Of3ok9VTetsGv756Yt9MrcCF9RceKifGMK5xJWrICrIOQ==}
+    peerDependencies:
+      '@mantine/core': '>=8.0.0'
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
 
   web-worker@1.5.0:
     resolution: {integrity: sha512-RiMReJrTAiA+mBjGONMnjVDP2u3p9R1vkcGz6gDIrOMT3oGuYwX2WRMYI9ipkphSuE5XKEhydbhNEJh4NY9mlw==}
@@ -12391,6 +12401,12 @@ snapshots:
   weapon-regex@2.0.5: {}
 
   web-streams-polyfill@3.3.3: {}
+
+  web-ui-primitives@1.1.0(@mantine/core@9.6.0(@mantine/hooks@9.6.0(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+    dependencies:
+      '@mantine/core': 9.6.0(@mantine/hooks@9.6.0(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react: 19.2.8
+      react-dom: 19.2.8(react@19.2.8)
 
   web-worker@1.5.0: {}
 
