@@ -18,6 +18,20 @@ The TypeScript implementation of wire-mesh's protocol, built ports/adapters: dom
 
 Every other frame family (management/exec, streaming, data-domain, discovery, coordinator election) is covered by schema validation only -- `conformance-check` proves the generated schemas decode and re-encode every golden vector byte-exactly, including these families, but no domain-level business logic (dispatch, session bookkeeping, PTY/proc lifecycle, oplog replication, coordinator term tracking) exists for them yet. This first pass deliberately scopes domain logic to transport + handshake + tokens (the families with real business rules worth pinning down before the others), because the conformance suite already covers every family's wire shape either way -- nothing here is unverified, only unimplemented. (The federation link protocol no longer exists in the spec at all: cross-scope sharing is ordinary capability-token delegation, and `src/domain/tokens.ts`'s verification chain is exactly the mechanism that governs it.)
 
+## Building from a fresh checkout
+
+The threshold-signing adapter wraps a WebAssembly module built from the Rust crate `rust/crates/wire-mesh-threshold-wasm`. Its output, `wasm-dist/`, is gitignored, and core's `_typecheck`, `_lint`, `_test` and `_mutation` tasks depend on a `_build-wasm` turbo task that produces it, so a fresh checkout needs no manual step beyond having the toolchain:
+
+- `rustup`, with the `stable` toolchain (the `wasm32-unknown-unknown` target is added by the build script).
+- `wasm-bindgen-cli` at exactly the version `rust/Cargo.lock` pins for the `wasm-bindgen` crate. The script prints the matching `cargo install` command if the CLI is missing or on a different version.
+
+```sh
+pnpm install
+pnpm typecheck   # builds wasm-dist first, then typechecks
+```
+
+Turbo hashes the Rust sources as the inputs of `_build-wasm`, so the module is rebuilt only after a Rust change and restored from cache otherwise. `pnpm build-wasm` runs just that task.
+
 ## Regenerating the schema
 
 ```sh
