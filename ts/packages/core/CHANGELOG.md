@@ -1,3 +1,9 @@
+## [1.58.7](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%401.58.6...wire-mesh-core%401.58.7) (2026-09-19)
+
+### Bug Fixes
+
+* **core:** match only the wasm-bindgen glue module in tsdown neverBundle ([24cfe8b](https://github.com/ExaDev/wire-mesh/commit/24cfe8bb46356450ea957ce5e4da73e3af1b9faa))
+
 ## [1.58.6](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%401.58.5...wire-mesh-core%401.58.6) (2026-09-19)
 
 ### Documentation
