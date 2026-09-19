@@ -224,6 +224,7 @@
   },
   "scripts": {
     "_build": "tsdown",
+    "_build-wasm": "./scripts/build-threshold-wasm.sh",
     "_conformance-check": "vitest run test/conformance.unit.test.ts",
     "_generate": "node generate.ts",
     "_lint": "eslint . --fix --cache --max-warnings 0",
@@ -231,6 +232,7 @@
     "_test": "vitest run",
     "_typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "build": "turbo run _build",
+    "build-wasm": "turbo run _build-wasm",
     "conformance-check": "turbo run _conformance-check",
     "generate": "turbo run _generate",
     "lint": "turbo run _lint",
