@@ -1,6 +1,5 @@
 // One peer-to-peer room session's own UI: message history, a compose box, and (when the peer has asked to message this console) an inline approve/deny prompt. All room-protocol behaviour lives in room-client.ts and the useRoomMessaging hook; this component only renders a RoomSessionView and forwards clicks back onto it.
 
-import { useState } from "react";
 import {
   Alert,
   Button,
@@ -9,8 +8,8 @@ import {
   ScrollArea,
   Stack,
   Text,
-  TextInput,
 } from "@mantine/core";
+import { SubmitRow } from "web-ui-primitives";
 import type { RoomSessionView } from "../hooks/use-room-messaging.js";
 import { NoticesView } from "./NoticesView.js";
 
@@ -33,44 +32,6 @@ export function RoomPanel({
   onSend,
   onPostNotice,
 }: Readonly<RoomPanelProps>): React.JSX.Element {
-  const [draft, setDraft] = useState("");
-  const [noticeDraft, setNoticeDraft] = useState("");
-  const [error, setError] = useState<string | undefined>(undefined);
-
-  function handleSend(): void {
-    const text = draft.trim();
-    if (text === "") {
-      return;
-    }
-    setError(undefined);
-    onSend(text)
-      .then(() => {
-        setDraft("");
-      })
-      .catch((sendError: unknown) => {
-        setError(
-          sendError instanceof Error ? sendError.message : String(sendError),
-        );
-      });
-  }
-
-  async function handlePostNotice(): Promise<void> {
-    const text = noticeDraft.trim();
-    if (text === "") {
-      return Promise.resolve();
-    }
-    setError(undefined);
-    return onPostNotice(text)
-      .then(() => {
-        setNoticeDraft("");
-      })
-      .catch((postError: unknown) => {
-        setError(
-          postError instanceof Error ? postError.message : String(postError),
-        );
-      });
-  }
-
   return (
     <Stack gap="xs">
       <Group justify="space-between">
@@ -128,27 +89,13 @@ export function RoomPanel({
         </Stack>
       </ScrollArea>
 
-      {error !== undefined && (
-        <Text size="sm" c="red">
-          {error}
-        </Text>
-      )}
-
       <Group>
-        <TextInput
+        <SubmitRow
+          ariaLabel="Message"
           placeholder="Message"
-          value={draft}
-          onChange={(event) => {
-            setDraft(event.currentTarget.value);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              handleSend();
-            }
-          }}
-          style={{ flex: 1 }}
+          submitLabel="Send"
+          onSubmit={onSend}
         />
-        <Button onClick={handleSend}>Send</Button>
       </Group>
 
       <Divider
@@ -157,22 +104,12 @@ export function RoomPanel({
       />
       <NoticesView notices={view.notices} />
       <Group>
-        <TextInput
+        <SubmitRow
+          ariaLabel="Post a durable notice"
           placeholder="Post a durable notice"
-          value={noticeDraft}
-          onChange={(event) => {
-            setNoticeDraft(event.currentTarget.value);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              void handlePostNotice();
-            }
-          }}
-          style={{ flex: 1 }}
+          submitLabel="Post notice"
+          onSubmit={onPostNotice}
         />
-        <Button variant="light" onClick={() => void handlePostNotice()}>
-          Post notice
-        </Button>
       </Group>
     </Stack>
   );
