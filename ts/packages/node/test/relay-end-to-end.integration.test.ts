@@ -2,28 +2,15 @@
 
 import { describe, expect, it } from "vitest";
 import { createRelayHub } from "wire-mesh-core/domain/relay-hub";
-import type { DeviceId, Frame } from "wire-mesh-core/generated/protocol";
+import type { Frame } from "wire-mesh-core/generated/protocol";
 import { createNodeWebSocketTransport } from "../src/adapters/node-websocket-transport.js";
 import { healthResponse } from "../src/server.js";
-import { bytesFromHex, deviceIdFromFillHex } from "./hex.js";
+import { bytesFromHex } from "./hex.js";
+import { createTestPeer, hubVerifier } from "./signed-peers.js";
 
 const HTTP_OK = 200;
 const FRAME_WAIT_TIMEOUT_MS = 2000;
 const FRAME_POLL_INTERVAL_MS = 10;
-const GOSSIP_SETTLE_MS = 100;
-
-function gossipFor(device: DeviceId): Frame {
-  return {
-    type: "gossip",
-    peers: [
-      {
-        device,
-        addresses: ["203.0.113.5:4433"],
-        "snapshot-seconds": 1861833600,
-      },
-    ],
-  };
-}
 
 interface FrameQueue {
   push: (frame: Frame) => void;
@@ -62,7 +49,7 @@ function createFrameQueue(): FrameQueue {
 
 describe("wire-mesh relay, end to end", () => {
   it("relays gossip -> relay-connect -> relay-inbound -> bidirectional relay-data between two real WebSocket clients", async () => {
-    const hub = createRelayHub();
+    const hub = createRelayHub({ identity: hubVerifier });
     const serverTransport = createNodeWebSocketTransport({
       onHttpRequest: (_request, response) => {
         response.writeHead(HTTP_OK, { "content-type": "application/json" });
@@ -76,8 +63,8 @@ describe("wire-mesh relay, end to end", () => {
       },
     );
 
-    const deviceA = deviceIdFromFillHex("11");
-    const deviceB = deviceIdFromFillHex("22");
+    const peerA = await createTestPeer();
+    const peerB = await createTestPeer();
     const relayPayload = bytesFromHex("deadbeef");
 
     const clientTransport = createNodeWebSocketTransport();
@@ -96,18 +83,17 @@ describe("wire-mesh relay, end to end", () => {
       }
     })();
 
-    await a.send(gossipFor(deviceA));
-    await b.send(gossipFor(deviceB));
-    // Gossip must be registered by the hub before relay-connect is sent: over a real socket, a.send() resolving only means the bytes left this process, not that the hub's own receive loop on the other end has processed them yet.
-    await new Promise((resolve) => {
-      setTimeout(resolve, GOSSIP_SETTLE_MS);
-    });
-    await a.send({ type: "relay-connect", "target-device": deviceB });
+    await a.send(peerA.gossip);
+    await b.send(peerB.gossip);
+    // Both adverts must be registered by the hub before relay-connect is sent: over a real socket, a.send() resolving only means the bytes left this process, not that the hub has read and verified them. Each client receiving a gossip frame proves the hub has registered the other's advert, since the hub only forwards or replays an advert it has already verified and registered.
+    await queueA.waitFor("gossip");
+    await queueB.waitFor("gossip");
+    await a.send({ type: "relay-connect", "target-device": peerB.device });
 
     const inbound = await queueB.waitFor("relay-inbound");
     expect(inbound).toEqual({
       type: "relay-inbound",
-      "source-device": deviceA,
+      "source-device": peerA.device,
     });
 
     await a.send({ type: "relay-data", payload: relayPayload });
@@ -118,12 +104,12 @@ describe("wire-mesh relay, end to end", () => {
     expect(toB).toEqual({
       type: "relay-data",
       payload: relayPayload,
-      "from-device": deviceA,
+      "from-device": peerA.device,
     });
     expect(toA).toEqual({
       type: "relay-data",
       payload: relayPayload,
-      "from-device": deviceB,
+      "from-device": peerB.device,
     });
 
     await a.close();
@@ -132,7 +118,7 @@ describe("wire-mesh relay, end to end", () => {
   });
 
   it("answers a plain (non-Upgrade) HTTP request on the same listener with the health response", async () => {
-    const hub = createRelayHub();
+    const hub = createRelayHub({ identity: hubVerifier });
     const serverTransport = createNodeWebSocketTransport({
       onHttpRequest: (_request, response) => {
         response.writeHead(HTTP_OK, { "content-type": "application/json" });

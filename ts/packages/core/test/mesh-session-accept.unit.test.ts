@@ -7,6 +7,8 @@ import {
   deviceA,
   deviceB,
   gossipFor,
+  identityA,
+  identityB,
   nthEvent,
   testClock,
   testIdentity,
@@ -101,7 +103,7 @@ describe("acceptMeshSession", () => {
     const session = await acceptMeshSession(fake.connection, testIdentity, [
       "core/data",
     ]);
-    fake.push(gossipFor(deviceB));
+    fake.push(await gossipFor(identityB));
     await expect(session.peerDeviceId).resolves.toEqual(deviceB);
     await session.close();
   });
@@ -111,9 +113,9 @@ describe("acceptMeshSession", () => {
     const session = await acceptMeshSession(fake.connection, testIdentity, [
       "core/data",
     ]);
-    fake.push(gossipFor(deviceA));
+    fake.push(await gossipFor(identityA));
     await expect(session.peerDeviceId).resolves.toEqual(deviceA);
-    fake.push(gossipFor(deviceB));
+    fake.push(await gossipFor(identityB));
     // Same promise, already settled -- a second, different advert cannot retroactively change what it resolved to.
     await expect(session.peerDeviceId).resolves.toEqual(deviceA);
     await session.close();

@@ -11,11 +11,11 @@ import {
 } from "../src/domain/peer-advert.js";
 import type { PeerAdvert } from "../src/generated/protocol.js";
 import type { IdentityPort } from "../src/ports/identity.js";
+import { withBrokenSignature } from "./relay-hub-test-helpers.js";
 import {
   buf,
   generateEd25519Identity,
   generateEs256Identity,
-  LOW_BYTE_MASK,
 } from "./tokens-fixtures.js";
 
 const SNAPSHOT_SECONDS = 1861833600;
@@ -48,9 +48,9 @@ describe("peerAdvertSigningInput", () => {
   it("starts with an ASCII byte no COSE Sig_structure can start with", () => {
     // A Sig_structure is always a 4-element CBOR array (0x84) whose first element is "Signature1", so a signature over this input can never be replayed as a capability token's own signed payload and vice versa.
     const COSE_SIG_STRUCTURE_FIRST_BYTE = 0x84;
-    expect(PEER_ADVERT_SIGNING_CONTEXT[0]).not.toBe(
+    expect([...PEER_ADVERT_SIGNING_CONTEXT].slice(0, 1)).not.toEqual([
       COSE_SIG_STRUCTURE_FIRST_BYTE,
-    );
+    ]);
   });
 });
 
@@ -129,10 +129,8 @@ describe("verifyPeerAdvert", () => {
   it("rejects an advert whose signature was corrupted", async () => {
     const identity = await generateEd25519Identity();
     const advert = await signPeerAdvert(identity, unsignedAdvert(identity));
-    const corrupted = buf(advert.signature);
-    corrupted[0] ^= LOW_BYTE_MASK;
     await expect(
-      verifyPeerAdvert(identity, { ...advert, signature: corrupted }),
+      verifyPeerAdvert(identity, withBrokenSignature(advert)),
     ).resolves.toBe(false);
   });
 

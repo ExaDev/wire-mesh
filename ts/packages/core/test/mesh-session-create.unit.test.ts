@@ -3,12 +3,15 @@ import type {
   DataHaveFrame,
   GossipFrame,
   HandshakeFrame,
+  PeerAdvert,
 } from "../src/generated/protocol.js";
 import type {
   Connection,
   Listener,
   Transport,
 } from "../src/ports/transport.js";
+import { verifyPeerAdvert } from "../src/domain/peer-advert.js";
+import type { IdentityPort } from "../src/ports/identity.js";
 import {
   HANDSHAKE_TIMEOUT_MS,
   createMeshSession,
@@ -31,6 +34,8 @@ import {
   deviceB,
   fakeTransport,
   gossipFor,
+  identityA,
+  identityB,
   nthEvent,
   testClock,
   testIdentity,
@@ -38,6 +43,20 @@ import {
   withinShortWait,
   yielded,
 } from "./mesh-session-fixtures.js";
+
+/** Returns the one advert a gossip frame carries, having asserted it verifies under the given identity's own key: i.e. it was really signed by that node rather than merely carrying signature-shaped bytes. */
+async function signedAdvertOf(
+  identity: Readonly<IdentityPort>,
+  frame: Readonly<GossipFrame>,
+): Promise<PeerAdvert> {
+  expect(frame.peers).toHaveLength(1);
+  const advert = frame.peers[0];
+  if (advert === undefined) {
+    throw new Error("expected the gossip frame to carry one advert");
+  }
+  expect(await verifyPeerAdvert(identity, advert)).toBe(true);
+  return advert;
+}
 
 describe("createMeshSession", () => {
   it("connects, sends the local handshake, and negotiates against the node's answer", async () => {
@@ -81,6 +100,7 @@ describe("createMeshSession", () => {
 
     expect(connection.sent[0]?.type).toBe("handshake");
     const selfAdvert = connection.sent[1] as GossipFrame;
+    const advert = await signedAdvertOf(testIdentity, selfAdvert);
     expect(selfAdvert).toEqual({
       type: "gossip",
       peers: [
@@ -90,6 +110,8 @@ describe("createMeshSession", () => {
           "snapshot-seconds": Math.floor(TEST_CLOCK_NOW_MS / MS_PER_SECOND),
           "wire-mesh/version": OWN_VERSION,
           "topology/peers": { direct: [], relayed: [] },
+          "identity-key": testIdentity.identityKey,
+          signature: advert.signature,
         },
       ],
     } satisfies GossipFrame);
@@ -126,6 +148,7 @@ describe("createMeshSession", () => {
     await session.sendGossipUpdate({ "presence/status": "idle" });
 
     const updated = connection.sent.at(-1) as GossipFrame;
+    const advert = await signedAdvertOf(testIdentity, updated);
     expect(updated).toEqual({
       type: "gossip",
       peers: [
@@ -136,6 +159,8 @@ describe("createMeshSession", () => {
           "presence/status": "idle",
           "wire-mesh/version": OWN_VERSION,
           "topology/peers": { direct: [], relayed: [] },
+          "identity-key": testIdentity.identityKey,
+          signature: advert.signature,
         },
       ],
     } satisfies GossipFrame);
@@ -271,6 +296,7 @@ describe("createMeshSession", () => {
     await session.sendGossipUpdate();
 
     const updated = connection.sent.at(-1) as GossipFrame;
+    const advert = await signedAdvertOf(testIdentity, updated);
     expect(updated).toEqual({
       type: "gossip",
       peers: [
@@ -280,6 +306,8 @@ describe("createMeshSession", () => {
           "snapshot-seconds": Math.floor(TEST_CLOCK_NOW_MS / MS_PER_SECOND),
           "wire-mesh/version": OWN_VERSION,
           "topology/peers": { direct: [], relayed: [] },
+          "identity-key": testIdentity.identityKey,
+          signature: advert.signature,
         },
       ],
     } satisfies GossipFrame);
@@ -363,9 +391,9 @@ describe("createMeshSession", () => {
     const { transport, connection } = fakeTransport();
     const session = createMeshSession(transport, testIdentity, testClock);
     await session.connect("ws://node", ["core/data"]);
-    connection.push(gossipFor(deviceA, SNAPSHOT_FIRST));
-    connection.push(gossipFor(deviceB, SNAPSHOT_SECOND));
-    connection.push(gossipFor(deviceA, SNAPSHOT_UPDATED));
+    connection.push(await gossipFor(identityA, SNAPSHOT_FIRST));
+    connection.push(await gossipFor(identityB, SNAPSHOT_SECOND));
+    connection.push(await gossipFor(identityA, SNAPSHOT_UPDATED));
     // Events: connecting, connected, then one per gossip push -- drain to the last
     const event = (await nthEvent(session, EVENTS_THROUGH_THREE_GOSSIPS)) as {
       directory: {
@@ -506,7 +534,7 @@ describe("createMeshSession", () => {
     const session = createMeshSession(transport, testIdentity, testClock);
     const iterator = session.events[Symbol.asyncIterator]();
     await session.connect("ws://node", ["core/data"]);
-    connection.push(gossipFor(deviceA));
+    connection.push(await gossipFor(identityA));
     await session.close();
     for (let i = 0; i < EVENTS_THROUGH_FAILURE; i++) {
       await iterator.next();

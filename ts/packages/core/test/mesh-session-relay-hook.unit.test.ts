@@ -3,11 +3,14 @@ import { deviceIdToHex } from "../src/domain/device-id.js";
 import { createRelayHub } from "../src/domain/relay-hub.js";
 import { acceptMeshSession } from "../src/domain/mesh-session.js";
 import type { SessionEvent } from "../src/domain/mesh-session.js";
+import { hubVerifier } from "./relay-hub-test-helpers.js";
 import {
   FakeConnection,
   deviceA,
   deviceB,
   gossipFor,
+  identityA,
+  identityB,
   nthEvent,
   testClock,
   testIdentity,
@@ -35,12 +38,13 @@ describe("acceptMeshSession's onFrame/onSessionEnd hooks", () => {
       { clock: testClock, onFrame },
     );
 
-    const gossip = gossipFor(deviceA);
+    const gossip = await gossipFor(identityA);
     fake.push(gossip);
-    await tick();
+    // Waited on rather than a fixed number of turns: the session verifies the advert's signature before onFrame runs, and that completes on a later macrotask than the push.
+    await vi.waitFor(() => {
+      expect(onFrame).toHaveBeenCalledWith(connection, gossip);
+    });
     await session.close();
-
-    expect(onFrame).toHaveBeenCalledWith(connection, gossip);
   });
 
   it("still applies the frame to the session's own directory when onFrame is given -- it observes, it never replaces applyFrame", async () => {
@@ -53,7 +57,7 @@ describe("acceptMeshSession's onFrame/onSessionEnd hooks", () => {
       { clock: testClock, onFrame },
     );
 
-    fake.push(gossipFor(deviceA));
+    fake.push(await gossipFor(identityA));
     const event = (await nthEvent(
       session,
       EVENT_INDEX_AFTER_ONE_GOSSIP,
@@ -75,7 +79,7 @@ describe("acceptMeshSession's onFrame/onSessionEnd hooks", () => {
       { clock: testClock },
     );
 
-    fake.push(gossipFor(deviceA));
+    fake.push(await gossipFor(identityA));
     await session.close();
   });
 
@@ -106,15 +110,15 @@ describe("acceptMeshSession's onFrame/onSessionEnd hooks", () => {
       { clock: testClock, onFrame },
     );
 
-    fake.push(gossipFor(deviceA));
-    await tick();
-
-    expect(onFrame).toHaveBeenCalled();
+    fake.push(await gossipFor(identityA));
+    await vi.waitFor(() => {
+      expect(onFrame).toHaveBeenCalled();
+    });
     await session.close();
   });
 
   it("wires a real RelayHub into a real MeshSession over one connection (wire-mesh#102): a gossip frame updates the session's own directory AND gets forwarded by the hub to another registered connection, from one shared consumption loop", async () => {
-    const hub = createRelayHub();
+    const hub = createRelayHub({ identity: hubVerifier });
     const meshFake = new FakeConnection();
     const otherPeerFake = new FakeConnection();
     const meshConnection = meshFake.connection;
@@ -132,7 +136,7 @@ describe("acceptMeshSession's onFrame/onSessionEnd hooks", () => {
       },
     );
 
-    meshFake.push(gossipFor(deviceB));
+    meshFake.push(await gossipFor(identityB));
     const event = (await nthEvent(
       session,
       EVENT_INDEX_AFTER_ONE_GOSSIP,
@@ -143,7 +147,7 @@ describe("acceptMeshSession's onFrame/onSessionEnd hooks", () => {
       event.directory.map((entry) => deviceIdToHex(entry.device)),
     ).toContain(deviceIdToHex(deviceB));
     // ...and the SAME frame also reached the relay hub, which forwarded it on to the other registered peer -- both consumers observed the identical frame from the one connection.receive() loop this session owns, with no second, competing for-await anywhere.
-    expect(otherPeerFake.sent).toEqual([gossipFor(deviceB)]);
+    expect(otherPeerFake.sent).toEqual([await gossipFor(identityB)]);
 
     await session.close();
   });

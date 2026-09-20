@@ -5,6 +5,7 @@ import { wrapRtcDataChannel } from "../src/adapters/webrtc-transport.js";
 import { messageFromFrame } from "wire-mesh-core/adapters/frame-codec";
 import { FakeRtcDataChannel } from "./fake-rtc-data-channel.js";
 import { bytesFromHex } from "./hex.js";
+import { syntheticAdvertProof } from "./synthetic-advert.js";
 
 const SHA256_BYTE_LENGTH = 32;
 
@@ -143,6 +144,7 @@ describe("webrtc transport over real CBOR bytes", () => {
           device: bytesFromHex("11".repeat(SHA256_BYTE_LENGTH)),
           addresses: ["203.0.113.5:4433"],
           "snapshot-seconds": 1861833600,
+          ...syntheticAdvertProof(),
         },
       ],
     };
