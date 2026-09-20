@@ -397,6 +397,8 @@ export const peerAdvertSchema = z.lazy(() => z.object({
   "device": z.lazy(() => deviceIdSchema),
   "addresses": z.array(z.string()),
   "snapshot-seconds": z.number().int(),
+  "identity-key": z.lazy(() => identityKeySchema),
+  "signature": z.instanceof(Uint8Array),
 }).catchall(z.unknown()));
 export const gossipFrameSchema = z.lazy(() => z.object({
   "type": z.literal("gossip"),
