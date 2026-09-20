@@ -1,3 +1,9 @@
+## [2.0.1](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%402.0.0...wire-mesh-core%402.0.1) (2026-09-20)
+
+### Bug Fixes
+
+* **core:** forget a relay pairing when a request through it times out ([4d6dc9e](https://github.com/ExaDev/wire-mesh/commit/4d6dc9e1305ef2ebe5cd6598ca9221831fd62ffe))
+
 ## [2.0.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%401.59.0...wire-mesh-core%402.0.0) (2026-09-20)
 
 ### ⚠ BREAKING CHANGES
