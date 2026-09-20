@@ -122,7 +122,7 @@ describe("verifyPeerAdvert", () => {
       device: victim.deviceId,
       "identity-key": victim.identityKey,
     });
-    // Self-certification passes -- the key really does hash to the named device -- so only the signature check, which the advertiser could not produce without the victim's private key, refuses it.
+    // Self-certification passes here, since the key really does hash to the named device, so only the signature check refuses it: the advertiser could not produce one without the victim's private key.
     await expect(verifyPeerAdvert(advertiser, advert)).resolves.toBe(false);
   });
 
@@ -158,7 +158,10 @@ describe("verifyPeerAdvert", () => {
     const advert = await signPeerAdvert(identity, {
       ...unsignedAdvert(identity),
       device,
-      "identity-key": { alg: identity.identityKey.alg, "public-key": oversized },
+      "identity-key": {
+        alg: identity.identityKey.alg,
+        "public-key": oversized,
+      },
     });
     await expect(verifyPeerAdvert(identity, advert)).resolves.toBe(false);
   });

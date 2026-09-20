@@ -23,16 +23,32 @@ const LOCAL_DOMAINS = ["core/management"];
 /** connect() emits connecting and connected, then one tick for the self-advert it sends, then one per frame pushed afterwards. */
 const EVENTS_THROUGH_CONNECT = 3;
 
+function isDirectoryEntry(value: unknown): value is DirectoryEntry {
+  if (typeof value !== "object" || value === null) return false;
+  if (!("device" in value) || !("advert" in value)) return false;
+  return (
+    value.device instanceof Uint8Array &&
+    typeof value.advert === "object" &&
+    value.advert !== null
+  );
+}
+
+function isDirectoryEntryList(
+  value: unknown,
+): value is readonly DirectoryEntry[] {
+  return Array.isArray(value) && value.every(isDirectoryEntry);
+}
+
+/** Narrows a session event's directory without an assertion, so a malformed event fails the test loudly rather than quietly comparing against nothing. */
 function directoryOf(event: unknown): readonly DirectoryEntry[] {
-  if (
-    typeof event !== "object" ||
-    event === null ||
-    !("directory" in event) ||
-    !Array.isArray(event.directory)
-  ) {
+  if (typeof event !== "object" || event === null || !("directory" in event)) {
     throw new Error("session event carries no directory");
   }
-  return event.directory;
+  const { directory } = event;
+  if (!isDirectoryEntryList(directory)) {
+    throw new Error("session event's directory is not a list of entries");
+  }
+  return directory;
 }
 
 /** Starts a connected session over a fake transport and hands back the connection the test pushes gossip onto. */
@@ -109,7 +125,10 @@ describe("a mesh session verifies gossiped adverts before its directory sees the
       (frame): frame is Extract<Frame, { type: "gossip" }> =>
         frame.type === "gossip",
     );
-    expect(selfAdvert, "the session must send a self-advert on connect").toBeDefined();
+    expect(
+      selfAdvert,
+      "the session must send a self-advert on connect",
+    ).toBeDefined();
     const advert = selfAdvert?.peers[0];
     expect(advert?.device).toEqual(testIdentity.deviceId);
     expect(advert?.["identity-key"]).toEqual(testIdentity.identityKey);

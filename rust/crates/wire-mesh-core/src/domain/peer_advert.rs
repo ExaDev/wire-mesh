@@ -2,7 +2,7 @@
 //! structure that legitimately travels beyond the connection it was sent on:
 //! a hub re-broadcasts what it receives, and a gateway forwards the adverts
 //! of the local peers it fronts. Binding an advert to its arriving connection
-//! therefore cannot authenticate it (wire-mesh#225) -- the signature is what
+//! therefore cannot authenticate it (wire-mesh#225): the signature is what
 //! ties an advert to the device it names, and the `identity-key` travelling
 //! inside the signed content is what makes it self-certifying, so a receiver
 //! with no prior contact with that device and no directory to consult can

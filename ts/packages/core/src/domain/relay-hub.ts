@@ -1,6 +1,6 @@
 // The hub's relay role, expressed purely against core's Transport port and the generated frame schemas -- no Worker-specific or WebSocket-specific type appears here, so the same logic runs under the TCP adapter in tests or any future transport. A connection's device-id is learned from its own gossiped peer-advert (the only spec frame that carries a device-id over a plain connection; TLS-cert identity extraction is deliberately out of scope for the WebSocket-ingress first pass, noted in the README).
 //
-// Registry semantics (wire-mesh#225). Every advert is verified before it is registered, forwarded, or replayed in a catch-up frame: the embedded identity-key must hash to the device the advert names, and the signature must verify under that key (see peer-advert.ts). Nothing else authenticates a gossiped device-id here, so an unverified advert would let any connection publish an entry under another device's id and draw that device's routed traffic to itself. Adverts for devices other than the gossiping connection's own are entirely legitimate -- a gateway forwards the adverts of the local peers it fronts -- which is exactly why an advert is bound to the device that signed it rather than to the connection it arrived on. An advert that fails verification is dropped individually: the frame's remaining adverts are still registered and forwarded, since one forged entry says nothing about the others, and a frame whose adverts are all refused is dropped entirely rather than earning its sender a catch-up dump of the directory.
+// Registry semantics (wire-mesh#225). Every advert is verified before it is registered, forwarded, or replayed in a catch-up frame: the embedded identity-key must hash to the device the advert names, and the signature must verify under that key (see peer-advert.ts). Nothing else authenticates a gossiped device-id here, so an unverified advert would let any connection publish an entry under another device's id and draw that device's routed traffic to itself. Adverts for devices other than the gossiping connection's own are entirely legitimate, since a gateway forwards the adverts of the local peers it fronts, which is exactly why an advert is bound to the device that signed it rather than to the connection it arrived on. An advert that fails verification is dropped individually: the frame's remaining adverts are still registered and forwarded, since one forged entry says nothing about the others, and a frame whose adverts are all refused is dropped entirely rather than earning its sender a catch-up dump of the directory.
 //
 // A signature alone does not stop a connection replaying a victim's genuine, correctly-signed advert to take over its route, so registration additionally compares freshness. An advert naming a device currently registered to a DIFFERENT live connection takes that registration over only when its `snapshot-seconds` is strictly greater than the registered advert's; an advert from the connection that already holds the registration updates it when `snapshot-seconds` is greater than or equal, so an unchanged heartbeat from the rightful owner still refreshes what the hub holds. The limitation this leaves, stated rather than papered over: a device that reconnects within the same second while its previous connection is still open does not displace that connection until its next gossip carries a later second. A device-id mapping is still only removed on disconnect if it still points at the connection that registered it, so a re-announcement by a newer connection isn't clobbered by an older one leaving.
 //
@@ -96,7 +96,7 @@ function deviceFromKey(key: string): DeviceId {
 /**
  * Whether an already-verified advert may take over the registration a device currently holds (wire-mesh#225).
  *
- * Strictly newer when it arrives on a different connection from the one holding the registration, so replaying a victim's genuine advert -- which carries the victim's own `snapshot-seconds` unchanged, since altering it would break the signature -- can never steal its route. Newer-or-equal from the connection that already holds it, so an unchanged heartbeat from the rightful owner still refreshes the addresses and extensions the hub replays in catch-up frames.
+ * Strictly newer when it arrives on a different connection from the one holding the registration, so replaying a victim's genuine advert, which carries the victim's own `snapshot-seconds` unchanged since altering it would break the signature, can never steal its route. Newer-or-equal from the connection that already holds it, so an unchanged heartbeat from the rightful owner still refreshes the addresses and extensions the hub replays in catch-up frames.
  */
 function supersedes(
   registered: Readonly<Registration>,
@@ -105,7 +105,9 @@ function supersedes(
 ): boolean {
   const incoming = advert["snapshot-seconds"];
   const held = registered.advert["snapshot-seconds"];
-  return registered.connection === connection ? incoming >= held : incoming > held;
+  return registered.connection === connection
+    ? incoming >= held
+    : incoming > held;
 }
 
 export function createRelayHub(options: Readonly<RelayHubOptions>): RelayHub {
@@ -267,7 +269,10 @@ export function createRelayHub(options: Readonly<RelayHubOptions>): RelayHub {
         }
         const key = deviceKey(advert.device);
         const previous = devices.get(key);
-        if (previous !== undefined && !supersedes(previous, advert, connection)) {
+        if (
+          previous !== undefined &&
+          !supersedes(previous, advert, connection)
+        ) {
           continue;
         }
         if (previous !== undefined && previous.connection !== connection) {
@@ -291,7 +296,7 @@ export function createRelayHub(options: Readonly<RelayHubOptions>): RelayHub {
       for (const other of supplanted) {
         stateChanged(other);
       }
-      // Re-broadcast to every other currently-connected client, each accepted advert exactly as it arrived -- see module header for why this is unconditional, undeduplicated, and loop-safe, and why an advert must never be rebuilt on the way through. A per-recipient send failure is swallowed so one dead peer never aborts the rest of the fan-out or this connection's own frame processing.
+      // Re-broadcast to every other currently-connected client, each accepted advert exactly as it arrived. See module header for why this is unconditional, undeduplicated, and loop-safe, and why an advert must never be rebuilt on the way through. A per-recipient send failure is swallowed so one dead peer never aborts the rest of the fan-out or this connection's own frame processing.
       const forwarded: Frame = { type: "gossip", peers: accepted };
       for (const other of connections) {
         if (other === connection) {
