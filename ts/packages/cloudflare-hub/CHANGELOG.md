@@ -1,3 +1,22 @@
+## [1.0.5](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%401.0.4...%40exadev%2Fwire-mesh-cloudflare-hub%401.0.5) (2026-09-20)
+
+### Bug Fixes
+
+* **cloudflare-hub:** keep relay pairings across a Durable Object eviction ([6ad9090](https://github.com/ExaDev/wire-mesh/commit/6ad90905035cbc523520afc6a4695dedd8526881))
+
+### Documentation
+
+* point the eviction comments at the issue that reports the dropped response ([37b80ca](https://github.com/ExaDev/wire-mesh/commit/37b80cad261e0a8928417ca31bf86c26127394dc))
+
+### Tests
+
+* **cloudflare-hub:** add a live check for a relay pairing left idle ([ccdb66e](https://github.com/ExaDev/wire-mesh/commit/ccdb66e887b4c568b60b12f8b95df2c57d8fd8df))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 1.59.0
+
 ## [1.0.4](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%401.0.3...%40exadev%2Fwire-mesh-cloudflare-hub%401.0.4) (2026-09-19)
 
 

@@ -1,3 +1,13 @@
+## [1.59.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%401.58.7...wire-mesh-core%401.59.0) (2026-09-20)
+
+### Features
+
+* **core:** export and restore a relay connection's registry and pairing state ([861f7cf](https://github.com/ExaDev/wire-mesh/commit/861f7cf600c69857667bf2077827de2233420d1a))
+
+### Documentation
+
+* point the eviction comments at the issue that reports the dropped response ([37b80ca](https://github.com/ExaDev/wire-mesh/commit/37b80cad261e0a8928417ca31bf86c26127394dc))
+
 ## [1.58.7](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%401.58.6...wire-mesh-core%401.58.7) (2026-09-19)
 
 ### Bug Fixes

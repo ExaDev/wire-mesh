@@ -1,3 +1,10 @@
+## [1.0.5](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%401.0.4...%40exadev%2Fwire-mesh-web-console%401.0.5) (2026-09-20)
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 1.59.0
+
 ## [1.0.4](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%401.0.3...%40exadev%2Fwire-mesh-web-console%401.0.4) (2026-09-19)
 
 
