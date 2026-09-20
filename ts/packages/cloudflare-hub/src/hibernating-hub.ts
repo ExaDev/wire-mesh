@@ -18,7 +18,10 @@ import {
   type Frame,
 } from "wire-mesh-core/generated/protocol";
 import type { Connection } from "wire-mesh-core/ports/transport";
-import { deriveDeviceId, verifyWithPublicKey } from "./adapters/web-crypto-identity.js";
+import {
+  deriveDeviceId,
+  verifyWithPublicKey,
+} from "./adapters/web-crypto-identity.js";
 import {
   CLOSE_NORMAL,
   CLOSE_PROTOCOL_ERROR,

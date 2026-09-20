@@ -21,14 +21,15 @@ import {
 const LATER_SNAPSHOT_SECONDS = FIXTURE_SNAPSHOT_SECONDS + 1;
 
 /** Drives one connection through the hub for the lifetime of a test, returning the fake so the test can push frames and read what came back. */
-function connect(
-  hub: Readonly<ReturnType<typeof createRelayHub>>,
-): { fake: FakeConnection; handling: Promise<void> } {
+function connect(hub: Readonly<ReturnType<typeof createRelayHub>>): {
+  fake: FakeConnection;
+  handling: Promise<void>;
+} {
   const fake = new FakeConnection();
   return { fake, handling: hub.handleConnection(fake.connection) };
 }
 
-describe("createRelayHub -- authenticated gossip", () => {
+describe("createRelayHub: authenticated gossip", () => {
   it("drops an advert naming another device that it cannot sign for, registering and forwarding nothing", async () => {
     const hub = createRelayHub({ identity: hubVerifier });
     const victim = await createTestPeer();
@@ -144,7 +145,11 @@ describe("createRelayHub -- authenticated gossip", () => {
       "replaying an advert must not draw the device's traffic to the replayer",
     ).not.toContainEqual(inbound);
 
-    await Promise.all([owner.fake.end(), attacker.fake.end(), caller.fake.end()]);
+    await Promise.all([
+      owner.fake.end(),
+      attacker.fake.end(),
+      caller.fake.end(),
+    ]);
     await Promise.all([owner.handling, attacker.handling, caller.handling]);
   });
 

@@ -1,4 +1,4 @@
-// Signing and verification for peer-advert (spec/transport.cddl), the one gossiped structure that travels beyond the connection it was sent on: a hub re-broadcasts what it receives, and a gateway forwards adverts for the local peers it fronts. Binding an advert to its arriving connection therefore cannot authenticate it -- the signature is what ties an advert to the device it names, and `identity-key` travelling inside the signed content is what makes it self-certifying, so a receiver with no prior contact with that device and no directory to consult can still check it (wire-mesh#225).
+// Signing and verification for peer-advert (spec/transport.cddl), the one gossiped structure that travels beyond the connection it was sent on: a hub re-broadcasts what it receives, and a gateway forwards adverts for the local peers it fronts. Binding an advert to its arriving connection therefore cannot authenticate it: the signature is what ties an advert to the device it names, and `identity-key` travelling inside the signed content is what makes it self-certifying, so a receiver with no prior contact with that device and no directory to consult can still check it (wire-mesh#225).
 //
 // Kept as one pure module rather than a method on either consumer: the relay hub (which verifies before registering or re-broadcasting) and the mesh session (which verifies before applying an advert to its own directory) must agree byte-for-byte on what "valid" means, and a hub is a facilitator for the directory rather than an authority over it, so a receiver never delegates this check to whoever forwarded the advert.
 
@@ -11,7 +11,7 @@ import type {
 import type { IdentityPort } from "../ports/identity.js";
 import { bytesEqual } from "./token-scope.js";
 
-/** peer-advert's own signature field, the one entry the signature does not cover -- named once here so the signing input and the reserved-extension-key guard cannot drift apart. */
+/** peer-advert's own signature field, the one entry the signature does not cover, named once here so the signing input and the reserved-extension-key guard cannot drift apart. */
 export const PEER_ADVERT_SIGNATURE_KEY = "signature";
 
 /** peer-advert's own self-certifying key field. Covered by the signature like every other entry, so an advert cannot be re-keyed after signing. */
@@ -84,7 +84,7 @@ export async function signPeerAdvert(
 /**
  * Both validity checks spec/transport.cddl states for a gossiped advert, in the order a verifier must apply them: the embedded identity-key self-certifies (sha256 of its public-key equals the advert's own `device`), and the signature verifies under that same key over peerAdvertSigningInput's bytes.
  *
- * Returns a verdict for every input, including a hostile one, and never throws. An advert's `alg` and `public-key` are attacker-chosen (identity-key constrains them to an int and a bstr, nothing more), so importing the key can legitimately fail for an algorithm no verifier implements or for key bytes of the wrong length -- an unverifiable advert is a refused advert, exactly as if its signature had simply been wrong, which is why the import failure is turned into `false` here rather than propagated to a caller iterating a frame's other adverts.
+ * Returns a verdict for every input, including a hostile one, and never throws. An advert's `alg` and `public-key` are attacker-chosen (identity-key constrains them to an int and a bstr, nothing more), so importing the key can legitimately fail for an algorithm no verifier implements or for key bytes of the wrong length. An unverifiable advert is a refused advert, exactly as if its signature had simply been wrong, which is why the import failure is turned into `false` here rather than propagated to a caller iterating a frame's other adverts.
  */
 export async function verifyPeerAdvert(
   identity: Readonly<PeerAdvertVerifier>,
