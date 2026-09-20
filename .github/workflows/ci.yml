@@ -261,6 +261,9 @@ jobs:
       group: release-workspace
       cancel-in-progress: false
     runs-on: ubuntu-latest
+    outputs:
+      published: ${{ steps.published.outputs.published }}
+      version: ${{ steps.published.outputs.version }}
     timeout-minutes: 30
     permissions:
       contents: write # to push the release commit and tags, and create GitHub Releases
@@ -323,6 +326,13 @@ jobs:
       - run: pnpm turbo run _build
         working-directory: ts
 
+      # agent-comms consumes wire-mesh-core and no other package from this workspace, so that is the only release a run has to report.
+      - name: Record the latest wire-mesh-core release before this run
+        id: release-before
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '[.[] | select(.tagName | startswith("wire-mesh-core@"))][0].tagName')" >> "$GITHUB_OUTPUT"
+
       - name: Release every package that changed, in dependency order
         # The orchestrator discovers the workspace from ts/pnpm-workspace.yaml, orders packages topologically, and runs semantic-release per package with commits path-filtered to that package's own directory and tags in `name@version` form.
         run: pnpm release
@@ -334,3 +344,45 @@ jobs:
           # Blanked, not omitted: an inherited NPM_TOKEN/NODE_AUTH_TOKEN from a reusable workflow or composite action would otherwise be used in preference to the OIDC exchange.
           NPM_TOKEN: ""
           NODE_AUTH_TOKEN: ""
+
+      - name: Detect whether this run published a wire-mesh-core release
+        id: published
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_BEFORE: ${{ steps.release-before.outputs.tag }}
+        run: |
+          tag_after=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '[.[] | select(.tagName | startswith("wire-mesh-core@"))][0].tagName')
+          if [ "$tag_after" = "$TAG_BEFORE" ]; then
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "version=${tag_after#wire-mesh-core@}" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Tells agent-comms to bump to the wire-mesh-core version this run published. The dispatch needs an App token: the workflow token cannot start a workflow in another repository.
+  notify-agent-comms:
+    name: Notify agent-comms
+    needs: release
+    if: needs.release.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Generate a token for the dispatch
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          # The ExaDev Sync app, installed on every repository in the organisation. Its id is public, so it is written out here rather than read from a variable.
+          app-id: "4816274"
+          private-key: ${{ secrets.EXADEV_SYNC_PRIVATE_KEY }}
+          owner: ExaDev
+          repositories: agent-comms
+
+      - name: Dispatch sibling-released
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          gh api repos/ExaDev/agent-comms/dispatches \
+            -f event_type=sibling-released \
+            -F "client_payload[package]=wire-mesh-core" \
+            -F "client_payload[version]=$VERSION"
