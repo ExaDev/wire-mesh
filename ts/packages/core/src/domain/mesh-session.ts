@@ -32,6 +32,7 @@ import {
   TOPOLOGY_PEERS_GOSSIP_KEY,
   validateGossipExtensions,
 } from "./gossip-extensions.js";
+import { signPeerAdvert, verifyPeerAdvert } from "./peer-advert.js";
 import type { Clock } from "../ports/clock.js";
 import type { IdentityPort } from "../ports/identity.js";
 import type { Connection, Transport } from "../ports/transport.js";
@@ -308,7 +309,7 @@ function createSessionCore(
     incomingQueue.push(incoming);
   }
 
-  function applyFrame(frame: Frame): void {
+  async function applyFrame(frame: Frame): Promise<void> {
     if (frame.type === "relay-data") {
       // relay-data's payload is an opaque byte-pipe relay-hub forwards blindly between an established pairing, never interpreting it -- so a manage-request/manage-response addressed to a peer only reachable through a relay hub rides inside it (relay-hub itself drops those frame kinds when sent to it directly). A payload that doesn't decode as one of those two frame kinds is left as ordinary opaque relay-data: nothing else in this package currently sends or expects it, but this path must not assume it is the only future user of relay-data.
       const inner = tryDecodeFrame(frame.payload);
@@ -332,6 +333,10 @@ function createSessionCore(
       applyRemoteHandshake(frame);
     } else if (frame.type === "gossip") {
       for (const advert of frame.peers) {
+        // Verified here, never taken on the sender's word: an advert reaching this session was very often forwarded by a hub or a gateway rather than sent by the device it names, and a hub is a facilitator for the directory rather than an authority over it (wire-mesh#225). An advert that fails is dropped on its own; the frame's remaining entries are unaffected, since one forged entry says nothing about the others.
+        if (!(await verifyPeerAdvert(identity, advert))) {
+          continue;
+        }
         // Latest advert per device wins, order preserved by first insertion -- a re-advert updates in place.
         directory.set(deviceIdToHex(advert.device), {
           device: advert.device,
@@ -443,7 +448,7 @@ function createSessionCore(
       if (feedCancelled) {
         return;
       }
-      applyFrame(frame);
+      await applyFrame(frame);
       await onFrame?.(link, frame);
       emit();
     }
@@ -453,24 +458,23 @@ function createSessionCore(
     }
   }
 
-  /** Builds this side's own self-advert: this node's own directly-reachable addresses (wire-mesh#38), or none for a caller with nothing to offer (a browser client, which cannot accept inbound connections) -- either is an honest advert, not a stopgap. extensions merge onto peer-advert's own open `* tstr => any` tail -- the mechanism sendGossipUpdate uses to keep a gossiped fact (presence status, an accept/refuse policy, or any future domain's own) live over the connection's lifetime. Extensions, CORE_VERSION_GOSSIP_KEY, and topology/peers are all spread before the mandatory fields (never after) so a caller-supplied key of the same name can never shadow them on the wire -- validateGossipExtensions already rejects every such collision loudly, but the field order is kept safe in its own right rather than relying solely on the guard staying in sync. topology/peers (wire-mesh#180) is recomputed fresh on every call, the same "always current, never cached" treatment snapshot-seconds already gets, since a session's own connection identity and relay pairings can change between one self-advert and the next. */
-  function buildSelfAdvert(extensions?: Record<string, unknown>): GossipFrame {
+  /** Builds this side's own self-advert and signs it with this node's own key (wire-mesh#225), which is what makes it usable by a receiver that learned of it through a hub or a gateway rather than directly from here. this node's own directly-reachable addresses (wire-mesh#38) are advertised, or none for a caller with nothing to offer (a browser client, which cannot accept inbound connections) -- either is an honest advert, not a stopgap. extensions merge onto peer-advert's own open `* tstr => any` tail -- the mechanism sendGossipUpdate uses to keep a gossiped fact (presence status, an accept/refuse policy, or any future domain's own) live over the connection's lifetime, and every such key is covered by the signature. Extensions, CORE_VERSION_GOSSIP_KEY, and topology/peers are all spread before the mandatory fields (never after) so a caller-supplied key of the same name can never shadow them on the wire -- validateGossipExtensions already rejects every such collision loudly, but the field order is kept safe in its own right rather than relying solely on the guard staying in sync. topology/peers (wire-mesh#180) is recomputed fresh on every call, the same "always current, never cached" treatment snapshot-seconds already gets, since a session's own connection identity and relay pairings can change between one self-advert and the next. */
+  async function buildSelfAdvert(
+    extensions?: Record<string, unknown>,
+  ): Promise<GossipFrame> {
     if (extensions !== undefined) {
       validateGossipExtensions(extensions);
     }
-    return {
-      type: "gossip",
-      peers: [
-        {
-          ...extensions,
-          [CORE_VERSION_GOSSIP_KEY]: OWN_VERSION,
-          [TOPOLOGY_PEERS_GOSSIP_KEY]: topology.compute(),
-          device: identity.deviceId,
-          addresses: [...addresses],
-          "snapshot-seconds": Math.floor(clock.now() / MS_PER_SECOND),
-        },
-      ],
-    };
+    const advert = await signPeerAdvert(identity, {
+      ...extensions,
+      [CORE_VERSION_GOSSIP_KEY]: OWN_VERSION,
+      [TOPOLOGY_PEERS_GOSSIP_KEY]: topology.compute(),
+      device: identity.deviceId,
+      addresses: [...addresses],
+      "snapshot-seconds": Math.floor(clock.now() / MS_PER_SECOND),
+      "identity-key": identity.identityKey,
+    });
+    return { type: "gossip", peers: [advert] };
   }
 
   /** Everything a connection needs once it exists, regardless of whether it was dialled (createMeshSession's own doConnect, below) or handed over already established (acceptMeshSession): send this side's handshake and self-advert, arm the handshake timeout, and start consuming frames. The two entry points differ only in how link itself came to exist and what address means for it -- a real dial target for one, a caller-chosen label for the other, since the Connection/Transport ports expose no remote-address concept of their own for an accepted connection. */
@@ -486,7 +490,7 @@ function createSessionCore(
     frameLog.push({ direction: "sent", frame: localHandshakeSent });
     await connection.send(localHandshakeSent);
     emit();
-    const selfAdvert = buildSelfAdvert();
+    const selfAdvert = await buildSelfAdvert();
     frameLog.push({ direction: "sent", frame: selfAdvert });
     await connection.send(selfAdvert);
     emit();
@@ -622,7 +626,7 @@ function createSessionCore(
         extensions?: Record<string, unknown>,
       ): Promise<void> {
         requireConnectedLink();
-        const frame = buildSelfAdvert(extensions);
+        const frame = await buildSelfAdvert(extensions);
         frameLog.push({ direction: "sent", frame });
         await transmit(frame, false);
         emit();

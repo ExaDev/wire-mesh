@@ -18,6 +18,7 @@ import {
   type Frame,
 } from "wire-mesh-core/generated/protocol";
 import type { Connection } from "wire-mesh-core/ports/transport";
+import { deriveDeviceId, verifyWithPublicKey } from "./adapters/web-crypto-identity.js";
 import {
   CLOSE_NORMAL,
   CLOSE_PROTOCOL_ERROR,
@@ -98,6 +99,8 @@ export function createHibernatingRelayHub(
   survivors: () => readonly Readonly<HubSocket>[],
 ): HibernatingRelayHub {
   const hub = createRelayHub({
+    // Only the verification half of this runtime's Web Crypto identity: a gossiped advert is self-certifying (wire-mesh#225), so the hub checks each one against the key the advert itself carries and never needs a signing identity of its own.
+    identity: { verify: verifyWithPublicKey, deriveDeviceId },
     onConnectionStateChanged: (connection) => {
       persist(connection);
     },

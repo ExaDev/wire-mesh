@@ -1,12 +1,18 @@
 // Validation for sendGossipUpdate's own extension bag, extracted out of mesh-session.ts as a pure, closure-free helper -- the same "no dependency on session state" property ping-round-trips.ts's own extraction already relies on, and the mechanism that keeps mesh-session.ts itself under this repo's own max-lines cap as new capability (wire-mesh#180's topology self-advertisement, wire-mesh#181's ping/pong RTT plumbing, and wire-mesh#179's own version.get/gossip plumbing) grows it.
 
 import { CORE_VERSION_GOSSIP_KEY } from "./own-version.js";
+import {
+  PEER_ADVERT_IDENTITY_KEY_KEY,
+  PEER_ADVERT_SIGNATURE_KEY,
+} from "./peer-advert.js";
 
-/** peer-advert's own three typed fields -- reserved so a `sendGossipUpdate` caller can never override the session's own device-id, address list, or freshness timestamp by supplying an extension of the same name. */
+/** peer-advert's own typed fields -- reserved so a `sendGossipUpdate` caller can never override the session's own device-id, address list, freshness timestamp, self-certifying key, or signature by supplying an extension of the same name. The last two matter most: an extension able to shadow them would let a caller replace the very fields wire-mesh#225's authentication rests on. */
 const RESERVED_PEER_ADVERT_KEYS = new Set([
   "device",
   "addresses",
   "snapshot-seconds",
+  PEER_ADVERT_IDENTITY_KEY_KEY,
+  PEER_ADVERT_SIGNATURE_KEY,
 ]);
 
 /** The gossip extension key topology self-advertisement (wire-mesh#180) is carried under -- session-managed, computed fresh from this session's own connection/relayPairings state on every self-advert, never a caller-supplied fact. */

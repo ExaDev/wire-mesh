@@ -6,6 +6,10 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRelayHub } from "wire-mesh-core/domain/relay-hub";
+import {
+  deriveDeviceId,
+  verifyWithPublicKey,
+} from "wire-mesh-core/adapters/node-identity";
 import { createNodeWebSocketTransport } from "./adapters/node-websocket-transport.js";
 import { CliUsageError, helpText, parseCliArguments } from "./cli-options.js";
 import { resolveConsoleFile } from "./static-console.js";
@@ -95,7 +99,10 @@ async function main(argv: readonly string[]): Promise<void> {
         privateKeyPem: readFileSync(command.tls.keyPath, "utf-8"),
       }
     : undefined;
-  const hub = createRelayHub();
+  // Only the verification half of core's Node identity adapter: a gossiped advert is self-certifying (wire-mesh#225), so the hub checks each one against the key the advert itself carries rather than holding a signing identity of its own.
+  const hub = createRelayHub({
+    identity: { verify: verifyWithPublicKey, deriveDeviceId },
+  });
   const transport = createNodeWebSocketTransport({
     onHttpRequest: createHttpRequestHandler(CONSOLE_DIR),
     ...(tls ? { tls } : {}),
