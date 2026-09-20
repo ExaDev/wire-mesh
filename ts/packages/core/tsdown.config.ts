@@ -22,6 +22,7 @@ export default defineConfig({
     "src/domain/handshake.ts",
     "src/domain/notice-board.ts",
     "src/domain/mesh-session.ts",
+    "src/domain/peer-advert.ts",
     "src/domain/relay-hub.ts",
     "src/domain/relay-use-gate.ts",
     "src/domain/room.ts",

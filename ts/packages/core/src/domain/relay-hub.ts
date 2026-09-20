@@ -1,8 +1,12 @@
-// The hub's relay role, expressed purely against core's Transport port and the generated frame schemas -- no Worker-specific or WebSocket-specific type appears here, so the same logic runs under the TCP adapter in tests or any future transport. A connection's device-id is learned from its own gossiped peer-advert (the only spec frame that carries a device-id over a plain connection; TLS-cert identity extraction is deliberately out of scope for the WebSocket-ingress first pass, noted in the README). Registry semantics: last gossip wins for a device-id, and a mapping is only removed on disconnect if it still points at the connection that registered it, so a re-announcement by a newer connection isn't clobbered by an older one leaving.
+// The hub's relay role, expressed purely against core's Transport port and the generated frame schemas -- no Worker-specific or WebSocket-specific type appears here, so the same logic runs under the TCP adapter in tests or any future transport. A connection's device-id is learned from its own gossiped peer-advert (the only spec frame that carries a device-id over a plain connection; TLS-cert identity extraction is deliberately out of scope for the WebSocket-ingress first pass, noted in the README).
+//
+// Registry semantics (wire-mesh#225). Every advert is verified before it is registered, forwarded, or replayed in a catch-up frame: the embedded identity-key must hash to the device the advert names, and the signature must verify under that key (see peer-advert.ts). Nothing else authenticates a gossiped device-id here, so an unverified advert would let any connection publish an entry under another device's id and draw that device's routed traffic to itself. Adverts for devices other than the gossiping connection's own are entirely legitimate -- a gateway forwards the adverts of the local peers it fronts -- which is exactly why an advert is bound to the device that signed it rather than to the connection it arrived on. An advert that fails verification is dropped individually: the frame's remaining adverts are still registered and forwarded, since one forged entry says nothing about the others, and a frame whose adverts are all refused is dropped entirely rather than earning its sender a catch-up dump of the directory.
+//
+// A signature alone does not stop a connection replaying a victim's genuine, correctly-signed advert to take over its route, so registration additionally compares freshness. An advert naming a device currently registered to a DIFFERENT live connection takes that registration over only when its `snapshot-seconds` is strictly greater than the registered advert's; an advert from the connection that already holds the registration updates it when `snapshot-seconds` is greater than or equal, so an unchanged heartbeat from the rightful owner still refreshes what the hub holds. The limitation this leaves, stated rather than papered over: a device that reconnects within the same second while its previous connection is still open does not displace that connection until its next gossip carries a later second. A device-id mapping is still only removed on disconnect if it still points at the connection that registered it, so a re-announcement by a newer connection isn't clobbered by an older one leaving.
 //
 // Multiplexing: a connection may hold more than one relay pairing at once (a peer fanning a message out to several members of a group, all of whom are only reachable through this same hub). Pairings are therefore a symmetric adjacency map keyed by *connection*, not resolved through the device registry at forward time -- device-ids here are gossip-asserted, not certificate-verified, and re-resolving through the registry per frame would let a pairing silently re-attach to whichever connection most recently claimed a device-id, a spoofing vector. Keying by connection preserves the existing behaviour that an established pairing survives its peer's device mapping moving to a fresher connection, and dies only with the connection itself. `relay-data-frame`'s `to-device`/`from-device` fields disambiguate which pairing a frame belongs to now that a connection can hold several; a connection with exactly one pairing may omit `to-device`, which every legacy peer already does, so an unaddressed frame under multiplexing routes to the most recently established pairing -- the same "last one wins" semantics the old single-pairing hub already had. `to-device` is also echoed onward, unmodified, in the frame this hub delivers to the receiving connection, never just consumed for the routing lookup above: a receiving connection that itself fronts more than one locally-addressable device (a gateway advertising several local peers over one hub connection, wire-mesh#170) has no other way to tell which of its own devices a given frame was actually addressed to, since from its side every relay-data frame arrives multiplexed over the same single connection regardless of target.
 //
-// Gossip forwarding and catch-up (wire-mesh#110): every `gossip-frame` this hub receives triggers two things, beyond registering the advert locally. First, the frame is re-broadcast, unmodified, to every *other* currently-connected client (never back to the sender) -- unconditionally, on every frame, with no dedup against a previously-seen advert. This is deliberately not the same "never touches payload" blindness `relay-data` gets: the hub already parses a gossip frame's `peers` to populate its own device registry above, so forwarding it is extending existing, already-established visibility, not opening a new blind spot -- `relay-data`'s ciphertext payload stays untouched and unforwarded-to-third-parties, which is the invariant that actually matters for end-to-end confidentiality. Unconditional (no per-advert or per-recipient cache) is a deliberate choice, not an oversight: `peer-advert.snapshot-seconds`/`addresses` are meant to keep propagating on every re-gossip (a liveness heartbeat, an address change), so suppressing a "duplicate" would silently stop legitimate freshness updates from reaching other clients. Loop-safety needs no extra bookkeeping either: this hub only ever re-broadcasts to its own directly-connected clients (a star topology, one hop), and nothing here re-gossips a frame it received back onto the wire on its own initiative, so there is no path for a forwarded frame to cycle back through this hub a second time. A forward that fails (the target connection has died) is swallowed per-recipient so one dead peer never aborts delivery to the rest of the fan-out, or the sending connection's own frame processing -- that peer's own `handleConnection` loop notices the same death independently via its `receive()` stream and cleans up through the ordinary disconnect path.
+// Gossip forwarding and catch-up (wire-mesh#110): every `gossip-frame` this hub receives triggers two things, beyond registering the advert locally. First, the frame's accepted adverts are re-broadcast, byte-identical to how they arrived, to every *other* currently-connected client (never back to the sender) -- unconditionally, on every frame, with no dedup against a previously-seen advert. Forwarding an advert verbatim is not an optimisation but a requirement: the signature covers every entry, so a hub that rebuilt or edited an advert on the way through would invalidate it for every receiver. This is deliberately not the same "never touches payload" blindness `relay-data` gets: the hub already parses a gossip frame's `peers` to populate its own device registry above, so forwarding it is extending existing, already-established visibility, not opening a new blind spot -- `relay-data`'s ciphertext payload stays untouched and unforwarded-to-third-parties, which is the invariant that actually matters for end-to-end confidentiality. Unconditional (no per-advert or per-recipient cache) is a deliberate choice, not an oversight: `peer-advert.snapshot-seconds`/`addresses` are meant to keep propagating on every re-gossip (a liveness heartbeat, an address change), so suppressing a "duplicate" would silently stop legitimate freshness updates from reaching other clients. Loop-safety needs no extra bookkeeping either: this hub only ever re-broadcasts to its own directly-connected clients (a star topology, one hop), and nothing here re-gossips a frame it received back onto the wire on its own initiative, so there is no path for a forwarded frame to cycle back through this hub a second time. A forward that fails (the target connection has died) is swallowed per-recipient so one dead peer never aborts delivery to the rest of the fan-out, or the sending connection's own frame processing -- that peer's own `handleConnection` loop notices the same death independently via its `receive()` stream and cleans up through the ordinary disconnect path.
 //
 // Second, the sender itself is sent a catch-up `gossip-frame` bundling every *other* currently-known device's latest advert. This is not optional polish: every client gossips its own self-advert exactly once, at connect time, and never repeats it on its own initiative (see `mesh-session.ts`'s `sendGossipUpdate` doc comment -- there is no re-advertisement timer built into a session, so a caller that never calls it again is "today's existing gossip-once-on-connect behaviour"). Forwarding alone therefore only reaches whichever clients happen to already be connected at the exact moment a given advert is gossiped; a client that connects even slightly later would otherwise never learn about anyone who gossiped before it, no matter how long it then stays connected, since nothing ever re-sends that earlier advert again. The catch-up frame closes this gap by replaying the hub's own already-known directory to every gossiping connection, not only ones that have never gossiped before -- a connection re-gossiping (an address change, a fresher `snapshot-seconds`) is caught up again too, which is harmless and correctly reflects current state under the same no-caching philosophy as the forward above. `Registration` keeps the full `peer-advert`, not just a bare device-id, specifically so this catch-up frame can be built from real, previously-received adverts rather than synthesising one.
 
@@ -10,6 +14,7 @@
 
 import type { DeviceId, Frame, PeerAdvert } from "../generated/protocol.js";
 import type { Connection } from "../ports/transport.js";
+import { verifyPeerAdvert, type PeerAdvertVerifier } from "./peer-advert.js";
 
 interface Registration {
   connection: Readonly<Connection>;
@@ -38,6 +43,8 @@ export interface RelayConnectionRestore {
 }
 
 export interface RelayHubOptions {
+  /** The crypto primitives this hub verifies every gossiped advert with (wire-mesh#225). Narrowed to verify/deriveDeviceId rather than a full IdentityPort because an advert is self-certifying: a hub checks one against the key the advert itself carries, and never needs a signing identity of its own to do it. */
+  readonly identity: Readonly<PeerAdvertVerifier>;
   /** Called whenever the value exportConnection returns for a connection changes: it gossiped an advert, gained or lost a pairing, or had one of its adverts taken over by another connection. A host whose own instance can be torn down while its connections stay open (the Cloudflare hub's hibernating Durable Object) reads the new value back with exportConnection, persists it against the connection, and hands it to a later instance through restoreConnections. */
   readonly onConnectionStateChanged?: (
     connection: Readonly<Connection>,
@@ -86,7 +93,22 @@ function deviceFromKey(key: string): DeviceId {
   return device;
 }
 
-export function createRelayHub(options: RelayHubOptions = {}): RelayHub {
+/**
+ * Whether an already-verified advert may take over the registration a device currently holds (wire-mesh#225).
+ *
+ * Strictly newer when it arrives on a different connection from the one holding the registration, so replaying a victim's genuine advert -- which carries the victim's own `snapshot-seconds` unchanged, since altering it would break the signature -- can never steal its route. Newer-or-equal from the connection that already holds it, so an unchanged heartbeat from the rightful owner still refreshes the addresses and extensions the hub replays in catch-up frames.
+ */
+function supersedes(
+  registered: Readonly<Registration>,
+  advert: Readonly<PeerAdvert>,
+  connection: Readonly<Connection>,
+): boolean {
+  const incoming = advert["snapshot-seconds"];
+  const held = registered.advert["snapshot-seconds"];
+  return registered.connection === connection ? incoming >= held : incoming > held;
+}
+
+export function createRelayHub(options: Readonly<RelayHubOptions>): RelayHub {
   // Every currently-connected client, independent of whether it has gossiped a device yet -- the fan-out set for gossip re-broadcast (see module header). Not derivable from `devices`/`connectionDevice`, since a connection that hasn't gossiped anything of its own still needs to receive other clients' adverts.
   const connections = new Set<Readonly<Connection>>();
   const devices = new Map<string, Registration>();
@@ -195,6 +217,8 @@ export function createRelayHub(options: RelayHubOptions = {}): RelayHub {
   function restoreConnections(
     entries: readonly RelayConnectionRestore[],
   ): void {
+    // Restored adverts are registered without being re-verified, and that is correct rather than a gap: each one was already verified by the hub instance that accepted it, and the host is handing back the very bytes it persisted for a connection it still holds open. Re-checking would only re-derive the same verdict from the same bytes, at the cost of making restoreConnections asynchronous on a path that runs before the instance answers its first frame. An advert arriving on the wire afterwards is verified normally, and is compared for freshness against these restored ones exactly as against any other registration.
+    //
     // Two passes, because a pairing names its peer by device-id and only the first pass establishes which connection each device-id belongs to. Keyed on each entry's own `device` rather than on the rebuilt `devices` directory: a pairing is with the connection that held the device-id when the pairing was made, which is exactly what that connection's own state records, whereas the directory may already have handed the id to a fresher connection.
     const byDevice = new Map<string, Readonly<Connection>>();
     for (const { connection, state } of entries) {
@@ -233,15 +257,28 @@ export function createRelayHub(options: RelayHubOptions = {}): RelayHub {
     frame: Frame,
   ): Promise<void> {
     if (frame.type === "gossip") {
-      // A device-id already registered to a different connection moves here under the registry's last-gossip-wins rule, which shrinks that connection's own exported adverts, so it is told alongside the gossiping one.
+      // A device-id already registered to a different connection moves here under the freshness rule above, which shrinks that connection's own exported adverts, so it is told alongside the gossiping one.
       const supplanted = new Set<Readonly<Connection>>();
+      // Only the adverts that both verified and won their freshness comparison: what gets registered, forwarded, and replayed in catch-up frames. A refused advert is not forwarded either, so neither a forgery nor a replayed stale advert reaches another client through this hub.
+      const accepted: PeerAdvert[] = [];
       for (const advert of frame.peers) {
+        if (!(await verifyPeerAdvert(options.identity, advert))) {
+          continue;
+        }
         const key = deviceKey(advert.device);
         const previous = devices.get(key);
+        if (previous !== undefined && !supersedes(previous, advert, connection)) {
+          continue;
+        }
         if (previous !== undefined && previous.connection !== connection) {
           supplanted.add(previous.connection);
         }
         devices.set(key, { connection, advert });
+        accepted.push(advert);
+      }
+      if (accepted.length === 0) {
+        // Nothing this connection sent was both authentic and fresh enough to register, so there is no state change to report, nothing new for other clients to hear, and no reason to hand an unauthenticated connection the directory in a catch-up frame.
+        return;
       }
       // Recomputed here, once per gossip frame, rather than scanned per relay-data forward: mirrors the previous deviceOf() scan's own semantics (the connection's own device is whichever currently-registered device points back at it) without paying that scan's cost on every forwarded frame.
       for (const registration of devices.values()) {
@@ -254,13 +291,14 @@ export function createRelayHub(options: RelayHubOptions = {}): RelayHub {
       for (const other of supplanted) {
         stateChanged(other);
       }
-      // Re-broadcast, unmodified, to every other currently-connected client -- see module header for why this is unconditional, undeduplicated, and loop-safe. A per-recipient send failure is swallowed so one dead peer never aborts the rest of the fan-out or this connection's own frame processing.
+      // Re-broadcast to every other currently-connected client, each accepted advert exactly as it arrived -- see module header for why this is unconditional, undeduplicated, and loop-safe, and why an advert must never be rebuilt on the way through. A per-recipient send failure is swallowed so one dead peer never aborts the rest of the fan-out or this connection's own frame processing.
+      const forwarded: Frame = { type: "gossip", peers: accepted };
       for (const other of connections) {
         if (other === connection) {
           continue;
         }
         try {
-          await other.send(frame);
+          await other.send(forwarded);
         } catch {
           // That peer's own connection has died; its own handleConnection loop will discover this independently via its receive() stream and clean up through the ordinary disconnect path.
         }

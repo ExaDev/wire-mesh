@@ -126,6 +126,10 @@
       "import": "./dist/domain/path-trace.mjs",
       "require": "./dist/domain/path-trace.cjs"
     },
+    "./domain/peer-advert": {
+      "import": "./dist/domain/peer-advert.mjs",
+      "require": "./dist/domain/peer-advert.cjs"
+    },
     "./domain/ping-round-trips": {
       "import": "./dist/domain/ping-round-trips.mjs",
       "require": "./dist/domain/ping-round-trips.cjs"
