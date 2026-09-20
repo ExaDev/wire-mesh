@@ -27,15 +27,26 @@
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
+use wire_mesh_core::adapters::NodeIdentity;
+use wire_mesh_core::domain::{verify_peer_advert, PeerAdvertVerdict};
 use wire_mesh_wire::tokens::CoseSign1;
+use wire_mesh_wire::transport::{peer_advert_signing_input, PeerAdvert};
 use wire_mesh_wire::value::{CanonicalMap, CborValue};
 use wire_mesh_wire::{decode_frame, encode_frame, minicbor};
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let vector_dir: PathBuf = [env!("CARGO_MANIFEST_DIR"), "..", "..", "..", "conformance"]
         .into_iter()
         .collect();
-    let files = ["frames.v1.json", "handshake.v1.json", "tokens.v1.json"];
+    let files = [
+        "frames.v1.json",
+        "handshake.v1.json",
+        "tokens.v1.json",
+        "adverts.v1.json",
+    ];
+    // Any identity will do as a verifier: a peer-advert is self-certifying, so it is checked against the key it carries and this one's own key is never involved.
+    let verifier = NodeIdentity::generate_ed25519();
     let mut total = 0usize;
     let mut passed = 0usize;
     let mut failures: Vec<String> = Vec::new();
@@ -50,7 +61,7 @@ fn main() {
         for vector in vectors {
             total += 1;
             let name = vector.name.clone();
-            let outcome = check_vector(file, vector);
+            let outcome = check_vector(file, vector, &verifier).await;
             match outcome {
                 Ok(()) => {
                     passed += 1;
@@ -80,6 +91,13 @@ struct Vector {
     name: String,
     message: serde_json::Value,
     wire_hex: String,
+    /// adverts.v1.json only: the exact bytes an advert's signature covers, and the verdict a conformant verifier must reach. Both are absent from every other vector file, which has nothing beyond its own wire bytes to pin.
+    advert: Option<AdvertExpectations>,
+}
+
+struct AdvertExpectations {
+    signing_input_hex: String,
+    verifies: bool,
 }
 
 fn validate_vector_file(parsed: &serde_json::Value, file: &str) -> Vec<Vector> {
@@ -117,11 +135,26 @@ fn validate_vector_file(parsed: &serde_json::Value, file: &str) -> Vec<Vector> {
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or_else(|| fail("vector missing wire_hex"))
                 .to_owned(),
+            advert: if file == "adverts.v1.json" {
+                Some(AdvertExpectations {
+                    signing_input_hex: v
+                        .get("signing_input_hex")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_else(|| fail("advert vector missing signing_input_hex"))
+                        .to_owned(),
+                    verifies: v
+                        .get("verifies")
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or_else(|| fail("advert vector missing verifies")),
+                })
+            } else {
+                None
+            },
         })
         .collect()
 }
 
-fn check_vector(file: &str, vector: Vector) -> Result<(), String> {
+async fn check_vector(file: &str, vector: Vector, verifier: &NodeIdentity) -> Result<(), String> {
     let expected = decode_hex(&vector.wire_hex)?;
     // Primary loop: typed decode -> validate -> re-encode -> byte-exact.
     match file {
@@ -166,6 +199,28 @@ fn check_vector(file: &str, vector: Vector) -> Result<(), String> {
                 claims.encode_to_vec()
             };
             report_first_divergence(payload, &reencoded_claims)?;
+        }
+        "adverts.v1.json" => {
+            let advert: PeerAdvert =
+                minicbor::decode(&expected).map_err(|e| format!("typed decode failed: {e}"))?;
+            let actual = minicbor::to_vec(&advert).map_err(|e| e.to_string())?;
+            report_first_divergence(&expected, &actual)?;
+            let expectations = vector
+                .advert
+                .as_ref()
+                .ok_or("advert vector carries no expectations")?;
+            // The frozen signing input is the actual interoperability surface: an implementation that reconstructs it even one byte differently rejects every advert another implementation sends, while still passing all of its own tests.
+            let signing_input = peer_advert_signing_input(&advert);
+            let expected_signing_input = decode_hex(&expectations.signing_input_hex)?;
+            report_first_divergence(&expected_signing_input, &signing_input)?;
+            let verdict = verify_peer_advert(verifier, &advert).await;
+            let verifies = verdict == PeerAdvertVerdict::Valid;
+            if verifies != expectations.verifies {
+                return Err(format!(
+                    "verdict mismatch: expected verifies={}, got {verdict:?}",
+                    expectations.verifies
+                ));
+            }
         }
         other => panic!("unknown vector file {other}"),
     }

@@ -6,7 +6,7 @@
 use minicbor::{Decode, Decoder, Encode, Encoder};
 
 use crate::error::DecodeError;
-use crate::identity::{device_id_from, DeviceId};
+use crate::identity::{device_id_from, identity_key_from, DeviceId, IdentityKey};
 use crate::strict;
 use crate::value::{CanonicalMap, CborValue, CdeKey, CdeMapBuilder};
 
@@ -136,12 +136,28 @@ pub(crate) fn close_from(d: &mut Decoder<'_>) -> Result<CloseFrame, DecodeError>
     Ok(CloseFrame { reason })
 }
 
-/// `peer-advert = { device, addresses, snapshot-seconds, * tstr => any }`.
+/// The domain-separation prefix a `peer-advert` signature is computed over,
+/// per `spec/transport.cddl`: the ASCII string `wire-mesh/peer-advert/v1`
+/// followed by one zero byte.
 ///
-/// CDE key order: `device` (7), `addresses` (10), `snapshot-seconds` (18),
-/// with any extension key interleaved by its own encoded-key order (see
-/// `spec/CONVENTIONS.md`'s gossip-extension-namespacing convention for the
-/// `<domain>/<field>` key shape a well-behaved extension key must use).
+/// Deliberately not `tokens.cddl`'s COSE `Sig_structure`, which every other
+/// signature in this protocol reuses. An advert's extension tail is an open
+/// `* tstr => any` map, so an attacker can craft an advert whose canonical
+/// encoding also satisfies `token-claims`, and a `Sig_structure` over that
+/// encoding would then be replayable as a capability token's own signed
+/// payload. This prefix makes the two byte strings disjoint by construction:
+/// a `Sig_structure` always begins with the head of a 4-element CBOR array,
+/// never the ASCII `w` this one starts with.
+pub const PEER_ADVERT_SIGNING_CONTEXT: &[u8] = b"wire-mesh/peer-advert/v1\0";
+
+/// `peer-advert = { device, addresses, snapshot-seconds, identity-key,
+/// signature, * tstr => any }`.
+///
+/// CDE key order: `device` (7 encoded bytes), `addresses` (10), `signature`
+/// (10), `identity-key` (13), `snapshot-seconds` (17), with any extension
+/// key interleaved by its own encoded-key order (see `spec/CONVENTIONS.md`'s
+/// gossip-extension-namespacing convention for the `<domain>/<field>` key
+/// shape a well-behaved extension key must use).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PeerAdvert {
     pub device: DeviceId,
@@ -149,24 +165,35 @@ pub struct PeerAdvert {
     pub addresses: Vec<String>,
     /// Unix-seconds snapshot time.
     pub snapshot_seconds: i64,
+    /// The advertised device's own key, travelling inside the signed content
+    /// exactly as `token-claims`' own `issuer-key` does. A verifier MUST
+    /// check that `sha256(public_key)` equals `device` before trusting
+    /// anything else here, which is what makes an advert checkable with no
+    /// prior contact with the device it names and no directory to consult.
+    pub identity_key: IdentityKey,
+    /// Over [`peer_advert_signing_input`]'s bytes, under `identity_key`. The
+    /// only entry the signature does not itself cover.
+    pub signature: Vec<u8>,
     /// Forward-compatible extension bag (presence status, an accept/refuse
-    /// policy, or any future gossiped fact) -- an unrecognised key here is
-    /// exactly as trustworthy as any other gossiped, self-asserted claim,
-    /// per the verifier obligation `spec/transport.cddl` states directly:
-    /// ignored, never acted on without understanding it, never an error.
+    /// policy, or any future gossiped fact). Covered by the signature like
+    /// every other entry, so a key here is authentic but still self-asserted:
+    /// per the verifier obligation `spec/transport.cddl` states directly, an
+    /// unrecognised key is ignored, never acted on without understanding it,
+    /// and never an error.
     pub extra: CanonicalMap<String, CborValue>,
 }
 
-impl Encode<()> for PeerAdvert {
-    fn encode<W: minicbor::encode::Write>(
-        &self,
-        e: &mut Encoder<W>,
-        _ctx: &mut (),
-    ) -> Result<(), minicbor::encode::Error<W::Error>> {
+impl PeerAdvert {
+    /// This advert's own entries in CDE order, minus `signature`: the map the
+    /// signing input encodes. Shared by [`Encode`] and
+    /// [`peer_advert_signing_input`] so the bytes a verifier reconstructs can
+    /// never drift from the bytes that went on the wire.
+    fn builder_without_signature(&self) -> CdeMapBuilder {
         let mut builder = CdeMapBuilder::new();
         builder.push("device", &self.device);
         builder.push("addresses", &self.addresses);
         builder.push("snapshot-seconds", &self.snapshot_seconds);
+        builder.push("identity-key", &self.identity_key);
         for (key, value) in self.extra.iter() {
             let mut value_buf = Vec::new();
             let mut value_enc = Encoder::new(&mut value_buf);
@@ -175,6 +202,35 @@ impl Encode<()> for PeerAdvert {
                 .unwrap_or_else(|_| unreachable!("Vec<u8> writes are infallible"));
             builder.push_raw(key.encoded(), value_buf);
         }
+        builder
+    }
+}
+
+/// The exact bytes a `peer-advert`'s signature is computed over:
+/// [`PEER_ADVERT_SIGNING_CONTEXT`] followed by the canonical CDE encoding of
+/// the advert with its `signature` entry removed and nothing else changed.
+/// Every other entry is therefore covered, extension tail included.
+pub fn peer_advert_signing_input(advert: &PeerAdvert) -> Vec<u8> {
+    let mut encoded = Vec::new();
+    let mut e = Encoder::new(&mut encoded);
+    advert
+        .builder_without_signature()
+        .write(&mut e)
+        .unwrap_or_else(|_| unreachable!("Vec<u8> writes are infallible"));
+    let mut input = Vec::with_capacity(PEER_ADVERT_SIGNING_CONTEXT.len() + encoded.len());
+    input.extend_from_slice(PEER_ADVERT_SIGNING_CONTEXT);
+    input.extend_from_slice(&encoded);
+    input
+}
+
+impl Encode<()> for PeerAdvert {
+    fn encode<W: minicbor::encode::Write>(
+        &self,
+        e: &mut Encoder<W>,
+        _ctx: &mut (),
+    ) -> Result<(), minicbor::encode::Error<W::Error>> {
+        let mut builder = self.builder_without_signature();
+        builder.push_bytes("signature", &self.signature);
         builder.write(e)
     }
 }
@@ -190,6 +246,8 @@ pub(crate) fn peer_advert_from(d: &mut Decoder<'_>) -> Result<PeerAdvert, Decode
     let mut device: Option<DeviceId> = None;
     let mut addresses: Option<Vec<String>> = None;
     let mut snapshot_seconds: Option<i64> = None;
+    let mut identity_key: Option<IdentityKey> = None;
+    let mut signature: Option<Vec<u8>> = None;
     let mut extra = CanonicalMap::new();
     while let Some(key) = map.next_key(d)? {
         match key {
@@ -203,6 +261,8 @@ pub(crate) fn peer_advert_from(d: &mut Decoder<'_>) -> Result<PeerAdvert, Decode
                 addresses = Some(list);
             }
             "snapshot-seconds" => strict::set_once(&mut snapshot_seconds, strict::int_value(d)?)?,
+            "identity-key" => strict::set_once(&mut identity_key, identity_key_from(d)?)?,
+            "signature" => strict::set_once(&mut signature, strict::bytes_value(d)?)?,
             other => {
                 let value = CborValue::decode_strict(d)?;
                 extra.insert(other.to_owned(), value)?;
@@ -213,6 +273,8 @@ pub(crate) fn peer_advert_from(d: &mut Decoder<'_>) -> Result<PeerAdvert, Decode
         device: device.ok_or(DecodeError::MissingField("device"))?,
         addresses: addresses.ok_or(DecodeError::MissingField("addresses"))?,
         snapshot_seconds: snapshot_seconds.ok_or(DecodeError::MissingField("snapshot-seconds"))?,
+        identity_key: identity_key.ok_or(DecodeError::MissingField("identity-key"))?,
+        signature: signature.ok_or(DecodeError::MissingField("signature"))?,
         extra,
     })
 }
@@ -851,14 +913,27 @@ mod tests {
         assert!(type_at < reason_at);
     }
 
+    /// Clearly-synthetic filler key material, matching the conformance
+    /// vectors' own repeated-byte convention: these tests pin the wire shape
+    /// and the signing input's own bytes, neither of which involves checking
+    /// that a signature is real.
+    fn filler_advert(device: u8, snapshot_seconds: i64) -> PeerAdvert {
+        PeerAdvert {
+            device: DeviceId([device; 32]),
+            addresses: vec!["203.0.113.5:4433".to_owned()],
+            snapshot_seconds,
+            identity_key: IdentityKey {
+                alg: IdentityKey::ALG_ED25519,
+                public_key: vec![0xee; 32],
+            },
+            signature: vec![0xaa; 64],
+            extra: CanonicalMap::new(),
+        }
+    }
+
     #[test]
     fn peer_advert_cde_order() {
-        let bytes = round_trip(PeerAdvert {
-            device: DeviceId([1; 32]),
-            addresses: vec!["203.0.113.5:4433".to_owned()],
-            snapshot_seconds: 1861833600,
-            extra: CanonicalMap::new(),
-        });
+        let bytes = round_trip(filler_advert(1, 1861833600));
         let device_at = bytes
             .windows(6)
             .position(|w| w == b"device")
@@ -867,31 +942,93 @@ mod tests {
             .windows(9)
             .position(|w| w == b"addresses")
             .expect("addresses key");
+        let signature_at = bytes
+            .windows(9)
+            .position(|w| w == b"signature")
+            .expect("signature key");
+        let identity_key_at = bytes
+            .windows(12)
+            .position(|w| w == b"identity-key")
+            .expect("identity-key key");
         let snapshot_at = bytes
             .windows(16)
             .position(|w| w == b"snapshot-seconds")
             .expect("snapshot key");
-        assert!(device_at < addresses_at && addresses_at < snapshot_at);
+        assert!(device_at < addresses_at);
+        assert!(addresses_at < signature_at);
+        assert!(signature_at < identity_key_at);
+        assert!(identity_key_at < snapshot_at);
     }
 
     #[test]
     fn peer_advert_carries_extension_fields() {
         // An unrecognised key is accepted into the open `* tstr => any` tail, the same forward-compatible-extension pattern room-notice-claims/token-claims already carry -- a TS peer's sendGossipUpdate(...) extensions must not disconnect a Rust peer.
-        round_trip(PeerAdvert {
-            device: DeviceId([3; 32]),
-            addresses: vec![],
-            snapshot_seconds: 1861920000,
-            extra: {
-                let mut extra = CanonicalMap::new();
-                extra
-                    .insert(
-                        "presence/status".to_owned(),
-                        CborValue::Text("idle".to_owned()),
-                    )
-                    .expect("insert");
-                extra
-            },
-        });
+        let mut advert = filler_advert(3, 1861920000);
+        advert.addresses = vec![];
+        advert
+            .extra
+            .insert(
+                "presence/status".to_owned(),
+                CborValue::Text("idle".to_owned()),
+            )
+            .expect("insert");
+        round_trip(advert);
+    }
+
+    #[test]
+    fn peer_advert_rejects_an_advert_with_no_signature() {
+        // Both new fields are mandatory, so an advert built the pre-authentication way does not decode at all rather than decoding into something a verifier then has to refuse.
+        let mut bytes = Vec::new();
+        let mut e = Encoder::new(&mut bytes);
+        e.map(3).expect("map");
+        e.str("device").expect("key");
+        DeviceId([1; 32]).encode(&mut e, &mut ()).expect("device");
+        e.str("addresses").expect("key");
+        e.array(0).expect("addresses");
+        e.str("snapshot-seconds").expect("key");
+        e.i64(1861833600).expect("snapshot");
+        let decoded: Result<PeerAdvert, _> = minicbor::decode(&bytes);
+        assert!(decoded.is_err());
+    }
+
+    #[test]
+    fn peer_advert_signing_input_prefixes_the_context_and_drops_only_the_signature() {
+        let advert = filler_advert(7, 1861833600);
+        let input = peer_advert_signing_input(&advert);
+        assert!(input.starts_with(PEER_ADVERT_SIGNING_CONTEXT));
+        let encoded_content = &input[PEER_ADVERT_SIGNING_CONTEXT.len()..];
+        // The content carries every other entry, so only the signature is absent from what is signed over.
+        assert!(encoded_content.windows(12).any(|w| w == b"identity-key"));
+        assert!(!encoded_content.windows(9).any(|w| w == b"signature"));
+    }
+
+    #[test]
+    fn peer_advert_signing_input_ignores_the_signature_it_carries() {
+        // Two adverts differing only in their signature bytes sign over identical content, which is what lets a verifier reconstruct the input from exactly the advert it received.
+        let advert = filler_advert(7, 1861833600);
+        let mut resigned = advert.clone();
+        resigned.signature = vec![0xbb; 64];
+        assert_eq!(
+            peer_advert_signing_input(&advert),
+            peer_advert_signing_input(&resigned)
+        );
+    }
+
+    #[test]
+    fn peer_advert_signing_input_covers_the_extension_tail() {
+        let advert = filler_advert(7, 1861833600);
+        let mut extended = advert.clone();
+        extended
+            .extra
+            .insert(
+                "presence/status".to_owned(),
+                CborValue::Text("idle".to_owned()),
+            )
+            .expect("insert");
+        assert_ne!(
+            peer_advert_signing_input(&advert),
+            peer_advert_signing_input(&extended)
+        );
     }
 
     #[test]

@@ -96,9 +96,10 @@ jobs:
         run: |
           cp handshake.v1.json /tmp/handshake-committed.json
           cp tokens.v1.json /tmp/tokens-committed.json
+          cp adverts.v1.json /tmp/adverts-committed.json
           cp frames.v1.json /tmp/frames-committed.json
           pnpm turbo run _generate
-          if ! diff -u /tmp/handshake-committed.json handshake.v1.json || ! diff -u /tmp/tokens-committed.json tokens.v1.json || ! diff -u /tmp/frames-committed.json frames.v1.json; then
+          if ! diff -u /tmp/handshake-committed.json handshake.v1.json || ! diff -u /tmp/tokens-committed.json tokens.v1.json || ! diff -u /tmp/adverts-committed.json adverts.v1.json || ! diff -u /tmp/frames-committed.json frames.v1.json; then
             echo "::error::conformance/*.v1.json is out of date. Run 'pnpm run generate' in conformance/ and commit the result. Never edit the vector files directly."
             exit 1
           fi

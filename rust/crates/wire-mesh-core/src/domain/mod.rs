@@ -4,6 +4,7 @@ pub mod cose;
 pub mod erasure_coding;
 pub mod group_key;
 pub mod handshake;
+pub mod peer_advert;
 pub mod predicates;
 pub mod revocation;
 pub mod room;
@@ -15,6 +16,9 @@ pub mod shard_manifest;
 pub mod tokens;
 
 pub use handshake::{negotiate, NegotiationResult, SUPPORTED_PROTOCOL_VERSION};
+pub use peer_advert::{
+    sign_peer_advert, verify_peer_advert, PeerAdvertRejection, PeerAdvertVerdict,
+};
 pub use revocation::{RevocationError, RevocationView};
 pub use room::{compare_room_notices, verify_room_notice, RoomNoticeRejection, RoomNoticeVerdict};
 pub use room_path::{device_id_from_hex, device_id_to_hex, parse_room_path, ParsedRoomPath};

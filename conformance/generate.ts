@@ -1,12 +1,20 @@
-// Produces conformance/{handshake,tokens,frames}.v1.json from the vector definitions below. Each vector's `wire_hex` is derived mechanically by canonically CBOR-encoding `message` via cbor2's CDE (CBOR Common Deterministic Encoding) mode -- the same RFC 8949 4.2 core deterministic rules DAG-CBOR builds on -- never hand-typed. Signature and public-key bytes throughout are clearly-synthetic filler, not real cryptographic material: this file freezes the wire-exact envelope shape (map key ordering, field presence, array structure, nesting), not a working signature, the same scope Cascade's own frozen frames/handshake/tokens vectors commit to for structural fields with no real crypto behind them.
+// Produces conformance/{handshake,tokens,adverts,frames}.v1.json from the vector definitions below. Each vector's `wire_hex` is derived mechanically by canonically CBOR-encoding `message` via cbor2's CDE (CBOR Common Deterministic Encoding) mode -- the same RFC 8949 4.2 core deterministic rules DAG-CBOR builds on -- never hand-typed. Signature and public-key bytes are clearly-synthetic filler everywhere except adverts.v1.json, since those files freeze the wire-exact envelope shape (map key ordering, field presence, array structure, nesting) rather than a working signature, the same scope Cascade's own frozen frames/handshake/tokens vectors commit to for structural fields with no real crypto behind them. adverts.v1.json is the exception, and carries real Ed25519 material: a peer-advert's signature is the only thing binding a gossiped device-id to the device that owns it, so what gets signed has to be pinned across implementations, not merely shaped correctly.
 //
 // Run `pnpm generate` after changing anything below, then `pnpm test` to confirm every vector round-trips.
 
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  sign as nodeSign,
+  type KeyObject,
+} from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { encode, cdeEncodeOptions } from "cbor2";
 import {
   hex,
   toWire,
+  type AdvertVector,
   type JsonWire,
   type Vector,
 } from "@exadev/wire-mesh-conformance";
@@ -50,6 +58,9 @@ const publicKeyEs256B = hex(
 const publicKeyEd25519D = hex("ee".repeat(ED25519_PUBLIC_KEY_BYTE_LENGTH));
 
 const signatureFiller = hex("ff".repeat(SIGNATURE_BYTE_LENGTH)); // synthetic ES256/EdDSA-shaped signature
+
+const EDDSA = -8; // COSE algorithm identifier for pure Ed25519 (RFC 9053)
+const LOW_BYTE_MASK = 0xff; // XOR operand keeping a corrupted byte within one octet
 
 // -----------------------------------------------------------------------
 // handshake.v1.json
@@ -279,6 +290,7 @@ const frameVectors: Vector[] = [
   // wire-mesh#181: a bare echo of ping-frame, sent by a hub in reply so a client can isolate its own sender-to-hub leg from path.trace's own end-to-end RTT.
   vector("pong_v1", { type: "pong" }),
   vector("close_v1_with_reason", { type: "close", reason: "shutting down" }),
+  // The two adverts here carry filler key and signature bytes, matching this file's own scope: these vectors freeze the gossip frame's wire shape, and whether an advert's signature actually verifies is pinned separately, against real cryptographic material, by adverts.v1.json.
   vector("gossip_v1_two_peers", {
     type: "gossip",
     peers: [
@@ -286,11 +298,15 @@ const frameVectors: Vector[] = [
         device: deviceA,
         addresses: ["203.0.113.5:4433"],
         "snapshot-seconds": 1861833600,
+        "identity-key": { alg: EDDSA, "public-key": publicKeyEd25519D },
+        signature: signatureFiller,
       },
       {
         device: deviceB,
         addresses: ["203.0.113.9:4433", "198.51.100.2:4433"],
         "snapshot-seconds": 1861833601,
+        "identity-key": { alg: EDDSA, "public-key": publicKeyEd25519D },
+        signature: signatureFiller,
       },
     ],
   }),
@@ -302,6 +318,8 @@ const frameVectors: Vector[] = [
         device: deviceC,
         addresses: [],
         "snapshot-seconds": 1861920000,
+        "identity-key": { alg: EDDSA, "public-key": publicKeyEd25519D },
+        signature: signatureFiller,
         "presence/status": "idle",
         "topology/peers": {
           direct: [deviceA],
@@ -849,6 +867,178 @@ const frameVectors: Vector[] = [
 ];
 
 // -----------------------------------------------------------------------
+// adverts.v1.json
+// -----------------------------------------------------------------------
+//
+// The one file here built on real cryptographic material rather than filler. A peer-advert's signature is the only thing tying a gossiped device-id to the device that owns it (spec/transport.cddl, wire-mesh#225), and two implementations that disagree by a single byte about what is signed will reject each other's every advert while each passing its own tests. Freezing the signing input alongside the wire bytes is what makes that disagreement a failing vector rather than a field mystery.
+//
+// Ed25519 rather than ES256 because its signatures are deterministic (RFC 8032): CI regenerates this file and diffs it against the committed copy, which an ECDSA signature's fresh per-signing nonce would fail on every run. The key comes from a fixed seed for the same reason.
+
+/** RFC 8410 section 7's PKCS#8 prefix for an Ed25519 private key, ahead of the 32 raw seed bytes: SEQUENCE { INTEGER 0, SEQUENCE { OID 1.3.101.112 }, OCTET STRING { OCTET STRING seed } }. Node accepts no rawer form for an Ed25519 private key, so the seed is wrapped rather than imported directly. */
+const PKCS8_ED25519_PREFIX = Buffer.from(
+  "302e020100300506032b657004220420",
+  "hex",
+);
+
+/** A fixed, arbitrary, clearly-synthetic seed, so this file's key material is reproducible: regenerating must reproduce the committed bytes exactly. Never a real device key. */
+const ADVERT_SEED_HEX = "7c".repeat(ED25519_PUBLIC_KEY_BYTE_LENGTH);
+
+const advertPrivateKey = createPrivateKey({
+  key: Buffer.concat([PKCS8_ED25519_PREFIX, Buffer.from(ADVERT_SEED_HEX, "hex")]),
+  format: "der",
+  type: "pkcs8",
+});
+
+const advertPublicJwk = createPublicKey(advertPrivateKey).export({
+  format: "jwk",
+});
+if (typeof advertPublicJwk.x !== "string") {
+  throw new Error("Ed25519 public JWK is missing its raw x coordinate");
+}
+const advertPublicKeyBytes = Buffer.from(advertPublicJwk.x, "base64url");
+const advertDeviceHex = createHash("sha256")
+  .update(advertPublicKeyBytes)
+  .digest("hex");
+
+/** A second real key, used only to sign an advert naming the first key's device: the "wrong key for this device-id" case, which a self-certification check catches before any signature work. */
+const otherPrivateKey = createPrivateKey({
+  key: Buffer.concat([
+    PKCS8_ED25519_PREFIX,
+    Buffer.from("9d".repeat(ED25519_PUBLIC_KEY_BYTE_LENGTH), "hex"),
+  ]),
+  format: "der",
+  type: "pkcs8",
+});
+const otherPublicJwk = createPublicKey(otherPrivateKey).export({
+  format: "jwk",
+});
+if (typeof otherPublicJwk.x !== "string") {
+  throw new Error("Ed25519 public JWK is missing its raw x coordinate");
+}
+const otherPublicKeyBytes = Buffer.from(otherPublicJwk.x, "base64url");
+
+/** The domain-separation prefix from spec/transport.cddl, spelled out here from the spec text rather than imported from either implementation: a vector generated by the thing it is meant to check would prove nothing. */
+const PEER_ADVERT_SIGNING_CONTEXT = Buffer.from(
+  "wire-mesh/peer-advert/v1\u0000",
+  "utf8",
+);
+
+/** The advert's own entries minus `signature`, canonically encoded and prefixed: exactly what spec/transport.cddl defines as the signing input. */
+function advertSigningInput(advert: Readonly<Record<string, JsonWire>>): Buffer {
+  const content: Record<string, JsonWire> = {};
+  for (const [key, value] of Object.entries(advert)) {
+    if (key === "signature") {
+      continue;
+    }
+    content[key] = value;
+  }
+  return Buffer.concat([
+    PEER_ADVERT_SIGNING_CONTEXT,
+    Buffer.from(encode(toWire(content), cdeEncodeOptions)),
+  ]);
+}
+
+/**
+ * Builds one advert vector, signing the content with `signer` and recording the verdict a conformant verifier must reach for it.
+ *
+ * `tamper` runs after signing, which is how the negative vectors are produced: the advert really was signed, then something the signature covers was changed, exactly as a hostile relay or peer would do it.
+ */
+function advertVector(
+  name: string,
+  advert: Readonly<Record<string, JsonWire>>,
+  options: Readonly<{
+    signer: KeyObject;
+    verifies: boolean;
+    tamper?: (signed: Record<string, JsonWire>) => void;
+  }>,
+): AdvertVector {
+  const signature = nodeSign(
+    null,
+    advertSigningInput(advert),
+    options.signer,
+  );
+  const signed: Record<string, JsonWire> = {
+    ...advert,
+    signature: hex(signature.toString("hex")),
+  };
+  options.tamper?.(signed);
+  return {
+    name,
+    message: signed,
+    wire_hex: wireHex(signed),
+    signing_input_hex: advertSigningInput(signed).toString("hex"),
+    verifies: options.verifies,
+  };
+}
+
+const advertBase: Record<string, JsonWire> = {
+  device: hex(advertDeviceHex),
+  addresses: ["203.0.113.5:4433"],
+  "snapshot-seconds": 1861833600,
+  "identity-key": { alg: EDDSA, "public-key": hex(advertPublicKeyBytes.toString("hex")) },
+};
+
+const advertVectors: AdvertVector[] = [
+  advertVector("peer_advert_v1_valid", advertBase, {
+    signer: advertPrivateKey,
+    verifies: true,
+  }),
+  // The extension tail is inside the signing input, so an advert carrying one is still ordinarily valid -- the negative case below is what proves the tail is actually covered.
+  advertVector(
+    "peer_advert_v1_valid_with_extension",
+    { ...advertBase, "presence/status": "idle" },
+    { signer: advertPrivateKey, verifies: true },
+  ),
+  // A relay rewriting one extension value on an otherwise genuine advert: accepting this would let anything forwarding gossip edit the facts it carries.
+  advertVector(
+    "peer_advert_v1_tampered_extension",
+    { ...advertBase, "presence/status": "idle" },
+    {
+      signer: advertPrivateKey,
+      verifies: false,
+      tamper: (signed) => {
+        signed["presence/status"] = "active";
+      },
+    },
+  ),
+  // An extension key added after signing, which the tail's openness would otherwise make free: a verifier that encoded only the fields it recognised would accept this.
+  advertVector("peer_advert_v1_added_extension", advertBase, {
+    signer: advertPrivateKey,
+    verifies: false,
+    tamper: (signed) => {
+      signed["room/hosted"] = ["general"];
+    },
+  }),
+  // A genuine signature by a real key, over an advert naming somebody else's device: refused by the self-certification check, since sha256 of the embedded public-key is not the claimed device.
+  advertVector(
+    "peer_advert_v1_wrong_key_for_device",
+    {
+      ...advertBase,
+      "identity-key": {
+        alg: EDDSA,
+        "public-key": hex(otherPublicKeyBytes.toString("hex")),
+      },
+    },
+    { signer: otherPrivateKey, verifies: false },
+  ),
+  // The signature's last byte flipped: the plainest failure, and the one a verifier that skipped the signature check entirely would still pass.
+  advertVector("peer_advert_v1_bad_signature", advertBase, {
+    signer: advertPrivateKey,
+    verifies: false,
+    tamper: (signed) => {
+      const signature = signed["signature"];
+      if (typeof signature !== "object" || signature === null || !("hex" in signature)) {
+        throw new Error("signed advert is missing its signature marker");
+      }
+      const bytes = Buffer.from(String(signature.hex), "hex");
+      const lastIndex = bytes.length - 1;
+      bytes[lastIndex] = (bytes[lastIndex] ?? 0) ^ LOW_BYTE_MASK;
+      signed["signature"] = hex(bytes.toString("hex"));
+    },
+  }),
+];
+
+// -----------------------------------------------------------------------
 // Write files
 // -----------------------------------------------------------------------
 
@@ -875,6 +1065,12 @@ write(
   "tokens.v1.json",
   "Capability-token, room-notice, and handle-record conformance vectors for protocol version 1. Every cose-sign1 array's protected/payload byte strings are themselves canonical CBOR, decoded and re-verified the same way as any other bstr field. Signature and public-key bytes are structural placeholders (clearly-synthetic filler), not real cryptographic material -- this file freezes the byte-exact envelope shape (map key ordering, field presence, the recursive parent delegation chain), not a working signature, the same scope Cascade's own frozen vectors commit to for fields with no real crypto behind them yet. The two room-notice vectors exercise core/room's noticeboard entry schema: the first is an ordinary posted notice embedding its poster's own room:member token in full; the second forwards it, nesting the first notice's own still-independently-verifiable room-notice as its content with a content-type naming it as such, and a refs entry with relation \"forward\" pointing at the original notice-id.",
   tokenVectors,
+);
+
+write(
+  "adverts.v1.json",
+  "peer-advert conformance vectors for protocol version 1, the one file here built on real Ed25519 key material rather than structural filler. Beyond the usual wire_hex round trip, each vector records signing_input_hex (spec/transport.cddl's domain-separation context followed by the canonical CDE encoding of the advert with its signature entry removed) and the verdict `verifies` a conformant verifier must reach, applying both the self-certification check and the signature check. An implementation that reconstructs the signing input even one byte differently will reject every advert another implementation sends while still passing its own tests, which is exactly what freezing these bytes catches. The key is derived from a fixed seed and the algorithm is Ed25519 specifically because its signatures are deterministic (RFC 8032), so regenerating this file reproduces it byte for byte.",
+  advertVectors,
 );
 
 write(

@@ -27,6 +27,24 @@ export interface VectorFile {
   vectors: Vector[];
 }
 
+/**
+ * A peer-advert vector, which pins two things an ordinary round-trip vector cannot: the exact bytes an advert's signature is computed over, and whether the advert is one a conformant verifier accepts.
+ *
+ * `wire_hex` is checked the same way every other vector's is, so an advert vector is also a valid Vector and the round-trip suite reads it without knowing about the extra fields.
+ */
+export interface AdvertVector extends Vector {
+  /** The domain-separation context followed by the canonical CDE encoding of the advert with its `signature` entry removed: what an implementation must reconstruct byte-for-byte from the advert alone, or its signatures will not verify across implementations. */
+  signing_input_hex: string;
+  /** The verdict a conformant verifier must reach: both the self-certification check (sha256 of the embedded public-key equals `device`) and the signature check, applied together. */
+  verifies: boolean;
+}
+
+export interface AdvertVectorFile {
+  protocol_version: number;
+  description: string;
+  vectors: AdvertVector[];
+}
+
 export function hex(value: string): HexBytes {
   return { hex: value.toLowerCase() };
 }
@@ -124,4 +142,19 @@ export function isVectorFile(value: unknown): value is VectorFile {
   if (typeof value !== "object" || value === null) return false;
   if (!("vectors" in value)) return false;
   return Array.isArray(value.vectors) && value.vectors.every(isVector);
+}
+
+function isAdvertVector(value: unknown): value is AdvertVector {
+  if (!isVector(value)) return false;
+  if (!("signing_input_hex" in value) || !("verifies" in value)) return false;
+  return (
+    typeof value.signing_input_hex === "string" &&
+    typeof value.verifies === "boolean"
+  );
+}
+
+export function isAdvertVectorFile(value: unknown): value is AdvertVectorFile {
+  if (typeof value !== "object" || value === null) return false;
+  if (!("vectors" in value)) return false;
+  return Array.isArray(value.vectors) && value.vectors.every(isAdvertVector);
 }
