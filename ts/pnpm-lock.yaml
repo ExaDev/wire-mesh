@@ -235,6 +235,9 @@ importers:
       wire-mesh-core:
         specifier: 1.58.7
         version: link:../core
+      zod:
+        specifier: 4.5.4
+        version: 4.5.4
     devDependencies:
       '@cloudflare/workers-types':
         specifier: 5.20260905.1
