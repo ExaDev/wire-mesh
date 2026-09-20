@@ -1,3 +1,34 @@
+## [2.0.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%401.59.0...wire-mesh-core%402.0.0) (2026-09-20)
+
+### ⚠ BREAKING CHANGES
+
+* **core:** createRelayHub now requires an `identity` option carrying
+  verify/deriveDeviceId, and a peer-advert built without `identity-key` and
+  `signature` is refused by every receiver.
+* **spec:** peer-advert now has two mandatory fields, so an advert built
+  without them no longer decodes and every advert must be signed by the device
+  it names.
+* **rust,conformance:** PeerAdvert has two new mandatory fields in Rust as well, so
+  an advert decoded or constructed without them is rejected.
+
+### Features
+
+* **core:** sign every self-advert and verify every gossiped one ([fac52c1](https://github.com/ExaDev/wire-mesh/commit/fac52c18ea37adfa544a1eb130a1de967d72b3c3))
+* **rust,conformance:** carry the advert's key and signature through the wire crate ([535ac92](https://github.com/ExaDev/wire-mesh/commit/535ac929cec83980701edfc180b67e149454b132))
+* **spec:** require every peer-advert to carry its device's key and signature ([aa278fb](https://github.com/ExaDev/wire-mesh/commit/aa278fbaa9c016dfd24eb88022f950743de5ef8e))
+
+### Documentation
+
+* describe authenticated peer discovery and where an advert is checked ([a57bc06](https://github.com/ExaDev/wire-mesh/commit/a57bc06c7ce48b9bf367f85ee07a9e4897bb23d0))
+
+### Styles
+
+* drop the double-hyphen dash from newly written comments and prose ([f754ff6](https://github.com/ExaDev/wire-mesh/commit/f754ff6abba5aa9e5a72e603fa857a193feb4024))
+
+### Tests
+
+* cover what an advert has to prove, and move every fixture onto real keys ([9304015](https://github.com/ExaDev/wire-mesh/commit/9304015c1b7502e58f539025f9efd47f70a6eed8))
+
 ## [1.59.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%401.58.7...wire-mesh-core%401.59.0) (2026-09-20)
 
 ### Features

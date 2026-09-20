@@ -1,3 +1,31 @@
+## [2.0.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%401.0.5...%40exadev%2Fwire-mesh-web-console%402.0.0) (2026-09-20)
+
+### ⚠ BREAKING CHANGES
+
+* **rust,conformance:** PeerAdvert has two new mandatory fields in Rust as well, so
+  an advert decoded or constructed without them is rejected.
+
+### Features
+
+* **rust,conformance:** carry the advert's key and signature through the wire crate ([535ac92](https://github.com/ExaDev/wire-mesh/commit/535ac929cec83980701edfc180b67e149454b132))
+
+### Bug Fixes
+
+* **web-console:** give the live-check gossip shape one definition ([0cca623](https://github.com/ExaDev/wire-mesh/commit/0cca6238becef6a8a18a5f656cfefd582d02a6d1))
+
+### Styles
+
+* drop the double-hyphen dash from newly written comments and prose ([f754ff6](https://github.com/ExaDev/wire-mesh/commit/f754ff6abba5aa9e5a72e603fa857a193feb4024))
+
+### Tests
+
+* cover what an advert has to prove, and move every fixture onto real keys ([9304015](https://github.com/ExaDev/wire-mesh/commit/9304015c1b7502e58f539025f9efd47f70a6eed8))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 2.0.0
+
 ## [1.0.5](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%401.0.4...%40exadev%2Fwire-mesh-web-console%401.0.5) (2026-09-20)
 
 

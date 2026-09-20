@@ -1,3 +1,32 @@
+## [2.0.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%401.0.5...%40exadev%2Fwire-mesh-cloudflare-hub%402.0.0) (2026-09-20)
+
+### ⚠ BREAKING CHANGES
+
+* **core:** createRelayHub now requires an `identity` option carrying
+  verify/deriveDeviceId, and a peer-advert built without `identity-key` and
+  `signature` is refused by every receiver.
+
+### Features
+
+* **core:** sign every self-advert and verify every gossiped one ([fac52c1](https://github.com/ExaDev/wire-mesh/commit/fac52c18ea37adfa544a1eb130a1de967d72b3c3))
+
+### Documentation
+
+* describe authenticated peer discovery and where an advert is checked ([a57bc06](https://github.com/ExaDev/wire-mesh/commit/a57bc06c7ce48b9bf367f85ee07a9e4897bb23d0))
+
+### Styles
+
+* drop the double-hyphen dash from newly written comments and prose ([f754ff6](https://github.com/ExaDev/wire-mesh/commit/f754ff6abba5aa9e5a72e603fa857a193feb4024))
+
+### Tests
+
+* cover what an advert has to prove, and move every fixture onto real keys ([9304015](https://github.com/ExaDev/wire-mesh/commit/9304015c1b7502e58f539025f9efd47f70a6eed8))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 2.0.0
+
 ## [1.0.5](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%401.0.4...%40exadev%2Fwire-mesh-cloudflare-hub%401.0.5) (2026-09-20)
 
 ### Bug Fixes

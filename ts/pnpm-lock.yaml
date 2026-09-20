@@ -233,7 +233,7 @@ importers:
         specifier: 2.3.0
         version: 2.3.0
       wire-mesh-core:
-        specifier: 1.59.0
+        specifier: 2.0.0
         version: link:../core
       zod:
         specifier: 4.5.4
@@ -349,7 +349,7 @@ importers:
         specifier: 2.3.0
         version: 2.3.0
       wire-mesh-core:
-        specifier: 1.59.0
+        specifier: 2.0.0
         version: link:../core
       ws:
         specifier: 8.21.3
@@ -362,7 +362,7 @@ importers:
         specifier: 2.18.0
         version: 2.18.0(@eslint/json@2.1.0)(eslint-plugin-jsx-a11y@6.10.2(eslint@10.10.0(jiti@2.7.0)(supports-color@10.2.2)))(eslint-plugin-react-hooks@7.1.1(eslint@10.10.0(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2))(eslint-plugin-react@7.37.5(eslint@10.10.0(jiti@2.7.0)(supports-color@10.2.2)))(eslint@10.10.0(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(typescript-eslint@8.69.0(eslint@10.10.0(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@6.0.3))(typescript@6.0.3)
       '@exadev/wire-mesh-web-console':
-        specifier: 1.0.5
+        specifier: 2.0.0
         version: link:../web-console
       '@types/node':
         specifier: 26.4.1
@@ -425,7 +425,7 @@ importers:
         specifier: 1.1.0
         version: 1.1.0(@mantine/core@9.6.0(@mantine/hooks@9.6.0(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       wire-mesh-core:
-        specifier: 1.59.0
+        specifier: 2.0.0
         version: link:../core
     devDependencies:
       '@exadev/eslint-config':
@@ -534,10 +534,10 @@ importers:
         specifier: 3.0.0
         version: 3.0.0
       wire-mesh:
-        specifier: 1.0.10
+        specifier: 2.0.0
         version: link:../node
       wire-mesh-core:
-        specifier: 1.59.0
+        specifier: 2.0.0
         version: link:../core
       ws:
         specifier: 8.21.3

@@ -1,3 +1,25 @@
+## [2.0.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%401.0.10...wire-mesh%402.0.0) (2026-09-20)
+
+### ⚠ BREAKING CHANGES
+
+* **core:** createRelayHub now requires an `identity` option carrying
+  verify/deriveDeviceId, and a peer-advert built without `identity-key` and
+  `signature` is refused by every receiver.
+
+### Features
+
+* **core:** sign every self-advert and verify every gossiped one ([fac52c1](https://github.com/ExaDev/wire-mesh/commit/fac52c18ea37adfa544a1eb130a1de967d72b3c3))
+
+### Tests
+
+* cover what an advert has to prove, and move every fixture onto real keys ([9304015](https://github.com/ExaDev/wire-mesh/commit/9304015c1b7502e58f539025f9efd47f70a6eed8))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 2.0.0
+- Updated @exadev/wire-mesh-web-console to 2.0.0
+
 ## [1.0.10](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%401.0.9...wire-mesh%401.0.10) (2026-09-20)
 
 
