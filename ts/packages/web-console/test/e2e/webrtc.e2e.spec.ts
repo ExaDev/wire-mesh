@@ -12,6 +12,7 @@ import {
   test,
 } from "@playwright/test";
 import { RELAY_ADDRESS } from "../../playwright.config.js";
+import type { WireGossip } from "../../live-check/wire-gossip.js";
 
 // Mirrors playwright.config.ts's own `use.launchOptions.args` -- that config only applies to browsers Playwright's own `browser`/`context`/`page` fixtures launch, so a browser launched directly via `chromium.launch()` needs the same same-machine-WebRTC flags passed explicitly.
 const SAME_MACHINE_WEBRTC_ARGS = [
@@ -34,6 +35,11 @@ const TEST_TIMEOUT_MS = 45_000;
 // An arbitrary, non-zero fill byte for a synthetic 32-byte device-id -- any single repeated byte works equally well as a recognisable, non-real-looking test fixture value.
 const SYNTHETIC_DEVICE_FILL_BYTE = 0x11;
 const SYNTHETIC_DEVICE_ID_LENGTH = 32;
+const SYNTHETIC_KEY_FILL_BYTE = 0xee;
+const SYNTHETIC_SIGNATURE_FILL_BYTE = 0xaa;
+const ED25519_PUBLIC_KEY_LENGTH = 32;
+const SIGNATURE_LENGTH = 64; // raw ES256/EdDSA signature length
+const EDDSA = -8; // COSE algorithm identifier for pure Ed25519 (RFC 9053)
 
 interface FrameSummaryEntry {
   direction: "sent" | "received";
@@ -50,25 +56,8 @@ declare global {
       frameSummary: () => FrameSummaryEntry[];
       waitForIncoming: () => Promise<string>;
       remoteTrackKinds: () => string[];
-      sendGossip: (
-        connectionId: string,
-        wire: {
-          type: "gossip";
-          peers: {
-            device: number[];
-            addresses: string[];
-            "snapshot-seconds": number;
-          }[];
-        },
-      ) => Promise<void>;
-      receiveGossip: (connectionId: string) => Promise<{
-        type: "gossip";
-        peers: {
-          device: number[];
-          addresses: string[];
-          "snapshot-seconds": number;
-        }[];
-      }>;
+      sendGossip: (connectionId: string, wire: WireGossip) => Promise<void>;
+      receiveGossip: (connectionId: string) => Promise<WireGossip>;
       closeConnection: (connectionId: string) => Promise<void>;
     };
   }
@@ -258,6 +247,7 @@ async function runNegotiationTest(
 
   const { aConnectionId, bConnectionId } = dataChannelRace;
 
+  // Synthetic filler for the key and signature as well as the device-id: this frame rides the established data channel directly, so nothing between the two pages verifies the advert, and the only thing being proved is that the exact bytes come out the other end.
   const sentPeer = {
     device: Array.from(
       { length: SYNTHETIC_DEVICE_ID_LENGTH },
@@ -265,8 +255,19 @@ async function runNegotiationTest(
     ),
     addresses: ["203.0.113.5:4433"],
     "snapshot-seconds": 1861833600,
+    "identity-key": {
+      alg: EDDSA,
+      "public-key": Array.from(
+        { length: ED25519_PUBLIC_KEY_LENGTH },
+        () => SYNTHETIC_KEY_FILL_BYTE,
+      ),
+    },
+    signature: Array.from(
+      { length: SIGNATURE_LENGTH },
+      () => SYNTHETIC_SIGNATURE_FILL_BYTE,
+    ),
   };
-  const gossip = { type: "gossip" as const, peers: [sentPeer] };
+  const gossip: WireGossip = { type: "gossip", peers: [sentPeer] };
 
   await pageA.evaluate(
     async ({ connectionId, frame }) =>
