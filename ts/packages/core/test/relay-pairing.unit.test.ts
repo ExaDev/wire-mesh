@@ -24,4 +24,20 @@ describe("relay pairings", () => {
     pairings.add(deviceA);
     expect(pairings.list()).toEqual([deviceA]);
   });
+
+  it("forgets a removed device, so it is no longer listed or reported as paired", () => {
+    const pairings = createRelayPairings();
+    pairings.add(deviceA);
+    pairings.add(deviceB);
+    pairings.remove(deviceA);
+    expect(pairings.has(deviceA)).toBe(false);
+    expect(pairings.list()).toEqual([deviceB]);
+  });
+
+  it("treats removing a device that was never paired as a no-op", () => {
+    const pairings = createRelayPairings();
+    pairings.add(deviceA);
+    pairings.remove(deviceB);
+    expect(pairings.list()).toEqual([deviceA]);
+  });
 });
