@@ -9,7 +9,11 @@ repository.workspace = true
 
 [dependencies]
 wire-mesh-wire = { path = "../wire-mesh-wire" }
+# Without "net": this binary checks vectors, and needs only the crypto behind the Identity port to reach a peer-advert verdict, never a socket.
+wire-mesh-core = { path = "../wire-mesh-core", default-features = false }
 serde_json = { workspace = true }
+# The Identity port is async, since a real implementation may hand off to a hardware key or a WASM module, so checking an advert's verdict needs a runtime even though nothing here blocks on anything.
+tokio = { version = "1", features = ["rt", "macros"] }
 
 [[bin]]
 name = "conformance-check"

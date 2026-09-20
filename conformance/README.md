@@ -2,7 +2,11 @@
 
 Golden test vectors: every implementation's CI must decode each vector's `wire_hex` to its `message` and re-encode `message` back to exactly `wire_hex`. This is the actual forcing function against drift between implementations -- a schema alone never proves interop, only shared vectors do, the same lesson Cascade's own `docs/conformance/*.v1.json` was built to enforce for its XDR-based protocol.
 
-`handshake.v1.json` covers `handshake-frame`. `tokens.v1.json` covers `capability-token` (including a delegation chain, one token's `parent` pointing at another) and `handle-record`. `frames.v1.json` covers every other `$frame-variant` in `spec/frame.cddl`.
+`handshake.v1.json` covers `handshake-frame`. `tokens.v1.json` covers `capability-token` (including a delegation chain, one token's `parent` pointing at another) and `handle-record`. `frames.v1.json` covers every other `$frame-variant` in `spec/frame.cddl`. `adverts.v1.json` covers `peer-advert` on its own.
+
+`adverts.v1.json` is the one file built on real cryptographic material rather than structural filler, and the one whose vectors carry more than a round trip. A peer-advert's signature is the only thing binding a gossiped device-id to the device that owns it (`spec/transport.cddl`), so each vector also records `signing_input_hex`, the exact bytes that signature covers, and `verifies`, the verdict a conformant verifier must reach. Two implementations that reconstruct the signing input even one byte differently reject each other's every advert while each passes its own tests, which is precisely the failure a frozen byte string turns into a failing vector. Ed25519 rather than ES256, from a fixed seed, because its signatures are deterministic (RFC 8032) and CI regenerates this file and diffs it against the committed copy.
+
+`verify.test.ts` checks only the round trip every vector file shares: this package holds no protocol implementation of its own, so `signing_input_hex` and `verifies` are checked by the implementations themselves, in `ts/packages/core`'s own conformance test and in `rust/crates/wire-mesh-conformance`.
 
 ## Regenerating
 

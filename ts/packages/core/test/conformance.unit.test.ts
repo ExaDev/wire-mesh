@@ -7,11 +7,26 @@ import { cdeDecodeOptions, cdeEncodeOptions, decode, encode } from "cbor2";
 import {
   capabilityTokenSchema,
   frameSchema,
+  peerAdvertSchema,
 } from "../src/generated/protocol.js";
+import {
+  deriveDeviceId,
+  verifyWithPublicKey,
+} from "../src/adapters/node-identity.js";
+import {
+  peerAdvertSigningInput,
+  verifyPeerAdvert,
+} from "../src/domain/peer-advert.js";
 
 interface Vector {
   name: string;
   wire_hex: string;
+}
+
+/** conformance/adverts.v1.json's own richer vector shape: alongside the usual round trip it pins the exact bytes an advert's signature covers, and the verdict a conformant verifier must reach for it. */
+interface AdvertVector extends Vector {
+  signing_input_hex: string;
+  verifies: boolean;
 }
 
 interface VectorFile {
@@ -80,6 +95,44 @@ describe("token vectors decode and re-encode byte-exactly through capabilityToke
   for (const vector of readVectors("tokens.v1.json")) {
     it(vector.name, () => {
       roundTrip(vector, capabilityTokenSchema);
+    });
+  }
+});
+
+function isAdvertVector(value: Readonly<Vector>): value is AdvertVector {
+  if (!("signing_input_hex" in value) || !("verifies" in value)) return false;
+  return (
+    typeof value.signing_input_hex === "string" &&
+    typeof value.verifies === "boolean"
+  );
+}
+
+/** The verification half of the Node identity adapter, which is all an advert needs checking against: an advert is self-certifying, so nothing here holds a key of its own. */
+const advertVerifier = { verify: verifyWithPublicKey, deriveDeviceId };
+
+describe("peer-advert vectors agree with this implementation on both the signed bytes and the verdict", () => {
+  for (const vector of readVectors("adverts.v1.json")) {
+    it(vector.name, async () => {
+      roundTrip(vector, peerAdvertSchema);
+      expect(
+        isAdvertVector(vector),
+        `"${vector.name}" is missing signing_input_hex or verifies`,
+      ).toBe(true);
+      if (!isAdvertVector(vector)) return;
+
+      const bytes = Uint8Array.from(Buffer.from(vector.wire_hex, "hex"));
+      const advert = peerAdvertSchema.parse(decode(bytes, cdeDecodeOptions));
+
+      // The frozen signing input is what actually keeps two implementations interoperable: one that reconstructs it even a byte differently rejects every advert the other sends while still passing its own tests.
+      expect(
+        Buffer.from(peerAdvertSigningInput(advert)).toString("hex"),
+        `"${vector.name}" signing input did not match the frozen bytes`,
+      ).toBe(vector.signing_input_hex);
+
+      expect(
+        await verifyPeerAdvert(advertVerifier, advert),
+        `"${vector.name}" verdict did not match the frozen one`,
+      ).toBe(vector.verifies);
     });
   }
 });

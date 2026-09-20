@@ -36,7 +36,16 @@
             "addresses": [
               "203.0.113.5:4433"
             ],
-            "snapshot-seconds": 1861833600
+            "snapshot-seconds": 1861833600,
+            "identity-key": {
+              "alg": -8,
+              "public-key": {
+                "hex": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+              }
+            },
+            "signature": {
+              "hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            }
           },
           {
             "device": {
@@ -46,11 +55,20 @@
               "203.0.113.9:4433",
               "198.51.100.2:4433"
             ],
-            "snapshot-seconds": 1861833601
+            "snapshot-seconds": 1861833601,
+            "identity-key": {
+              "alg": -8,
+              "public-key": {
+                "hex": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+              }
+            },
+            "signature": {
+              "hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            }
           }
         ]
       },
-      "wire_hex": "a2647479706566676f7373697065706565727382a366646576696365582011111111111111111111111111111111111111111111111111111111111111116961646472657373657381703230332e302e3131332e353a3434333370736e617073686f742d7365636f6e64731a6ef95380a366646576696365582022222222222222222222222222222222222222222222222222222222222222226961646472657373657382703230332e302e3131332e393a34343333713139382e35312e3130302e323a3434333370736e617073686f742d7365636f6e64731a6ef95381"
+      "wire_hex": "a2647479706566676f7373697065706565727382a566646576696365582011111111111111111111111111111111111111111111111111111111111111116961646472657373657381703230332e302e3131332e353a34343333697369676e61747572655840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff6c6964656e746974792d6b6579a263616c67276a7075626c69632d6b65795820eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee70736e617073686f742d7365636f6e64731a6ef95380a566646576696365582022222222222222222222222222222222222222222222222222222222222222226961646472657373657382703230332e302e3131332e393a34343333713139382e35312e3130302e323a34343333697369676e61747572655840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff6c6964656e746974792d6b6579a263616c67276a7075626c69632d6b65795820eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee70736e617073686f742d7365636f6e64731a6ef95381"
     },
     {
       "name": "gossip_v1_peer_advert_with_extension",
@@ -63,6 +81,15 @@
             },
             "addresses": [],
             "snapshot-seconds": 1861920000,
+            "identity-key": {
+              "alg": -8,
+              "public-key": {
+                "hex": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+              }
+            },
+            "signature": {
+              "hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            },
             "presence/status": "idle",
             "topology/peers": {
               "direct": [
@@ -84,7 +111,7 @@
           }
         ]
       },
-      "wire_hex": "a2647479706566676f7373697065706565727381a5666465766963655820333333333333333333333333333333333333333333333333333333333333333369616464726573736573806e746f706f6c6f67792f7065657273a26664697265637481582011111111111111111111111111111111111111111111111111111111111111116772656c6179656481a2637669615820111111111111111111111111111111111111111111111111111111111111111166646576696365582022222222222222222222222222222222222222222222222222222222222222226f70726573656e63652f7374617475736469646c6570736e617073686f742d7365636f6e64731a6efaa500"
+      "wire_hex": "a2647479706566676f7373697065706565727381a766646576696365582033333333333333333333333333333333333333333333333333333333333333336961646472657373657380697369676e61747572655840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff6c6964656e746974792d6b6579a263616c67276a7075626c69632d6b65795820eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee6e746f706f6c6f67792f7065657273a26664697265637481582011111111111111111111111111111111111111111111111111111111111111116772656c6179656481a2637669615820111111111111111111111111111111111111111111111111111111111111111166646576696365582022222222222222222222222222222222222222222222222222222222222222226f70726573656e63652f7374617475736469646c6570736e617073686f742d7365636f6e64731a6efaa500"
     },
     {
       "name": "candidates_v1_host_and_relayed",

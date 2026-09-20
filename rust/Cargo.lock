@@ -1248,6 +1248,8 @@ name = "wire-mesh-conformance"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "tokio",
+ "wire-mesh-core",
  "wire-mesh-wire",
 ]
 
