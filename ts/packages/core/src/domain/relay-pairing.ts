@@ -6,6 +6,8 @@ import { deviceIdToHex } from "./device-id.js";
 export interface RelayPairings {
   has: (device: DeviceId) => boolean;
   add: (device: DeviceId) => void;
+  /** Forgets the pairing with a device, so the next request to it establishes a fresh one. A no-op for a device that was never paired. */
+  remove: (device: DeviceId) => void;
   /** Every device currently paired, in establishment order -- the topology self-advertisement's own read of this set (wire-mesh#180), which needs to enumerate pairings rather than just test one. */
   list: () => DeviceId[];
 }
@@ -16,6 +18,9 @@ export function createRelayPairings(): RelayPairings {
     has: (device) => established.has(deviceIdToHex(device)),
     add: (device) => {
       established.set(deviceIdToHex(device), device);
+    },
+    remove: (device) => {
+      established.delete(deviceIdToHex(device));
     },
     list: () => [...established.values()],
   };

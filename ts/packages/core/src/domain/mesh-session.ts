@@ -604,6 +604,10 @@ function createSessionCore(
           new Promise<ManageOutcome>((resolve) => {
             setTimeout(() => {
               if (pendingManageRequests.delete(requestId)) {
+                // A relay-connect has no acknowledgement and the hub gives no notice when a pairing is lost (the target reconnected, or the hub itself restarted), so this session cannot otherwise tell a live pairing from a dead one. An unanswered relayed request is the only evidence it gets, and keeping the pairing would blackhole every later request to that device for as long as this connection lives, whereas forgetting it costs one extra relay-connect.
+                if (targetDevice !== undefined) {
+                  relayPairings.remove(targetDevice);
+                }
                 resolve({ result: "error", code: "timeout" });
               }
             }, timeoutMs);
