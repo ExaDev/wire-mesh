@@ -18,21 +18,11 @@ import {
   WEBRTC_SIGNAL_VERB,
 } from "wire-mesh-core/domain/webrtc-signaling";
 import { createWebrtcNegotiator } from "../src/webrtc-negotiation.js";
+import type { WireGossip } from "./wire-gossip.js";
 
 const HOUR_MS = 3_600_000;
 
-/** A gossip frame's own on-wire shape, with every Uint8Array field carried as a plain number array, since page.evaluate's args/return values must be JSON-serialisable, so this is the harness's explicit, narrow (de)serialisation for exactly the one frame shape this live-check exchanges, not a generic Frame codec. Every byte of the advert survives the round trip unaltered, including the signature and the key it verifies under (wire-mesh#225): an advert that came back subtly different would be refused by whoever it was handed to next, exactly as a tampered one would. */
-interface WireGossip {
-  type: "gossip";
-  peers: {
-    device: number[];
-    addresses: string[];
-    "snapshot-seconds": number;
-    "identity-key": { alg: number; "public-key": number[] };
-    signature: number[];
-  }[];
-}
-
+/** Every byte of the advert survives this round trip unaltered, including the signature and the key it verifies under (wire-mesh#225): an advert that came back subtly different would be refused by whoever it was handed to next, exactly as a tampered one would. */
 function gossipFrameFromWire(wire: Readonly<WireGossip>): Frame {
   return {
     type: "gossip",
