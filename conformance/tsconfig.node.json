@@ -1,4 +1,11 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["generate.ts", "verify.test.ts", "tsdown.config.ts", "eslint.config.ts"]
+  "include": [
+    "adverts.ts",
+    "vector-files.ts",
+    "generate.ts",
+    "verify.test.ts",
+    "tsdown.config.ts",
+    "eslint.config.ts"
+  ]
 }

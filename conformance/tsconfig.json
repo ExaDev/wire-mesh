@@ -9,6 +9,8 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "noEmit": true,
+    // generate.ts imports ./adverts.ts by its real extension, which is what Node's own TypeScript support resolves; nothing here is emitted, so the extension never has to be rewritten.
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "types": ["node"]
   },

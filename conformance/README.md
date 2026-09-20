@@ -16,7 +16,7 @@ pnpm run generate   # rebuilds codec.ts first, then writes {handshake,tokens,fra
 pnpm test            # rebuilds codec.ts first, then decodes every committed vector and confirms it round-trips
 ```
 
-`generate.ts` is the actual source of truth, not the JSON files: every vector's `message` is authored as plain TypeScript data matching a CDDL rule's fields, and `wire_hex` is derived mechanically by canonically CBOR-encoding it via [`cbor2`](https://www.npmjs.com/package/cbor2)'s CDE (CBOR Common Deterministic Encoding) mode -- the RFC 8949 4.2 core deterministic rules DAG-CBOR itself builds on -- never hand-typed. CI regenerates and diffs against the committed files the same way `spec/`'s own `cddl-validate` job does for `protocol.cddl`, so the two can never silently drift apart.
+`generate.ts` holds the vector definitions and is the actual source of truth, not the JSON files; `adverts.ts` holds `adverts.v1.json`'s own, which need real key material rather than filler, and `vector-files.ts` holds the writer and each output file's description. All three are split apart because generate.ts sits at this repo's own max-lines cap, not because they are conceptually separate stages: every vector's `message` is authored as plain TypeScript data matching a CDDL rule's fields, and `wire_hex` is derived mechanically by canonically CBOR-encoding it via [`cbor2`](https://www.npmjs.com/package/cbor2)'s CDE (CBOR Common Deterministic Encoding) mode -- the RFC 8949 4.2 core deterministic rules DAG-CBOR itself builds on -- never hand-typed. CI regenerates and diffs against the committed files the same way `spec/`'s own `cddl-validate` job does for `protocol.cddl`, so the two can never silently drift apart.
 
 ## Tasks, caching, and linting
 
