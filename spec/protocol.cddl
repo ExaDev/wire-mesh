@@ -1398,11 +1398,13 @@ close-frame = { type: "close", ? reason: tstr }
 ; carrying a valid-until claim"), and any future domain's own gossiped fact
 ; all ride this one open tail, added once rather than as a series of
 ; separately-named fields each time a new fact needs advertising. A field
-; here is exactly as trustworthy as any other gossiped, self-asserted claim
-; in this spec (peer-advert carries no signature of its own) — a reader
-; treats an unrecognised key the same verifier-obligation way an unrecognised
-; value in an open discriminator is treated elsewhere in this spec: ignored,
-; never acted on without understanding it, never treated as an error.
+; here is covered by the advert's own signature (see below), so it is
+; authentic — it really was asserted by the device the advert names — but it
+; is still self-asserted: the signature proves who said it, never that what
+; was said is true. A reader treats an unrecognised key the same
+; verifier-obligation way an unrecognised value in an open discriminator is
+; treated elsewhere in this spec: ignored, never acted on without
+; understanding it, never treated as an error.
 ;
 ; A key here MUST be domain-qualified as "<domain>/<field>" (e.g.
 ; "presence/status", not bare "status") — see spec/CONVENTIONS.md's
@@ -1410,13 +1412,62 @@ close-frame = { type: "close", ? reason: tstr }
 ; applications advertising over the same session coexist without one's
 ; extension silently shadowing the other's identically-named field. A key
 ; here MUST also never repeat one of this map's own typed field names
-; (device/addresses/snapshot-seconds) — an implementation MUST reject an
-; attempt to advertise under one of those names rather than let it shadow
-; the real field.
+; (device/addresses/snapshot-seconds/identity-key/signature) — an
+; implementation MUST reject an attempt to advertise under one of those
+; names rather than let it shadow the real field.
+;
+; Every advert is signed by the device it names, and is worthless without
+; that signature. An advert legitimately travels beyond its own author — a
+; hub re-broadcasts what it receives, and a gateway forwards adverts for the
+; local peers it fronts — so binding an advert to the connection it arrived
+; on cannot work: the signature, not the connection, is what ties an advert
+; to the device it claims to describe. `identity-key` travels inside the
+; signed content exactly as token-claims' own `issuer-key` does, making an
+; advert self-certifying: no prior contact with the advertised device, and
+; no directory to consult, is needed to check one.
+;
+; Validity is two checks, both verifier obligations rather than CDDL
+; constraints. First, self-certification: sha256(identity-key.public-key)
+; MUST equal `device`, the same obligation CONVENTIONS.md's own glossary
+; already states for every other embedded identity-key. Second, the
+; signature MUST verify under that same embedded key over the signing input
+; defined below. A verifier that cannot check both MUST refuse the advert
+; rather than apply it, the same fail-closed treatment an unrecognised open
+; discriminator already gets.
+;
+; The signing input is the domain-separation string "wire-mesh/peer-advert/
+; v1" followed by one zero byte, concatenated with the canonical CDE
+; encoding of this map with the `signature` entry removed and nothing else
+; changed. Every other entry is therefore covered, extension tail included,
+; so no gossiped fact can be altered, added, or dropped without invalidating
+; the signature. Deliberately NOT tokens.cddl's COSE Sig_structure, despite
+; that being the reused construction everywhere else a signature appears
+; here: an advert's extension tail is an open `* tstr => any` map, so an
+; attacker can craft an advert whose encoding also satisfies token-claims,
+; and a Sig_structure over it would then be replayable as a capability
+; token's own signed payload. The prefix makes the two byte strings disjoint
+; by construction — a Sig_structure always begins with the CBOR encoding of
+; a 4-element array whose first element is "Signature1", never the ASCII "w"
+; this input starts with.
+;
+; Signatures alone do not stop a connection replaying a victim's genuine,
+; correctly-signed advert to draw that device's routed traffic to itself, so
+; a hub applies one further receiver obligation when registering which
+; connection a device is reachable over. An advert naming a device currently
+; registered to a DIFFERENT live connection takes that registration over
+; only when its `snapshot-seconds` is strictly greater than the registered
+; advert's; an advert from the connection that already holds the
+; registration updates it when `snapshot-seconds` is greater than or equal.
+; The known limitation this leaves, stated rather than papered over: a
+; device that reconnects within the same second while its previous
+; connection is still open does not displace that connection until its next
+; gossip carries a later second.
 peer-advert = {
   device: device-id,
   addresses: [* tstr],      ; "host:port" strings
   snapshot-seconds: int,     ; Unix-seconds snapshot time
+  identity-key: identity-key,   ; the advertised device's own key; sha256(public-key) MUST equal `device`
+  signature: bstr,           ; over the signing input described above, under identity-key
   * tstr => any,
 }
 gossip-frame = { type: "gossip", peers: [* peer-advert] }
