@@ -173,8 +173,8 @@ importers:
         specifier: 2.18.0
         version: 2.18.0(@eslint/json@2.1.0)(eslint-plugin-jsx-a11y@6.10.2(eslint@10.10.0(jiti@2.7.0)(supports-color@11.0.0)))(eslint-plugin-react-hooks@7.1.1(eslint@10.10.0(jiti@2.7.0)(supports-color@11.0.0))(supports-color@11.0.0))(eslint-plugin-react@7.37.5(eslint@10.10.0(jiti@2.7.0)(supports-color@11.0.0)))(eslint@10.10.0(jiti@2.7.0)(supports-color@11.0.0))(supports-color@11.0.0)(typescript-eslint@8.69.0(eslint@10.10.0(jiti@2.7.0)(supports-color@11.0.0))(supports-color@11.0.0)(typescript@6.0.3))(typescript@6.0.3)
       '@exadev/semantic-release-workspace':
-        specifier: 3.0.0
-        version: 3.0.0(@semantic-release/changelog@7.0.0(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/commit-analyzer@13.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/git@11.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/github@12.0.9(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/npm@13.1.5(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/release-notes-generator@14.1.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0)(typescript@6.0.3)
+        specifier: 3.0.2
+        version: 3.0.2(@semantic-release/changelog@7.0.0(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/commit-analyzer@13.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/git@11.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/github@12.0.9(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/npm@13.1.5(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/release-notes-generator@14.1.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0)(typescript@6.0.3)
       '@semantic-release/changelog':
         specifier: 7.0.0
         version: 7.0.0(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))
@@ -1826,8 +1826,8 @@ packages:
     resolution: {integrity: sha512-VKU6qZlvl6C+xOLC12mYvv1ygcLm4Gt28rcd2K20fMJB4jz/2IeK5Nn+Ivk4a4xv7TmzvoJCmHUfo7nmwnrVYw==}
     engines: {node: '>=20'}
 
-  '@exadev/semantic-release-workspace@3.0.0':
-    resolution: {integrity: sha512-JutLFHQ5Sr1M6+WIpMyLUREOjeXzmhR6RbSdhErLFmYrZASVHoR3bEFDRAiqZKa+e+VCTJF0eu8zyZfOiao+bQ==}
+  '@exadev/semantic-release-workspace@3.0.2':
+    resolution: {integrity: sha512-T4M0LY6EcQWEqD6ynUkwQD2DO7futP7x1OnTkF2DmUJZ5WjDa3rW/ZNqbM5zD8A8IBXfrWQ8h37SrPgvC+YhNw==}
     engines: {node: ^22.18 || >=24}
     hasBin: true
     peerDependencies:
@@ -7852,7 +7852,7 @@ snapshots:
       - supports-color
       - typescript
 
-  '@exadev/semantic-release-workspace@3.0.0(@semantic-release/changelog@7.0.0(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/commit-analyzer@13.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/git@11.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/github@12.0.9(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/npm@13.1.5(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/release-notes-generator@14.1.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0)(typescript@6.0.3)':
+  '@exadev/semantic-release-workspace@3.0.2(@semantic-release/changelog@7.0.0(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/commit-analyzer@13.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/git@11.0.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/github@12.0.9(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(@semantic-release/npm@13.1.5(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3)))(@semantic-release/release-notes-generator@14.1.1(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0))(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))(supports-color@11.0.0)(typescript@6.0.3)':
     dependencies:
       '@exadev/release-gate': 1.0.1(supports-color@11.0.0)(typescript@6.0.3)
       '@semantic-release/changelog': 7.0.0(semantic-release@25.0.9(supports-color@11.0.0)(typescript@6.0.3))
