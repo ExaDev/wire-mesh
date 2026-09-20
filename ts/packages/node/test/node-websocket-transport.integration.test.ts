@@ -12,6 +12,7 @@ import { bytesFromHex } from "./hex.js";
 import { generateCertFixture } from "./tls-cert-fixture.js";
 
 const SHA256_BYTE_LENGTH = 32;
+const COSE_ALG_EDDSA = -8; // the identity-key.alg value for an Ed25519 key; this advert is only encoded and decoded, never verified, so the value only has to be well-formed
 const ping: Frame = { type: "ping" };
 const CBOR_MAP_ONE_ENTRY_FIRST_BYTE = 0xa1; // a one-entry CBOR map head -- the ping frame, no length prefix
 const CBOR_BREAK_BYTE = 0xff; // the CBOR break byte on its own: undecodable as a complete value
@@ -113,6 +114,11 @@ describe("wrapNodeWebSocket", () => {
           device: bytesFromHex("11".repeat(SHA256_BYTE_LENGTH)),
           addresses: ["203.0.113.5:4433"],
           "snapshot-seconds": 1861833600,
+          "identity-key": {
+            alg: COSE_ALG_EDDSA,
+            "public-key": bytesFromHex("cc".repeat(SHA256_BYTE_LENGTH)),
+          },
+          signature: bytesFromHex("dd".repeat(SHA256_BYTE_LENGTH)),
         },
       ],
     };

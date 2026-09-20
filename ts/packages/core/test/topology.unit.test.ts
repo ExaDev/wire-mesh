@@ -19,6 +19,7 @@ import {
   TOPOLOGY_GET_CAPABILITY,
 } from "../src/domain/topology.js";
 import { deviceIdFromFillHex } from "./hex.js";
+import { syntheticAdvertProof } from "./synthetic-advert.js";
 
 const deviceA = deviceIdFromFillHex("11");
 const deviceB = deviceIdFromFillHex("22");
@@ -32,6 +33,7 @@ function advertWith(
     device,
     addresses: [],
     "snapshot-seconds": 0,
+    ...syntheticAdvertProof(),
     ...extensions,
   };
 }

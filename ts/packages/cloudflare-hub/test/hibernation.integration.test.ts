@@ -2,22 +2,16 @@
 
 import { describe, expect, it } from "vitest";
 import { decode } from "cbor2";
-import type {
-  DeviceId,
-  Frame,
-  PeerAdvert,
-} from "wire-mesh-core/generated/protocol";
+import type { Frame } from "wire-mesh-core/generated/protocol";
 import {
   createHibernatingRelayHub,
   type HibernatingRelayHub,
   type HubSocket,
 } from "../src/hibernating-hub.js";
 import { messageFromFrame } from "../src/adapters/websocket-transport.js";
-import { bytesFromHex, deviceIdFromFillHex } from "./hex.js";
+import { bytesFromHex } from "./hex.js";
+import { createTestPeer, type TestPeer } from "./signed-peers.js";
 
-const deviceA = deviceIdFromFillHex("11");
-const deviceB = deviceIdFromFillHex("22");
-const deviceC = deviceIdFromFillHex("33");
 const relayPayload = bytesFromHex("deadbeef");
 
 /** A hibernating server socket as the runtime presents one: sends are recorded, and the attachment is round-tripped through structuredClone, the same serialisation the runtime applies to it. */
@@ -56,18 +50,6 @@ function arrayBufferFor(frame: Frame): ArrayBuffer {
   );
 }
 
-function peerAdvertFor(device: DeviceId): PeerAdvert {
-  return {
-    device,
-    addresses: ["203.0.113.5:4433"],
-    "snapshot-seconds": 1861833600,
-  };
-}
-
-function gossipFor(device: DeviceId): Frame {
-  return { type: "gossip", peers: [peerAdvertFor(device)] };
-}
-
 /** The runtime discarding this instance and building the next one: same sockets, same attachments, no in-memory state at all. */
 function evict(sockets: readonly FakeHubSocket[]): HibernatingRelayHub {
   return createHibernatingRelayHub(() => sockets);
@@ -76,25 +58,29 @@ function evict(sockets: readonly FakeHubSocket[]): HibernatingRelayHub {
 /** Two clients connected, gossiping, and paired by a relay-connect, on a hub that is about to be evicted. */
 async function pairedHub(
   a: FakeHubSocket,
+  peerA: TestPeer,
   b: FakeHubSocket,
+  peerB: TestPeer,
 ): Promise<HibernatingRelayHub> {
   const hub = evict([a, b]);
   hub.accept(a);
   hub.accept(b);
-  await hub.message(a, arrayBufferFor(gossipFor(deviceA)));
-  await hub.message(b, arrayBufferFor(gossipFor(deviceB)));
+  await hub.message(a, arrayBufferFor(peerA.gossip));
+  await hub.message(b, arrayBufferFor(peerB.gossip));
   await hub.message(
     a,
-    arrayBufferFor({ type: "relay-connect", "target-device": deviceB }),
+    arrayBufferFor({ type: "relay-connect", "target-device": peerB.device }),
   );
   return hub;
 }
 
 describe("a relay pairing across a Durable Object eviction", () => {
   it("relays a response sent after the instance that established the pairing was evicted", async () => {
+    const peerA = await createTestPeer();
+    const peerB = await createTestPeer();
     const a = new FakeHubSocket();
     const b = new FakeHubSocket();
-    await pairedHub(a, b);
+    await pairedHub(a, peerA, b, peerB);
 
     const woken = evict([a, b]);
     a.sent.length = 0;
@@ -104,7 +90,7 @@ describe("a relay pairing across a Durable Object eviction", () => {
       arrayBufferFor({
         type: "relay-data",
         payload: relayPayload,
-        "to-device": deviceA,
+        "to-device": peerA.device,
       }),
     );
 
@@ -112,16 +98,18 @@ describe("a relay pairing across a Durable Object eviction", () => {
       {
         type: "relay-data",
         payload: relayPayload,
-        "from-device": deviceB,
-        "to-device": deviceA,
+        "from-device": peerB.device,
+        "to-device": peerA.device,
       },
     ]);
   });
 
   it("relays in both directions, and keeps relaying across a second eviction", async () => {
+    const peerA = await createTestPeer();
+    const peerB = await createTestPeer();
     const a = new FakeHubSocket();
     const b = new FakeHubSocket();
-    await pairedHub(a, b);
+    await pairedHub(a, peerA, b, peerB);
 
     const first = evict([a, b]);
     a.sent.length = 0;
@@ -131,7 +119,11 @@ describe("a relay pairing across a Durable Object eviction", () => {
       arrayBufferFor({ type: "relay-data", payload: relayPayload }),
     );
     expect(b.frames()).toEqual([
-      { type: "relay-data", payload: relayPayload, "from-device": deviceA },
+      {
+        type: "relay-data",
+        payload: relayPayload,
+        "from-device": peerA.device,
+      },
     ]);
 
     const second = evict([a, b]);
@@ -142,35 +134,43 @@ describe("a relay pairing across a Durable Object eviction", () => {
       arrayBufferFor({ type: "relay-data", payload: relayPayload }),
     );
     expect(a.frames()).toEqual([
-      { type: "relay-data", payload: relayPayload, "from-device": deviceB },
+      {
+        type: "relay-data",
+        payload: relayPayload,
+        "from-device": peerB.device,
+      },
     ]);
   });
 
   it("answers a relay-connect naming a device an evicted instance registered", async () => {
+    const peerA = await createTestPeer();
+    const peerB = await createTestPeer();
     const a = new FakeHubSocket();
     const b = new FakeHubSocket();
     const hub = evict([a, b]);
     hub.accept(a);
     hub.accept(b);
-    await hub.message(a, arrayBufferFor(gossipFor(deviceA)));
-    await hub.message(b, arrayBufferFor(gossipFor(deviceB)));
+    await hub.message(a, arrayBufferFor(peerA.gossip));
+    await hub.message(b, arrayBufferFor(peerB.gossip));
 
     const woken = evict([a, b]);
     b.sent.length = 0;
     await woken.message(
       a,
-      arrayBufferFor({ type: "relay-connect", "target-device": deviceB }),
+      arrayBufferFor({ type: "relay-connect", "target-device": peerB.device }),
     );
 
     expect(b.frames()).toEqual([
-      { type: "relay-inbound", "source-device": deviceA },
+      { type: "relay-inbound", "source-device": peerA.device },
     ]);
   });
 
   it("forgets a pairing whose peer closed while no instance was running", async () => {
+    const peerA = await createTestPeer();
+    const peerB = await createTestPeer();
     const a = new FakeHubSocket();
     const b = new FakeHubSocket();
-    await pairedHub(a, b);
+    await pairedHub(a, peerA, b, peerB);
 
     const woken = evict([a]);
     a.sent.length = 0;
@@ -184,6 +184,9 @@ describe("a relay pairing across a Durable Object eviction", () => {
   });
 
   it("carries a third client's pairing across the eviction alongside the first", async () => {
+    const peerA = await createTestPeer();
+    const peerB = await createTestPeer();
+    const peerC = await createTestPeer();
     const a = new FakeHubSocket();
     const b = new FakeHubSocket();
     const c = new FakeHubSocket();
@@ -191,16 +194,16 @@ describe("a relay pairing across a Durable Object eviction", () => {
     for (const socket of [a, b, c]) {
       hub.accept(socket);
     }
-    await hub.message(a, arrayBufferFor(gossipFor(deviceA)));
-    await hub.message(b, arrayBufferFor(gossipFor(deviceB)));
-    await hub.message(c, arrayBufferFor(gossipFor(deviceC)));
+    await hub.message(a, arrayBufferFor(peerA.gossip));
+    await hub.message(b, arrayBufferFor(peerB.gossip));
+    await hub.message(c, arrayBufferFor(peerC.gossip));
     await hub.message(
       a,
-      arrayBufferFor({ type: "relay-connect", "target-device": deviceB }),
+      arrayBufferFor({ type: "relay-connect", "target-device": peerB.device }),
     );
     await hub.message(
       c,
-      arrayBufferFor({ type: "relay-connect", "target-device": deviceB }),
+      arrayBufferFor({ type: "relay-connect", "target-device": peerB.device }),
     );
 
     const woken = evict([a, b, c]);
@@ -211,7 +214,7 @@ describe("a relay pairing across a Durable Object eviction", () => {
       arrayBufferFor({
         type: "relay-data",
         payload: relayPayload,
-        "to-device": deviceC,
+        "to-device": peerC.device,
       }),
     );
 
@@ -220,29 +223,31 @@ describe("a relay pairing across a Durable Object eviction", () => {
       {
         type: "relay-data",
         payload: relayPayload,
-        "from-device": deviceB,
-        "to-device": deviceC,
+        "from-device": peerB.device,
+        "to-device": peerC.device,
       },
     ]);
   });
 
   it("updates the surviving side's attachment when its peer closes", async () => {
+    const peerA = await createTestPeer();
+    const peerB = await createTestPeer();
     const a = new FakeHubSocket();
     const b = new FakeHubSocket();
-    const hub = await pairedHub(a, b);
+    const hub = await pairedHub(a, peerA, b, peerB);
 
     expect(a.deserializeAttachment()).toEqual({
-      device: deviceA,
-      adverts: [peerAdvertFor(deviceA)],
-      pairedDevices: [deviceB],
-      mostRecentDevice: deviceB,
+      device: peerA.device,
+      adverts: [peerA.advert],
+      pairedDevices: [peerB.device],
+      mostRecentDevice: peerB.device,
     });
 
     hub.forget(b);
 
     expect(a.deserializeAttachment()).toEqual({
-      device: deviceA,
-      adverts: [peerAdvertFor(deviceA)],
+      device: peerA.device,
+      adverts: [peerA.advert],
       pairedDevices: [],
     });
   });

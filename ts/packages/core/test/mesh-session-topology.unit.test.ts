@@ -11,9 +11,10 @@ import {
   FakeConnection,
   deviceA,
   deviceB,
-  deviceC,
   fakeTransport,
   gossipFor,
+  identityB,
+  identityC,
   nthEvent,
   testClock,
   testIdentity,
@@ -30,6 +31,8 @@ describe("MeshSession.getTopologyPeers", () => {
   const EVENTS_THROUGH_CONNECT = 3;
   // Incremental events one gossip frame received produces on top of EVENTS_THROUGH_CONNECT.
   const EVENTS_PER_GOSSIP = 1;
+  // Events an accepted session emits up to and including the one its first received gossip frame produces: connected, self-advert sent, then that frame's own. Counting through the frame rather than taking the first buffered event matters because the session verifies an advert's signature before applying it, so the directory and topology only reflect the frame once its event has fired.
+  const EVENTS_THROUGH_ACCEPTED_GOSSIP = 3;
   // Incremental events a fresh-target sendManageRequest produces on top of EVENTS_THROUGH_CONNECT: relay-connect-sent, relay-data-sent.
   const EVENTS_PER_NEW_RELAY_PAIRING = 2;
 
@@ -95,8 +98,9 @@ describe("MeshSession.getTopologyPeers", () => {
     const connectDone = nthEvent(session, EVENTS_THROUGH_CONNECT);
     await session.connect("ws://node", ["core/management"]);
     await connectDone;
+    const gossip = await gossipFor(identityC);
     const gossipDone = nthEvent(session, EVENTS_PER_GOSSIP);
-    connection.push(gossipFor(deviceC));
+    connection.push(gossip);
     await gossipDone;
 
     expect(session.getTopologyPeers().direct).toEqual([]);
@@ -108,8 +112,9 @@ describe("MeshSession.getTopologyPeers", () => {
     const session = await acceptMeshSession(fake.connection, testIdentity, [
       "core/management",
     ]);
-    const gossipDone = nthEvent(session, 1);
-    fake.push(gossipFor(deviceB));
+    const gossip = await gossipFor(identityB);
+    const gossipDone = nthEvent(session, EVENTS_THROUGH_ACCEPTED_GOSSIP);
+    fake.push(gossip);
     await gossipDone;
 
     expect(session.getTopologyPeers()).toEqual({

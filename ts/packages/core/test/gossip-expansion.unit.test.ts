@@ -10,6 +10,7 @@ import {
   deviceB,
   testIdentityDeviceId,
 } from "./mesh-session-fixtures.js";
+import { syntheticAdvertProof } from "./synthetic-advert.js";
 
 const ADDRESS_A = "203.0.113.5:4433";
 const ADDRESS_A2 = "203.0.113.5:4434";
@@ -19,7 +20,12 @@ function advertFor(
   device: Uint8Array<ArrayBuffer>,
   addresses: readonly string[],
 ): PeerAdvert {
-  return { device, addresses: [...addresses], "snapshot-seconds": 0 };
+  return {
+    device,
+    addresses: [...addresses],
+    "snapshot-seconds": 0,
+    ...syntheticAdvertProof(),
+  };
 }
 
 function fakeSession(): MeshSession {

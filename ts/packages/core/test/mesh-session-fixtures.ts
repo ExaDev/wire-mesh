@@ -7,24 +7,23 @@ import type {
   Transport,
 } from "../src/ports/transport.js";
 import type { createMeshSession } from "../src/domain/mesh-session.js";
-import { deviceIdFromFillHex } from "./hex.js";
+import { peerAdvertFor } from "./relay-hub-test-helpers.js";
+import { generateEd25519Identity } from "./tokens-fixtures.js";
 import packageJson from "../package.json" with { type: "json" };
 
 /** The same value mesh-session.ts's own OWN_VERSION reads -- asserted against here rather than a hardcoded literal so a self-advert/version.get expectation stays true regardless of what this package's own version happens to be. */
 export const OWN_VERSION = packageJson.version;
 
-export const deviceA = deviceIdFromFillHex("11");
-export const deviceB = deviceIdFromFillHex("22");
-export const deviceC = deviceIdFromFillHex("33");
+// Real identities rather than device-ids invented from filler bytes: a session verifies every gossiped advert against the key it carries and drops one that does not verify (wire-mesh#225), so an advert naming a device no keypair produced would never reach the directory a test is asserting on. deviceA/B/C are the ids those identities derive, for tests that only need a device-id to point at.
+export const identityA = await generateEd25519Identity();
+export const identityB = await generateEd25519Identity();
+export const identityC = await generateEd25519Identity();
+export const deviceA = identityA.deviceId;
+export const deviceB = identityB.deviceId;
+export const deviceC = identityC.deviceId;
 
-export const testIdentityDeviceId = deviceIdFromFillHex("ee");
-export const testIdentity: IdentityPort = {
-  deviceId: testIdentityDeviceId,
-  identityKey: { alg: -7, "public-key": new Uint8Array() },
-  sign: async () => Promise.resolve(new Uint8Array()),
-  verify: async () => Promise.resolve(true),
-  deriveDeviceId: async () => Promise.resolve(testIdentityDeviceId),
-};
+export const testIdentity: IdentityPort = await generateEd25519Identity();
+export const testIdentityDeviceId = testIdentity.deviceId;
 export const MS_PER_SECOND = 1000;
 export const TEST_CLOCK_NOW_MS = 1_700_000_000_000;
 export const testClock: Clock = { now: () => TEST_CLOCK_NOW_MS };
@@ -214,14 +213,13 @@ export async function nthEvent(
   return last;
 }
 
-export function gossipFor(
-  device: Uint8Array<ArrayBuffer>,
-  seconds = 1861833600,
-): Frame {
+/** A gossip frame carrying one properly signed advert for the given identity, so a session verifying it applies it rather than dropping it. */
+export async function gossipFor(
+  identity: Readonly<IdentityPort>,
+  seconds?: number,
+): Promise<Frame> {
   return {
     type: "gossip",
-    peers: [
-      { device, addresses: ["203.0.113.5:4433"], "snapshot-seconds": seconds },
-    ],
+    peers: [await peerAdvertFor(identity, seconds)],
   };
 }

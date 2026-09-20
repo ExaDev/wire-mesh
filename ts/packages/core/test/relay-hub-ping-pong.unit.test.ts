@@ -2,11 +2,11 @@
 
 import { describe, expect, it } from "vitest";
 import { createRelayHub } from "../src/domain/relay-hub.js";
-import { FakeConnection, tick } from "./relay-hub-test-helpers.js";
+import { FakeConnection, hubVerifier, tick } from "./relay-hub-test-helpers.js";
 
 describe("relay-hub ping/pong", () => {
   it("replies to a ping with a bare pong, with no relay pairing or device registration needed", async () => {
-    const hub = createRelayHub();
+    const hub = createRelayHub({ identity: hubVerifier });
     const client = new FakeConnection();
     const handled = hub.handleConnection(client.connection);
 
@@ -20,7 +20,7 @@ describe("relay-hub ping/pong", () => {
   });
 
   it("answers every ping on the same connection with its own pong, in order", async () => {
-    const hub = createRelayHub();
+    const hub = createRelayHub({ identity: hubVerifier });
     const client = new FakeConnection();
     const handled = hub.handleConnection(client.connection);
 
@@ -35,7 +35,7 @@ describe("relay-hub ping/pong", () => {
   });
 
   it("swallows a failed pong reply rather than throwing out of handleConnection", async () => {
-    const hub = createRelayHub();
+    const hub = createRelayHub({ identity: hubVerifier });
     const client = new FakeConnection();
     client.sendRejection = new Error("connection died mid-reply");
     const handled = hub.handleConnection(client.connection);
@@ -49,7 +49,7 @@ describe("relay-hub ping/pong", () => {
   });
 
   it("also replies to ping via the shared registerConnection/onFrame integration path, not only handleConnection's own loop", async () => {
-    const hub = createRelayHub();
+    const hub = createRelayHub({ identity: hubVerifier });
     const client = new FakeConnection();
     hub.registerConnection(client.connection);
 

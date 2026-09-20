@@ -6,6 +6,7 @@ import {
   createRelayUseAuthorizationTracker,
 } from "../src/domain/relay-use-gate.js";
 import { deviceIdFromFillHex } from "./hex.js";
+import { syntheticAdvertProof } from "./synthetic-advert.js";
 
 const deviceB = deviceIdFromFillHex("22");
 
@@ -92,7 +93,14 @@ describe("createGatedRelayFrameHandler", () => {
 
     const gossip: Frame = {
       type: "gossip",
-      peers: [{ device: deviceB, addresses: [], "snapshot-seconds": 0 }],
+      peers: [
+        {
+          device: deviceB,
+          addresses: [],
+          "snapshot-seconds": 0,
+          ...syntheticAdvertProof(),
+        },
+      ],
     };
     await gated(connection, gossip);
 

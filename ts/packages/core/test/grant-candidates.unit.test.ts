@@ -10,6 +10,7 @@ import {
   findGrantCandidate,
   type GrantCandidate,
 } from "../src/domain/grant-candidates.js";
+import { syntheticAdvertProof } from "./synthetic-advert.js";
 
 const ROOM_SCOPE: CapabilityScope = { kind: "room", path: "team/general" };
 const ROOM_MEMBER = "room:member";
@@ -23,6 +24,7 @@ function advertWith(extensions: Record<string, unknown>): PeerAdvert {
     device: DEVICE_A,
     addresses: [],
     "snapshot-seconds": 0,
+    ...syntheticAdvertProof(),
     ...extensions,
   };
 }
@@ -192,6 +194,7 @@ describe("findGrantCandidate", () => {
           device: DEVICE_B,
           addresses: [],
           "snapshot-seconds": 0,
+          ...syntheticAdvertProof(),
           "capability-request/candidates": [
             { capability: ROOM_MEMBER, scope: ROOM_SCOPE },
           ],

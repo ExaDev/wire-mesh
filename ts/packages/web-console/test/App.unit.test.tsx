@@ -1,7 +1,15 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import {
   cleanup,
   fireEvent,
@@ -14,24 +22,16 @@ import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import type { Clock } from "wire-mesh-core/ports/clock";
 import type { GossipFrame } from "wire-mesh-core/generated/protocol";
 import { messageFromFrame } from "wire-mesh-core/adapters/frame-codec";
+import { deviceIdToHex } from "wire-mesh-core/domain/device-id";
+import { signPeerAdvert } from "wire-mesh-core/domain/peer-advert";
+import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
 import { App } from "../src/App.js";
 import type { MessageStore, StoredMessage } from "../src/message-store.js";
 import { FakeWebSocket } from "./fake-websocket.js";
-import { deviceIdFromFillHex } from "./hex.js";
 import { stubMantineJsdomGlobals } from "./jsdom-mantine-polyfills.js";
 
-const DEVICE_ID_BYTE_LENGTH = 32;
-
-function fakeIdentity(): IdentityPort {
-  return {
-    deviceId: new Uint8Array(DEVICE_ID_BYTE_LENGTH),
-    identityKey: { alg: -7, "public-key": new Uint8Array(0) },
-    sign: async () => Promise.resolve(new Uint8Array(0)),
-    verify: async () => Promise.resolve(true),
-    deriveDeviceId: async () =>
-      Promise.resolve(new Uint8Array(DEVICE_ID_BYTE_LENGTH)),
-  };
-}
+/** The identity App runs as. Real rather than a stub deriving one fixed device-id: the session verifies every gossiped advert with it (wire-mesh#225), and a stub would refuse any advert naming a different device, so a gossiped peer would never reach the directory these tests read. */
+let appIdentity: IdentityPort;
 
 const fixedClock: Clock = { now: () => 0 };
 
@@ -69,7 +69,7 @@ function renderApp(
   return render(
     <MantineProvider>
       <App
-        identity={fakeIdentity()}
+        identity={appIdentity}
         clock={fixedClock}
         messageStore={fakeMessageStore()}
         {...(discoverLocalNode === undefined ? {} : { discoverLocalNode })}
@@ -83,19 +83,24 @@ function submitConnectForm(): void {
   fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 }
 
-const gossipedDevice = deviceIdFromFillHex("22");
-const gossipedDeviceHex = "22".repeat(gossipedDevice.length);
 const GOSSIPED_ADDRESS = "203.0.113.5:4433";
 
-function gossipFrameFor(
-  device: Uint8Array<ArrayBuffer>,
-  addresses: readonly string[],
-): GossipFrame {
-  return {
-    type: "gossip",
-    peers: [{ device, addresses: [...addresses], "snapshot-seconds": 0 }],
-  };
-}
+/** The frame a remote peer gossips, carrying that peer's own signed advert, and the hex of the device it names as the UI renders it. Built once for the suite because signing is asynchronous. */
+let gossipedFrame: GossipFrame;
+let gossipedDeviceHex: string;
+
+beforeAll(async () => {
+  appIdentity = await createWebCryptoIdentity();
+  const remote = await createWebCryptoIdentity();
+  const advert = await signPeerAdvert(remote, {
+    device: remote.deviceId,
+    addresses: [GOSSIPED_ADDRESS],
+    "snapshot-seconds": 0,
+    "identity-key": remote.identityKey,
+  });
+  gossipedFrame = { type: "gossip", peers: [advert] };
+  gossipedDeviceHex = deviceIdToHex(remote.deviceId);
+});
 
 /** messageFromFrame's own Uint8Array may be a view into a larger backing buffer -- slicing to its own byteOffset/byteLength before handing it to emitMessage is what every other adapter test here already does (see websocket-transport.integration.test.ts's identical helper), since FakeWebSocket.emitMessage takes the raw buffer, not a view onto it. */
 function arrayBuffer(bytes: Uint8Array): ArrayBuffer {
@@ -230,11 +235,7 @@ describe("App", () => {
     rootSocket.emitOpen();
     // wrapWebSocket only registers its own "message" listener once createBrowserTransport's own open-event promise resolves, a microtask after emitOpen() -- waiting for the connected status line proves that listener is registered before pushing the gossip frame below, rather than racing it.
     await screen.findByText(/^connected/);
-    rootSocket.emitMessage(
-      arrayBuffer(
-        messageFromFrame(gossipFrameFor(gossipedDevice, [GOSSIPED_ADDRESS])),
-      ),
-    );
+    rootSocket.emitMessage(arrayBuffer(messageFromFrame(gossipedFrame)));
 
     const panel = await screen.findByTestId("discovered-peers");
     expect(within(panel).getByText(gossipedDeviceHex)).toBeInTheDocument();
@@ -267,11 +268,7 @@ describe("App", () => {
     }
     rootSocket.emitOpen();
     await screen.findByText(/^connected/);
-    rootSocket.emitMessage(
-      arrayBuffer(
-        messageFromFrame(gossipFrameFor(gossipedDevice, [GOSSIPED_ADDRESS])),
-      ),
-    );
+    rootSocket.emitMessage(arrayBuffer(messageFromFrame(gossipedFrame)));
 
     await screen.findByTestId("discovered-peers");
 
