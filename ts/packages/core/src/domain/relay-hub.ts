@@ -6,6 +6,8 @@
 //
 // Second, the sender itself is sent a catch-up `gossip-frame` bundling every *other* currently-known device's latest advert. This is not optional polish: every client gossips its own self-advert exactly once, at connect time, and never repeats it on its own initiative (see `mesh-session.ts`'s `sendGossipUpdate` doc comment -- there is no re-advertisement timer built into a session, so a caller that never calls it again is "today's existing gossip-once-on-connect behaviour"). Forwarding alone therefore only reaches whichever clients happen to already be connected at the exact moment a given advert is gossiped; a client that connects even slightly later would otherwise never learn about anyone who gossiped before it, no matter how long it then stays connected, since nothing ever re-sends that earlier advert again. The catch-up frame closes this gap by replaying the hub's own already-known directory to every gossiping connection, not only ones that have never gossiped before -- a connection re-gossiping (an address change, a fresher `snapshot-seconds`) is caught up again too, which is harmless and correctly reflects current state under the same no-caching philosophy as the forward above. `Registration` keeps the full `peer-advert`, not just a bare device-id, specifically so this catch-up frame can be built from real, previously-received adverts rather than synthesising one.
 
+// Outliving the hub instance (wire-mesh#186): registry and pairing state is held in memory and keyed by Connection, neither of which a host can hand to a successor instance directly. exportConnection/restoreConnections bridge that gap by expressing one connection's state as device-ids and adverts alone: serialisable, and resolvable back to connections by a successor that still holds them. A host that can be torn down while its connections stay open subscribes to onConnectionStateChanged, persists the exported value wherever it keeps per-connection state, and replays the survivors through restoreConnections before handling their next frame. The hub itself neither persists nor schedules anything: what a pairing is keyed by, and when a state changes, are its own business, and where that state is kept between instances is the host's.
+
 import type { DeviceId, Frame, PeerAdvert } from "../generated/protocol.js";
 import type { Connection } from "../ports/transport.js";
 
@@ -13,6 +15,33 @@ interface Registration {
   connection: Readonly<Connection>;
   // The full advert, not just the device-id, so a late-joining connection can be caught up with a real, replayable peer-advert (see the gossip catch-up mechanism in handleFrame) rather than a synthesised one.
   advert: PeerAdvert;
+}
+
+/**
+ * One connection's relay state in serialisable form: everything a hub that never saw the connection register needs, alongside the still-open connection itself, to answer its next frame exactly as the hub that established the state would have. Only device-ids and adverts appear, never a Connection, so a host can persist this wherever it keeps per-connection state.
+ */
+export interface RelayConnectionState {
+  /** The device-id the hub attributes to the connection itself: what its relay-data frames are stamped with as `from-device`, and what a peer's own pairing map keys this connection by. */
+  readonly device: DeviceId;
+  /** Every peer-advert still registered against this connection in the hub's device directory, in registration order, so a restored hub can resolve a relay-connect naming one of them and can replay them in its gossip catch-up. Empty when a later connection has taken over every device-id this one advertised. */
+  readonly adverts: readonly PeerAdvert[];
+  /** The device-id of each peer this connection currently holds a relay pairing with. Order carries no meaning; the unaddressed-relay-data route is `mostRecentDevice` alone. */
+  readonly pairedDevices: readonly DeviceId[];
+  /** The peer a relay-data frame carrying no `to-device` routes to. Absent when the connection has no such fallback, either because it holds no pairings or because the peer that was most recent has since disconnected. */
+  readonly mostRecentDevice?: DeviceId;
+}
+
+/** One surviving connection paired with what a previous hub instance knew about it, as restoreConnections takes it. */
+export interface RelayConnectionRestore {
+  readonly connection: Readonly<Connection>;
+  readonly state: RelayConnectionState;
+}
+
+export interface RelayHubOptions {
+  /** Called whenever the value exportConnection returns for a connection changes: it gossiped an advert, gained or lost a pairing, or had one of its adverts taken over by another connection. A host whose own instance can be torn down while its connections stay open (the Cloudflare hub's hibernating Durable Object) reads the new value back with exportConnection, persists it against the connection, and hands it to a later instance through restoreConnections. */
+  readonly onConnectionStateChanged?: (
+    connection: Readonly<Connection>,
+  ) => void;
 }
 
 export interface RelayHub {
@@ -24,6 +53,12 @@ export interface RelayHub {
   onFrame: (connection: Readonly<Connection>, frame: Frame) => Promise<void>;
   /** Cleans up all registry and pairing state for one connection once its own frame stream has ended -- the onSessionEnd counterpart registerConnection/onFrame needs for the shared-consumption case, since this hub's registry is keyed by Connection and has no other way to learn a connection is gone. */
   onDisconnect: (connection: Readonly<Connection>) => void;
+  /** The serialisable relay state of one registered connection, or undefined when it holds none worth keeping: a connection that has never gossiped an advert can neither be named by a relay-connect nor send a routable relay-data frame, so there is nothing for a later hub to restore. */
+  exportConnection: (
+    connection: Readonly<Connection>,
+  ) => RelayConnectionState | undefined;
+  /** Rebuilds device-registry and pairing state for connections that outlived the hub instance which established it, so a frame arriving on one of them routes as it did before rather than being dropped as unknown. Each entry's connection is registered as if registerConnection had been called for it. Pairings resolve within the batch: a paired device-id no entry claims belonged to a peer that disconnected while no instance was running, and its pairing is correctly left out. Meant for a freshly created hub, before it handles any frame. */
+  restoreConnections: (entries: readonly RelayConnectionRestore[]) => void;
   /** Drops all registry and pairing state -- used by tests and by transport teardown. */
   stop: () => void;
 }
@@ -39,7 +74,19 @@ function deviceKey(device: Uint8Array): string {
   return key;
 }
 
-export function createRelayHub(): RelayHub {
+/** The exact inverse of deviceKey, so a pairing map's own hex keys can be exported as the device-ids they were built from without holding a second copy of the bytes on the forwarding path. */
+function deviceFromKey(key: string): DeviceId {
+  const device = new Uint8Array(key.length / HEX_DIGITS_PER_BYTE);
+  for (let i = 0; i < device.length; i++) {
+    device[i] = Number.parseInt(
+      key.slice(i * HEX_DIGITS_PER_BYTE, (i + 1) * HEX_DIGITS_PER_BYTE),
+      HEX_RADIX,
+    );
+  }
+  return device;
+}
+
+export function createRelayHub(options: RelayHubOptions = {}): RelayHub {
   // Every currently-connected client, independent of whether it has gossiped a device yet -- the fan-out set for gossip re-broadcast (see module header). Not derivable from `devices`/`connectionDevice`, since a connection that hasn't gossiped anything of its own still needs to receive other clients' adverts.
   const connections = new Set<Readonly<Connection>>();
   const devices = new Map<string, Registration>();
@@ -55,6 +102,10 @@ export function createRelayHub(): RelayHub {
     Readonly<Connection>,
     Readonly<Connection>
   >();
+
+  function stateChanged(connection: Readonly<Connection>): void {
+    options.onConnectionStateChanged?.(connection);
+  }
 
   function pairingsOf(
     connection: Readonly<Connection>,
@@ -101,8 +152,79 @@ export function createRelayHub(): RelayHub {
         if (mostRecentPairing.get(peer) === connection) {
           mostRecentPairing.delete(peer);
         }
+        stateChanged(peer);
       }
       pairings.delete(connection);
+    }
+  }
+
+  function exportConnection(
+    connection: Readonly<Connection>,
+  ): RelayConnectionState | undefined {
+    const device = connectionDevice.get(connection);
+    if (device === undefined) {
+      return undefined;
+    }
+    const adverts: PeerAdvert[] = [];
+    for (const registration of devices.values()) {
+      if (registration.connection === connection) {
+        adverts.push(registration.advert);
+      }
+    }
+    const own = pairings.get(connection);
+    const pairedDevices = [...(own?.keys() ?? [])].map(deviceFromKey);
+    const recentPeer = mostRecentPairing.get(connection);
+    // Recovered by scanning this connection's own (small) pairing map rather than held as a second field on the forwarding path, since nothing but an export ever needs the most recent peer's device-id rather than its connection.
+    let mostRecentDevice: DeviceId | undefined;
+    if (own && recentPeer) {
+      for (const [key, peer] of own) {
+        if (peer === recentPeer) {
+          mostRecentDevice = deviceFromKey(key);
+          break;
+        }
+      }
+    }
+    return {
+      device,
+      adverts,
+      pairedDevices,
+      ...(mostRecentDevice !== undefined ? { mostRecentDevice } : {}),
+    };
+  }
+
+  function restoreConnections(
+    entries: readonly RelayConnectionRestore[],
+  ): void {
+    // Two passes, because a pairing names its peer by device-id and only the first pass establishes which connection each device-id belongs to. Keyed on each entry's own `device` rather than on the rebuilt `devices` directory: a pairing is with the connection that held the device-id when the pairing was made, which is exactly what that connection's own state records, whereas the directory may already have handed the id to a fresher connection.
+    const byDevice = new Map<string, Readonly<Connection>>();
+    for (const { connection, state } of entries) {
+      connections.add(connection);
+      connectionDevice.set(connection, state.device);
+      byDevice.set(deviceKey(state.device), connection);
+      for (const advert of state.adverts) {
+        devices.set(deviceKey(advert.device), { connection, advert });
+      }
+    }
+    for (const { connection, state } of entries) {
+      for (const paired of state.pairedDevices) {
+        const peer = byDevice.get(deviceKey(paired));
+        if (peer === undefined) {
+          // That peer's connection did not survive, so the pairing genuinely no longer exists and restoring half of it would leave a forward with nowhere to go.
+          continue;
+        }
+        pairingsOf(connection).set(deviceKey(paired), peer);
+        pairingsOf(peer).set(deviceKey(state.device), connection);
+      }
+    }
+    for (const { connection, state } of entries) {
+      const recent = state.mostRecentDevice;
+      if (recent === undefined) {
+        continue;
+      }
+      const peer = byDevice.get(deviceKey(recent));
+      if (peer !== undefined) {
+        mostRecentPairing.set(connection, peer);
+      }
     }
   }
 
@@ -111,8 +233,15 @@ export function createRelayHub(): RelayHub {
     frame: Frame,
   ): Promise<void> {
     if (frame.type === "gossip") {
+      // A device-id already registered to a different connection moves here under the registry's last-gossip-wins rule, which shrinks that connection's own exported adverts, so it is told alongside the gossiping one.
+      const supplanted = new Set<Readonly<Connection>>();
       for (const advert of frame.peers) {
-        devices.set(deviceKey(advert.device), { connection, advert });
+        const key = deviceKey(advert.device);
+        const previous = devices.get(key);
+        if (previous !== undefined && previous.connection !== connection) {
+          supplanted.add(previous.connection);
+        }
+        devices.set(key, { connection, advert });
       }
       // Recomputed here, once per gossip frame, rather than scanned per relay-data forward: mirrors the previous deviceOf() scan's own semantics (the connection's own device is whichever currently-registered device points back at it) without paying that scan's cost on every forwarded frame.
       for (const registration of devices.values()) {
@@ -120,6 +249,10 @@ export function createRelayHub(): RelayHub {
           connectionDevice.set(connection, registration.advert.device);
           break;
         }
+      }
+      stateChanged(connection);
+      for (const other of supplanted) {
+        stateChanged(other);
       }
       // Re-broadcast, unmodified, to every other currently-connected client -- see module header for why this is unconditional, undeduplicated, and loop-safe. A per-recipient send failure is swallowed so one dead peer never aborts the rest of the fan-out or this connection's own frame processing.
       for (const other of connections) {
@@ -167,6 +300,8 @@ export function createRelayHub(): RelayHub {
         registration.connection,
         registration.advert.device,
       );
+      stateChanged(connection);
+      stateChanged(registration.connection);
       await registration.connection.send({
         type: "relay-inbound",
         "source-device": initiatorDevice,
@@ -229,6 +364,8 @@ export function createRelayHub(): RelayHub {
     },
     onFrame: handleFrame,
     onDisconnect: forgetConnection,
+    exportConnection,
+    restoreConnections,
     stop() {
       connections.clear();
       devices.clear();
