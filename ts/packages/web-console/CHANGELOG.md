@@ -1,3 +1,13 @@
+## [2.2.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.1.0...%40exadev%2Fwire-mesh-web-console%402.2.0) (2026-09-28)
+
+### Features
+
+* **web-console:** show sender, time and delivery state in the message list ([4ad670f](https://github.com/ExaDev/wire-mesh/commit/4ad670fa24dc4065080bb87ecf4c3ac56ebb41bc))
+
+### Documentation
+
+* **web-console:** describe sending and failed-send state in the messaging section ([5bdfbba](https://github.com/ExaDev/wire-mesh/commit/5bdfbbab9a125cc380133b41c5ff7eebc97e6f97))
+
 ## [2.1.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.0.1...%40exadev%2Fwire-mesh-web-console%402.1.0) (2026-09-28)
 
 ### Features
