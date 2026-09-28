@@ -1,4 +1,4 @@
-// One peer-to-peer room session's own UI: message history, a compose box, and (when the peer has asked to message this console) an inline approve/deny prompt. All room-protocol behaviour lives in room-client.ts and the useRoomMessaging hook; this component only renders a RoomSessionView and forwards clicks back onto it.
+// One conversation's own UI: message history, a compose box, and (when the peer has asked to message this console) an inline approve/deny prompt. All room-protocol behaviour lives in room-client.ts and the useRoomMessaging hook; this component only renders a ConversationView and forwards clicks back onto it.
 
 import {
   Alert,
@@ -10,7 +10,7 @@ import {
   Text,
 } from "@mantine/core";
 import { SubmitRow } from "web-ui-primitives";
-import type { RoomSessionView } from "../hooks/use-room-messaging.js";
+import type { ConversationView } from "../conversations.js";
 import { NoticesView } from "./NoticesView.js";
 
 // How long an approved room:member grant lasts before the recipient must request-to-join again -- a session-length default, not a protocol requirement; re-requesting is cheap (an ordinary ungated room.join) so erring short over long costs little.
@@ -22,7 +22,7 @@ const ROOM_TOKEN_LIFETIME_MS =
   HOURS_PER_DAY * MINUTES_PER_HOUR * SECONDS_PER_MINUTE * MS_PER_SECOND;
 
 export interface RoomPanelProps {
-  view: Readonly<RoomSessionView>;
+  view: Readonly<ConversationView>;
   onSend: (text: string) => Promise<void>;
   onPostNotice: (text: string) => Promise<void>;
 }
@@ -35,7 +35,7 @@ export function RoomPanel({
   return (
     <Stack gap="xs">
       <Group justify="space-between">
-        <Text fw={600}>{view.peerHex}</Text>
+        <Text fw={600}>{view.participants.join(", ")}</Text>
         <Text size="sm" c={view.status === "connected" ? "green" : "dimmed"}>
           {view.status}
         </Text>

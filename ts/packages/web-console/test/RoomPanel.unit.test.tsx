@@ -11,19 +11,20 @@ import {
 } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { RoomPanel } from "../src/components/RoomPanel.js";
-import type { RoomSessionView } from "../src/hooks/use-room-messaging.js";
+import type { ConversationView } from "../src/conversations.js";
 import { stubMantineJsdomGlobals } from "./jsdom-mantine-polyfills.js";
 
 const DEVICE_ID_HEX_LENGTH = 64;
 
-function view(overrides: Partial<RoomSessionView> = {}): RoomSessionView {
+function view(overrides: Partial<ConversationView> = {}): ConversationView {
   return {
-    peerHex: "abcd",
+    participants: ["abcd"],
     roomPath: `${"1".repeat(DEVICE_ID_HEX_LENGTH)}+${"2".repeat(DEVICE_ID_HEX_LENGTH)}`,
     status: "connected",
     messages: [],
     notices: [],
     pendingJoinRequest: undefined,
+    unread: 0,
     ...overrides,
   };
 }

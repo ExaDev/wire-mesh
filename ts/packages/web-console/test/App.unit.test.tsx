@@ -23,6 +23,7 @@ import type { Clock } from "wire-mesh-core/ports/clock";
 import type { GossipFrame } from "wire-mesh-core/generated/protocol";
 import { messageFromFrame } from "wire-mesh-core/adapters/frame-codec";
 import { deviceIdToHex } from "wire-mesh-core/domain/device-id";
+import { dmRoomPath } from "wire-mesh-core/domain/room-path";
 import { signPeerAdvert } from "wire-mesh-core/domain/peer-advert";
 import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
 import { App } from "../src/App.js";
@@ -46,6 +47,9 @@ function fakeMessageStore(): MessageStore {
     async list(roomPath): Promise<StoredMessage[]> {
       return Promise.resolve(stored.get(roomPath) ?? []);
     },
+    async roomPaths(): Promise<string[]> {
+      return Promise.resolve([...stored.keys()]);
+    },
   };
 }
 
@@ -63,15 +67,20 @@ function renderApp(
   options: Readonly<{
     discoverLocalNode?: () => Promise<string | undefined>;
     defaultAddress?: string;
+    messageStore?: MessageStore;
   }> = {},
 ): ReturnType<typeof render> {
-  const { discoverLocalNode, defaultAddress } = options;
+  const {
+    discoverLocalNode,
+    defaultAddress,
+    messageStore = fakeMessageStore(),
+  } = options;
   return render(
     <MantineProvider>
       <App
         identity={appIdentity}
         clock={fixedClock}
-        messageStore={fakeMessageStore()}
+        messageStore={messageStore}
         {...(discoverLocalNode === undefined ? {} : { discoverLocalNode })}
         {...(defaultAddress === undefined ? {} : { defaultAddress })}
       />
@@ -83,6 +92,7 @@ function submitConnectForm(): void {
   fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 }
 
+const DEVICE_ID_HEX_LENGTH = 64;
 const GOSSIPED_ADDRESS = "203.0.113.5:4433";
 
 /** The frame a remote peer gossips, carrying that peer's own signed advert, and the hex of the device it names as the UI renders it. Built once for the suite because signing is asynchronous. */
@@ -219,6 +229,28 @@ describe("App", () => {
     renderApp({ defaultAddress: "wss://mesh.exadev.io" });
 
     expect(screen.getByLabelText(/^Node/)).toHaveValue("wss://mesh.exadev.io");
+  });
+
+  it("lists a conversation restored from storage as offline and shows its history, with no connection open", async () => {
+    const peerHex = "2".repeat(DEVICE_ID_HEX_LENGTH);
+    const store = fakeMessageStore();
+    await store.append(
+      dmRoomPath(deviceIdToHex(appIdentity.deviceId), peerHex),
+      {
+        direction: "received",
+        text: "hello from before the reload",
+        messageId: new Uint8Array([1]),
+        sentAt: 1000,
+      },
+    );
+
+    renderApp({ messageStore: store });
+
+    expect(await screen.findByText("222222222222")).toBeInTheDocument();
+    expect(screen.getByText("offline")).toBeInTheDocument();
+    expect(
+      screen.getByText("hello from before the reload"),
+    ).toBeInTheDocument();
   });
 
   it("surfaces a gossiped peer's address as a discovered peer, and dials it once the user clicks Connect", async () => {

@@ -23,12 +23,15 @@ import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import type { Clock } from "wire-mesh-core/ports/clock";
 import type { Connection } from "wire-mesh-core/ports/transport";
 import type { DeviceId } from "wire-mesh-core/generated/protocol";
+import { deviceIdToHex } from "wire-mesh-core/domain/device-id";
+import { dmRoomPath } from "wire-mesh-core/domain/room-path";
 import { createBrowserTransport } from "./adapters/websocket-transport.js";
 import { createWebrtcNegotiator } from "./webrtc-negotiation.js";
 import type { WebrtcNegotiator } from "./webrtc-negotiation.js";
 import { ConnectionPanel, deviceHex } from "./components/ConnectionPanel.js";
 import { DiscoveredPeersPanel } from "./components/DiscoveredPeersPanel.js";
 import type { DiscoveredPeerRow } from "./components/DiscoveredPeersPanel.js";
+import { ConversationList } from "./components/ConversationList.js";
 import { RoomPanel } from "./components/RoomPanel.js";
 import { useRoomMessaging } from "./hooks/use-room-messaging.js";
 import type { MessageStore } from "./message-store.js";
@@ -93,6 +96,22 @@ export function App({
   const [connections, setConnections] = useState<ConnectionEntry[]>([]);
   const [discovered, setDiscovered] = useState<PendingExpansion[]>([]);
   const roomMessaging = useRoomMessaging(identity, clock, messageStore);
+  const [selectedPath, setSelectedPath] = useState<string | undefined>();
+  // The conversation shown is the one the user picked, falling back to the first while nothing is picked or the picked one no longer exists.
+  const selectedConversation =
+    roomMessaging.conversations.find(
+      (conversation) => conversation.roomPath === selectedPath,
+    ) ?? roomMessaging.conversations[0];
+
+  // Whatever conversation is on screen has its messages read as they arrive.
+  const { markRead } = roomMessaging;
+  const selectedRoomPath = selectedConversation?.roomPath;
+  const selectedUnread = selectedConversation?.unread ?? 0;
+  useEffect(() => {
+    if (selectedRoomPath !== undefined && selectedUnread > 0) {
+      markRead(selectedRoomPath);
+    }
+  }, [selectedRoomPath, selectedUnread, markRead]);
 
   // A negotiator's own onIncomingConnection callback is registered once, at construction, and must still call whatever the *latest* attach is -- attach itself is a fresh function every time useRoomMessaging's own session map changes, so a ref (updated every render, read from the callback) is what keeps that call from closing over a stale, since-superseded attach.
   const attachRef = useRef(roomMessaging.attach);
@@ -238,7 +257,13 @@ export function App({
   ): void {
     negotiator
       .initiate(device)
-      .then(async (connection) => roomMessaging.attach(connection, device))
+      .then(async (connection) => {
+        await roomMessaging.attach(connection, device);
+        // The user asked to message this peer, so show that conversation.
+        setSelectedPath(
+          dmRoomPath(deviceIdToHex(identity.deviceId), deviceIdToHex(device)),
+        );
+      })
       .catch(() => {
         // RoomPanel only ever renders once a session actually attaches; a negotiation failure (ICE never completing, the peer refusing) simply means no panel appears -- nothing else in this console currently surfaces a connect failure more specifically than that.
       });
@@ -294,16 +319,23 @@ export function App({
           }}
         />
       ))}
-      {roomMessaging.sessions.map((view) => (
+      <ConversationList
+        conversations={roomMessaging.conversations}
+        selected={selectedConversation?.roomPath}
+        onSelect={setSelectedPath}
+      />
+      {selectedConversation !== undefined && (
         <RoomPanel
-          key={view.peerHex}
-          view={view}
-          onSend={async (text) => roomMessaging.send(view.peerHex, text)}
+          key={selectedConversation.roomPath}
+          view={selectedConversation}
+          onSend={async (text) =>
+            roomMessaging.send(selectedConversation.roomPath, text)
+          }
           onPostNotice={async (text) =>
-            roomMessaging.postNotice(view.peerHex, text)
+            roomMessaging.postNotice(selectedConversation.roomPath, text)
           }
         />
-      ))}
+      )}
     </Stack>
   );
 }
