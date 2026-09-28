@@ -334,6 +334,12 @@ export function App({
           onPostNotice={async (text) =>
             roomMessaging.postNotice(selectedConversation.roomPath, text)
           }
+          onRetry={(localId) => {
+            void roomMessaging.retry(selectedConversation.roomPath, localId);
+          }}
+          onDiscard={(localId) => {
+            roomMessaging.discard(selectedConversation.roomPath, localId);
+          }}
         />
       )}
     </Stack>

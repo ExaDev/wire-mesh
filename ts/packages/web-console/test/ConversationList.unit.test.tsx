@@ -21,6 +21,7 @@ function conversation(
     status: "connected",
     messages: [],
     notices: [],
+    outgoing: [],
     pendingJoinRequest: undefined,
     unread: 0,
     ...overrides,

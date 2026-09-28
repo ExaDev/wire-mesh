@@ -246,7 +246,8 @@ describe("App", () => {
 
     renderApp({ messageStore: store });
 
-    expect(await screen.findByText("222222222222")).toBeInTheDocument();
+    const list = await screen.findByTestId("conversation-list");
+    expect(within(list).getByText("222222222222")).toBeInTheDocument();
     expect(screen.getByText("offline")).toBeInTheDocument();
     expect(
       screen.getByText("hello from before the reload"),

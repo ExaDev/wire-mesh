@@ -48,8 +48,12 @@ export interface RoomMessaging {
     connection: Readonly<Connection>,
     knownPeerDevice?: DeviceId,
   ) => Promise<void>;
-  /** Sends into a conversation, rejecting when it has no live session. */
+  /** Sends into a conversation. Never rejects: the message shows in the conversation as sending, then either joins its history or stays as a failed message with the reason. */
   send: (roomPath: string, text: string) => Promise<void>;
+  /** Retries a failed outgoing message, in place. */
+  retry: (roomPath: string, localId: string) => Promise<void>;
+  /** Dismisses an outgoing message without sending it. */
+  discard: (roomPath: string, localId: string) => void;
   /** Posts one durable encrypted notice to the DM room: joins if no token yet, bootstraps epoch 1 when this side is the lower participant and no epoch exists, then posts and announces via the notice wiring. */
   postNotice: (roomPath: string, text: string) => Promise<void>;
   /** Acknowledges a conversation's unread messages. */
@@ -291,8 +295,9 @@ export function useRoomMessaging(
     [identity, clock, ownDeviceHex, sessions, messageStore],
   );
 
-  const send = useCallback(
-    async (roomPath: string, text: string): Promise<void> => {
+  /** One delivery attempt: joins the room if this side holds no token yet, sends, and persists the message. Throws on any failure; the caller decides how that is surfaced. */
+  const deliver = useCallback(
+    async (roomPath: string, text: string): Promise<StoredMessage> => {
       const entry = sessions.get(roomPath);
       const session = liveSession(entry);
       let token = entry?.token;
@@ -329,10 +334,59 @@ export function useRoomMessaging(
         sentAt: clock.now(),
       };
       await messageStore.append(roomPath, stored);
-      dispatch({ type: "message", roomPath, message: stored });
+      return stored;
     },
     [sessions, clock, messageStore, identity],
   );
+
+  /** Runs one delivery attempt for a pending outgoing message. Success moves it into the history; failure keeps it in the list as failed, with the reason, so the user can retry or dismiss it instead of losing the text. */
+  const attempt = useCallback(
+    async (roomPath: string, localId: string, text: string): Promise<void> => {
+      dispatch({
+        type: "outgoing",
+        roomPath,
+        entry: { localId, text, status: "sending" },
+      });
+      try {
+        const stored = await deliver(roomPath, text);
+        dispatch({ type: "message", roomPath, message: stored });
+        dispatch({ type: "outgoing-removed", roomPath, localId });
+      } catch (error) {
+        dispatch({
+          type: "outgoing",
+          roomPath,
+          entry: {
+            localId,
+            text,
+            status: "failed",
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
+      }
+    },
+    [deliver],
+  );
+
+  const send = useCallback(
+    async (roomPath: string, text: string): Promise<void> =>
+      attempt(roomPath, crypto.randomUUID(), text),
+    [attempt],
+  );
+
+  const retry = useCallback(
+    async (roomPath: string, localId: string): Promise<void> => {
+      const pending = sessions
+        .get(roomPath)
+        ?.outgoing.find((entry) => entry.localId === localId);
+      if (pending === undefined) return;
+      await attempt(roomPath, localId, pending.text);
+    },
+    [sessions, attempt],
+  );
+
+  const discard = useCallback((roomPath: string, localId: string): void => {
+    dispatch({ type: "outgoing-removed", roomPath, localId });
+  }, []);
 
   const postNotice = useCallback(
     async (roomPath: string, text: string): Promise<void> => {
@@ -381,6 +435,8 @@ export function useRoomMessaging(
     conversations: [...sessions.values()],
     attach,
     send,
+    retry,
+    discard,
     postNotice,
     markRead,
   };
