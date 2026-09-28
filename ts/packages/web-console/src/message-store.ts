@@ -15,6 +15,8 @@ export interface MessageStore {
   append: (roomPath: string, message: Readonly<StoredMessage>) => Promise<void>;
   /** Every message stored for this room path, ordered by sentAt then messageId (its own tiebreak for two messages sharing one sentAt value). */
   list: (roomPath: string) => Promise<StoredMessage[]>;
+  /** Every room path that has at least one stored message, in no particular order. */
+  roomPaths: () => Promise<string[]>;
 }
 
 // Zero-padding sentAt to this width keeps the storage key's lexicographic string order identical to sentAt's own numeric order -- the width of the largest safe integer bounds every real Date.now() value for the lifetime of this format.
@@ -27,6 +29,12 @@ function messageKey(
 ): string {
   const sentAtSegment = String(message.sentAt).padStart(SENT_AT_KEY_WIDTH, "0");
   return `${KEY_PREFIX}/${roomPath}/${sentAtSegment}-${bytesToHex(message.messageId)}`;
+}
+
+/** The room path a storage key belongs to: the key is `message/<roomPath>/<sentAt>-<messageId>`, and an owner-named room path itself contains a `/`, so the path is everything between the prefix and the final segment. */
+function roomPathOfKey(key: string): string {
+  const withoutPrefix = key.slice(`${KEY_PREFIX}/`.length);
+  return withoutPrefix.slice(0, withoutPrefix.lastIndexOf("/"));
 }
 
 function isDirection(value: unknown): value is StoredMessage["direction"] {
@@ -54,6 +62,10 @@ export function createMessageStore(
         messageKey(roomPath, message),
         new Uint8Array(encode(message, cdeEncodeOptions)),
       );
+    },
+    async roomPaths(): Promise<string[]> {
+      const keys = await storage.keys(`${KEY_PREFIX}/`);
+      return [...new Set(keys.map(roomPathOfKey))];
     },
     async list(roomPath): Promise<StoredMessage[]> {
       const keys = (await storage.keys(`${KEY_PREFIX}/${roomPath}/`)).sort();
