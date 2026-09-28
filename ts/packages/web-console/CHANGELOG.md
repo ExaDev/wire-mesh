@@ -1,3 +1,14 @@
+## [2.1.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.0.1...%40exadev%2Fwire-mesh-web-console%402.1.0) (2026-09-28)
+
+### Features
+
+* **web-console:** key conversations by room path and add a conversation list ([7bf1511](https://github.com/ExaDev/wire-mesh/commit/7bf15116ccd76b40f9e2f5e12780bac5a8171686))
+* **web-console:** list the room paths that have stored messages ([c2ffb06](https://github.com/ExaDev/wire-mesh/commit/c2ffb060f761ed4d9c18199384b7d2a728fdb0c3))
+
+### Documentation
+
+* **web-console:** describe the conversation model and correct the deferred list ([4deaa81](https://github.com/ExaDev/wire-mesh/commit/4deaa8150a0a5eb811d4728aa16ee851c4495888))
+
 ## [2.0.1](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.0.0...%40exadev%2Fwire-mesh-web-console%402.0.1) (2026-09-20)
 
 
