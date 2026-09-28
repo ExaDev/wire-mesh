@@ -23,6 +23,7 @@ function view(overrides: Partial<ConversationView> = {}): ConversationView {
     status: "connected",
     messages: [],
     notices: [],
+    outgoing: [],
     pendingJoinRequest: undefined,
     unread: 0,
     ...overrides,
@@ -38,6 +39,8 @@ function renderPanel(
         view={view()}
         onSend={async () => Promise.resolve()}
         onPostNotice={async () => Promise.resolve()}
+        onRetry={() => undefined}
+        onDiscard={() => undefined}
         {...props}
       />
     </MantineProvider>,

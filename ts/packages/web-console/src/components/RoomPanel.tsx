@@ -1,16 +1,9 @@
 // One conversation's own UI: message history, a compose box, and (when the peer has asked to message this console) an inline approve/deny prompt. All room-protocol behaviour lives in room-client.ts and the useRoomMessaging hook; this component only renders a ConversationView and forwards clicks back onto it.
 
-import {
-  Alert,
-  Button,
-  Divider,
-  Group,
-  ScrollArea,
-  Stack,
-  Text,
-} from "@mantine/core";
+import { Alert, Button, Divider, Group, Stack, Text } from "@mantine/core";
 import { SubmitRow } from "web-ui-primitives";
-import type { ConversationView } from "../conversations.js";
+import { participantLabel, type ConversationView } from "../conversations.js";
+import { MessageList } from "./MessageList.js";
 import { NoticesView } from "./NoticesView.js";
 
 // How long an approved room:member grant lasts before the recipient must request-to-join again -- a session-length default, not a protocol requirement; re-requesting is cheap (an ordinary ungated room.join) so erring short over long costs little.
@@ -25,12 +18,16 @@ export interface RoomPanelProps {
   view: Readonly<ConversationView>;
   onSend: (text: string) => Promise<void>;
   onPostNotice: (text: string) => Promise<void>;
+  onRetry: (localId: string) => void;
+  onDiscard: (localId: string) => void;
 }
 
 export function RoomPanel({
   view,
   onSend,
   onPostNotice,
+  onRetry,
+  onDiscard,
 }: Readonly<RoomPanelProps>): React.JSX.Element {
   return (
     <Stack gap="xs">
@@ -75,19 +72,13 @@ export function RoomPanel({
         </Alert>
       )}
 
-      <ScrollArea h={256}>
-        <Stack gap={4}>
-          {view.messages.map((message) => (
-            <Text
-              key={`${String(message.sentAt)}-${message.text}`}
-              size="sm"
-              ta={message.direction === "sent" ? "right" : "left"}
-            >
-              {message.text}
-            </Text>
-          ))}
-        </Stack>
-      </ScrollArea>
+      <MessageList
+        messages={view.messages}
+        outgoing={view.outgoing}
+        peerLabel={participantLabel(view)}
+        onRetry={onRetry}
+        onDiscard={onDiscard}
+      />
 
       <Group>
         <SubmitRow

@@ -13,6 +13,17 @@ export interface PendingJoinRequest {
   decide: (decision: Readonly<RoomJoinDecision>) => Promise<void>;
 }
 
+/** A message the user has sent that is not yet in the conversation's history: in flight, or refused with the reason, until it is retried or dismissed. */
+export type PendingOutgoing = {
+  /** Identifies this attempt locally; the message id it will be stored under is only minted once it is delivered. */
+  localId: string;
+  text: string;
+} & (
+  | { status: "sending" }
+  /** error is why the last attempt failed. */
+  | { status: "failed"; error: string }
+);
+
 export interface ConversationView {
   roomPath: string;
   /** Hex device-ids of the other members of the room: the one peer for a DM. */
@@ -21,6 +32,7 @@ export interface ConversationView {
   status: "connected" | "closed";
   messages: readonly StoredMessage[];
   notices: readonly NoticeBoardEntry[];
+  outgoing: readonly PendingOutgoing[];
   pendingJoinRequest: PendingJoinRequest | undefined;
   /** Received messages not yet acknowledged through markRead. Restored history is never counted. */
   unread: number;
@@ -46,6 +58,8 @@ export type ConversationAction =
     }
   | { type: "message"; roomPath: string; message: StoredMessage }
   | { type: "read"; roomPath: string }
+  | { type: "outgoing"; roomPath: string; entry: PendingOutgoing }
+  | { type: "outgoing-removed"; roomPath: string; localId: string }
   | { type: "notices"; roomPath: string; notices: NoticeBoardEntry[] }
   | { type: "join-request"; roomPath: string; request: PendingJoinRequest }
   | { type: "join-request-settled"; roomPath: string }
@@ -94,6 +108,7 @@ export function reduceConversations(
         status: "connected",
         messages: existing?.messages ?? [],
         notices: [],
+        outgoing: existing?.outgoing ?? [],
         pendingJoinRequest: undefined,
         unread: existing?.unread ?? 0,
       });
@@ -114,6 +129,7 @@ export function reduceConversations(
         status: "closed",
         messages: mergeMessages([], action.messages),
         notices: [],
+        outgoing: [],
         pendingJoinRequest: undefined,
         unread: 0,
       });
@@ -140,6 +156,20 @@ export function reduceConversations(
       return update(state, action.roomPath, (entry) =>
         entry.unread === 0 ? entry : { ...entry, unread: 0 },
       );
+    case "outgoing":
+      return update(state, action.roomPath, (entry) => ({
+        ...entry,
+        outgoing: entry.outgoing.some((o) => o.localId === action.entry.localId)
+          ? entry.outgoing.map((o) =>
+              o.localId === action.entry.localId ? action.entry : o,
+            )
+          : [...entry.outgoing, action.entry],
+      }));
+    case "outgoing-removed":
+      return update(state, action.roomPath, (entry) => ({
+        ...entry,
+        outgoing: entry.outgoing.filter((o) => o.localId !== action.localId),
+      }));
     case "join-request":
       return update(state, action.roomPath, (entry) => ({
         ...entry,
@@ -174,4 +204,16 @@ export function participantsOf(
     return parsed.participants.filter((hex) => hex !== ownDeviceHex);
   }
   return parsed.owner === ownDeviceHex ? [] : [parsed.owner];
+}
+
+/** How a conversation's other members are named in the UI. A device-id is long, so this shows enough leading hex to tell devices apart at a glance; a conversation with no other members is named by its room path. */
+const DEVICE_LABEL_LENGTH = 12;
+
+export function participantLabel(
+  view: Readonly<Pick<ConversationView, "participants" | "roomPath">>,
+): string {
+  if (view.participants.length === 0) return view.roomPath;
+  return view.participants
+    .map((hex) => hex.slice(0, DEVICE_LABEL_LENGTH))
+    .join(", ");
 }

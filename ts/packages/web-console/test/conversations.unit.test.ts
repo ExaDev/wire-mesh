@@ -9,6 +9,7 @@ import { createBrowserTransport } from "../src/adapters/websocket-transport.js";
 import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
 import {
   mergeMessages,
+  participantLabel,
   participantsOf,
   reduceConversations,
   type ConversationAction,
@@ -215,6 +216,72 @@ describe("reduceConversations", () => {
     expect(conversation(state, DM).messages).toHaveLength(1);
   });
 
+  it("adds an outgoing message, then updates it in place when its status changes", () => {
+    const state = apply([
+      { type: "restored", roomPath: DM, participants: [PEER], messages: [] },
+      {
+        type: "outgoing",
+        roomPath: DM,
+        entry: { localId: "a", text: "hi", status: "sending" },
+      },
+      {
+        type: "outgoing",
+        roomPath: DM,
+        entry: { localId: "b", text: "again", status: "sending" },
+      },
+      {
+        type: "outgoing",
+        roomPath: DM,
+        entry: { localId: "a", text: "hi", status: "failed", error: "denied" },
+      },
+    ]);
+
+    expect(conversation(state, DM).outgoing).toEqual([
+      { localId: "a", text: "hi", status: "failed", error: "denied" },
+      { localId: "b", text: "again", status: "sending" },
+    ]);
+  });
+
+  it("removes only the named outgoing message", () => {
+    const state = apply([
+      { type: "restored", roomPath: DM, participants: [PEER], messages: [] },
+      {
+        type: "outgoing",
+        roomPath: DM,
+        entry: { localId: "a", text: "one", status: "sending" },
+      },
+      {
+        type: "outgoing",
+        roomPath: DM,
+        entry: { localId: "b", text: "two", status: "sending" },
+      },
+      { type: "outgoing-removed", roomPath: DM, localId: "a" },
+    ]);
+
+    expect(conversation(state, DM).outgoing.map((o) => o.localId)).toEqual([
+      "b",
+    ]);
+  });
+
+  it("keeps a failed outgoing message when a new session opens, so it can be retried", () => {
+    const state = apply([
+      { type: "restored", roomPath: DM, participants: [PEER], messages: [] },
+      {
+        type: "outgoing",
+        roomPath: DM,
+        entry: {
+          localId: "a",
+          text: "hi",
+          status: "failed",
+          error: "not connected",
+        },
+      },
+      { type: "opened", roomPath: DM, participants: [PEER], session },
+    ]);
+
+    expect(conversation(state, DM).outgoing).toHaveLength(1);
+  });
+
   it("ignores an action for a conversation it does not hold", () => {
     const empty = new Map<string, ConversationInternal>();
 
@@ -257,5 +324,17 @@ describe("participantsOf", () => {
 
     expect(participantsOf(room, OWN)).toEqual([PEER]);
     expect(participantsOf(room, PEER)).toEqual([]);
+  });
+});
+
+describe("participantLabel", () => {
+  it("shortens each participant's device-id and joins them", () => {
+    expect(
+      participantLabel({ roomPath: DM, participants: [PEER, OTHER_PEER] }),
+    ).toBe("222222222222, 333333333333");
+  });
+
+  it("falls back to the room path when nobody else is in the room", () => {
+    expect(participantLabel({ roomPath: DM, participants: [] })).toBe(DM);
   });
 });
