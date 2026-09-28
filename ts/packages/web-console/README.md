@@ -39,7 +39,7 @@ The `webrtc:signal` capability itself carries no target-device field -- a `manag
 
 ## Messaging
 
-Messages travel over `core/room`. A conversation is identified by its room path: a direct message's path names the two participating devices, so one peer is one conversation. `src/conversations.ts` holds the state of every conversation and the pure reducer that evolves it, and `src/hooks/use-room-messaging.ts` feeds it from live sessions. A conversation is restored from `src/message-store.ts` at start-up with no session, shown as offline, and takes a live session when a WebRTC connection to that peer attaches. Received messages in a conversation that is not on screen count as unread; the conversation on screen is read as messages arrive. Both sent and received messages are persisted per room path.
+Messages travel over `core/room`. A conversation is identified by its room path: a direct message's path names the two participating devices, so one peer is one conversation. `src/conversations.ts` holds the state of every conversation and the pure reducer that evolves it, and `src/hooks/use-room-messaging.ts` feeds it from live sessions. A conversation is restored from `src/message-store.ts` at start-up with no session, shown as offline, and takes a live session when a WebRTC connection to that peer attaches. Received messages in a conversation that is not on screen count as unread; the conversation on screen is read as messages arrive. Both sent and received messages are persisted per room path. A message being sent shows in the conversation as sending; if delivery fails it stays there as not sent, with the reason, and can be retried or dismissed.
 
 ## What is deliberately deferred
 
