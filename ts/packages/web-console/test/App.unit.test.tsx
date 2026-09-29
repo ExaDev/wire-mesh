@@ -248,7 +248,7 @@ describe("App", () => {
 
     const list = await screen.findByTestId("conversation-list");
     expect(within(list).getByText("222222222222")).toBeInTheDocument();
-    expect(screen.getByText("offline")).toBeInTheDocument();
+    expect(within(list).getByText("offline")).toBeInTheDocument();
     expect(
       screen.getByText("hello from before the reload"),
     ).toBeInTheDocument();
@@ -288,7 +288,7 @@ describe("App", () => {
     expect(screen.queryByTestId("discovered-peers")).toBeNull();
   });
 
-  it("shows why a message attempt failed, and lets the user dismiss it", async () => {
+  it("opens the conversation over the hub when the direct connection fails, and says why until dismissed", async () => {
     renderApp();
 
     submitConnectForm();
@@ -314,9 +314,14 @@ describe("App", () => {
       within(directoryRow).getByRole("button", { name: "Message" }),
     );
 
+    // The conversation is open over the hub at once, and only the direct connection failed.
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent(`Could not message ${gossipedDeviceHex}`);
+    expect(alert).toHaveTextContent(
+      `No direct connection to ${gossipedDeviceHex}`,
+    );
     expect(alert).toHaveTextContent(/RTCPeerConnection/);
+    expect(alert).toHaveTextContent("Messages go through the hub instead");
+    expect(screen.getByText("via hub")).toBeInTheDocument();
 
     fireEvent.click(within(alert).getByRole("button"));
     expect(screen.queryByRole("alert")).toBeNull();

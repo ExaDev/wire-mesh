@@ -19,6 +19,7 @@ function conversation(
     roomPath: `${"1".repeat(DEVICE_ID_HEX_LENGTH)}+${peer}`,
     participants: [peer],
     status: "connected",
+    via: "direct",
     messages: [],
     notices: [],
     outgoing: [],

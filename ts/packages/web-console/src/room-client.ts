@@ -77,7 +77,7 @@ export function buildRoomSendCommand(
  * Sends a room.send (a DM is just a room-path variant, not a separate verb, so this covers both). token is this side's own room:member grant for roomPath, minted by the room's owner (room.join) or pushed by it (room.invite). targetDevice routes the request via a relay-connect pairing rather than directly over the session's own Connection, the same targetDevice semantics sendManageRequest itself already defines -- omit it for a session that already is the direct connection to the room's other member (web-console's own primary case, one negotiated WebRTC Connection per peer).
  */
 export async function sendRoomMessage(
-  session: Readonly<MeshSession>,
+  session: Readonly<Pick<MeshSession, "sendManageRequest">>,
   roomPath: string,
   text: string,
   token: CapabilityToken,
@@ -101,7 +101,7 @@ export interface RoomJoinResult {
  * Sends the deliberately ungated room.join, now a thin wrapper over capability-request.ts's own generic requestCapability (core/room's room:member grant is the reference specialization of that primitive -- see its own module comment) -- core/room's own design puts access control entirely in the receiving owner's human approval, not a capability check on this request, which is exactly what requestCapability's own ungated ask already provides for any capability. Resolves with the freshly granted token and the room's current member list on approval (parsed back out of the generic grant response's own open extension tail via roomJoinOkSchema); rejects on denial (an ordinary manage-error) or a malformed response.
  */
 export async function requestToJoin(
-  session: Readonly<MeshSession>,
+  session: Readonly<Pick<MeshSession, "sendManageRequest">>,
   roomPath: string,
   targetDevice?: DeviceId,
 ): Promise<RoomJoinResult> {
@@ -154,7 +154,7 @@ export async function mintRoomInviteGrant(
  * Sends room.invite, now a thin wrapper over capability-grant.ts's own generic sendCapabilityGrant (core/room's room:member grant is the reference specialization of that primitive, the push counterpart to requestToJoin's own pull-side wrapper over requestCapability) -- core/room's own room.invite is deliberately ungated the same way room.join is: the owner already IS the room's own authority to invite, with no capability check on this request itself, security living entirely in grantedToken's own verification on the receiving end (capability-grant.ts's four obligations). Resolves with the raw manage-response outcome: `{result:"ok"}` once the invitee's own side has validated the pushed token, an ordinary manage-error otherwise -- never a human "no" (an invitee wanting to decline surfaces that as its own room.leave, per agent-comms' existing room.invite/room_invite/decline design, not a wire-level rejection of the push itself).
  */
 export async function sendRoomInvite(
-  session: Readonly<MeshSession>,
+  session: Readonly<Pick<MeshSession, "sendManageRequest">>,
   roomPath: string,
   grantedToken: CapabilityToken,
   targetDevice?: DeviceId,
@@ -223,7 +223,7 @@ export interface RoomRouterHandlers {
  * The one consumer of session.incomingManageRequests for every core/room verb this console speaks, dispatching room.send to onMessage (after verifying the presented token against all six of core/room's obligations -- an unauthorized or malformed request is refused, an ordinary manage-error, and never reaches the caller), room.join to onJoinRequest (deliberately ungated, per core/room's own design: access control lives entirely in the human decision behind decide(), not a token check on the request itself), and room.invite to onRoomInvite (also ungated on the request itself, per the identical reasoning -- security instead lives entirely in the pushed token's own verification against capability-grant.ts's four obligations, with no decision to make once that passes). A single shared consumer, not several independent ones, because concurrent `for await` loops over the same incomingManageRequests would race for its items -- exactly the "shared request router... future work for whenever a second consumer actually exists" gap webrtc-negotiation.ts's own consumeIncoming already flags, now arrived. Runs for the lifetime of the session; a verb this router doesn't recognise is left unanswered rather than misrouted, matching every other domain's own convention in this package.
  */
 export function createRoomRouter(
-  session: Readonly<MeshSession>,
+  session: Readonly<Pick<MeshSession, "incomingManageRequests">>,
   options: Readonly<RoomRouterOptions>,
   handlers: Readonly<RoomRouterHandlers>,
 ): void {
