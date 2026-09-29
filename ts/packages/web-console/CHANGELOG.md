@@ -1,3 +1,12 @@
+## [2.6.3](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.6.2...%40exadev%2Fwire-mesh-web-console%402.6.3) (2026-09-29)
+
+### Tests
+
+* **web-console:** fail the offline scenario when a route's outcome differs from what is expected ([9d2f2a8](https://github.com/ExaDev/wire-mesh/commit/9d2f2a87f73f196c997b18aa422800d6beeb06f6))
+* **web-console:** include the offline Playwright config in the node tsconfig ([a09772d](https://github.com/ExaDev/wire-mesh/commit/a09772dbd74d4d9afe548c45adf09facf9fa2152))
+* **web-console:** keep vitest out of the offline container spec ([1976fe1](https://github.com/ExaDev/wire-mesh/commit/1976fe1768e306daaff9246c46e0f779612fd746))
+* **web-console:** run two consoles offline against a LAN node from a cached console ([2a72205](https://github.com/ExaDev/wire-mesh/commit/2a7220553db200ebf728ce98d180e927622ec127))
+
 ## [2.6.2](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.6.1...%40exadev%2Fwire-mesh-web-console%402.6.2) (2026-09-29)
 
 
