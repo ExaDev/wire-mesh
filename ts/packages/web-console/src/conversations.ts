@@ -1,7 +1,10 @@
 // The state of every conversation this console holds, keyed by room path, and the pure reducer that evolves it. Kept apart from the hook that feeds it so the merge, unread and restore rules can be tested without a live session.
 
 import type { MeshSession } from "wire-mesh-core/domain/mesh-session";
-import type { CapabilityToken } from "wire-mesh-core/generated/protocol";
+import type {
+  CapabilityToken,
+  DeviceId,
+} from "wire-mesh-core/generated/protocol";
 import type { NoticeBoardEntry } from "wire-mesh-core/domain/notice-board";
 import { bytesToHex } from "wire-mesh-core/domain/device-id";
 import { parseRoomPath } from "wire-mesh-core/domain/room-path";
@@ -26,12 +29,26 @@ export type PendingOutgoing = {
     | { status: "failed"; error: string }
   );
 
+/** What a conversation needs from a hub connection to send through it: the relay peer is addressed by device-id on each request. */
+export type RelaySender = Pick<MeshSession, "sendManageRequest">;
+
+/** A conversation's route through a hub, where the peer is reached by a relay pairing and a secure channel instead of a connection of its own. */
+export interface RelayRoute {
+  readonly hub: RelaySender;
+  readonly peer: DeviceId;
+}
+
+/** How a conversation's messages travel: over a direct connection to the peer, or through a hub. A direct connection is preferred whenever there is one. */
+export type ConversationVia = "direct" | "hub";
+
 export interface ConversationView {
   roomPath: string;
   /** Hex device-ids of the other members of the room: the one peer for a DM. */
   participants: readonly string[];
-  /** "closed" covers both a session that has ended and a conversation restored from storage that has not been given a live session yet. */
+  /** "closed" covers both a conversation whose routes have all ended and one restored from storage that has not been given a route yet. */
   status: "connected" | "closed";
+  /** The route messages take, undefined while the conversation has none. */
+  via: ConversationVia | undefined;
   messages: readonly StoredMessage[];
   notices: readonly NoticeBoardEntry[];
   outgoing: readonly PendingOutgoing[];
@@ -41,17 +58,26 @@ export interface ConversationView {
 }
 
 export interface ConversationInternal extends ConversationView {
-  session: MeshSession | undefined;
+  direct: MeshSession | undefined;
+  relay: RelayRoute | undefined;
   token: CapabilityToken | undefined;
 }
 
 export type ConversationAction =
   | {
-      type: "opened";
+      type: "direct-opened";
       roomPath: string;
       participants: readonly string[];
       session: MeshSession;
     }
+  | {
+      type: "relay-opened";
+      roomPath: string;
+      participants: readonly string[];
+      route: RelayRoute;
+    }
+  | { type: "direct-closed"; roomPath: string }
+  | { type: "hub-closed"; hub: RelaySender }
   | {
       type: "restored";
       roomPath: string;
@@ -65,8 +91,7 @@ export type ConversationAction =
   | { type: "notices"; roomPath: string; notices: NoticeBoardEntry[] }
   | { type: "join-request"; roomPath: string; request: PendingJoinRequest }
   | { type: "join-request-settled"; roomPath: string }
-  | { type: "token"; roomPath: string; token: CapabilityToken }
-  | { type: "closed"; roomPath: string };
+  | { type: "token"; roomPath: string; token: CapabilityToken };
 
 /** Message order matches message-store.ts's own list order (sentAt, then message id), so a history load and a live message interleave the same way a reload would show them. */
 function compareMessages(a: StoredMessage, b: StoredMessage): number {
@@ -95,25 +120,82 @@ function update(
   return new Map(state).set(roomPath, change(entry));
 }
 
+function blank(
+  roomPath: string,
+  participants: readonly string[],
+): ConversationInternal {
+  return {
+    roomPath,
+    participants,
+    direct: undefined,
+    relay: undefined,
+    via: undefined,
+    token: undefined,
+    status: "closed",
+    messages: [],
+    notices: [],
+    outgoing: [],
+    pendingJoinRequest: undefined,
+    unread: 0,
+  };
+}
+
+/** The conversation with its routes replaced, and the route it reports and its status following from them: a direct connection wins over a hub. */
+function withRoutes(
+  entry: Readonly<ConversationInternal>,
+  direct: MeshSession | undefined,
+  relay: RelayRoute | undefined,
+): ConversationInternal {
+  const via: ConversationVia | undefined =
+    direct !== undefined ? "direct" : relay !== undefined ? "hub" : undefined;
+  return {
+    ...entry,
+    direct,
+    relay,
+    via,
+    status: via === undefined ? "closed" : "connected",
+  };
+}
+
 export function reduceConversations(
   state: ReadonlyMap<string, ConversationInternal>,
   action: Readonly<ConversationAction>,
 ): ReadonlyMap<string, ConversationInternal> {
   switch (action.type) {
-    case "opened": {
-      const existing = state.get(action.roomPath);
+    case "direct-opened": {
+      const entry =
+        state.get(action.roomPath) ??
+        blank(action.roomPath, action.participants);
+      // A new direct connection starts with an empty notice board; the token and any pending request belong to the conversation and outlive the connection they arrived on.
       return new Map(state).set(action.roomPath, {
-        roomPath: action.roomPath,
+        ...withRoutes(entry, action.session, entry.relay),
         participants: action.participants,
-        session: action.session,
-        token: undefined,
-        status: "connected",
-        messages: existing?.messages ?? [],
         notices: [],
-        outgoing: existing?.outgoing ?? [],
-        pendingJoinRequest: undefined,
-        unread: existing?.unread ?? 0,
       });
+    }
+    case "relay-opened": {
+      const entry =
+        state.get(action.roomPath) ??
+        blank(action.roomPath, action.participants);
+      return new Map(state).set(
+        action.roomPath,
+        withRoutes(entry, entry.direct, action.route),
+      );
+    }
+    case "direct-closed":
+      return update(state, action.roomPath, (entry) =>
+        withRoutes(entry, undefined, entry.relay),
+      );
+    case "hub-closed": {
+      let next = state;
+      for (const entry of state.values()) {
+        if (entry.relay?.hub === action.hub) {
+          next = update(next, entry.roomPath, (current) =>
+            withRoutes(current, current.direct, undefined),
+          );
+        }
+      }
+      return next;
     }
     case "restored": {
       const existing = state.get(action.roomPath);
@@ -124,16 +206,8 @@ export function reduceConversations(
         }));
       }
       return new Map(state).set(action.roomPath, {
-        roomPath: action.roomPath,
-        participants: action.participants,
-        session: undefined,
-        token: undefined,
-        status: "closed",
+        ...blank(action.roomPath, action.participants),
         messages: mergeMessages([], action.messages),
-        notices: [],
-        outgoing: [],
-        pendingJoinRequest: undefined,
-        unread: 0,
       });
     }
     case "notices":
@@ -186,11 +260,6 @@ export function reduceConversations(
       return update(state, action.roomPath, (entry) => ({
         ...entry,
         token: action.token,
-      }));
-    case "closed":
-      return update(state, action.roomPath, (entry) => ({
-        ...entry,
-        status: "closed",
       }));
   }
   return state;

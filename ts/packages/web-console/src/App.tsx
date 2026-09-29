@@ -36,6 +36,9 @@ import type { DiscoveredPeerRow } from "./components/DiscoveredPeersPanel.js";
 import { ConversationList } from "./components/ConversationList.js";
 import { RoomPanel } from "./components/RoomPanel.js";
 import { useRoomMessaging } from "./hooks/use-room-messaging.js";
+import { createRequestDemux } from "./request-demux.js";
+import { ROOM_MEMBER_CAPABILITY } from "wire-mesh-core/domain/room-token-verification";
+import { WEBRTC_SIGNAL_VERB } from "wire-mesh-core/domain/webrtc-signaling";
 import type { MessageStore } from "./message-store.js";
 import { discoverLocalNode as discoverLocalNodeDefault } from "./discover-local-node.js";
 import { appShell } from "./App.css.js";
@@ -68,7 +71,7 @@ const reconnectPolicy: ReconnectPolicy = {
     ),
 };
 
-/** A peer connection attempt that did not produce a conversation, kept on screen until dismissed so a refusal or a failure to negotiate is never silent. */
+/** A direct connection attempt that did not open, kept on screen until dismissed so a refusal or a failure to negotiate is never silent. The conversation itself carries on through the hub. */
 interface ConnectionFailure {
   key: string;
   peer: string;
@@ -80,6 +83,9 @@ interface ConnectionEntry {
   session: ReturnType<typeof createMeshSession>;
   negotiator: WebrtcNegotiator;
 }
+
+/** The room verb and the WebRTC signalling verb, the two a hub connection's incoming requests are split between. */
+const HUB_VERBS = [WEBRTC_SIGNAL_VERB, ROOM_MEMBER_CAPABILITY];
 
 /** A discovered candidate awaiting this console user's own explicit connect/dismiss (wire-mesh#187) -- resolve is createGossipExpansion's own shouldExpand promise, settled by whichever button the user clicks in DiscoveredPeersPanel. */
 interface PendingExpansion extends DiscoveredPeerRow {
@@ -124,6 +130,11 @@ export function App({
   }, [selectedRoomPath, selectedUnread, markRead]);
 
   // A negotiator's own onIncomingConnection callback is registered once, at construction, and must still call whatever the *latest* attach is -- attach itself is a fresh function every time useRoomMessaging's own session map changes, so a ref (updated every render, read from the callback) is what keeps that call from closing over a stale, since-superseded attach.
+  const watchHubRef = useRef(roomMessaging.watchHub);
+  useEffect(() => {
+    watchHubRef.current = roomMessaging.watchHub;
+  }, [roomMessaging.watchHub]);
+
   const attachRef = useRef(roomMessaging.attach);
   useEffect(() => {
     attachRef.current = roomMessaging.attach;
@@ -142,13 +153,26 @@ export function App({
   }, [domains]);
 
   function attachConnection(entryAddress: string, session: MeshSession): void {
-    const negotiator = createWebrtcNegotiator(session, {
-      identity,
-      clock,
-      iceServers: DEFAULT_ICE_SERVERS,
-      onIncomingConnection: (connection: Readonly<Connection>) => {
-        void attachRef.current(connection);
+    // The session's stream of incoming requests has one backlog, so the negotiator and the conversations reached through this hub share it through a demux instead of racing to read it.
+    const demux = createRequestDemux(session.incomingManageRequests, HUB_VERBS);
+    const negotiator = createWebrtcNegotiator(
+      {
+        sendManageRequest: async (...args) =>
+          session.sendManageRequest(...args),
+        incomingManageRequests: demux.stream(WEBRTC_SIGNAL_VERB),
       },
+      {
+        identity,
+        clock,
+        iceServers: DEFAULT_ICE_SERVERS,
+        onIncomingConnection: (connection: Readonly<Connection>) => {
+          void attachRef.current(connection);
+        },
+      },
+    );
+    watchHubRef.current({
+      sendManageRequest: async (...args) => session.sendManageRequest(...args),
+      incomingManageRequests: demux.stream(ROOM_MEMBER_CAPABILITY),
     });
     setConnections((current) => [
       ...current,
@@ -256,6 +280,7 @@ export function App({
   }
 
   function handleClose(target: Readonly<ConnectionEntry>): void {
+    roomMessaging.dropHub(target.session);
     void target.session.close();
     setConnections((current) =>
       current.filter((entry) => entry.session !== target.session),
@@ -263,18 +288,17 @@ export function App({
   }
 
   function handleMessagePeer(
-    negotiator: Readonly<WebrtcNegotiator>,
+    entry: Readonly<ConnectionEntry>,
     device: DeviceId,
   ): void {
-    negotiator
+    // The conversation opens at once over the hub the peer was found through, and a direct connection is negotiated in the background: it takes over when it opens, and its failure costs nothing but the direct route.
+    roomMessaging.openRelay(entry.session, device);
+    setSelectedPath(
+      dmRoomPath(deviceIdToHex(identity.deviceId), deviceIdToHex(device)),
+    );
+    entry.negotiator
       .initiate(device)
-      .then(async (connection) => {
-        await roomMessaging.attach(connection, device);
-        // The user asked to message this peer, so show that conversation.
-        setSelectedPath(
-          dmRoomPath(deviceIdToHex(identity.deviceId), deviceIdToHex(device)),
-        );
-      })
+      .then(async (connection) => roomMessaging.attach(connection, device))
       .catch((error: unknown) => {
         setFailures((current) => [
           ...current,
@@ -333,15 +357,15 @@ export function App({
             handleClose(entry);
           }}
           onMessagePeer={(device) => {
-            handleMessagePeer(entry.negotiator, device);
+            handleMessagePeer(entry, device);
           }}
         />
       ))}
       {failures.map((failure) => (
         <Alert
           key={failure.key}
-          color="red"
-          title={`Could not message ${failure.peer}`}
+          color="yellow"
+          title={`No direct connection to ${failure.peer}`}
           withCloseButton
           onClose={() => {
             setFailures((current) =>
@@ -349,7 +373,7 @@ export function App({
             );
           }}
         >
-          {failure.reason}
+          {failure.reason}. Messages go through the hub instead.
         </Alert>
       ))}
       <ConversationList

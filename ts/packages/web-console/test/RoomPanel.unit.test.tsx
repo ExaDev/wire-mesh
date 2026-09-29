@@ -21,6 +21,7 @@ function view(overrides: Partial<ConversationView> = {}): ConversationView {
     participants: ["abcd"],
     roomPath: `${"1".repeat(DEVICE_ID_HEX_LENGTH)}+${"2".repeat(DEVICE_ID_HEX_LENGTH)}`,
     status: "connected",
+    via: "direct",
     messages: [],
     notices: [],
     outgoing: [],

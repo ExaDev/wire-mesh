@@ -22,6 +22,13 @@ export interface RoomPanelProps {
   onDiscard: (localId: string) => void;
 }
 
+/** How the conversation is reaching its peer, in the words the header shows. */
+function routeLabel(via: ConversationView["via"]): string {
+  if (via === "direct") return "direct";
+  if (via === "hub") return "via hub";
+  return "offline";
+}
+
 export function RoomPanel({
   view,
   onSend,
@@ -34,7 +41,7 @@ export function RoomPanel({
       <Group justify="space-between">
         <Text fw={600}>{view.participants.join(", ")}</Text>
         <Text size="sm" c={view.status === "connected" ? "green" : "dimmed"}>
-          {view.status}
+          {routeLabel(view.via)}
         </Text>
       </Group>
 
@@ -94,14 +101,20 @@ export function RoomPanel({
         labelPosition="center"
       />
       <NoticesView notices={view.notices} />
-      <Group>
-        <SubmitRow
-          ariaLabel="Post a durable notice"
-          placeholder="Post a durable notice"
-          submitLabel="Post notice"
-          onSubmit={onPostNotice}
-        />
-      </Group>
+      {view.via === "direct" ? (
+        <Group>
+          <SubmitRow
+            ariaLabel="Post a durable notice"
+            placeholder="Post a durable notice"
+            submitLabel="Post notice"
+            onSubmit={onPostNotice}
+          />
+        </Group>
+      ) : (
+        <Text size="sm" c="dimmed">
+          Durable notices need a direct connection.
+        </Text>
+      )}
     </Stack>
   );
 }
