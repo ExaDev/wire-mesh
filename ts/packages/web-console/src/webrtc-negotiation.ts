@@ -4,10 +4,12 @@ import type { Connection } from "wire-mesh-core/ports/transport";
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import type { Clock } from "wire-mesh-core/ports/clock";
 import {
+  mintCapabilityToken,
   type RevocationCheck,
   type VerifyCapabilityTokenOptions,
 } from "wire-mesh-core/domain/tokens";
 import type {
+  CapabilityToken,
   DeviceId,
   WebrtcAnswer,
   WebrtcIceCandidate,
@@ -86,8 +88,38 @@ function wireOpenChannel(
   );
 }
 
+const SIGNAL_TOKEN_ID_BYTE_LENGTH = 16;
+/** How long an offer's token stays valid. It only has to outlive one offer's delivery, but the verifier judges expiry against its own clock, so an hour absorbs any realistic skew between two devices' clocks without keeping a usable token around for long. */
+const SIGNAL_TOKEN_LIFETIME_MS = 3_600_000;
+
+/**
+ * Mints the token an offer carries: a self-issued, single-purpose `webrtc:signal` grant with this device as issuer and bearer. authorizeIncomingOffer rejects an offer that carries none, so an offer sent without one is always refused as unauthorized. Self-issued because the check on the receiving side is that a well-formed, unexpired `webrtc:signal` token was presented, not that it descends from the responder; consent to message is asked later, by room.join, once the channel is open.
+ */
+export async function mintOfferToken(
+  identity: IdentityPort,
+  clock: Readonly<Clock>,
+): Promise<CapabilityToken> {
+  const tokenId = new Uint8Array(SIGNAL_TOKEN_ID_BYTE_LENGTH);
+  crypto.getRandomValues(tokenId);
+  const verdict = await mintCapabilityToken({
+    identity,
+    clock,
+    tokenId,
+    bearer: identity.deviceId,
+    capability: WEBRTC_SIGNAL_VERB,
+    scope: WEBRTC_SIGNAL_SCOPE,
+    expires: clock.now() + SIGNAL_TOKEN_LIFETIME_MS,
+  });
+  if (!verdict.ok) {
+    throw new Error(`could not mint a webrtc:signal token: ${verdict.reason}`);
+  }
+  return verdict.token;
+}
+
 export function createWebrtcNegotiator(
-  session: Readonly<MeshSession>,
+  session: Readonly<
+    Pick<MeshSession, "sendManageRequest" | "incomingManageRequests">
+  >,
   options: Readonly<WebrtcNegotiatorOptions>,
 ): WebrtcNegotiator {
   const verifyOptions: VerifyCapabilityTokenOptions = {
@@ -222,6 +254,7 @@ export function createWebrtcNegotiator(
         buildOfferCommand(negotiationId, offer.sdp ?? ""),
         WEBRTC_SIGNAL_SCOPE,
         targetDevice,
+        await mintOfferToken(options.identity, options.clock),
       );
       if (outcome.result === "error") {
         peerConnections.delete(negotiationId);

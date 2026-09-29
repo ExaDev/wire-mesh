@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cdeEncodeOptions, encode } from "cbor2";
 import type {
   CapabilityScope,
@@ -10,7 +10,14 @@ import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import type { Clock } from "wire-mesh-core/ports/clock";
 import type { RevocationCheck } from "wire-mesh-core/domain/tokens";
 import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
-import type { IncomingManageRequest } from "wire-mesh-core/domain/mesh-session";
+import {
+  createWebrtcNegotiator,
+  mintOfferToken,
+} from "../src/webrtc-negotiation.js";
+import type {
+  IncomingManageRequest,
+  MeshSession,
+} from "wire-mesh-core/domain/mesh-session";
 import {
   WEBRTC_SIGNAL_SCOPE,
   WEBRTC_SIGNAL_VERB,
@@ -20,6 +27,7 @@ import {
 // createNegotiationIdAllocator, buildOfferCommand/buildAnswerCommand/buildIceCandidateCommand, wireIceCandidateFromRtc, and rtcIceCandidateInitFromWire are pure, DOM-free protocol logic that now lives in wire-mesh-core/domain/webrtc-signaling (see its own test/webrtc-signaling.unit.test.ts): this file re-exports them for this package's own callers but no longer duplicates their tests. What remains here is authorizeIncomingOffer (re-tested against this package's own createWebCryptoIdentity, since core's own equivalent test uses a Node identity adapter instead) and, below, createWebrtcNegotiator's real RTCPeerConnection-driven behaviour, which has no DOM-free counterpart to move.
 
 const HOUR_MS = 3_600_000;
+const now = 1_893_456_000_000;
 const LOW_BYTE_MASK = 0xff;
 
 // Token construction mirrors core's own test/tokens.test.ts signToken helper: explicit field-by-field TokenClaims construction (its own .catchall(z.unknown()) index signature makes a spread-based partial lose specific field types), a COSE_Sign1 with an empty protected header, signed via the identity itself.
@@ -93,8 +101,6 @@ function fakeIncomingRequest(
 }
 
 describe("authorizeIncomingOffer", () => {
-  const now = 1_893_456_000_000;
-
   it("rejects an offer with no token at all", async () => {
     const issuer = await createWebCryptoIdentity();
     const authorized = await authorizeIncomingOffer(
@@ -209,5 +215,96 @@ describe("authorizeIncomingOffer", () => {
       { identity: issuer, clock: fixedClock(now), revocation: neverRevoked },
     );
     expect(authorized).toBe(false);
+  });
+});
+
+/** The parts of RTCPeerConnection initiate() touches before it sends the offer -- Node has no RTCPeerConnection, so this stands in for it. Nothing here ever opens a channel, so the promise initiate() returns never settles. */
+class StubPeerConnection {
+  addEventListener(): void {
+    return undefined;
+  }
+  createDataChannel(): { binaryType: string; addEventListener: () => void } {
+    return { binaryType: "", addEventListener: () => undefined };
+  }
+  async createOffer(): Promise<{ sdp: string }> {
+    return Promise.resolve({ sdp: "v=0" });
+  }
+  async setLocalDescription(): Promise<void> {
+    return Promise.resolve();
+  }
+  close(): void {
+    return undefined;
+  }
+}
+
+/** An incoming-request stream that has already ended. */
+const noIncomingRequests: AsyncIterable<IncomingManageRequest> = {
+  [Symbol.asyncIterator]: () => ({
+    next: async () => Promise.resolve({ done: true, value: undefined }),
+  }),
+};
+
+describe("WebrtcNegotiator.initiate", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("sends its offer with a token the receiving side's own authorizeIncomingOffer accepts", async () => {
+    vi.stubGlobal("RTCPeerConnection", StubPeerConnection);
+    const initiator = await createWebCryptoIdentity();
+    const responder = await createWebCryptoIdentity();
+    const clock = fixedClock(now);
+    const sendManageRequest = vi.fn<MeshSession["sendManageRequest"]>(
+      async () => Promise.resolve({ result: "ok" }),
+    );
+    const negotiator = createWebrtcNegotiator(
+      { sendManageRequest, incomingManageRequests: noIncomingRequests },
+      { identity: initiator, clock, onIncomingConnection: () => undefined },
+    );
+
+    void negotiator.initiate(responder.deviceId);
+    await vi.waitFor(() => {
+      expect(sendManageRequest).toHaveBeenCalledTimes(1);
+    });
+
+    const [command, , target, token] = sendManageRequest.mock.calls[0] ?? [];
+    expect(command?.verb).toBe(WEBRTC_SIGNAL_VERB);
+    expect(target).toEqual(responder.deviceId);
+    if (token === undefined) throw new Error("the offer carried no token");
+    expect(
+      await authorizeIncomingOffer(fakeIncomingRequest(token), {
+        identity: responder,
+        clock,
+        revocation: neverRevoked,
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("mintOfferToken", () => {
+  it("issues a token valid now, expired an hour on, and a fresh token id each time", async () => {
+    const identity = await createWebCryptoIdentity();
+    const clock = fixedClock(now);
+
+    const first = await mintOfferToken(identity, clock);
+    const second = await mintOfferToken(identity, clock);
+
+    expect(first[2]).not.toEqual(second[2]);
+    expect(
+      await authorizeIncomingOffer(fakeIncomingRequest(first), {
+        identity,
+        clock,
+        revocation: neverRevoked,
+      }),
+    ).toBe(true);
+    for (const token of [first, second]) {
+      expect(
+        await authorizeIncomingOffer(fakeIncomingRequest(token), {
+          identity,
+          clock: fixedClock(now + HOUR_MS + 1),
+          revocation: neverRevoked,
+        }),
+      ).toBe(false);
+    }
   });
 });

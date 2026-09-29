@@ -1,11 +1,6 @@
 // Browser-side driver for scripts/live-check.mjs. Loaded via harness.html under the vite dev server, this exposes a small window.harness API the Playwright script calls with page.evaluate -- real createWebCryptoIdentity, createMeshSession, createWebrtcNegotiator, and wrapRtcDataChannel, exercised against a real RTCPeerConnection and a real WebSocket connection to a real wire-mesh relay (see scripts/live-check.mjs's own header for why a real relay, not a bespoke broadcast one, is what this check now boots). Not part of the production console UI or its built bundle (vite's default build entry is index.html at the project root; this page is never referenced from there).
 
-import { cdeEncodeOptions, encode } from "cbor2";
-import type {
-  CapabilityToken,
-  Frame,
-  TokenClaims,
-} from "wire-mesh-core/generated/protocol";
+import type { Frame } from "wire-mesh-core/generated/protocol";
 import type { Connection } from "wire-mesh-core/ports/transport";
 import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
 import { createBrowserTransport } from "../src/adapters/websocket-transport.js";
@@ -13,14 +8,8 @@ import {
   createMeshSession,
   type SessionEvent,
 } from "wire-mesh-core/domain/mesh-session";
-import {
-  WEBRTC_SIGNAL_SCOPE,
-  WEBRTC_SIGNAL_VERB,
-} from "wire-mesh-core/domain/webrtc-signaling";
 import { createWebrtcNegotiator } from "../src/webrtc-negotiation.js";
 import type { WireGossip } from "./wire-gossip.js";
-
-const HOUR_MS = 3_600_000;
 
 /** Every byte of the advert survives this round trip unaltered, including the signature and the key it verifies under (wire-mesh#225): an advert that came back subtly different would be refused by whoever it was handed to next, exactly as a tampered one would. */
 function gossipFrameFromWire(wire: Readonly<WireGossip>): Frame {
@@ -56,36 +45,6 @@ function wireFromGossipFrame(frame: Readonly<Frame>): WireGossip {
       signature: Array.from(peer.signature),
     })),
   };
-}
-
-function buf(bytes: Uint8Array | ArrayLike<number>): Uint8Array<ArrayBuffer> {
-  return Uint8Array.from(bytes);
-}
-
-/** Mints a self-issued, self-signed capability token authorising this harness's own identity to invoke webrtc:signal against a node scope -- the same construction as core's own conformance-vector tokens, minus a parent delegation. */
-async function mintSelfToken(
-  identity: Awaited<ReturnType<typeof createWebCryptoIdentity>>,
-  now: number,
-): Promise<CapabilityToken> {
-  const claims: TokenClaims = {
-    "token-id": buf([1]),
-    issuer: identity.deviceId,
-    "issuer-key": identity.identityKey,
-    bearer: identity.deviceId,
-    capability: WEBRTC_SIGNAL_VERB,
-    scope: WEBRTC_SIGNAL_SCOPE,
-    expires: now + HOUR_MS,
-  };
-  const payload = buf(encode(claims, cdeEncodeOptions));
-  const protectedHeader = buf(encode({}, cdeEncodeOptions));
-  const toBeSigned = buf(
-    encode(
-      ["Signature1", protectedHeader, new Uint8Array(0), payload],
-      cdeEncodeOptions,
-    ),
-  );
-  const signature = await identity.sign(toBeSigned);
-  return [protectedHeader, {}, payload, signature];
 }
 
 let negotiatorRef: ReturnType<typeof createWebrtcNegotiator> | null = null;
@@ -196,8 +155,6 @@ window.harness = {
         remoteTrackKinds.push(event.track.kind);
       },
     });
-    const token = await mintSelfToken(identity, clock.now());
-    session.setToken(token);
     negotiatorRef = negotiator;
     void (async (): Promise<void> => {
       for await (const event of session.events) {
