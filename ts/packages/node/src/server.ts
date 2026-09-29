@@ -12,10 +12,22 @@ import {
 } from "wire-mesh-core/adapters/node-identity";
 import { createNodeWebSocketTransport } from "./adapters/node-websocket-transport.js";
 import { CliUsageError, helpText, parseCliArguments } from "./cli-options.js";
+import { createMailbox } from "wire-mesh-core/domain/hub-mailbox";
+import { createNodeFsStorage } from "wire-mesh-core/adapters/node-fs-storage";
+import { nodeMailboxLimits } from "./mailbox-limits.js";
 import { resolveConsoleFile } from "./static-console.js";
 
-export function healthResponse(): { ok: true; node: string; roles: string[] } {
-  return { ok: true, node: "wire-mesh", roles: ["relay"] };
+/** What /health says: the relay role always, and the announcer role when the node was given somewhere to hold other devices' logs. */
+export function healthResponse(announcer: boolean): {
+  ok: true;
+  node: string;
+  roles: string[];
+} {
+  return {
+    ok: true,
+    node: "wire-mesh",
+    roles: announcer ? ["relay", "announcer"] : ["relay"],
+  };
 }
 
 const HTTP_OK = 200;
@@ -52,12 +64,13 @@ function readPackageVersion(): string {
 /** Builds the listener's onHttpRequest handler: /health answers the same JSON shape healthResponse() returns, everything else resolves against consoleDir via resolveConsoleFile. Takes consoleDir as a parameter, not a module-level constant, so a test can point it at a temp fixture instead of the real build-time CONSOLE_DIR. */
 export function createHttpRequestHandler(
   consoleDir: string,
+  announcer: boolean,
 ): (request: IncomingMessage, response: ServerResponse) => void {
   return (request, response) => {
     const url = new URL(request.url ?? "/", "http://localhost");
     if (url.pathname === HEALTH_PATH) {
       response.writeHead(HTTP_OK, { "content-type": "application/json" });
-      response.end(JSON.stringify(healthResponse()));
+      response.end(JSON.stringify(healthResponse(announcer)));
       return;
     }
     const file = resolveConsoleFile(consoleDir, url.pathname);
@@ -102,9 +115,23 @@ async function main(argv: readonly string[]): Promise<void> {
   // Only the verification half of core's Node identity adapter: a gossiped advert is self-certifying (wire-mesh#225), so the hub checks each one against the key the advert itself carries rather than holding a signing identity of its own.
   const hub = createRelayHub({
     identity: { verify: verifyWithPublicKey, deriveDeviceId },
+    ...(command.mailboxDir !== undefined
+      ? {
+          mailbox: createMailbox({
+            storage: createNodeFsStorage({ dir: command.mailboxDir }),
+            limits: nodeMailboxLimits,
+          }),
+          onMailboxRefused: ({ reason }) => {
+            logError(`wire-mesh: refused a data frame: ${reason}`);
+          },
+        }
+      : {}),
   });
   const transport = createNodeWebSocketTransport({
-    onHttpRequest: createHttpRequestHandler(CONSOLE_DIR),
+    onHttpRequest: createHttpRequestHandler(
+      CONSOLE_DIR,
+      command.mailboxDir !== undefined,
+    ),
     ...(tls ? { tls } : {}),
   });
   const listener = await transport.listen(command.bindAddress, (connection) => {

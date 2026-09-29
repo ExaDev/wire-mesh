@@ -19,7 +19,7 @@ describe("createHttpRequestHandler", () => {
     dir = mkdtempSync(join(tmpdir(), "wire-mesh-node-http-test-"));
     writeFileSync(join(dir, "index.html"), "<html>console</html>");
 
-    server = createServer(createHttpRequestHandler(dir));
+    server = createServer(createHttpRequestHandler(dir, false));
     await new Promise<void>((resolve) => {
       server.listen(0, "127.0.0.1", resolve);
     });
@@ -42,7 +42,12 @@ describe("createHttpRequestHandler", () => {
   it("answers /health with the same JSON shape healthResponse() returns", async () => {
     const response = await fetch(`${baseUrl}/health`);
     expect(response.status).toBe(HTTP_OK);
-    expect(await response.json()).toEqual(healthResponse());
+    expect(await response.json()).toEqual(healthResponse(false));
+  });
+
+  it("names the announcer role beside the relay one when the node holds other devices' logs", () => {
+    expect(healthResponse(true).roles).toEqual(["relay", "announcer"]);
+    expect(healthResponse(false).roles).toEqual(["relay"]);
   });
 
   it("serves the console's index.html for the root path", async () => {
