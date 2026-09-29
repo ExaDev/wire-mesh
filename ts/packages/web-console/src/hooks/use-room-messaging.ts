@@ -295,14 +295,20 @@ export function useRoomMessaging(
     [identity, clock, ownDeviceHex, sessions, messageStore],
   );
 
-  /** One delivery attempt: joins the room if this side holds no token yet, sends, and persists the message. Throws on any failure; the caller decides how that is surfaced. */
+  /** One delivery attempt: joins the room if this side holds no token yet, sends, and persists the message. Reports each phase it is in through onPhase, since the join waits on the other side's consent. Throws on any failure; the caller decides how that is surfaced. */
   const deliver = useCallback(
-    async (roomPath: string, text: string): Promise<StoredMessage> => {
+    async (
+      roomPath: string,
+      text: string,
+      onPhase: (phase: "awaiting-approval" | "sending") => void,
+    ): Promise<StoredMessage> => {
       const entry = sessions.get(roomPath);
       const session = liveSession(entry);
       let token = entry?.token;
       if (token === undefined) {
+        onPhase("awaiting-approval");
         const joined = await requestToJoin(session, roomPath);
+        onPhase("sending");
         token = joined.token;
         tokenRef.current.set(roomPath, token);
         dispatch({ type: "token", roomPath, token });
@@ -348,7 +354,13 @@ export function useRoomMessaging(
         entry: { localId, text, status: "sending" },
       });
       try {
-        const stored = await deliver(roomPath, text);
+        const stored = await deliver(roomPath, text, (status) => {
+          dispatch({
+            type: "outgoing",
+            roomPath,
+            entry: { localId, text, status },
+          });
+        });
         dispatch({ type: "message", roomPath, message: stored });
         dispatch({ type: "outgoing-removed", roomPath, localId });
       } catch (error) {

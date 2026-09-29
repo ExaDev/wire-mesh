@@ -107,6 +107,21 @@ describe("MessageList", () => {
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
+  it("says a message is waiting for the other side to allow messages, naming them, and offers no retry", () => {
+    const pending: PendingOutgoing = {
+      localId: "a",
+      text: "first hello",
+      status: "awaiting-approval",
+    };
+    renderList({ outgoing: [pending] });
+
+    expect(
+      screen.getByText(`Waiting for ${PEER_LABEL} to allow messages`),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Sending")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
   it("shows a failed message with its reason and reports retry and dismiss for that message", () => {
     const onRetry = vi.fn<(localId: string) => void>();
     const onDiscard = vi.fn<(localId: string) => void>();

@@ -23,6 +23,7 @@ const ROOM_PANEL_TIMEOUT_MS = 15_000;
 const MESSAGE_RENDER_TIMEOUT_MS = 10_000;
 const TEST_TIMEOUT_MS = 45_000;
 const TEST_MESSAGE_TEXT = "hello from the e2e test";
+const TEST_REPLY_TEXT = "reply from the e2e test";
 
 /** A genuinely separate Chromium process per device, matching webrtc.spec.ts's own launchDeviceBrowser -- separate storage/IndexedDB/identity, and no shared browser process either, so each side's createPersistedWebCryptoIdentity() call in main.tsx mints its own distinct device-id. */
 async function launchDeviceBrowser(): Promise<Browser> {
@@ -102,6 +103,26 @@ async function runRoomMessagingTest(
 
   // The proof this flow actually works end to end: B's own RoomPanel renders the message A composed and sent, with no token ever manually copied between the two consoles.
   await expect(pageB.getByText(TEST_MESSAGE_TEXT)).toBeVisible({
+    timeout: MESSAGE_RENDER_TIMEOUT_MS,
+  });
+
+  // Consent runs in each direction: B's first message asks A to allow messages, and until A does, B is told it is waiting rather than left looking at "Sending".
+  const composeBoxB = pageB.getByPlaceholder("Message", { exact: true });
+  await composeBoxB.fill(TEST_REPLY_TEXT);
+  await pageB.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(pageB.getByText(/Waiting for .* to allow messages/)).toBeVisible(
+    { timeout: MESSAGE_RENDER_TIMEOUT_MS },
+  );
+  await expect(pageA.getByText("wants to message you")).toBeVisible({
+    timeout: MESSAGE_RENDER_TIMEOUT_MS,
+  });
+
+  await pageA.getByRole("button", { name: "Allow" }).click();
+
+  await expect(pageA.getByText(TEST_REPLY_TEXT)).toBeVisible({
+    timeout: MESSAGE_RENDER_TIMEOUT_MS,
+  });
+  await expect(pageB.getByText(/Waiting for .* to allow messages/)).toBeHidden({
     timeout: MESSAGE_RENDER_TIMEOUT_MS,
   });
 }
