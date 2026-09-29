@@ -1,3 +1,10 @@
+## [3.3.1](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.3.0...wire-mesh-core%403.3.1) (2026-09-29)
+
+### Bug Fixes
+
+* **core:** cancel the reader when closing a byte stream whose session has ended ([59e0407](https://github.com/ExaDev/wire-mesh/commit/59e040718277d3cf303764e27bff7dd01a1692eb))
+* **core:** forget relay pairings when a session gets a new connection ([dace59d](https://github.com/ExaDev/wire-mesh/commit/dace59d382c10d02e47d66c8557e0dc256eaebfe))
+
 ## [3.3.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.2.0...wire-mesh-core%403.3.0) (2026-09-29)
 
 ### Features

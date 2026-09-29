@@ -1,3 +1,14 @@
+## [2.9.1](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.9.0...%40exadev%2Fwire-mesh-web-console%402.9.1) (2026-09-29)
+
+### Bug Fixes
+
+* **web-console:** end a WebTransport connection when its session closes ([9073003](https://github.com/ExaDev/wire-mesh/commit/907300357bb241b70822264e9df2b81669ff6ec1))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.3.1
+
 ## [2.9.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.8.0...%40exadev%2Fwire-mesh-web-console%402.9.0) (2026-09-29)
 
 ### Features

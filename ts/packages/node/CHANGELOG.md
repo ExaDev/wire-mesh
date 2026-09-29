@@ -1,3 +1,19 @@
+## [3.4.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.3.0...wire-mesh%403.4.0) (2026-09-29)
+
+### Features
+
+* **node:** drain the old WebTransport server on rotation and take a certificate lifetime ([2920c3f](https://github.com/ExaDev/wire-mesh/commit/2920c3fc3d14d131fa3adb9305bcd01397957825))
+
+### Documentation
+
+* **node:** record what a certificate rotation does to a conversation ([8564523](https://github.com/ExaDev/wire-mesh/commit/8564523d9508fea8ac33ec7a5096b5e004e6ed76))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.3.1
+- Updated @exadev/wire-mesh-web-console to 2.9.1
+
 ## [3.3.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.2.1...wire-mesh%403.3.0) (2026-09-29)
 
 ### Features
