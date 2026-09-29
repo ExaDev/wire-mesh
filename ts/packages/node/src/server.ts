@@ -143,6 +143,9 @@ async function main(argv: readonly string[]): Promise<void> {
   );
   if (command.webTransportAddress !== undefined) {
     const webTransport = await createWebTransportTransport({
+      onError: (error) => {
+        logError(`wire-mesh: WebTransport: ${String(error)}`);
+      },
       onCertificateRenewed: (address) => {
         logOutput(`wire-mesh WebTransport address changed: ${address}`);
       },
