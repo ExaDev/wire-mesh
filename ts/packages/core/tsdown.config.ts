@@ -10,6 +10,7 @@ export default defineConfig({
     "src/ports/identity.ts",
     "src/ports/clock.ts",
     "src/domain/advert-extension-policy.ts",
+    "src/domain/hub-mailbox.ts",
     "src/domain/bulk.ts",
     "src/domain/capability-grant.ts",
     "src/domain/capability-request.ts",
