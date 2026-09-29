@@ -1015,6 +1015,103 @@ room-notice-claims = {
 ; about who may POST, not confidentiality of who may READ -- anything
 ; genuinely confidential stays on live room.send, which never lands in a
 ; replicated log.
+; core/secure-channel: an end-to-end authenticated, encrypted channel between
+; two devices that can only reach each other through a relay. transport.cddl
+; describes a relay as an opaque, unreadable byte pipe whose `relay-data`
+; payload is "ciphertext established one layer above the transport"; this is
+; that layer. Without it a hub, and anything able to read its traffic, sees
+; every manage-request and manage-response a pairing carries, can alter them
+; (WebRTC signalling included, DTLS fingerprint and all), and a receiver has
+; only the hub's own `from-device` to say who sent a request, which room.cddl
+; forbids trusting.
+;
+; A channel lives between exactly two devices and inside one relay pairing. It
+; is set up by an exchange of `secure-hello-frame`s and then carries every
+; manage-request and manage-response in `secure-data-frame`s, both of which
+; travel as the payload of `relay-data-frame`. The relay sees the two hellos in
+; the clear (an ephemeral public key, a nonce and an identity key, none of
+; which is secret) and everything after as ciphertext.
+;
+; Handshake. Each side generates a fresh ECDH P-256 key pair and a random
+; 16-byte nonce for every channel, and sends a hello carrying the public key,
+; the nonce, its own identity-key and a signature made with that identity key
+; over
+;
+;   "wire-mesh/secure-hello/v1" 0x00 || ephemeral-key || nonce ||
+;   sender-device || recipient-device
+;
+; where sender-device is the device-id derived from the hello's own
+; identity-key and recipient-device is the hello's `to-device`. Every part has
+; a fixed length, so the concatenation is unambiguous. Binding both device-ids
+; means a hello cannot be replayed to a different recipient or attributed to a
+; different sender, and a relay that substitutes an ephemeral key invalidates
+; the signature. Either side may send first. A side that receives a hello
+; while it has none outstanding for that peer answers with its own; a side that
+; has one outstanding treats the received hello as the answer. Two sides that
+; open at once therefore agree without either one answering the other.
+;
+; Key schedule. Let lo and hi be the two device-ids in bytewise order and
+; nonce-lo and nonce-hi the nonces carried by the hellos of the devices those
+; ids name. The shared secret is the 32-byte ECDH result of the two ephemeral
+; keys. Two 32-byte AES-256-GCM keys, one per direction, come from HKDF-SHA256
+; with that secret as input keying material, nonce-lo || nonce-hi as salt, and
+;
+;   "wire-mesh/secure-channel/v1" 0x00 || lo || hi || label
+;
+; as info, where label is the ASCII string "lo-to-hi" for the key that seals
+; frames sent by lo, and "hi-to-lo" for the one sealing frames sent by hi.
+;
+; Data. Each direction keeps a counter that starts at 0 and rises by one per
+; frame. A frame's plaintext is the canonical CBOR encoding of one inner Frame.
+; It is sealed with AES-256-GCM under the sender's directional key, with a
+; 96-bit IV of four zero bytes followed by the counter as a big-endian uint64,
+; and associated data
+;
+;   "wire-mesh/secure-data/v1" 0x00 || sender-device || recipient-device ||
+;   counter (big-endian uint64)
+;
+; Verifier obligations, none of which the grammar can express:
+;
+; 1. A hello MUST be refused unless its identity-key hashes to a device-id
+;    (self-certification, as everywhere else), its signature verifies under
+;    that key over the input above, and its `to-device` is the receiver's own
+;    device-id.
+; 2. The identity a request is attributed to is the one a hello authenticated,
+;    never the `from-device` a relay stamps on `relay-data`. That field only
+;    says which channel to try.
+; 3. A manage-request or manage-response that arrives as the payload of a
+;    `relay-data-frame` without being sealed in a `secure-data-frame` MUST be
+;    dropped. There is no plaintext fallback, since one would let a relay
+;    strip the protection.
+; 4. A `secure-data-frame` MUST be dropped unless it opens under the channel
+;    for that peer and its counter is greater than every counter already
+;    accepted from that peer on that channel.
+; 5. Only a manage-request or manage-response may be sealed inside a
+;    `secure-data-frame`; anything else MUST be dropped after opening.
+; 6. Ephemeral keys and nonces are fresh for every channel and MUST NOT be
+;    reused. A channel does not outlive the relay connection it was set up on.
+;
+; Availability against the relay is not a goal: it can drop, delay or replay
+; frames, and a replayed old hello can only make a channel unusable, never
+; readable or forgeable.
+
+secure-hello-frame = {
+  type: "secure-hello",
+  "ephemeral-key": bstr .size 65,   ; SEC1 uncompressed P-256 point: 0x04 || X || Y
+  nonce: bstr .size 16,
+  "identity-key": identity-key,
+  "to-device": device-id,
+  signature: bstr,                  ; over the hello signing input above, alg per identity-key
+}
+
+secure-data-frame = {
+  type: "secure-data",
+  counter: uint,
+  ciphertext: bstr,                 ; AES-256-GCM output: ciphertext followed by the 16-byte tag
+}
+
+$frame-variant /= secure-hello-frame
+$frame-variant /= secure-data-frame
 ; The generic streaming/backpressure pattern — reusable by any capability
 ; domain that carries a live byte stream (core/exec's stdio today; a future
 ; audio stream, or a different agent-comms transport, tomorrow), so

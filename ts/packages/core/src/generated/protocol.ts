@@ -118,7 +118,7 @@ export const execSessionInfoSchema = z.lazy(() => z.object({
   "argv": z.array(z.string()).optional(),
   "cwd": z.string().optional(),
 }));
-export const frameVariantSchema = z.lazy(() => z.union([z.lazy(() => handshakeFrameSchema), z.lazy(() => pingFrameSchema), z.lazy(() => pongFrameSchema), z.lazy(() => closeFrameSchema), z.lazy(() => gossipFrameSchema), z.lazy(() => candidatesFrameSchema), z.lazy(() => syncPunchFrameSchema), z.lazy(() => observedAddressFrameSchema), z.lazy(() => relayOfferFrameSchema), z.lazy(() => relayConnectFrameSchema), z.lazy(() => relayDataFrameSchema), z.lazy(() => relayInboundFrameSchema), z.lazy(() => coordinatorFrameSchema), z.lazy(() => manageRequestFrameSchema), z.lazy(() => manageResponseFrameSchema), z.lazy(() => revocationAnnounceFrameSchema), z.lazy(() => streamDataFrameSchema), z.lazy(() => streamAckFrameSchema), z.lazy(() => streamEndFrameSchema), z.lazy(() => dataHaveFrameSchema), z.lazy(() => dataRequestFrameSchema), z.lazy(() => dataEntriesFrameSchema), z.lazy(() => bulkDataFrameSchema), z.lazy(() => bulkAckFrameSchema), z.lazy(() => bulkEndFrameSchema)]));
+export const frameVariantSchema = z.lazy(() => z.union([z.lazy(() => handshakeFrameSchema), z.lazy(() => pingFrameSchema), z.lazy(() => pongFrameSchema), z.lazy(() => closeFrameSchema), z.lazy(() => gossipFrameSchema), z.lazy(() => candidatesFrameSchema), z.lazy(() => syncPunchFrameSchema), z.lazy(() => observedAddressFrameSchema), z.lazy(() => relayOfferFrameSchema), z.lazy(() => relayConnectFrameSchema), z.lazy(() => relayDataFrameSchema), z.lazy(() => relayInboundFrameSchema), z.lazy(() => coordinatorFrameSchema), z.lazy(() => manageRequestFrameSchema), z.lazy(() => manageResponseFrameSchema), z.lazy(() => revocationAnnounceFrameSchema), z.lazy(() => streamDataFrameSchema), z.lazy(() => streamAckFrameSchema), z.lazy(() => streamEndFrameSchema), z.lazy(() => dataHaveFrameSchema), z.lazy(() => dataRequestFrameSchema), z.lazy(() => dataEntriesFrameSchema), z.lazy(() => bulkDataFrameSchema), z.lazy(() => bulkAckFrameSchema), z.lazy(() => bulkEndFrameSchema), z.lazy(() => secureHelloFrameSchema), z.lazy(() => secureDataFrameSchema)]));
 export const frameSchema = z.lazy(() => z.lazy(() => frameVariantSchema));
 export const protocolVersionSchema = z.lazy(() => z.number().int().nonnegative());
 export const domainIdSchema = z.lazy(() => z.union([z.lazy(() => coreDomainNameSchema), z.lazy(() => namespacedDomainIdSchema), z.lazy(() => privateUseDomainIdSchema)]));
@@ -276,6 +276,19 @@ export const roomNoticeClaimsSchema = z.lazy(() => z.object({
   "valid-until": z.number().int().nonnegative().optional(),
   "key-epoch": z.number().int().nonnegative().optional(),
 }).catchall(z.unknown()));
+export const secureHelloFrameSchema = z.lazy(() => z.object({
+  "type": z.literal("secure-hello"),
+  "ephemeral-key": z.instanceof(Uint8Array).refine((v) => v.length === 65, { message: "expected exactly 65 bytes" }),
+  "nonce": z.instanceof(Uint8Array).refine((v) => v.length === 16, { message: "expected exactly 16 bytes" }),
+  "identity-key": z.lazy(() => identityKeySchema),
+  "to-device": z.lazy(() => deviceIdSchema),
+  "signature": z.instanceof(Uint8Array),
+}));
+export const secureDataFrameSchema = z.lazy(() => z.object({
+  "type": z.literal("secure-data"),
+  "counter": z.number().int().nonnegative(),
+  "ciphertext": z.instanceof(Uint8Array),
+}));
 export const streamSessionSchema = z.lazy(() => z.number().int().nonnegative());
 export const streamDataFrameSchema = z.lazy(() => z.object({
   "type": z.literal("stream-data"),
@@ -547,6 +560,8 @@ export type RoomJoinOk = z.infer<typeof roomJoinOkSchema>;
 export type RoomMembersOk = z.infer<typeof roomMembersOkSchema>;
 export type RoomNotice = z.infer<typeof roomNoticeSchema>;
 export type RoomNoticeClaims = z.infer<typeof roomNoticeClaimsSchema>;
+export type SecureHelloFrame = z.infer<typeof secureHelloFrameSchema>;
+export type SecureDataFrame = z.infer<typeof secureDataFrameSchema>;
 export type StreamSession = z.infer<typeof streamSessionSchema>;
 export type StreamDataFrame = z.infer<typeof streamDataFrameSchema>;
 export type StreamAckFrame = z.infer<typeof streamAckFrameSchema>;
