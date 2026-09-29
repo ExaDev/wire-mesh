@@ -7,6 +7,7 @@
     "tsdown.config.ts",
     "eslint.config.ts",
     "release.config.ts",
+    "src/quiche.d.ts",
     "test/**/*.ts"
   ]
 }
