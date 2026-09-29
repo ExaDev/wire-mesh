@@ -26,7 +26,7 @@ function launchArguments(): string[] {
     // A service worker will not register on an origin whose certificate the browser rejects.
     return ["--ignore-certificate-errors"];
   }
-  if (process.env["TRUST_LAN_NODE"] === "spki") {
+  if (process.env.TRUST_LAN_NODE === "spki") {
     const spki = readFileSync(LAN_NODE_SPKI_FILE, "utf8").trim();
     return [`--ignore-certificate-errors-spki-list=${spki}`];
   }
@@ -60,10 +60,10 @@ async function allowRequest(page: Readonly<Page>): Promise<void> {
 if (phase === "warm") {
   test("caches the console for offline use", async () => {
     const page = await openConsole();
-    await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.evaluate(async () => navigator.serviceWorker.ready);
     await expect
       .poll(
-        () =>
+        async () =>
           page.evaluate(async () => {
             const names = await caches.keys();
             let entries = 0;
@@ -108,7 +108,9 @@ if (phase === "warm") {
       await expect(
         page.getByText(/Waiting for .* to allow messages/),
       ).toBeHidden({ timeout: STEP_TIMEOUT_MS });
-      await expect(page.getByText(REPLY_MESSAGE, { exact: true })).toBeVisible();
+      await expect(
+        page.getByText(REPLY_MESSAGE, { exact: true }),
+      ).toBeVisible();
     }
     await page.context().close();
   });
