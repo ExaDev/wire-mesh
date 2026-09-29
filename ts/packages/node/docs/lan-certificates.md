@@ -30,8 +30,17 @@ A gossiped or typed address that names its scheme is dialled with it, which also
 
 Rejected: the named-domain route, for the cost of running the issuing service and because it fails offline; the WebRTC route, for needing the hub; hand-trusted certificates.
 
-## Open questions, to settle before building
+## What the check found (wire-mesh#267)
 
-- Whether `serverCertificateHashes` is honoured in Safari, and which Node versions can serve HTTP/3 or WebTransport.
+A Node server built on `@fails-components/webtransport` (a pinned-hash ECDSA P-256 certificate valid for ten days, a datagram echo) was reached with `serverCertificateHashes` from a page on `http://localhost`:
+
+- **Chromium, Safari and WebKit connect.** Safari 27.0 (the installed browser, driven by opening a page) and Playwright's WebKit both completed the session and echoed a datagram. WebKit's datagram writer is `datagrams.createWritable()`, where Chromium still exposes `datagrams.writable`, so a client written against one shape fails on the other.
+- **Firefox does not connect (unresolved).** Playwright's Firefox rejected the session ("WebTransport connection rejected") against an IP-address certificate, with the HTTP/3 preferences forced on. Whether the cause is Firefox, Playwright's build of it, or the protocol draft the server library speaks was not established.
+- **Node has no built-in QUIC.** Node has no `node:quic`, with or without `--experimental-quic`. The only server found is a native addon (`@fails-components/webtransport-transport-http3-quiche`), whose install script downloads a prebuilt binary. A default `ignore-scripts` configuration leaves it unbuilt, so `npx wire-mesh` cannot rely on it unless the addon is an optional dependency that the node package loads only when present.
+
+## Open questions
+
+- Why Firefox rejects the session, and whether a different server library or a real Firefox connects.
+- Which Node versions and platforms the prebuilt binary covers, and whether the node package can load it as an optional dependency and report the missing role when it is absent.
 - How often a node re-mints, and how a console with a stale hash recovers.
 - Where an out-of-band handle record carries the address, so a node that never reached the hub can still be found.
