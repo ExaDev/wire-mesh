@@ -11,6 +11,8 @@ import {
 import { messageFromFrame } from "../src/adapters/websocket-transport.js";
 import { bytesFromHex } from "./hex.js";
 import { createTestPeer, type TestPeer } from "./signed-peers.js";
+import { signPeerAdvert } from "wire-mesh-core/domain/peer-advert";
+import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
 
 const relayPayload = bytesFromHex("deadbeef");
 
@@ -250,5 +252,49 @@ describe("a relay pairing across a Durable Object eviction", () => {
       adverts: [peerA.advert],
       pairedDevices: [],
     });
+  });
+});
+
+describe("the public hub's extension policy", () => {
+  it("does not forward an advert whose extension tail publishes a working directory, and does forward the minimal one", async () => {
+    const identityA = await createWebCryptoIdentity();
+    const a = new FakeHubSocket();
+    const b = new FakeHubSocket();
+    const hub = evict([a, b]);
+    hub.accept(a);
+    hub.accept(b);
+    const advertFor = async (
+      identity: typeof identityA,
+      agentSelf: Record<string, unknown>,
+    ): Promise<Frame> => ({
+      type: "gossip",
+      peers: [
+        await signPeerAdvert(identity, {
+          device: identity.deviceId,
+          addresses: ["203.0.113.5:4433"],
+          "snapshot-seconds": 1861833600,
+          "identity-key": identity.identityKey,
+          "agent/self": agentSelf,
+        }),
+      ],
+    });
+
+    await hub.message(
+      a,
+      arrayBufferFor(
+        await advertFor(identityA, {
+          name: "a",
+          harness: "h",
+          cwd: "/home/x/p",
+        }),
+      ),
+    );
+    expect(b.frames()).toEqual([]);
+
+    await hub.message(
+      a,
+      arrayBufferFor(await advertFor(identityA, { name: "a", harness: "h" })),
+    );
+    expect(b.frames()).toHaveLength(1);
   });
 });
