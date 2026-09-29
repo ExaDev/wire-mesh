@@ -10,10 +10,16 @@
 //
 // Second, the sender itself is sent a catch-up `gossip-frame` bundling every *other* currently-known device's latest advert. This is not optional polish: every client gossips its own self-advert exactly once, at connect time, and never repeats it on its own initiative (see `mesh-session.ts`'s `sendGossipUpdate` doc comment -- there is no re-advertisement timer built into a session, so a caller that never calls it again is "today's existing gossip-once-on-connect behaviour"). Forwarding alone therefore only reaches whichever clients happen to already be connected at the exact moment a given advert is gossiped; a client that connects even slightly later would otherwise never learn about anyone who gossiped before it, no matter how long it then stays connected, since nothing ever re-sends that earlier advert again. The catch-up frame closes this gap by replaying the hub's own already-known directory to every gossiping connection, not only ones that have never gossiped before -- a connection re-gossiping (an address change, a fresher `snapshot-seconds`) is caught up again too, which is harmless and correctly reflects current state under the same no-caching philosophy as the forward above. `Registration` keeps the full `peer-advert`, not just a bare device-id, specifically so this catch-up frame can be built from real, previously-received adverts rather than synthesising one.
 
+// Extension policy: because every entry is signed and an advert is forwarded verbatim, the hub cannot remove a field from an advert; with an extensionPolicy set it refuses, whole, any advert whose extension tail holds something the policy does not allow, exactly as it refuses one that fails verification (not registered, not forwarded, not replayed in a catch-up). Without one every extension is carried, which suits a hub all of whose clients belong to one mesh and is not safe for a hub open to strangers.
+//
 // Outliving the hub instance (wire-mesh#223): registry and pairing state is held in memory and keyed by Connection, neither of which a host can hand to a successor instance directly. exportConnection/restoreConnections bridge that gap by expressing one connection's state as device-ids and adverts alone: serialisable, and resolvable back to connections by a successor that still holds them. A host that can be torn down while its connections stay open subscribes to onConnectionStateChanged, persists the exported value wherever it keeps per-connection state, and replays the survivors through restoreConnections before handling their next frame. The hub itself neither persists nor schedules anything: what a pairing is keyed by, and when a state changes, are its own business, and where that state is kept between instances is the host's.
 
 import type { DeviceId, Frame, PeerAdvert } from "../generated/protocol.js";
 import type { Connection } from "../ports/transport.js";
+import {
+  checkAdvertExtensions,
+  type AdvertExtensionPolicy,
+} from "./advert-extension-policy.js";
 import { verifyPeerAdvert, type PeerAdvertVerifier } from "./peer-advert.js";
 
 interface Registration {
@@ -42,9 +48,22 @@ export interface RelayConnectionRestore {
   readonly state: RelayConnectionState;
 }
 
+/** An advert the hub refused to carry because of what its extension tail holds. */
+export interface AdvertRefusal {
+  readonly device: DeviceId;
+  /** The extension key that was not allowed, or whose value failed its validator. */
+  readonly key: string;
+}
+
 export interface RelayHubOptions {
   /** The crypto primitives this hub verifies every gossiped advert with (wire-mesh#225). Narrowed to verify/deriveDeviceId rather than a full IdentityPort because an advert is self-certifying: a hub checks one against the key the advert itself carries, and never needs a signing identity of its own to do it. */
   readonly identity: Readonly<PeerAdvertVerifier>;
+  /**
+   * Which extension entries of an advert this hub will carry. Absent, every extension is carried, which is right for a hub whose every client belongs to one mesh. A hub open to anyone should set it: an advert is forwarded whole to every client, so this is the only control the hub has over what an application publishes to strangers.
+   */
+  readonly extensionPolicy?: AdvertExtensionPolicy;
+  /** Called with each advert refused by extensionPolicy, so the host can report it; the advert's sender is given no reply, since the transport spec defines none. */
+  readonly onAdvertRefused?: (refusal: Readonly<AdvertRefusal>) => void;
   /** Called whenever the value exportConnection returns for a connection changes: it gossiped an advert, gained or lost a pairing, or had one of its adverts taken over by another connection. A host whose own instance can be torn down while its connections stay open (the Cloudflare hub's hibernating Durable Object) reads the new value back with exportConnection, persists it against the connection, and hands it to a later instance through restoreConnections. */
   readonly onConnectionStateChanged?: (
     connection: Readonly<Connection>,
@@ -266,6 +285,19 @@ export function createRelayHub(options: Readonly<RelayHubOptions>): RelayHub {
       for (const advert of frame.peers) {
         if (!(await verifyPeerAdvert(options.identity, advert))) {
           continue;
+        }
+        if (options.extensionPolicy !== undefined) {
+          const verdict = checkAdvertExtensions(
+            advert,
+            options.extensionPolicy,
+          );
+          if (!verdict.ok) {
+            options.onAdvertRefused?.({
+              device: advert.device,
+              key: verdict.key,
+            });
+            continue;
+          }
         }
         const key = deviceKey(advert.device);
         const previous = devices.get(key);

@@ -62,6 +62,10 @@
       "import": "./dist/adapters/tls-transport.mjs",
       "require": "./dist/adapters/tls-transport.cjs"
     },
+    "./domain/advert-extension-policy": {
+      "import": "./dist/domain/advert-extension-policy.mjs",
+      "require": "./dist/domain/advert-extension-policy.cjs"
+    },
     "./domain/async-queue": {
       "import": "./dist/domain/async-queue.mjs",
       "require": "./dist/domain/async-queue.cjs"
