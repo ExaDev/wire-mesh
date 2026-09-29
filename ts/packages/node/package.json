@@ -1,6 +1,6 @@
 {
   "name": "wire-mesh",
-  "version": "2.0.7",
+  "version": "2.0.8",
   "bin": {
     "wire-mesh": "./dist/server.mjs"
   },

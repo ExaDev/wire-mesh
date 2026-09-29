@@ -1,3 +1,9 @@
+## [2.0.8](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%402.0.7...wire-mesh%402.0.8) (2026-09-29)
+
+### Documentation
+
+* **node:** work through how a LAN node is reached from the HTTPS console ([588b8af](https://github.com/ExaDev/wire-mesh/commit/588b8afc76f84ac1361f61b7c35b9d58431cf8a5))
+
 ## [2.0.7](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%402.0.6...wire-mesh%402.0.7) (2026-09-29)
 
 
