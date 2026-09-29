@@ -6,10 +6,10 @@ import {
   type WebTransportListener,
 } from "../src/adapters/webtransport-transport.js";
 import {
-  mintPinnedCertificate,
   MAX_PINNED_CERTIFICATE_LIFETIME_MS,
   PINNED_CERTIFICATE_LIFETIME_MS,
-} from "../src/adapters/pinned-certificate.js";
+} from "../src/adapters/certificate-limits.js";
+import { mintPinnedCertificate } from "../src/adapters/pinned-certificate.js";
 
 const LOOPBACK_ANY_PORT = "127.0.0.1:0";
 const SHA256_HEX_LENGTH = 64;

@@ -21,6 +21,7 @@ describe("parseCliArguments", () => {
       mailboxDir: undefined,
       webTransportAddress: undefined,
       stateDir: undefined,
+      certificateLifetimeMs: undefined,
     });
   });
 
@@ -54,6 +55,29 @@ describe("parseCliArguments", () => {
     expect(() =>
       parseCliArguments(["--state-dir", "/var/lib/wire-mesh"]),
     ).toThrow("--state-dir needs --webtransport");
+  });
+
+  it("takes --certificate-lifetime in seconds, only alongside --webtransport, and only up to the pinned limit", () => {
+    expect(
+      parseCliArguments([
+        "--webtransport",
+        "0.0.0.0:4433",
+        "--certificate-lifetime",
+        "20",
+      ]),
+    ).toMatchObject({ certificateLifetimeMs: 20_000 });
+    expect(() => parseCliArguments(["--certificate-lifetime", "20"])).toThrow(
+      "--certificate-lifetime needs --webtransport",
+    );
+    for (const bad of ["0", "-5", "1.5", "abc", "99999999"]) {
+      expect(() =>
+        parseCliArguments([
+          "--webtransport",
+          "0.0.0.0:4433",
+          `--certificate-lifetime=${bad}`,
+        ]),
+      ).toThrow("--certificate-lifetime expects");
+    }
   });
 
   it("uses the value following --bind", () => {

@@ -1,6 +1,10 @@
 // The CLI's command-line surface, defined once: FLAGS drives the parser, the --help text, and (through a test that requires the README to reproduce helpText() verbatim) the README's flag documentation, so none of the three can drift from the others.
 
 import { parseArgs } from "node:util";
+import {
+  MILLISECONDS_PER_SECOND,
+  PINNED_CERTIFICATE_LIFETIME_MS,
+} from "./adapters/certificate-limits.js";
 
 /** The address the server binds when --bind is not given. */
 export const DEFAULT_BIND_ADDRESS = "0.0.0.0:8787";
@@ -54,6 +58,12 @@ export const FLAGS = {
     description:
       "Directory to keep the WebTransport certificates in, private keys included, so a restart serves the same certificates and the addresses already handed out stay valid. Created readable by this user only. Without it the certificates live in memory and a restart starts a new set. Needs --webtransport.",
   },
+  "certificate-lifetime": {
+    type: "string",
+    valueName: "seconds",
+    description:
+      "How long each WebTransport certificate is valid, in seconds. The node rotates to the next certificate every half lifetime, ending the sessions open on the server it replaces, so a shorter lifetime rotates more often. At most the WebTransport limit for a pinned certificate, which is also the default. Needs --webtransport.",
+  },
   help: {
     type: "boolean",
     short: "h",
@@ -82,6 +92,7 @@ export type CliCommand =
       mailboxDir: string | undefined;
       webTransportAddress: string | undefined;
       stateDir: string | undefined;
+      certificateLifetimeMs: number | undefined;
     };
 
 /** Thrown for arguments the CLI cannot act on; the message names the offending flag and is fit to print as-is. */
@@ -116,6 +127,25 @@ export function helpText(): string {
       (row) => `  ${row.label.padEnd(labelWidth)}  ${row.description}`,
     ),
   ].join("\n");
+}
+
+function validatedCertificateLifetimeMs(
+  seconds: string | undefined,
+): number | undefined {
+  if (seconds === undefined) {
+    return undefined;
+  }
+  const lifetimeMs = Number(seconds) * MILLISECONDS_PER_SECOND;
+  if (
+    !/^\d+$/.test(seconds) ||
+    lifetimeMs === 0 ||
+    lifetimeMs > PINNED_CERTIFICATE_LIFETIME_MS
+  ) {
+    throw new CliUsageError(
+      `--certificate-lifetime expects a whole number of seconds from 1 to ${String(PINNED_CERTIFICATE_LIFETIME_MS / MILLISECONDS_PER_SECOND)}, got "${seconds}"`,
+    );
+  }
+  return lifetimeMs;
 }
 
 function validatedBindAddress(flag: string, address: string): string {
@@ -167,6 +197,12 @@ export function parseCliArguments(argv: readonly string[]): CliCommand {
   if (values["state-dir"] !== undefined && values.webtransport === undefined) {
     throw new CliUsageError("--state-dir needs --webtransport");
   }
+  if (
+    values["certificate-lifetime"] !== undefined &&
+    values.webtransport === undefined
+  ) {
+    throw new CliUsageError("--certificate-lifetime needs --webtransport");
+  }
   return {
     kind: "serve",
     bindAddress: validatedBindAddress("bind", values.bind),
@@ -180,5 +216,8 @@ export function parseCliArguments(argv: readonly string[]): CliCommand {
         ? undefined
         : validatedBindAddress("webtransport", values.webtransport),
     stateDir: values["state-dir"],
+    certificateLifetimeMs: validatedCertificateLifetimeMs(
+      values["certificate-lifetime"],
+    ),
   };
 }

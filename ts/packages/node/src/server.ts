@@ -150,6 +150,9 @@ async function main(argv: readonly string[]): Promise<void> {
       mkdirSync(command.stateDir, { recursive: true, mode: STATE_DIR_MODE });
     }
     const webTransport = await createWebTransportTransport({
+      ...(command.certificateLifetimeMs !== undefined
+        ? { certificateLifetimeMs: command.certificateLifetimeMs }
+        : {}),
       ...(command.stateDir !== undefined
         ? { storage: createNodeFsStorage({ dir: command.stateDir }) }
         : {}),
