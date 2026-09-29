@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { acceptMeshSession } from "../src/domain/mesh-session.js";
-import type {
-  CapabilityScope,
-  RelayDataFrame,
-} from "../src/generated/protocol.js";
-import { tryDecodeFrame, wrapRelayData } from "../src/adapters/frame-codec.js";
+import type { CapabilityScope } from "../src/generated/protocol.js";
+import { RelayPeer } from "./relay-peer.js";
 import {
   FakeConnection,
   deviceB,
+  identityB,
   testClock,
   testIdentity,
 } from "./mesh-session-fixtures.js";
 
 const SHORT_TIMEOUT_MS = 20;
+/** Long enough for a real secure-channel handshake to finish inside it, which a request that is going to be answered has to do. */
+const ANSWERED_TIMEOUT_MS = 5000;
 const ROOM_SCOPE: Readonly<CapabilityScope> = { kind: "room", path: "a/b" };
 const COMMAND = { verb: "room:member", params: { verb: "room.send" } };
 
@@ -60,25 +60,24 @@ describe("a relayed request that times out", () => {
       ["core/room"],
       { clock: testClock },
     );
+    const peer = new RelayPeer(identityB, testIdentity, fake);
 
     const answered = session.sendManageRequest(
       COMMAND,
       ROOM_SCOPE,
       deviceB,
       undefined,
-      SHORT_TIMEOUT_MS,
+      ANSWERED_TIMEOUT_MS,
     );
-    const sent = await nextRelayData(fake);
-    const request = tryDecodeFrame(sent.payload);
+    await peer.answerHello();
+    const [request] = await peer.received();
     expect(request?.type).toBe("manage-request");
     if (request?.type !== "manage-request") return;
-    fake.push(
-      wrapRelayData({
-        type: "manage-response",
-        "request-id": request["request-id"],
-        outcome: { result: "ok" },
-      }),
-    );
+    await peer.deliver({
+      type: "manage-response",
+      "request-id": request["request-id"],
+      outcome: { result: "ok" },
+    });
     expect(await answered).toEqual({ result: "ok" });
 
     const unanswered = session.sendManageRequest(
@@ -86,28 +85,11 @@ describe("a relayed request that times out", () => {
       ROOM_SCOPE,
       deviceB,
       undefined,
-      SHORT_TIMEOUT_MS,
+      ANSWERED_TIMEOUT_MS,
     );
-    await nextRelayData(fake, 1);
+    await peer.received();
     expect(relayConnectsSent(fake)).toBe(1);
     await session.close();
     await expect(unanswered).rejects.toThrow("before a response arrived");
   });
 });
-
-/** Resolves with the relay-data frame the session has put on the wire at the given position (the first by default), waiting for it to appear. */
-async function nextRelayData(
-  fake: Readonly<FakeConnection>,
-  index = 0,
-): Promise<RelayDataFrame> {
-  for (;;) {
-    const frames = fake.sent.filter(
-      (frame): frame is RelayDataFrame => frame.type === "relay-data",
-    );
-    const frame = frames[index];
-    if (frame !== undefined) return frame;
-    await new Promise((resolve) => {
-      setTimeout(resolve, 1);
-    });
-  }
-}

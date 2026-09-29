@@ -17,7 +17,6 @@ import {
   type ManageResponseFrame,
   type PeerAdvert,
   type ProtocolVersion,
-  type RelayDataFrame,
   type RevocationAnnounceFrame,
   type RevocationEntry,
   type TopologyPeers,
@@ -33,6 +32,7 @@ import {
   validateGossipExtensions,
 } from "./gossip-extensions.js";
 import { signPeerAdvert, verifyPeerAdvert } from "./peer-advert.js";
+import { createRelayChannels } from "./relay-channels.js";
 import type { Clock } from "../ports/clock.js";
 import type { IdentityPort } from "../ports/identity.js";
 import type { Connection, Transport } from "../ports/transport.js";
@@ -72,7 +72,7 @@ export interface IncomingManageRequest {
   command: ManageCommand;
   scope: CapabilityScope;
   token?: CapabilityToken;
-  /** The device-id of the peer this request was relayed on behalf of, read directly from the enclosing relay-data-frame's own `from-device` field (stamped by the hub on every frame it forwards, wire-mesh#30) -- present only when the request arrived wrapped in a relay-data frame that carried one. A caller that needs to address a further request back to the same peer (one not sent via respond(), which already routes back correctly on its own) passes this as sendManageRequest's targetDevice. Never inferred from which relay pairing happens to be most recently established: a connection can hold several concurrent pairings (wire-mesh#30's own multiplexed adjacency map), so only the frame's own per-message addressing can say who actually sent it. */
+  /** The device-id of the peer this request was relayed on behalf of, as the end-to-end secure channel it arrived through authenticated it (spec/secure-channel.cddl): the identity that channel's handshake proved, never the `from-device` a hub stamps on relay-data, which a hub can set to anything. Present only when the request arrived through a relay pairing. A caller that needs to address a further request back to the same peer (one not sent via respond(), which already routes back correctly on its own) passes this as sendManageRequest's targetDevice. */
   fromDevice?: DeviceId;
   /** The device-id this request's relay-data frame was explicitly addressed to, read from its own `to-device` field -- present only when the request arrived relay-wrapped and the frame carried one. A caller fronting more than one locally-addressable device behind a single hub connection (a gateway advertising several local peers through the same relay pairing) uses this to decide whether the request is for this device or should be routed on to a different local peer it also advertises; this session has no such routing logic of its own, since it represents exactly one identity. */
   toDevice?: DeviceId;
@@ -201,8 +201,19 @@ function createSessionCore(
     {
       resolve: (outcome: ManageOutcome) => void;
       reject: (error: Error) => void;
+      /** The device the request was relayed to, whose channel is the only one a response may arrive through; absent for a request sent directly, which only a direct response answers. */
+      expectedFrom: DeviceId | undefined;
     }
   >();
+  // The secure channel with each relay peer (spec/secure-channel.cddl); how a hello reaches the wire is the only thing this session contributes.
+  const relayChannels = createRelayChannels(identity, async (peer, hello) => {
+    if (connection === null) {
+      throw new Error("not connected");
+    }
+    frameLog.push({ direction: "sent", frame: hello });
+    await connection.send(wrapRelayData(hello, peer));
+    emit();
+  });
   const incomingQueue = createAsyncQueue<IncomingManageRequest>();
   const revocationQueue = createAsyncQueue<RevocationEntry>();
   const pingRoundTrips = createPingRoundTrips();
@@ -251,7 +262,7 @@ function createSessionCore(
     return connection;
   }
 
-  /** Sends a frame, wrapping it as relay-data first when viaRelay is set -- the single choke point every outbound manage-request/manage-response passes through, so a consumer of sendManageRequest/respond never needs its own relay-wrapping logic. When relaying, toDevice is stamped onto the outer relay-data-frame's own `to-device` field so the hub addresses it to the correct pairing directly (wire-mesh#30) rather than falling back to whichever pairing it last saw -- the one case this is omitted is a response to a request that itself arrived with no from-device to echo back, which is left to that same hub fallback exactly as an unaddressed relay-data always has been. */
+  /** Sends a frame. Through a relay it is sealed for toDevice on their secure channel first (spec/secure-channel.cddl) and only then wrapped as relay-data, so the hub carries ciphertext. This is the single choke point every outbound manage-request and manage-response passes through, so a consumer of sendManageRequest or respond never needs its own relay logic. */
   async function transmit(
     frame: Frame,
     viaRelay: boolean,
@@ -260,30 +271,48 @@ function createSessionCore(
     if (connection === null) {
       throw new Error("not connected");
     }
-    if (viaRelay) {
-      await connection.send(wrapRelayData(frame, toDevice));
+    if (!viaRelay) {
+      await connection.send(frame);
       return;
     }
-    await connection.send(frame);
-  }
-
-  function applyManageResponse(frame: ManageResponseFrame): void {
-    const requestId = frame["request-id"];
-    const pending = pendingManageRequests.get(requestId);
-    if (pending !== undefined) {
-      pendingManageRequests.delete(requestId);
-      pending.resolve(frame.outcome);
+    if (toDevice === undefined) {
+      throw new Error("a relayed frame needs the device it is for");
     }
+    const channel = await relayChannels.ensure(toDevice);
+    const sealed = await channel.seal(frame);
+    await connection.send(wrapRelayData(sealed, toDevice));
   }
 
-  /** relayFrame is present only for a manage-request that arrived wrapped in relay-data, and is that same outer relay-data-frame -- its own to-device/from-device fields carry whatever addressing it received. See IncomingManageRequest's own fromDevice/toDevice doc comments for what each means and why neither is ever guessed from pairing state. A version.get request (VERSION_GET_VERB) is answered directly, right here, rather than ever reaching incomingManageRequests -- deliberately ungated (version.cddl), so no application needs to remember to register its own handler for it the way every other verb requires. */
-  function applyManageRequest(
-    frame: ManageRequestFrame,
-    relayFrame?: RelayDataFrame,
+  /** `from` is the device whose secure channel the response arrived through, absent for one that arrived directly. A pending request only accepts an answer from where it was sent: a peer must not be able to answer a request meant for another by guessing its request-id. */
+  function applyManageResponse(
+    frame: ManageResponseFrame,
+    from?: DeviceId,
   ): void {
     const requestId = frame["request-id"];
-    const fromDevice = relayFrame?.["from-device"];
-    const toDevice = relayFrame?.["to-device"];
+    const pending = pendingManageRequests.get(requestId);
+    if (pending === undefined) {
+      return;
+    }
+    const expected = pending.expectedFrom;
+    const fromExpected =
+      expected === undefined
+        ? from === undefined
+        : from !== undefined && deviceIdToHex(from) === deviceIdToHex(expected);
+    if (!fromExpected) {
+      return;
+    }
+    pendingManageRequests.delete(requestId);
+    pending.resolve(frame.outcome);
+  }
+
+  /** `origin` is present only for a manage-request that arrived through a relay pairing: who sent it, as their secure channel authenticated them, and the device the relay-data frame was addressed to, if it named one. See IncomingManageRequest's own fromDevice/toDevice doc comments for what each means and why neither is ever guessed from pairing state. */
+  function applyManageRequest(
+    frame: ManageRequestFrame,
+    origin?: Readonly<{ fromDevice: DeviceId; toDevice?: DeviceId }>,
+  ): void {
+    const requestId = frame["request-id"];
+    const fromDevice = origin?.fromDevice;
+    const toDevice = origin?.toDevice;
     const incoming: IncomingManageRequest = {
       requestId,
       command: frame.command,
@@ -298,7 +327,7 @@ function createSessionCore(
           outcome,
         };
         frameLog.push({ direction: "sent", frame: response });
-        await transmit(response, relayFrame !== undefined, fromDevice);
+        await transmit(response, origin !== undefined, fromDevice);
         emit();
       },
     };
@@ -311,17 +340,27 @@ function createSessionCore(
 
   async function applyFrame(frame: Frame): Promise<void> {
     if (frame.type === "relay-data") {
-      // relay-data's payload is an opaque byte-pipe relay-hub forwards blindly between an established pairing, never interpreting it -- so a manage-request/manage-response addressed to a peer only reachable through a relay hub rides inside it (relay-hub itself drops those frame kinds when sent to it directly). A payload that doesn't decode as one of those two frame kinds is left as ordinary opaque relay-data: nothing else in this package currently sends or expects it, but this path must not assume it is the only future user of relay-data.
+      // relay-data's payload is a byte pipe the hub forwards blindly between an established pairing. What rides it is a secure channel's hello or sealed data (spec/secure-channel.cddl). A manage-request or manage-response that arrives as plain payload is dropped: accepting one would let a hub strip the protection, and it could not be attributed to anyone.
       const inner = tryDecodeFrame(frame.payload);
-      if (
-        inner !== null &&
-        (inner.type === "manage-request" || inner.type === "manage-response")
-      ) {
+      if (inner?.type === "secure-hello") {
         frameLog.push({ direction: "received", frame: inner });
-        if (inner.type === "manage-response") {
-          applyManageResponse(inner);
-        } else {
-          applyManageRequest(inner, frame);
+        await relayChannels.applyHello(inner);
+        return;
+      }
+      if (inner?.type === "secure-data") {
+        const opened = await relayChannels.open(inner, frame["from-device"]);
+        // Only a manage-request or manage-response is ever acted on, and always as coming from the device its channel authenticated.
+        if (opened?.frame.type === "manage-response") {
+          frameLog.push({ direction: "received", frame: opened.frame });
+          applyManageResponse(opened.frame, opened.from);
+        } else if (opened?.frame.type === "manage-request") {
+          frameLog.push({ direction: "received", frame: opened.frame });
+          applyManageRequest(opened.frame, {
+            fromDevice: opened.from,
+            ...(frame["to-device"] !== undefined
+              ? { toDevice: frame["to-device"] }
+              : {}),
+          });
         }
         return;
       }
@@ -484,6 +523,7 @@ function createSessionCore(
     localDomains: readonly string[],
   ): Promise<void> {
     connection = link;
+    relayChannels.reset("the connection changed before the channel was ready");
     localHandshakeSent = localHandshake(localDomains);
     handshake = { status: "pending" };
     state = { status: "connected", address, handshake };
@@ -591,22 +631,38 @@ function createSessionCore(
         const frame = buildManageRequest(command, scope, token);
         const requestId = frame["request-id"];
         const outcome = new Promise<ManageOutcome>((resolve, reject) => {
-          pendingManageRequests.set(requestId, { resolve, reject });
+          pendingManageRequests.set(requestId, {
+            resolve,
+            reject,
+            expectedFrom: targetDevice,
+          });
         });
         frameLog.push({ direction: "sent", frame });
-        await transmit(frame, targetDevice !== undefined, targetDevice);
-        emit();
-        if (timeoutMs === undefined) {
+        // The timeout below covers the whole exchange, secure-channel handshake included: a peer that never answers the hello would otherwise leave a request with a timeout waiting for ever.
+        const exchange = (async (): Promise<ManageOutcome> => {
+          try {
+            await transmit(frame, targetDevice !== undefined, targetDevice);
+          } catch (error) {
+            // The request never left, so nothing will answer it, and the caller learns why from this rejection rather than from the pending entry's.
+            pendingManageRequests.delete(requestId);
+            void outcome.catch(() => undefined);
+            throw error;
+          }
+          emit();
           return outcome;
+        })();
+        if (timeoutMs === undefined) {
+          return exchange;
         }
         return Promise.race([
-          outcome,
+          exchange,
           new Promise<ManageOutcome>((resolve) => {
             setTimeout(() => {
               if (pendingManageRequests.delete(requestId)) {
-                // A relay-connect has no acknowledgement and the hub gives no notice when a pairing is lost (the target reconnected, or the hub itself restarted), so this session cannot otherwise tell a live pairing from a dead one. An unanswered relayed request is the only evidence it gets, and keeping the pairing would blackhole every later request to that device for as long as this connection lives, whereas forgetting it costs one extra relay-connect.
+                // A relay-connect has no acknowledgement and the hub gives no notice when a pairing is lost (the target reconnected, or the hub itself restarted), so this session cannot otherwise tell a live pairing from a dead one. An unanswered relayed request is the only evidence it gets, and keeping the pairing would blackhole every later request to that device for as long as this connection lives, whereas forgetting it costs one extra relay-connect. The secure channel that rode the pairing goes with it, since a peer that reconnected no longer holds it.
                 if (targetDevice !== undefined) {
                   relayPairings.remove(targetDevice);
+                  relayChannels.forget(targetDevice);
                 }
                 resolve({ result: "error", code: "timeout" });
               }
@@ -659,6 +715,7 @@ function createSessionCore(
         rejectPendingManageRequests(
           "connection closed before a response arrived",
         );
+        relayChannels.reset("the session closed before the channel was ready");
         pingRoundTrips.rejectAll("connection closed before a pong arrived");
         if (connection !== null) {
           await connection.close();
