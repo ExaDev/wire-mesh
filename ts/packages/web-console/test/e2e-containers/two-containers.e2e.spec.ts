@@ -50,7 +50,7 @@ if (role === "initiator") {
 
     // The responder replies once it has allowed messages, which asks this side in turn.
     await allowRequest(page);
-    await expect(page.getByText(REPLY_MESSAGE)).toBeVisible({
+    await expect(page.getByText(REPLY_MESSAGE, { exact: true })).toBeVisible({
       timeout: STEP_TIMEOUT_MS,
     });
   });
@@ -60,7 +60,7 @@ if (role === "initiator") {
   }) => {
     await connect(page);
     await allowRequest(page);
-    await expect(page.getByText(FIRST_MESSAGE)).toBeVisible({
+    await expect(page.getByText(FIRST_MESSAGE, { exact: true })).toBeVisible({
       timeout: STEP_TIMEOUT_MS,
     });
     await send(page, REPLY_MESSAGE);
@@ -68,7 +68,7 @@ if (role === "initiator") {
     await expect(page.getByText(/Waiting for .* to allow messages/)).toBeHidden(
       { timeout: STEP_TIMEOUT_MS },
     );
-    await expect(page.getByText(REPLY_MESSAGE)).toBeVisible();
+    await expect(page.getByText(REPLY_MESSAGE, { exact: true })).toBeVisible();
   });
 } else {
   throw new Error(
