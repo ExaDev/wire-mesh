@@ -42,6 +42,7 @@ import { WEBRTC_SIGNAL_VERB } from "wire-mesh-core/domain/webrtc-signaling";
 import type { MessageStore } from "./message-store.js";
 import { discoverLocalNode as discoverLocalNodeDefault } from "./discover-local-node.js";
 import { appShell } from "./App.css.js";
+import { toWebSocketAddress } from "./dial-address.js";
 
 export interface AppProps {
   identity: IdentityPort;
@@ -90,13 +91,6 @@ const HUB_VERBS = [WEBRTC_SIGNAL_VERB, ROOM_MEMBER_CAPABILITY];
 /** A discovered candidate awaiting this console user's own explicit connect/dismiss (wire-mesh#187) -- resolve is createGossipExpansion's own shouldExpand promise, settled by whichever button the user clicks in DiscoveredPeersPanel. */
 interface PendingExpansion extends DiscoveredPeerRow {
   resolve: (approved: boolean) => void;
-}
-
-/** Gossiped addresses are bare "host:port" (wire-mesh#38's own convention -- see mesh-session.ts's addresses doc comment), but this console's browser transport only accepts a full ws:// or wss:// URL. A caller-typed address in the connect form may already carry a scheme (the default address is "ws://localhost:8787"); a gossiped one never does. */
-function toWebSocketAddress(address: string): string {
-  return address.startsWith("ws://") || address.startsWith("wss://")
-    ? address
-    : `ws://${address}`;
 }
 
 export function App({
@@ -247,9 +241,11 @@ export function App({
     }
     const session = createExpandableSession();
     attachConnection(targetAddress, session);
-    void session.connect(targetAddress, domains).catch(() => {
-      // ConnectionPanel's own render of the session's events already surfaces a connect failure via its status line; nothing further to do here beyond letting the entry remain (its own close button still works on a failed session).
-    });
+    void session
+      .connect(toWebSocketAddress(targetAddress), domains)
+      .catch(() => {
+        // ConnectionPanel's own render of the session's events already surfaces a connect failure via its status line; nothing further to do here beyond letting the entry remain (its own close button still works on a failed session).
+      });
   }
 
   // discoverLocalNode is a fresh closure every render (or a caller-supplied fake in tests), so the mount-only effect below reads it through a ref (the same pattern attachRef already uses above) rather than listing it as an effect dependency, which would either re-run the probe every render or need a lint suppression. connectTo is a plain function, recreated every render like attachConnection/createExpandableSession above it -- its own ref-update effect below simply runs every render too, which is cheap and still gives the mount effect the latest version by the time it actually fires.
