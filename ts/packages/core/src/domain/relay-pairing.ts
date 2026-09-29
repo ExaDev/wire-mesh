@@ -8,6 +8,8 @@ export interface RelayPairings {
   add: (device: DeviceId) => void;
   /** Forgets the pairing with a device, so the next request to it establishes a fresh one. A no-op for a device that was never paired. */
   remove: (device: DeviceId) => void;
+  /** Forgets every pairing. A pairing is state the hub holds for one connection, so a session that gets a new connection starts with none. */
+  clear: () => void;
   /** Every device currently paired, in establishment order -- the topology self-advertisement's own read of this set (wire-mesh#180), which needs to enumerate pairings rather than just test one. */
   list: () => DeviceId[];
 }
@@ -21,6 +23,9 @@ export function createRelayPairings(): RelayPairings {
     },
     remove: (device) => {
       established.delete(deviceIdToHex(device));
+    },
+    clear: () => {
+      established.clear();
     },
     list: () => [...established.values()],
   };

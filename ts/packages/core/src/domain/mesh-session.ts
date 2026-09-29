@@ -524,6 +524,8 @@ function createSessionCore(
   ): Promise<void> {
     connection = link;
     relayChannels.reset("the connection changed before the channel was ready");
+    // The hub holds a pairing for the connection it was made on, so a new connection has none; a session that kept the old ones would send relayed data the hub has nowhere to deliver and never send the relay-connect that fixes it.
+    relayPairings.clear();
     localHandshakeSent = localHandshake(localDomains);
     handshake = { status: "pending" };
     state = { status: "connected", address, handshake };
