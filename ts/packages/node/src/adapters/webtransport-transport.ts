@@ -42,7 +42,7 @@ function reachableHosts(host: string): readonly string[] {
 export class WebTransportUnavailableError extends Error {
   constructor(cause: unknown) {
     super(
-      "serving WebTransport needs the optional dependency @fails-components/webtransport and its native binary, which is not available on this platform or was not installed",
+      "serving WebTransport needs the optional dependency @fails-components/webtransport and its native binary, which is missing: either no binary is published for this platform, or the package manager skipped its install script (an ignore-scripts setting does that)",
       { cause },
     );
     this.name = "WebTransportUnavailableError";
@@ -74,6 +74,8 @@ export interface WebTransportTransportOptions {
 
 async function loadHttp3Server(): Promise<typeof Http3Server> {
   try {
+    // The server package catches a failure to load the native binary, logs it and resolves `quicheLoaded` anyway, so a node with no binary would start and serve nothing. Loading the binary's own package here lets that failure reach the caller.
+    await import("@fails-components/webtransport-transport-http3-quiche");
     const module = await import("@fails-components/webtransport");
     await module.quicheLoaded;
     return module.Http3Server;

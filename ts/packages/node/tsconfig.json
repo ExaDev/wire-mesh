@@ -15,6 +15,7 @@
   "include": [
     "src/adapters/node-websocket-transport.ts",
     "src/cli-options.ts",
+    "src/quiche.d.ts",
     "src/server.ts",
     "src/static-console.ts"
   ]
