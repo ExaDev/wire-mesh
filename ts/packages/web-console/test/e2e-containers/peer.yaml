@@ -1,0 +1,19 @@
+# What both browser containers share: the Playwright image that matches the @playwright/test the repository is pinned to, the workspace mounted in, and the spec run under its own config.
+
+services:
+  peer:
+    image: mcr.microsoft.com/playwright:v1.63.0-noble
+    working_dir: /work/packages/web-console
+    command:
+      [
+        "npx",
+        "playwright",
+        "test",
+        "--config",
+        "playwright.containers.config.ts",
+      ]
+    volumes:
+      - ../../../..:/work
+    # Chromium's shared memory needs, and reaping the browser's child processes.
+    ipc: host
+    init: true

@@ -58,6 +58,7 @@
     "lint": "turbo run _lint",
     "test": "turbo run _test",
     "test:e2e": "turbo run _test:e2e",
+    "test:e2e:containers": "docker compose -f test/e2e-containers/compose.yaml up --exit-code-from initiator --abort-on-container-exit",
     "typecheck": "turbo run _typecheck"
   },
   "type": "module"
