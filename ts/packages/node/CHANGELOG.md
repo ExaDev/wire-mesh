@@ -1,3 +1,9 @@
+## [3.2.1](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.2.0...wire-mesh%403.2.1) (2026-09-29)
+
+### Bug Fixes
+
+* **node:** fail --webtransport at startup when the native binary is missing ([bf9dcc2](https://github.com/ExaDev/wire-mesh/commit/bf9dcc2e711ee6429e7aef80bbfaf51c1af4ee66))
+
 ## [3.2.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.1.2...wire-mesh%403.2.0) (2026-09-29)
 
 ### Features
