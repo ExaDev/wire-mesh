@@ -61,7 +61,7 @@ export function buildCapabilityRequestCommand(
  * targetDevice and timeoutMs forward directly to MeshSession.sendManageRequest's own identically-named parameters (relay routing and a requester-side give-up bound respectively -- wire-mesh#80 is already implemented there, not duplicated here). validUntil, when given, is attached to the request itself (wire-mesh#82) so a slow-to-answer receiver -- or a relay/facilitator forwarding this request on the caller's behalf -- can refuse or drop a now-stale ask outright rather than holding or forwarding it.
  */
 export async function requestCapability(
-  session: Readonly<MeshSession>,
+  session: Readonly<Pick<MeshSession, "sendManageRequest">>,
   capability: string,
   scope: Readonly<CapabilityScope>,
   targetDevice?: DeviceId,

@@ -43,7 +43,7 @@ export function buildCapabilityGrantCommand(
  * scope and targetDevice forward directly to MeshSession.sendManageRequest's own identically-named parameters (the request's own top-level scope obligation 4 checks the token against, and relay routing respectively).
  */
 export async function sendCapabilityGrant(
-  session: Readonly<MeshSession>,
+  session: Readonly<Pick<MeshSession, "sendManageRequest">>,
   capability: string,
   grantedToken: CapabilityToken,
   scope: Readonly<CapabilityScope>,
