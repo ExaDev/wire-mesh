@@ -23,7 +23,7 @@ async function advertWith(
 describe("publicHubAdvertPolicy", () => {
   it("carries the minimal agent advert, its presence and its versions", async () => {
     const advert = await advertWith({
-      "agent/card": { name: "a", harness: "claude-code", membership: "proof" },
+      "agent/self": { name: "a", harness: "claude-code", membership: "proof" },
       "presence/status": "active",
       "agent-comms/version": { agentComms: "1.0.0", ccPeer: "2.0.0" },
       "wire-mesh/version": "1.0.0",
@@ -45,21 +45,20 @@ describe("publicHubAdvertPolicy", () => {
     ["a process id", { name: "a", harness: "h", pid: 1234 }],
     ["joined rooms", { name: "a", harness: "h", subscribedRooms: ["r"] }],
     ["tags", { name: "a", harness: "h", tags: ["t"] }],
-    ["a start time", { name: "a", harness: "h", startedAt: "2026-01-01" }],
     ["no name", { harness: "h" }],
     ["a non-string name", { name: 1, harness: "h" }],
-  ])("refuses an agent card with %s", async (_label, card) => {
-    const advert = await advertWith({ "agent/card": card });
+  ])("refuses an agent advert with %s", async (_label, agentSelf) => {
+    const advert = await advertWith({ "agent/self": agentSelf });
 
     expect(checkAdvertExtensions(advert, publicHubAdvertPolicy)).toEqual({
       ok: false,
-      key: "agent/card",
+      key: "agent/self",
     });
   });
 
   it("carries public rooms by path and name", async () => {
     const advert = await advertWith({
-      "room/public": [{ path: "p", name: "n" }],
+      "room/hosted": [{ path: "p", name: "n", type: "public" }],
     });
 
     expect(checkAdvertExtensions(advert, publicHubAdvertPolicy)).toEqual({
@@ -68,32 +67,20 @@ describe("publicHubAdvertPolicy", () => {
   });
 
   it.each([
-    ["a room description", [{ path: "p", name: "n", description: "d" }]],
-    ["a room type", [{ path: "p", name: "n", type: "public" }]],
-    ["something that is not a list", { path: "p", name: "n" }],
-  ])("refuses public rooms with %s", async (_label, rooms) => {
-    const advert = await advertWith({ "room/public": rooms });
+    ["a private room", [{ path: "p", name: "n", type: "private" }]],
+    [
+      "a room description",
+      [{ path: "p", name: "n", type: "public", description: "d" }],
+    ],
+    ["something that is not a list", { path: "p", name: "n", type: "public" }],
+  ])("refuses hosted rooms with %s", async (_label, rooms) => {
+    const advert = await advertWith({ "room/hosted": rooms });
 
     expect(checkAdvertExtensions(advert, publicHubAdvertPolicy)).toEqual({
       ok: false,
-      key: "room/public",
+      key: "room/hosted",
     });
   });
-
-  it.each([
-    ["agent/self", { name: "a", harness: "h" }],
-    ["room/hosted", [{ path: "p", name: "n", type: "public" }]],
-  ])(
-    "refuses the private-link key %s outright, however tidy its value",
-    async (key, value) => {
-      const advert = await advertWith({ [key]: value });
-
-      expect(checkAdvertExtensions(advert, publicHubAdvertPolicy)).toEqual({
-        ok: false,
-        key,
-      });
-    },
-  );
 
   it("refuses a presence value that is not a known status", async () => {
     const advert = await advertWith({ "presence/status": "at /home/x/p" });
