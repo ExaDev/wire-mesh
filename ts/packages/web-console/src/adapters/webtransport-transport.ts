@@ -22,7 +22,10 @@ export function createBrowserWebTransportTransport(): Transport {
       }
       const { url, sha256 } = parsePinnedAddress(address);
       const session = new WebTransport(new URL(SESSION_PATH, url).toString(), {
-        serverCertificateHashes: [{ algorithm: "sha-256", value: sha256 }],
+        serverCertificateHashes: sha256.map((value) => ({
+          algorithm: "sha-256",
+          value,
+        })),
       });
       await session.ready;
       const stream = await session.createBidirectionalStream();
