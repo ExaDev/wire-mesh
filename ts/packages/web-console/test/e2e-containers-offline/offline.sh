@@ -21,7 +21,7 @@ peers warm || { echo "warm phase failed"; exit 2; }
 # The address the LAN node prints for WebTransport carries its own IP and the hash of the certificate it minted, so it is read from the node's output rather than known in advance.
 pinned=""
 for _ in $(seq 1 30); do
-  pinned=$("${compose[@]}" logs --no-log-prefix lan-node-wt 2>/dev/null | grep -o 'https://[^ ]*#sha256=[0-9a-f]*' | head -n 1)
+  pinned=$("${compose[@]}" logs --no-log-prefix lan-node-wt 2>/dev/null | grep -o 'https://[^ ]*#sha256=[0-9a-f,]*' | head -n 1)
   [[ -n $pinned ]] && break
   sleep 1
 done
