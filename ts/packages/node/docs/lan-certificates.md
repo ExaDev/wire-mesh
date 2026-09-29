@@ -3,7 +3,7 @@
 A wire-mesh node run on someone's LAN can be reached by the console served from a hub only if the browser will let a page from `https://mesh.exadev.io` open a connection to it. Today that fails, for two independent reasons in the code and one in the browser.
 
 - The node serves `ws://` unless given `--tls-cert` and `--tls-key`, and it generates no certificate of its own (`packages/node/README.md`, TLS section).
-- The console builds the address it dials from a gossiped `host:port` by always prefixing `ws://` (`toWebSocketAddress` in `web-console/src/App.tsx`), so even a node that does serve `wss://` is dialled with the wrong scheme.
+- The console dials a bare `host:port` over plain `ws://` and an address that names its scheme (`wss://`, `https://`) with it (`toWebSocketAddress` in `web-console/src/dial-address.ts`), so a node given its own certificate with `--tls-cert` is reachable when the browser trusts that certificate.
 - A browser blocks a plain `ws://` connection from a secure page to anything that is not a loopback address; loopback is the only exemption MDN documents ([Mixed content](https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content), [archived](https://web.archive.org/web/https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content)). A LAN address, addressed by IP, gets no exemption. A console served from the node itself over `http://` is no way round it: it is not a secure context, and the console needs Web Crypto for its identity.
 
 ## Options
@@ -26,7 +26,7 @@ With the hub reachable, every node is reachable through the relay (#251), and no
 
 With the hub down, use WebTransport with pinned hashes. It is the only option that needs neither a CA nor the internet, its certificate lifetime limit is met by a node that mints a new certificate on a schedule, and it fits behind the existing `Transport` port as one more adapter. The hash travels in the node's signed advert as part of its address, as a scheme-carrying address such as `https://192.0.2.5:4433#sha256=...`, which `wire-candidate.address` (a string) already permits, so no new frame or field is proposed. A console learns the hash by hearing the advert, from the hub earlier or from an out-of-band handle record, so it needs no way to fetch it over the network it cannot reach.
 
-The console needs to stop forcing `ws://` for gossiped addresses in either case: an address that names its scheme is dialled with it, which also lets a node that was given its own CA certificate with `--tls-cert` be reached.
+A gossiped or typed address that names its scheme is dialled with it, which also lets a node that was given its own CA certificate with `--tls-cert` be reached, in either case.
 
 Rejected: the named-domain route, for the cost of running the issuing service and because it fails offline; the WebRTC route, for needing the hub; hand-trusted certificates.
 
