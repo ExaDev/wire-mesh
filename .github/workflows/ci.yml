@@ -237,6 +237,10 @@ jobs:
         working-directory: ts/packages/web-console
         run: pnpm run test:e2e:containers:isolated
 
+      - name: Report which routes to a LAN node carry a conversation with the internet gone
+        working-directory: ts/packages/web-console
+        run: pnpm run test:e2e:containers:offline
+
   rust-verify:
     name: rust/ Verify
     runs-on: ubuntu-latest

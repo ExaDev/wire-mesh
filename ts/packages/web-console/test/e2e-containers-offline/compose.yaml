@@ -1,0 +1,85 @@
+# The offline case: two browsers on a network with no route out, a "cloud" container standing in for mesh.exadev.io (it serves the console, over https, and is stopped between the two phases of a run), and a LAN node that stays up. offline.sh drives it: phase "warm" loads the console from the cloud so the service worker caches it, the cloud is then stopped, and phase "connect" reloads the console from the cache and connects both browsers to the LAN node named by NODE_ADDRESS.
+
+name: wire-mesh-offline
+
+services:
+  certs:
+    image: mcr.microsoft.com/playwright:v1.63.0-noble
+    command:
+      [
+        "sh",
+        "-c",
+        "for n in cloud lan-node; do openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -keyout /certs/$$n.key -out /certs/$$n.pem -days 1 -subj /CN=$$n -addext subjectAltName=DNS:$$n; done && openssl x509 -in /certs/lan-node.pem -pubkey -noout | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64 > /certs/lan-node.spki && touch /certs/ready && exec sleep infinity",
+      ]
+    healthcheck:
+      test: ["CMD", "test", "-f", "/certs/ready"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+    volumes:
+      - certs:/certs
+    networks: [lan]
+
+  cloud:
+    extends:
+      service: node-base
+    hostname: cloud
+    command:
+      [
+        "node", "dist/server.mjs", "--bind", "0.0.0.0:8790",
+        "--tls-cert", "/certs/cloud.pem", "--tls-key", "/certs/cloud.key",
+      ]
+
+  lan-node:
+    extends:
+      service: node-base
+    hostname: lan-node
+    command:
+      [
+        "node", "dist/server.mjs", "--bind", "0.0.0.0:8790",
+        "--tls-cert", "/certs/lan-node.pem", "--tls-key", "/certs/lan-node.key",
+      ]
+
+  lan-node-plain:
+    extends:
+      service: node-base
+    hostname: lan-node-plain
+    command: ["node", "dist/server.mjs", "--bind", "0.0.0.0:8790"]
+
+  node-base:
+    image: node:26-bookworm-slim
+    working_dir: /work/packages/node
+    volumes:
+      - ../../../..:/work:ro
+      - certs:/certs:ro
+    depends_on:
+      certs:
+        condition: service_healthy
+    networks: [lan]
+
+  peer:
+    image: mcr.microsoft.com/playwright:v1.63.0-noble
+    working_dir: /work/packages/web-console
+    command: ["npx", "playwright", "test", "--config", "playwright.offline.config.ts"]
+    volumes:
+      - ../../../..:/work
+      - certs:/certs:ro
+      - profile-${PEER_ROLE:-initiator}:/profile
+    environment:
+      PEER_ROLE: ${PEER_ROLE:-initiator}
+      PEER_PHASE: ${PEER_PHASE:-warm}
+      CLOUD_ORIGIN: https://cloud:8790
+      NODE_ADDRESS: ${NODE_ADDRESS:-}
+      TRUST_LAN_NODE: ${TRUST_LAN_NODE:-}
+    ipc: host
+    init: true
+    networks: [lan]
+
+networks:
+  lan:
+    internal: true
+
+volumes:
+  certs: {}
+  profile-initiator: {}
+  profile-responder: {}
