@@ -118,6 +118,10 @@
       "import": "./dist/domain/handshake.mjs",
       "require": "./dist/domain/handshake.cjs"
     },
+    "./domain/hub-mailbox": {
+      "import": "./dist/domain/hub-mailbox.mjs",
+      "require": "./dist/domain/hub-mailbox.cjs"
+    },
     "./domain/mesh-session": {
       "import": "./dist/domain/mesh-session.mjs",
       "require": "./dist/domain/mesh-session.cjs"

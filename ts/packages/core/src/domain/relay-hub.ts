@@ -20,6 +20,11 @@ import {
   checkAdvertExtensions,
   type AdvertExtensionPolicy,
 } from "./advert-extension-policy.js";
+import {
+  isDataFrame,
+  type Mailbox,
+  type MailboxRefusalReason,
+} from "./hub-mailbox.js";
 import { verifyPeerAdvert, type PeerAdvertVerifier } from "./peer-advert.js";
 
 interface Registration {
@@ -64,6 +69,17 @@ export interface RelayHubOptions {
   readonly extensionPolicy?: AdvertExtensionPolicy;
   /** Called with each advert refused by extensionPolicy, so the host can report it; the advert's sender is given no reply, since the transport spec defines none. */
   readonly onAdvertRefused?: (refusal: Readonly<AdvertRefusal>) => void;
+  /**
+   * The announcer role: a mailbox that holds other devices' `core/data` logs while they are offline (hub-mailbox.ts). Absent, data frames sent to this hub are ignored, as they always were.
+   */
+  readonly mailbox?: Mailbox;
+  /** Called with each data frame the mailbox refused and why, so the host can report it; the sender is given no reply. */
+  readonly onMailboxRefused?: (
+    refusal: Readonly<{
+      device: DeviceId | undefined;
+      reason: MailboxRefusalReason;
+    }>,
+  ) => void;
   /** Called whenever the value exportConnection returns for a connection changes: it gossiped an advert, gained or lost a pairing, or had one of its adverts taken over by another connection. A host whose own instance can be torn down while its connections stay open (the Cloudflare hub's hibernating Durable Object) reads the new value back with exportConnection, persists it against the connection, and hands it to a later instance through restoreConnections. */
   readonly onConnectionStateChanged?: (
     connection: Readonly<Connection>,
@@ -405,6 +421,21 @@ export function createRelayHub(options: Readonly<RelayHubOptions>): RelayHub {
         // Echoed straight through from the frame this hub just received, not merely consumed for its own routing use above: a receiving connection fronting more than one locally-addressable device (a gateway) has no other way to learn which of its own devices the sender actually meant, since it's on the far side of a single multiplexed connection from the hub's own perspective. Omitted when the sender left it unaddressed, matching the legacy single-pairing convention (module header, "may omit to-device").
         ...(toDevice !== undefined ? { "to-device": toDevice } : {}),
       });
+      return;
+    }
+
+    if (options.mailbox !== undefined && isDataFrame(frame)) {
+      const sender = connectionDevice.get(connection);
+      const reply = await options.mailbox.handle(sender, frame, (reason) => {
+        options.onMailboxRefused?.({ device: sender, reason });
+      });
+      if (reply !== null) {
+        try {
+          await connection.send(reply);
+        } catch {
+          // The sender's connection died between its frame and this reply; its own handleConnection loop, or the caller driving onFrame, observes that the same way any failed send is observed.
+        }
+      }
       return;
     }
 
