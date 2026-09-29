@@ -1,23 +1,68 @@
 # Two consoles in two containers and a hub in a third, on one Docker network. Each browser has its own address and its own network stack, and Chrome's default handling of local addresses is left on (an address is advertised as a random .local name the other side has to resolve), which the single-host e2e in test/e2e cannot exercise because it has to switch that off.
 #
+# The hub serves https and wss with a certificate made for the run, which the browsers are told to accept: the console needs Web Crypto, which a page served over plain http from a container name does not get.
+#
 # Run from ts/packages/web-console with `pnpm run test:e2e:containers`. It expects wire-mesh (packages/node) to have been built, since the hub is that build and it serves the console it carries.
 
 name: wire-mesh-two-containers
 
 services:
+  certs:
+    image: mcr.microsoft.com/playwright:v1.63.0-noble
+    command:
+      [
+        "openssl",
+        "req",
+        "-x509",
+        "-newkey",
+        "ec",
+        "-pkeyopt",
+        "ec_paramgen_curve:prime256v1",
+        "-nodes",
+        "-keyout",
+        "/certs/key.pem",
+        "-out",
+        "/certs/cert.pem",
+        "-days",
+        "1",
+        "-subj",
+        "/CN=hub",
+        "-addext",
+        "subjectAltName=DNS:hub",
+      ]
+    volumes:
+      - certs:/certs
+
   hub:
     image: node:26-bookworm-slim
     working_dir: /work/packages/node
-    command: ["node", "dist/server.mjs", "--bind", "0.0.0.0:8790"]
+    command:
+      [
+        "node",
+        "dist/server.mjs",
+        "--bind",
+        "0.0.0.0:8790",
+        "--tls-cert",
+        "/certs/cert.pem",
+        "--tls-key",
+        "/certs/key.pem",
+      ]
     volumes:
       - ../../../..:/work:ro
+      - certs:/certs:ro
+    depends_on:
+      certs:
+        condition: service_completed_successfully
+    # Only the health check below talks to the hub without accepting its certificate by other means, and it reaches the hub on its own loopback.
+    environment:
+      NODE_TLS_REJECT_UNAUTHORIZED: "0"
     healthcheck:
       test:
         [
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:8790/').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+          "fetch('https://127.0.0.1:8790/').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
         ]
       interval: 2s
       timeout: 5s
@@ -31,7 +76,7 @@ services:
       service: peer
     environment:
       PEER_ROLE: responder
-      HUB_ORIGIN: http://hub:8790
+      HUB_ORIGIN: https://hub:8790
     depends_on:
       hub:
         condition: service_healthy
@@ -44,7 +89,7 @@ services:
       service: peer
     environment:
       PEER_ROLE: initiator
-      HUB_ORIGIN: http://hub:8790
+      HUB_ORIGIN: https://hub:8790
     depends_on:
       hub:
         condition: service_healthy
@@ -53,3 +98,6 @@ services:
 
 networks:
   mesh: {}
+
+volumes:
+  certs: {}
