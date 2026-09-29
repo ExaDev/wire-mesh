@@ -146,15 +146,17 @@ async function main(argv: readonly string[]): Promise<void> {
       onError: (error) => {
         logError(`wire-mesh: WebTransport: ${String(error)}`);
       },
-      onCertificateRenewed: (address) => {
-        logOutput(`wire-mesh WebTransport address changed: ${address}`);
+      onCertificateRenewed: (addresses) => {
+        logOutput(
+          `wire-mesh WebTransport addresses changed: ${addresses.join(" ")}`,
+        );
       },
     }).listen(command.webTransportAddress, (connection) => {
       void hub.handleConnection(connection);
     });
-    logOutput(
-      `wire-mesh serving WebTransport at ${webTransport.advertisedAddress}`,
-    );
+    for (const address of webTransport.advertisedAddresses) {
+      logOutput(`wire-mesh serving WebTransport at ${address}`);
+    }
   }
 }
 
