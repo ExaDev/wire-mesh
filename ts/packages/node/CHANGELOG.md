@@ -1,3 +1,10 @@
+## [2.0.5](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%402.0.4...wire-mesh%402.0.5) (2026-09-29)
+
+
+### Dependencies
+
+- Updated @exadev/wire-mesh-web-console to 2.4.0
+
 ## [2.0.4](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%402.0.3...wire-mesh%402.0.4) (2026-09-29)
 
 

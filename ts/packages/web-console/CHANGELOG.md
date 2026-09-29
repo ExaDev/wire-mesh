@@ -1,3 +1,9 @@
+## [2.4.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.3.0...%40exadev%2Fwire-mesh-web-console%402.4.0) (2026-09-29)
+
+### Features
+
+* **web-console:** configure STUN so a direct connection can form across NATs ([3eb7dd3](https://github.com/ExaDev/wire-mesh/commit/3eb7dd325f550f9c459ec4f0b734212b3bb8cfa7))
+
 ## [2.3.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.2.0...%40exadev%2Fwire-mesh-web-console%402.3.0) (2026-09-29)
 
 ### Features
