@@ -13,16 +13,18 @@ export interface PendingJoinRequest {
   decide: (decision: Readonly<RoomJoinDecision>) => Promise<void>;
 }
 
-/** A message the user has sent that is not yet in the conversation's history: in flight, or refused with the reason, until it is retried or dismissed. */
+/** A message the user has sent that is not yet in the conversation's history: held for the other side's consent, in flight, or refused with the reason, until it is retried or dismissed. */
 export type PendingOutgoing = {
   /** Identifies this attempt locally; the message id it will be stored under is only minted once it is delivered. */
   localId: string;
   text: string;
-} & (
-  | { status: "sending" }
-  /** error is why the last attempt failed. */
-  | { status: "failed"; error: string }
-);
+} &
+  /** awaiting-approval: the first message to a peer asks that peer to allow messages, and waits for their answer. */
+  (
+    | { status: "awaiting-approval" | "sending" }
+    /** error is why the last attempt failed. */
+    | { status: "failed"; error: string }
+  );
 
 export interface ConversationView {
   roomPath: string;

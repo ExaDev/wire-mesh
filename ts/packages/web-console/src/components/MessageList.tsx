@@ -86,11 +86,7 @@ export function MessageList({
             <Text size="sm" c="dimmed">
               {pending.text}
             </Text>
-            {pending.status === "sending" ? (
-              <Text size="xs" c="dimmed">
-                Sending
-              </Text>
-            ) : (
+            {pending.status === "failed" ? (
               <Group gap="xs">
                 <Text size="xs" c="red">
                   {`Not sent: ${pending.error}`}
@@ -115,6 +111,12 @@ export function MessageList({
                   Dismiss
                 </Button>
               </Group>
+            ) : (
+              <Text size="xs" c="dimmed">
+                {pending.status === "awaiting-approval"
+                  ? `Waiting for ${peerLabel} to allow messages`
+                  : "Sending"}
+              </Text>
             )}
           </Stack>
         ))}
