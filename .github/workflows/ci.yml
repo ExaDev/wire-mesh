@@ -233,6 +233,10 @@ jobs:
         working-directory: ts/packages/web-console
         run: pnpm run test:e2e:containers
 
+      - name: Run them on separate networks with only the hub in common
+        working-directory: ts/packages/web-console
+        run: pnpm run test:e2e:containers:isolated
+
   rust-verify:
     name: rust/ Verify
     runs-on: ubuntu-latest
