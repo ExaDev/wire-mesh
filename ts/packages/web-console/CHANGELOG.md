@@ -1,3 +1,9 @@
+## [2.5.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.4.1...%40exadev%2Fwire-mesh-web-console%402.5.0) (2026-09-29)
+
+### Features
+
+* **web-console:** say a message is waiting for the other side's consent ([548c117](https://github.com/ExaDev/wire-mesh/commit/548c11705ffbe71fb038b30e141fd2089e7885ad))
+
 ## [2.4.1](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.4.0...%40exadev%2Fwire-mesh-web-console%402.4.1) (2026-09-29)
 
 
