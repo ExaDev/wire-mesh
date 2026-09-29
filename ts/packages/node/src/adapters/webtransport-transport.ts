@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { networkInterfaces } from "node:os";
 import type { Http3Server } from "@fails-components/webtransport";
 import {
   connectionFromByteStream,
@@ -24,6 +25,19 @@ const RENEWAL_FRACTION = 0.5;
 const RENEWAL_DELAY_MS = PINNED_CERTIFICATE_LIFETIME_MS * RENEWAL_FRACTION;
 const SECRET_BYTES = 32;
 
+const WILDCARD_HOSTS: readonly string[] = ["0.0.0.0", "::"];
+
+/** The hosts a client can dial for a listener bound to `host`: the host itself, or for a wildcard every non-internal IPv4 address of this machine. */
+function reachableHosts(host: string): readonly string[] {
+  if (!WILDCARD_HOSTS.includes(host)) {
+    return [host];
+  }
+  return Object.values(networkInterfaces())
+    .flatMap((addresses) => addresses ?? [])
+    .filter((entry) => entry.family === "IPv4" && !entry.internal)
+    .map((entry) => entry.address);
+}
+
 /** The optional WebTransport package is not installed, or its native binary was not built for this platform. */
 export class WebTransportUnavailableError extends Error {
   constructor(cause: unknown) {
@@ -35,10 +49,10 @@ export class WebTransportUnavailableError extends Error {
   }
 }
 
-/** A listener that also says the address a client pins, which changes when the certificate is renewed. */
+/** A listener that also says the addresses a client pins, which change when the certificate is renewed. */
 export interface WebTransportListener extends Listener {
-  /** `https://host:port#sha256=<hex>`: the address, and the hash of the certificate currently served. */
-  readonly advertisedAddress: string;
+  /** One `https://host:port#sha256=<hex>` per address a client can reach: the address and the hash of the certificate currently served. A listener bound to a wildcard address has one for each non-internal IPv4 address of this machine, since a wildcard is not something a client can dial. */
+  readonly advertisedAddresses: readonly string[];
 }
 
 /** Transport whose listeners report the address a client pins. */
@@ -52,8 +66,8 @@ export interface WebTransportTransport extends Transport {
 export interface WebTransportTransportOptions {
   /** Called with a failure that belongs to one session or to a certificate renewal, neither of which should stop the listener. */
   onError?: (error: unknown) => void;
-  /** Called with the new advertised address each time the certificate is renewed. */
-  onCertificateRenewed?: (advertisedAddress: string) => void;
+  /** Called with the new advertised addresses each time the certificate is renewed. */
+  onCertificateRenewed?: (advertisedAddresses: readonly string[]) => void;
   /** The current time, injected so a test can move it. */
   now?: () => Date;
 }
@@ -126,8 +140,13 @@ export function createWebTransportTransport(
         throw new Error("the WebTransport server bound no address");
       }
       const boundAddress = `${host}:${String(bound.port)}`;
-      const advertise = (): string =>
-        formatPinnedAddress(boundAddress, certificate.sha256Hex);
+      const advertise = (): readonly string[] =>
+        reachableHosts(host).map((reachable) =>
+          formatPinnedAddress(
+            `${reachable}:${String(bound.port)}`,
+            certificate.sha256Hex,
+          ),
+        );
 
       void (async () => {
         for await (const session of server.sessionStream(WEBTRANSPORT_PATH)) {
@@ -166,7 +185,7 @@ export function createWebTransportTransport(
 
       return {
         address: boundAddress,
-        get advertisedAddress() {
+        get advertisedAddresses() {
           return advertise();
         },
         close: async () => {

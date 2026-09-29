@@ -46,6 +46,13 @@ services:
     hostname: lan-node-plain
     command: ["node", "dist/server.mjs", "--bind", "0.0.0.0:8790"]
 
+  lan-node-wt:
+    extends:
+      service: node-base
+    hostname: lan-node-wt
+    command:
+      ["node", "dist/server.mjs", "--bind", "0.0.0.0:8790", "--webtransport", "0.0.0.0:4433"]
+
   node-base:
     image: node:26-bookworm-slim
     working_dir: /work/packages/node

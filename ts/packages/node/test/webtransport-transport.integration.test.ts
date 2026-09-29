@@ -40,15 +40,33 @@ describe("createWebTransportTransport", () => {
   });
 
   it(
-    "serves on a bound port and advertises the address with the hash of the certificate it serves",
+    "serves on a bound port and advertises its address with the hash of the certificate it serves",
     async () => {
       listener = await createWebTransportTransport().listen(
         LOOPBACK_ANY_PORT,
         () => undefined,
       );
-      const advertised = parsePinnedAddress(listener.advertisedAddress);
+      const [address] = listener.advertisedAddresses;
+      expect(address).toBeDefined();
+      const advertised = parsePinnedAddress(address ?? "");
       expect(advertised.url).toBe(`https://${listener.address}/`);
       expect(advertised.sha256).toHaveLength(SHA256_HEX_LENGTH / 2);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "advertises a reachable address for each interface when bound to a wildcard",
+    async () => {
+      listener = await createWebTransportTransport().listen(
+        "0.0.0.0:0",
+        () => undefined,
+      );
+      expect(listener.advertisedAddresses.length).toBeGreaterThan(0);
+      for (const address of listener.advertisedAddresses) {
+        expect(address).not.toContain("0.0.0.0");
+        expect(() => parsePinnedAddress(address)).not.toThrow();
+      }
     },
     TEST_TIMEOUT_MS,
   );
