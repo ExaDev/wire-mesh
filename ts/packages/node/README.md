@@ -34,14 +34,15 @@ Every flag the CLI accepts, exactly as `wire-mesh --help` prints it. An unknown 
 Usage: wire-mesh [options]
 
 Options:
-      --bind <host:port>          Address to listen on. Port 0 asks the OS for a free port. Use 127.0.0.1:8787 to accept local connections only. (default: 0.0.0.0:8787)
-      --tls-cert <path>           PEM certificate file, to serve wss:// and https://. Requires --tls-key.
-      --tls-key <path>            PEM private key file for --tls-cert. Requires --tls-cert.
-      --mailbox-dir <path>        Directory to hold other devices' logs in while they are offline, which makes this node an announcer as well as a relay. Bounded by fixed limits. Off unless given.
-      --webtransport <host:port>  Also serve WebTransport on this UDP address, with a self-signed certificate renewed on a schedule that a browser accepts by pinning its hash, and print the address to give a console. Needs the optional @fails-components/webtransport dependency. Off unless given.
-      --state-dir <path>          Directory to keep the WebTransport certificates in, private keys included, so a restart serves the same certificates and the addresses already handed out stay valid. Created readable by this user only. Without it the certificates live in memory and a restart starts a new set. Needs --webtransport.
-  -h, --help                      Print this help and exit.
-  -v, --version                   Print the version and exit.
+      --bind <host:port>                Address to listen on. Port 0 asks the OS for a free port. Use 127.0.0.1:8787 to accept local connections only. (default: 0.0.0.0:8787)
+      --tls-cert <path>                 PEM certificate file, to serve wss:// and https://. Requires --tls-key.
+      --tls-key <path>                  PEM private key file for --tls-cert. Requires --tls-cert.
+      --mailbox-dir <path>              Directory to hold other devices' logs in while they are offline, which makes this node an announcer as well as a relay. Bounded by fixed limits. Off unless given.
+      --webtransport <host:port>        Also serve WebTransport on this UDP address, with a self-signed certificate renewed on a schedule that a browser accepts by pinning its hash, and print the address to give a console. Needs the optional @fails-components/webtransport dependency. Off unless given.
+      --state-dir <path>                Directory to keep the WebTransport certificates in, private keys included, so a restart serves the same certificates and the addresses already handed out stay valid. Created readable by this user only. Without it the certificates live in memory and a restart starts a new set. Needs --webtransport.
+      --certificate-lifetime <seconds>  How long each WebTransport certificate is valid, in seconds. The node rotates to the next certificate every half lifetime, ending the sessions open on the server it replaces, so a shorter lifetime rotates more often. At most the WebTransport limit for a pinned certificate, which is also the default. Needs --webtransport.
+  -h, --help                            Print this help and exit.
+  -v, --version                         Print the version and exit.
 ```
 
 **Default bind address is `0.0.0.0:8787`, not loopback.** Unlike a typical dev-server tool, whose loopback-only default assumes only the machine itself needs to reach it, this package's whole purpose is LAN reachability — a phone on the same network, a laptop in the next room. `--bind` overrides the address if you want to restrict it (loopback-only, a specific interface, a different port).

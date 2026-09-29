@@ -22,6 +22,9 @@ import {
 export const WEBTRANSPORT_PATH = "/wire-mesh";
 
 const SECRET_BYTES = 32;
+/** The application close code and reason sent when a certificate rotation ends a session; the code is arbitrary, and 0 is what a normal close carries. */
+const SESSION_CLOSE_CODE = 0;
+const ROTATION_CLOSE_REASON = "certificate rotated";
 
 const WILDCARD_HOSTS: readonly string[] = ["0.0.0.0", "::"];
 
@@ -89,6 +92,10 @@ async function loadHttp3Server(): Promise<typeof Http3Server> {
 /** A session as the server hands it out, narrowed to what this adapter uses; the package's own session type does not resolve under this project's compiler settings. */
 interface IncomingSession {
   readonly ready: Promise<unknown>;
+  readonly closed: Promise<unknown>;
+  readonly close: (
+    info: Readonly<{ closeCode: number; reason: string }>,
+  ) => void;
   readonly incomingBidirectionalStreams: ReadableStream<ByteStream>;
 }
 
@@ -98,6 +105,10 @@ function isIncomingSession(value: unknown): value is IncomingSession {
     value !== null &&
     "ready" in value &&
     value.ready instanceof Promise &&
+    "closed" in value &&
+    value.closed instanceof Promise &&
+    "close" in value &&
+    typeof value.close === "function" &&
     "incomingBidirectionalStreams" in value &&
     value.incomingBidirectionalStreams instanceof ReadableStream
   );
@@ -140,10 +151,15 @@ export function createWebTransportTransport(
         scheduleOptions,
       );
 
+      /** A server this listener is running, and how to retire it. */
+      interface RunningServer {
+        readonly server: InstanceType<typeof Http3Server>;
+        /** Refuses every session that arrives from now on, ends the ones open, and resolves once they have finished closing. Stopping a server drops its sessions without telling the client, which would keep a session that no longer works until it next sends; a close lets it reconnect. A client that reconnects the moment it is told would otherwise land on this server, accepted and then dropped silently a moment later, so a session arriving while it drains is closed at once and that client's next attempt reaches the replacement. */
+        readonly drain: () => Promise<void>;
+      }
+
       /** Starts a server presenting the schedule's serving certificate. The package cannot change the certificate of a running HTTP/3 server (`updateCert` only reaches the HTTP/2 side), so a rotation replaces the server. */
-      const startServer = async (): Promise<
-        InstanceType<typeof Http3Server>
-      > => {
+      const startServer = async (): Promise<RunningServer> => {
         const started = new Http3ServerClass({
           host,
           port,
@@ -158,6 +174,14 @@ export function createWebTransportTransport(
           throw new Error("the WebTransport server bound no address");
         }
         port = bound.port;
+        const liveSessions = new Set<IncomingSession>();
+        const drainState = { draining: false };
+        const endSession = (session: IncomingSession): void => {
+          session.close({
+            closeCode: SESSION_CLOSE_CODE,
+            reason: ROTATION_CLOSE_REASON,
+          });
+        };
         void (async () => {
           for await (const session of started.sessionStream(
             WEBTRANSPORT_PATH,
@@ -169,6 +193,16 @@ export function createWebTransportTransport(
                 );
               }
               await session.ready;
+              if (drainState.draining) {
+                endSession(session);
+                return;
+              }
+              liveSessions.add(session);
+              session.closed
+                .catch(() => undefined)
+                .finally(() => {
+                  liveSessions.delete(session);
+                });
               // Take the first stream and release the reader without cancelling: leaving a for-await loop early cancels the stream, and the package then closes the cancelled stream again when the session ends, which throws in its own UDP handler and takes the process down.
               const reader = session.incomingBidirectionalStreams.getReader();
               const first = await reader.read();
@@ -179,10 +213,22 @@ export function createWebTransportTransport(
             })().catch(reportError);
           }
         })().catch(reportError);
-        return started;
+        return {
+          server: started,
+          drain: async () => {
+            drainState.draining = true;
+            const open = [...liveSessions];
+            for (const session of open) {
+              endSession(session);
+            }
+            await Promise.allSettled(
+              open.map(async (session) => session.closed),
+            );
+          },
+        };
       };
 
-      let server = await startServer();
+      let running = await startServer();
       const advertise = (): readonly string[] =>
         reachableHosts(host).map((reachable) =>
           formatPinnedAddress(
@@ -190,6 +236,12 @@ export function createWebTransportTransport(
             schedule.advertised.map((certificate) => certificate.sha256Hex),
           ),
         );
+
+      const retire = async (): Promise<void> => {
+        await running.drain();
+        running.server.stopServer();
+        await running.server.closed;
+      };
 
       let rotation: NodeJS.Timeout | undefined;
       let closed = false;
@@ -202,12 +254,11 @@ export function createWebTransportTransport(
                 now(),
                 scheduleOptions,
               );
-              server.stopServer();
-              await server.closed;
+              await retire();
               if (closed) {
                 return;
               }
-              server = await startServer();
+              running = await startServer();
               options.onCertificateRenewed?.(advertise());
               armRotation();
             })().catch(reportError);
@@ -228,8 +279,7 @@ export function createWebTransportTransport(
         close: async () => {
           closed = true;
           clearTimeout(rotation);
-          server.stopServer();
-          await server.closed;
+          await retire();
         },
         unref: () => {
           rotation?.unref();

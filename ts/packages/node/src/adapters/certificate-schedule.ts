@@ -1,7 +1,7 @@
 import type { KeyValueStorage } from "wire-mesh-core/ports/storage";
+import { PINNED_CERTIFICATE_LIFETIME_MS } from "./certificate-limits.js";
 import {
   mintPinnedCertificate,
-  PINNED_CERTIFICATE_LIFETIME_MS,
   type PinnedCertificate,
 } from "./pinned-certificate.js";
 
