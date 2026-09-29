@@ -110,8 +110,8 @@ export function connectionFromByteStream(
     },
     receive: () => frames,
     close: async () => {
-      await writer.close();
-      await reader.cancel();
+      // Both halves are closed whether or not either succeeds: on a stream whose session has already ended, closing the writer rejects, and the reader still has to be cancelled for `receive()` to end.
+      await Promise.allSettled([writer.close(), reader.cancel()]);
     },
   };
 }
