@@ -1,3 +1,9 @@
+## [3.0.1](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.0.0...wire-mesh-core%403.0.1) (2026-09-29)
+
+### Code Refactoring
+
+* **core:** take only the send half of a session in the capability primitives ([bed7719](https://github.com/ExaDev/wire-mesh/commit/bed7719d45b3a0cd8910f650712d2193ea793972))
+
 ## [3.0.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%402.1.0...wire-mesh-core%403.0.0) (2026-09-29)
 
 ### ⚠ BREAKING CHANGES

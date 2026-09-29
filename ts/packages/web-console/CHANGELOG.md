@@ -1,3 +1,18 @@
+## [2.6.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.5.2...%40exadev%2Fwire-mesh-web-console%402.6.0) (2026-09-29)
+
+### Features
+
+* **web-console:** carry a conversation through the hub when no direct connection opens ([7c6095e](https://github.com/ExaDev/wire-mesh/commit/7c6095e810043b57cc1e743d779c0a36ef86623d))
+
+### Tests
+
+* **web-console:** match the container spec's messages exactly ([be060eb](https://github.com/ExaDev/wire-mesh/commit/be060eb65c3f42567a3b5af0baa4ab4831e5817d))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.0.1
+
 ## [2.5.2](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.5.1...%40exadev%2Fwire-mesh-web-console%402.5.2) (2026-09-29)
 
 ### Tests
