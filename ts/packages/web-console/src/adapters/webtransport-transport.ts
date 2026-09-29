@@ -29,7 +29,12 @@ export function createBrowserWebTransportTransport(): Transport {
       });
       await session.ready;
       const stream = await session.createBidirectionalStream();
-      return connectionFromByteStream(stream, { opened: true });
+      const connection = connectionFromByteStream(stream, { opened: true });
+      // The stream alone does not always end when the server ends the session, and a console that is not told keeps a connection that no longer works until it next sends. The session's own close is the signal, so it ends the connection, which lets the mesh session reconnect.
+      void session.closed
+        .catch(() => undefined)
+        .then(async () => connection.close());
+      return connection;
     },
     async listen(): Promise<Listener> {
       return Promise.reject(new Error(LISTEN_UNSUPPORTED));
