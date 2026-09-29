@@ -276,6 +276,24 @@ describe("createCapabilityRequestHandler", () => {
     }
   });
 
+  it("holds a request open in a runtime whose timers are plain numbers, as a browser's are", async () => {
+    const BROWSER_TIMER_HANDLE = 1;
+    vi.stubGlobal("setTimeout", () => BROWSER_TIMER_HANDLE);
+    vi.stubGlobal("clearTimeout", () => undefined);
+    try {
+      const { handle, onRequest } = await makeHandler();
+      const { incoming } = fakeIncoming(
+        buildCapabilityRequestCommand(TEST_CAPABILITY),
+      );
+
+      await handle(incoming);
+
+      expect(onRequest).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("never answers twice -- a late decide() after the timeout already fired is a no-op", async () => {
     vi.useFakeTimers();
     try {

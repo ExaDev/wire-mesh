@@ -26,6 +26,18 @@ function randomTokenId(): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
+/** Stops a pending timer from keeping the process alive, where the runtime has that notion. Node's setTimeout returns an object with unref(); a browser's or a Worker's returns a number, which has nothing to unref and must not be called as if it did. */
+function unrefIfSupported(handle: unknown): void {
+  if (
+    typeof handle === "object" &&
+    handle !== null &&
+    "unref" in handle &&
+    typeof handle.unref === "function"
+  ) {
+    Reflect.apply(handle.unref, handle, []);
+  }
+}
+
 /**
  * Builds a capability-request command per management.cddl. The outer `manage-command.verb` is the capability string itself -- the same value as this map's own `params.capability` field -- never a generic literal: capability-verb's own CDDL grammar is a closed alternation of colon-delimited `domain:noun` regexes (spec/tokens.cddl), so a bare literal like "capability" could never satisfy it, and routing by capability (the same way room.send/room.join already share the ROOM_MEMBER_CAPABILITY outer verb) is how a receiver's own per-capability handler knows which grant this ask is even for. `params.verb` is the fixed "capability.request" marker that distinguishes this ask from any other verb sharing the same outer capability (mirroring room.send/room.join's own inner `params.verb` split under one shared outer verb). `valid-until`, when given, bounds how long this ask is worth granting (wire-mesh#82) -- a receiver refuses outright once its own clock has passed it, rather than presenting a stale ask to a human for approval.
  */
@@ -149,7 +161,7 @@ export function createCapabilityRequestHandler(
         })
         .catch(() => undefined);
     }, options.timeoutMs);
-    timeoutHandle.unref();
+    unrefIfSupported(timeoutHandle);
 
     options.onRequest({
       scope: incoming.scope,
