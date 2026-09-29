@@ -88,6 +88,15 @@ describe("connectionFromByteStream", () => {
     expect(await outcome).toEqual(PING);
   });
 
+  it("makes a stream the peer has not yet read visible by writing a marker when opened", async () => {
+    const [left, right] = duplexPair();
+    const opener = connectionFromByteStream(left, { opened: true });
+    const acceptor = connectionFromByteStream(right);
+    const atAcceptor = firstFrame(acceptor.receive());
+    await opener.send(PING);
+    expect(await atAcceptor).toEqual(PING);
+  });
+
   it("ends receive() when the peer closes", async () => {
     const [left, right] = duplexPair();
     const a = connectionFromByteStream(left);
