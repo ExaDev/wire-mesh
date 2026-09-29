@@ -1,3 +1,15 @@
+## [3.1.2](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.1.1...wire-mesh%403.1.2) (2026-09-29)
+
+### Documentation
+
+* **node:** describe the console dialling a named scheme in the LAN certificate note ([d16df08](https://github.com/ExaDev/wire-mesh/commit/d16df08ec087454969da118029bd79d05dd0dde2))
+* **node:** record what a running WebTransport pin check found in each browser and in Node ([cf65437](https://github.com/ExaDev/wire-mesh/commit/cf654370bd63a3349cc2f9f3f2df845ce9b27d94))
+
+
+### Dependencies
+
+- Updated @exadev/wire-mesh-web-console to 2.7.0
+
 ## [3.1.1](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.1.0...wire-mesh%403.1.1) (2026-09-29)
 
 

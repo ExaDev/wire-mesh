@@ -1,3 +1,9 @@
+## [2.7.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.6.3...%40exadev%2Fwire-mesh-web-console%402.7.0) (2026-09-29)
+
+### Features
+
+* **web-console:** dial an address with the scheme it names ([12a7130](https://github.com/ExaDev/wire-mesh/commit/12a7130677ec555ba3a1494bbe0ac0f6cf8788dd))
+
 ## [2.6.3](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.6.2...%40exadev%2Fwire-mesh-web-console%402.6.3) (2026-09-29)
 
 ### Tests
