@@ -87,30 +87,42 @@ if (phase === "warm") {
     await page.getByLabel("Node").fill(requiredEnvironment("NODE_ADDRESS"));
     await page.getByRole("button", { name: "Connect", exact: true }).click();
 
-    if (role === "initiator") {
-      await page
-        .getByRole("button", { name: "Message", exact: true })
-        .click({ timeout: STEP_TIMEOUT_MS });
-      await expect(
-        page.getByPlaceholder("Message", { exact: true }),
-      ).toBeVisible({ timeout: STEP_TIMEOUT_MS });
-      await send(page, FIRST_MESSAGE);
-      await allowRequest(page);
-      await expect(page.getByText(REPLY_MESSAGE, { exact: true })).toBeVisible({
-        timeout: STEP_TIMEOUT_MS,
-      });
-    } else {
-      await allowRequest(page);
-      await expect(page.getByText(FIRST_MESSAGE, { exact: true })).toBeVisible({
-        timeout: STEP_TIMEOUT_MS,
-      });
-      await send(page, REPLY_MESSAGE);
-      await expect(
-        page.getByText(/Waiting for .* to allow messages/),
-      ).toBeHidden({ timeout: STEP_TIMEOUT_MS });
-      await expect(
-        page.getByText(REPLY_MESSAGE, { exact: true }),
-      ).toBeVisible();
+    try {
+      if (role === "initiator") {
+        await page
+          .getByRole("button", { name: "Message", exact: true })
+          .click({ timeout: STEP_TIMEOUT_MS });
+        await expect(
+          page.getByPlaceholder("Message", { exact: true }),
+        ).toBeVisible({ timeout: STEP_TIMEOUT_MS });
+        await send(page, FIRST_MESSAGE);
+        await allowRequest(page);
+        await expect(
+          page.getByText(REPLY_MESSAGE, { exact: true }),
+        ).toBeVisible({
+          timeout: STEP_TIMEOUT_MS,
+        });
+      } else {
+        await allowRequest(page);
+        await expect(
+          page.getByText(FIRST_MESSAGE, { exact: true }),
+        ).toBeVisible({
+          timeout: STEP_TIMEOUT_MS,
+        });
+        await send(page, REPLY_MESSAGE);
+        await expect(
+          page.getByText(/Waiting for .* to allow messages/),
+        ).toBeHidden({ timeout: STEP_TIMEOUT_MS });
+        await expect(
+          page.getByText(REPLY_MESSAGE, { exact: true }),
+        ).toBeVisible();
+      }
+    } catch (error) {
+      // The page as the user would see it, so a failed exchange shows what each side had on screen.
+      console.log(
+        `[${role} page at failure]\n${await page.locator("body").ariaSnapshot()}`,
+      );
+      throw error;
     }
     await page.context().close();
   });
