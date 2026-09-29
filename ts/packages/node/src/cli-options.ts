@@ -42,6 +42,12 @@ export const FLAGS = {
     description:
       "Directory to hold other devices' logs in while they are offline, which makes this node an announcer as well as a relay. Bounded by fixed limits. Off unless given.",
   },
+  webtransport: {
+    type: "string",
+    valueName: "host:port",
+    description:
+      "Also serve WebTransport on this UDP address, with a self-signed certificate renewed on a schedule that a browser accepts by pinning its hash, and print the address to give a console. Needs the optional @fails-components/webtransport dependency. Off unless given.",
+  },
   help: {
     type: "boolean",
     short: "h",
@@ -68,6 +74,7 @@ export type CliCommand =
       bindAddress: string;
       tls: TlsFilePaths | undefined;
       mailboxDir: string | undefined;
+      webTransportAddress: string | undefined;
     };
 
 /** Thrown for arguments the CLI cannot act on; the message names the offending flag and is fit to print as-is. */
@@ -104,7 +111,7 @@ export function helpText(): string {
   ].join("\n");
 }
 
-function validatedBindAddress(address: string): string {
+function validatedBindAddress(flag: string, address: string): string {
   const separator = address.lastIndexOf(":");
   const host = address.slice(0, separator);
   const port = address.slice(separator + 1);
@@ -115,7 +122,7 @@ function validatedBindAddress(address: string): string {
     Number(port) > MAX_PORT
   ) {
     throw new CliUsageError(
-      `--bind expects host:port with a port from 0 to ${String(MAX_PORT)}, got "${address}"`,
+      `--${flag} expects host:port with a port from 0 to ${String(MAX_PORT)}, got "${address}"`,
     );
   }
   return address;
@@ -152,11 +159,15 @@ export function parseCliArguments(argv: readonly string[]): CliCommand {
   }
   return {
     kind: "serve",
-    bindAddress: validatedBindAddress(values.bind),
+    bindAddress: validatedBindAddress("bind", values.bind),
     tls:
       certPath === undefined || keyPath === undefined
         ? undefined
         : { certPath, keyPath },
     mailboxDir: values["mailbox-dir"],
+    webTransportAddress:
+      values.webtransport === undefined
+        ? undefined
+        : validatedBindAddress("webtransport", values.webtransport),
   };
 }

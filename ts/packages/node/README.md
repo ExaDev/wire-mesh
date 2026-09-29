@@ -34,12 +34,13 @@ Every flag the CLI accepts, exactly as `wire-mesh --help` prints it. An unknown 
 Usage: wire-mesh [options]
 
 Options:
-      --bind <host:port>    Address to listen on. Port 0 asks the OS for a free port. Use 127.0.0.1:8787 to accept local connections only. (default: 0.0.0.0:8787)
-      --tls-cert <path>     PEM certificate file, to serve wss:// and https://. Requires --tls-key.
-      --tls-key <path>      PEM private key file for --tls-cert. Requires --tls-cert.
-      --mailbox-dir <path>  Directory to hold other devices' logs in while they are offline, which makes this node an announcer as well as a relay. Bounded by fixed limits. Off unless given.
-  -h, --help                Print this help and exit.
-  -v, --version             Print the version and exit.
+      --bind <host:port>          Address to listen on. Port 0 asks the OS for a free port. Use 127.0.0.1:8787 to accept local connections only. (default: 0.0.0.0:8787)
+      --tls-cert <path>           PEM certificate file, to serve wss:// and https://. Requires --tls-key.
+      --tls-key <path>            PEM private key file for --tls-cert. Requires --tls-cert.
+      --mailbox-dir <path>        Directory to hold other devices' logs in while they are offline, which makes this node an announcer as well as a relay. Bounded by fixed limits. Off unless given.
+      --webtransport <host:port>  Also serve WebTransport on this UDP address, with a self-signed certificate renewed on a schedule that a browser accepts by pinning its hash, and print the address to give a console. Needs the optional @fails-components/webtransport dependency. Off unless given.
+  -h, --help                      Print this help and exit.
+  -v, --version                   Print the version and exit.
 ```
 
 **Default bind address is `0.0.0.0:8787`, not loopback.** Unlike a typical dev-server tool, whose loopback-only default assumes only the machine itself needs to reach it, this package's whole purpose is LAN reachability — a phone on the same network, a laptop in the next room. `--bind` overrides the address if you want to restrict it (loopback-only, a specific interface, a different port).
@@ -50,6 +51,8 @@ Point a browser at the bound address to reach the console, or check its health d
 curl http://<host>:8787/health
 # {"ok":true,"node":"wire-mesh","roles":["relay"]}
 ```
+
+With `--webtransport <host:port>` the node also serves WebTransport on a UDP port, for a browser that has no way to trust a certificate for this node's LAN address. The node mints a self-signed ECDSA certificate valid for under two weeks, renews it on a schedule, and prints an address of the form `https://<host>:<port>#sha256=<hash>`. Give that address to a console (the Node field takes it as typed): a browser accepts the certificate by that hash with no certificate authority and no internet. The server is the optional `@fails-components/webtransport` dependency with its native binary; where it is not installed the flag fails at startup rather than serving without it. The certificate is renewed before it expires, and the new address is printed when its hash changes.
 
 With `--mailbox-dir` the node also serves the announcer role and `/health` says so (`"roles":["relay","announcer"]`). It then holds other devices' `core/data` logs in that directory while those devices are offline, so a peer that reconnects catches up from the node. Only the device that owns a log can write to it: the node takes a log's entries from the connection whose verified advert names that device and from no one else. Any client that has gossiped an advert can read a log. Entries are opaque bytes to the node, and the applications that write them sign and encrypt their own. The number of logs, the bytes in each and the size of an entry are bounded (`src/mailbox-limits.ts`), and a frame that would exceed a bound is refused whole; nothing is evicted, so a full log stays full until the directory is cleared.
 

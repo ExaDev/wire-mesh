@@ -5,7 +5,9 @@
     "wire-mesh": "./dist/server.mjs"
   },
   "dependencies": {
+    "@peculiar/x509": "2.1.0",
     "cbor2": "2.3.0",
+    "reflect-metadata": "0.2.2",
     "wire-mesh-core": "3.1.0",
     "ws": "8.21.3"
   },
@@ -40,6 +42,10 @@
   "files": [
     "dist"
   ],
+  "optionalDependencies": {
+    "@fails-components/webtransport": "1.6.8",
+    "@fails-components/webtransport-transport-http3-quiche": "1.6.8"
+  },
   "packageManager": "pnpm@12.4.1+sha512.2e81e399d73fe8390dab25e06aa788ab7a5908248d2f5a370f82b481147a6a7a367bf8048f9a6fdb6460f21a66f0542dedb8b94ca2c8723596741920b1656d4c",
   "publishConfig": {
     "provenance": true,
