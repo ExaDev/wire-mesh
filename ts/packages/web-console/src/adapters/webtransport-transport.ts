@@ -1,0 +1,35 @@
+import { connectionFromByteStream } from "wire-mesh-core/adapters/byte-stream-connection";
+import { parsePinnedAddress } from "wire-mesh-core/domain/pinned-address";
+import type {
+  Connection,
+  Listener,
+  Transport,
+} from "wire-mesh-core/ports/transport";
+
+/** The path a node serves WebTransport sessions on; the same value as WEBTRANSPORT_PATH in packages/node. */
+const SESSION_PATH = "/wire-mesh";
+
+const LISTEN_UNSUPPORTED = "the web console is a client only: it cannot listen";
+
+/**
+ * A browser Transport over WebTransport to a node that serves a self-signed certificate, which the browser accepts by the pinned hash in the address (`https://host:port#sha256=<hex>`) with no certificate authority involved. One session carries one connection, on a bidirectional stream this side opens, framed as length-prefixed CBOR (core's byte-stream-connection).
+ */
+export function createBrowserWebTransportTransport(): Transport {
+  return {
+    async connect(address): Promise<Connection> {
+      if (typeof WebTransport === "undefined") {
+        throw new Error("this browser does not support WebTransport");
+      }
+      const { url, sha256 } = parsePinnedAddress(address);
+      const session = new WebTransport(new URL(SESSION_PATH, url).toString(), {
+        serverCertificateHashes: [{ algorithm: "sha-256", value: sha256 }],
+      });
+      await session.ready;
+      const stream = await session.createBidirectionalStream();
+      return connectionFromByteStream(stream, { opened: true });
+    },
+    async listen(): Promise<Listener> {
+      return Promise.reject(new Error(LISTEN_UNSUPPORTED));
+    },
+  };
+}

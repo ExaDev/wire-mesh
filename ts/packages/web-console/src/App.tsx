@@ -26,7 +26,7 @@ import type { Connection } from "wire-mesh-core/ports/transport";
 import type { DeviceId } from "wire-mesh-core/generated/protocol";
 import { deviceIdToHex } from "wire-mesh-core/domain/device-id";
 import { dmRoomPath } from "wire-mesh-core/domain/room-path";
-import { createBrowserTransport } from "./adapters/websocket-transport.js";
+import { createDialTransport } from "./adapters/dial-transport.js";
 import { DEFAULT_ICE_SERVERS } from "./ice-servers.js";
 import { createWebrtcNegotiator } from "./webrtc-negotiation.js";
 import type { WebrtcNegotiator } from "./webrtc-negotiation.js";
@@ -42,7 +42,7 @@ import { WEBRTC_SIGNAL_VERB } from "wire-mesh-core/domain/webrtc-signaling";
 import type { MessageStore } from "./message-store.js";
 import { discoverLocalNode as discoverLocalNodeDefault } from "./discover-local-node.js";
 import { appShell } from "./App.css.js";
-import { toWebSocketAddress } from "./dial-address.js";
+import { toDialAddress } from "./dial-address.js";
 
 export interface AppProps {
   identity: IdentityPort;
@@ -204,7 +204,7 @@ export function App({
       current: null,
     };
     const session = createMeshSession(
-      createBrowserTransport(),
+      createDialTransport(),
       identity,
       clock,
       reconnectPolicy,
@@ -228,7 +228,7 @@ export function App({
   async function dialExpanded(gossipedAddress: string): Promise<MeshSession> {
     const session = createExpandableSession();
     return session
-      .connect(toWebSocketAddress(gossipedAddress), domainsRef.current)
+      .connect(toDialAddress(gossipedAddress), domainsRef.current)
       .then(() => session);
   }
 
@@ -241,11 +241,9 @@ export function App({
     }
     const session = createExpandableSession();
     attachConnection(targetAddress, session);
-    void session
-      .connect(toWebSocketAddress(targetAddress), domains)
-      .catch(() => {
-        // ConnectionPanel's own render of the session's events already surfaces a connect failure via its status line; nothing further to do here beyond letting the entry remain (its own close button still works on a failed session).
-      });
+    void session.connect(toDialAddress(targetAddress), domains).catch(() => {
+      // ConnectionPanel's own render of the session's events already surfaces a connect failure via its status line; nothing further to do here beyond letting the entry remain (its own close button still works on a failed session).
+    });
   }
 
   // discoverLocalNode is a fresh closure every render (or a caller-supplied fake in tests), so the mount-only effect below reads it through a ref (the same pattern attachRef already uses above) rather than listing it as an effect dependency, which would either re-run the probe every render or need a lint suppression. connectTo is a plain function, recreated every render like attachConnection/createExpandableSession above it -- its own ref-update effect below simply runs every render too, which is cheap and still gives the mount effect the latest version by the time it actually fires.
