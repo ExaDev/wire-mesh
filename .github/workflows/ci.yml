@@ -206,6 +206,8 @@ jobs:
   web-console-e2e-containers:
     name: web-console E2E (containers)
     runs-on: ubuntu-latest
+    # Bounded well above a normal run: a compose run that never sees a container exit would otherwise hold the runner for the platform's default limit.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 

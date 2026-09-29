@@ -7,29 +7,20 @@
 name: wire-mesh-two-containers
 
 services:
+  # Makes the certificate and then stays running: compose stops the whole run as soon as any container exits, so a service that finished would end it before the browsers started.
   certs:
     image: mcr.microsoft.com/playwright:v1.63.0-noble
     command:
       [
-        "openssl",
-        "req",
-        "-x509",
-        "-newkey",
-        "ec",
-        "-pkeyopt",
-        "ec_paramgen_curve:prime256v1",
-        "-nodes",
-        "-keyout",
-        "/certs/key.pem",
-        "-out",
-        "/certs/cert.pem",
-        "-days",
-        "1",
-        "-subj",
-        "/CN=hub",
-        "-addext",
-        "subjectAltName=DNS:hub",
+        "sh",
+        "-c",
+        "openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -keyout /certs/key.pem -out /certs/cert.pem -days 1 -subj /CN=hub -addext subjectAltName=DNS:hub && touch /certs/ready && exec sleep infinity",
       ]
+    healthcheck:
+      test: ["CMD", "test", "-f", "/certs/ready"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
     volumes:
       - certs:/certs
 
@@ -52,7 +43,7 @@ services:
       - certs:/certs:ro
     depends_on:
       certs:
-        condition: service_completed_successfully
+        condition: service_healthy
     # Only the health check below talks to the hub without accepting its certificate by other means, and it reaches the hub on its own loopback.
     environment:
       NODE_TLS_REJECT_UNAUTHORIZED: "0"
