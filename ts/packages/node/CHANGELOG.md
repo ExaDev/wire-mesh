@@ -1,3 +1,21 @@
+## [3.0.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%402.0.8...wire-mesh%403.0.0) (2026-09-29)
+
+### ⚠ BREAKING CHANGES
+
+* **core:** manage frames sent through a relay are sealed in the
+  secure channel of spec/secure-channel.cddl. A peer on an older core
+  cannot exchange them with this one.
+
+### Features
+
+* **core:** carry everything sent through a relay in a secure channel ([e0928e0](https://github.com/ExaDev/wire-mesh/commit/e0928e057aa2b3278b0ecff8e8da27c26f3439dc))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.0.0
+- Updated @exadev/wire-mesh-web-console to 2.5.1
+
 ## [2.0.8](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%402.0.7...wire-mesh%402.0.8) (2026-09-29)
 
 ### Documentation

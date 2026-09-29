@@ -1,3 +1,21 @@
+## [3.0.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%402.1.0...wire-mesh-core%403.0.0) (2026-09-29)
+
+### ⚠ BREAKING CHANGES
+
+* **core:** manage frames sent through a relay are sealed in the
+  secure channel of spec/secure-channel.cddl. A peer on an older core
+  cannot exchange them with this one.
+
+### Features
+
+* **core:** carry everything sent through a relay in a secure channel ([e0928e0](https://github.com/ExaDev/wire-mesh/commit/e0928e057aa2b3278b0ecff8e8da27c26f3439dc))
+* **core:** the handshake and sealed frames of the secure channel ([e45ac55](https://github.com/ExaDev/wire-mesh/commit/e45ac550ad2c2c40035b1de015b7ccf2b611be48))
+* **spec:** define an end-to-end secure channel inside relay-data ([80a993b](https://github.com/ExaDev/wire-mesh/commit/80a993bb4859f092743836b8d71ef7e8e019fbd3))
+
+### Documentation
+
+* point the relay description at the secure channel that defines its ciphertext ([7968b75](https://github.com/ExaDev/wire-mesh/commit/7968b75c08d8cf1fe401188003b2edda88deb4b1))
+
 ## [2.1.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%402.0.2...wire-mesh-core%402.1.0) (2026-09-29)
 
 ### Features
