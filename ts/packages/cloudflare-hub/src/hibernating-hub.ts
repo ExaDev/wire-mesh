@@ -7,6 +7,7 @@
 // Adoption is ordered, not incremental, because a pairing names its peer by device-id and the peer is a socket this instance has yet to look at: every survivor is registered first, then restoreConnections resolves pairings across the whole batch at once. A pairing whose peer is absent from that batch is genuinely gone, and is dropped rather than half-restored. The legacy unaddressed-relay-data route rides along in the same attachment as mostRecentDevice, so a client that omits to-device keeps reaching the same peer it did before the eviction.
 
 import { z } from "zod";
+import { publicHubAdvertPolicy } from "./advert-policy.js";
 import {
   createRelayHub,
   type RelayConnectionRestore,
@@ -104,6 +105,10 @@ export function createHibernatingRelayHub(
   const hub = createRelayHub({
     // Only the verification half of this runtime's Web Crypto identity: a gossiped advert is self-certifying (wire-mesh#225), so the hub checks each one against the key the advert itself carries and never needs a signing identity of its own.
     identity: { verify: verifyWithPublicKey, deriveDeviceId },
+    extensionPolicy: publicHubAdvertPolicy,
+    onAdvertRefused: ({ key }) => {
+      console.warn(`refused an advert carrying the extension "${key}"`);
+    },
     onConnectionStateChanged: (connection) => {
       persist(connection);
     },
