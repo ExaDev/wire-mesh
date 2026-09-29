@@ -25,7 +25,11 @@ for _ in $(seq 1 30); do
   [[ -n $pinned ]] && break
   sleep 1
 done
-[[ -n $pinned ]] || { echo "the LAN node printed no WebTransport address"; exit 2; }
+[[ -n $pinned ]] || {
+  echo "the LAN node printed no WebTransport address; its output was:"
+  "${compose[@]}" logs --no-log-prefix lan-node-wt
+  exit 2
+}
 declare -A results
 for variant in "wss untrusted:wss://lan-node:8790:" "wss trusted:wss://lan-node:8790:spki" "ws plain:ws://lan-node-plain:8790:" "webtransport pinned:$pinned:"; do
   name=${variant%%:*}; rest=${variant#*:}; trust=${rest##*:}; address=${rest%:*}
