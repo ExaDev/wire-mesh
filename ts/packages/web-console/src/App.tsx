@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Button,
   Checkbox,
   Group,
@@ -66,6 +67,13 @@ const reconnectPolicy: ReconnectPolicy = {
     ),
 };
 
+/** A peer connection attempt that did not produce a conversation, kept on screen until dismissed so a refusal or a failure to negotiate is never silent. */
+interface ConnectionFailure {
+  key: string;
+  peer: string;
+  reason: string;
+}
+
 interface ConnectionEntry {
   address: string;
   session: ReturnType<typeof createMeshSession>;
@@ -95,6 +103,7 @@ export function App({
   const [domains, setDomains] = useState<string[]>(DEFAULT_DOMAINS);
   const [connections, setConnections] = useState<ConnectionEntry[]>([]);
   const [discovered, setDiscovered] = useState<PendingExpansion[]>([]);
+  const [failures, setFailures] = useState<ConnectionFailure[]>([]);
   const roomMessaging = useRoomMessaging(identity, clock, messageStore);
   const [selectedPath, setSelectedPath] = useState<string | undefined>();
   // The conversation shown is the one the user picked, falling back to the first while nothing is picked or the picked one no longer exists.
@@ -264,8 +273,15 @@ export function App({
           dmRoomPath(deviceIdToHex(identity.deviceId), deviceIdToHex(device)),
         );
       })
-      .catch(() => {
-        // RoomPanel only ever renders once a session actually attaches; a negotiation failure (ICE never completing, the peer refusing) simply means no panel appears -- nothing else in this console currently surfaces a connect failure more specifically than that.
+      .catch((error: unknown) => {
+        setFailures((current) => [
+          ...current,
+          {
+            key: crypto.randomUUID(),
+            peer: deviceHex(device),
+            reason: error instanceof Error ? error.message : String(error),
+          },
+        ]);
       });
   }
 
@@ -318,6 +334,21 @@ export function App({
             handleMessagePeer(entry.negotiator, device);
           }}
         />
+      ))}
+      {failures.map((failure) => (
+        <Alert
+          key={failure.key}
+          color="red"
+          title={`Could not message ${failure.peer}`}
+          withCloseButton
+          onClose={() => {
+            setFailures((current) =>
+              current.filter((entry) => entry.key !== failure.key),
+            );
+          }}
+        >
+          {failure.reason}
+        </Alert>
       ))}
       <ConversationList
         conversations={roomMessaging.conversations}
