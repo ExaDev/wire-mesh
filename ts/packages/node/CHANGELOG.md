@@ -1,3 +1,19 @@
+## [3.3.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.2.1...wire-mesh%403.3.0) (2026-09-29)
+
+### Features
+
+* **node:** rotate WebTransport certificates on a persisted schedule, listing the next ones in the address ([aa9b77d](https://github.com/ExaDev/wire-mesh/commit/aa9b77d43d34cc6889f562989d652222fa0559ee))
+
+### Documentation
+
+* **node:** describe the certificate renewal schedule and what was checked ([dcf67cb](https://github.com/ExaDev/wire-mesh/commit/dcf67cbc76b3a3f9f0c922881872ecb816415987))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.3.0
+- Updated @exadev/wire-mesh-web-console to 2.9.0
+
 ## [3.2.1](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.2.0...wire-mesh%403.2.1) (2026-09-29)
 
 ### Bug Fixes

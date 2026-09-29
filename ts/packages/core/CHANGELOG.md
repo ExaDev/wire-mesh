@@ -1,3 +1,9 @@
+## [3.3.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.2.0...wire-mesh-core%403.3.0) (2026-09-29)
+
+### Features
+
+* **core:** let a pinned address list several certificate hashes ([432b45d](https://github.com/ExaDev/wire-mesh/commit/432b45dcaff5e8f104c702949ed60cb3feeb8ca2))
+
 ## [3.2.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.1.0...wire-mesh-core%403.2.0) (2026-09-29)
 
 ### Features

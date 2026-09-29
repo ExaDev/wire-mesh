@@ -1,3 +1,14 @@
+## [2.9.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.8.0...%40exadev%2Fwire-mesh-web-console%402.9.0) (2026-09-29)
+
+### Features
+
+* **web-console:** pin every hash an address lists ([24ec973](https://github.com/ExaDev/wire-mesh/commit/24ec9735357a46bc8bf14dacae0449715c3401d1))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.3.0
+
 ## [2.8.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.7.0...%40exadev%2Fwire-mesh-web-console%402.8.0) (2026-09-29)
 
 ### Features
