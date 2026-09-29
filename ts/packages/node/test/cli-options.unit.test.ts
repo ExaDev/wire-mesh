@@ -19,6 +19,7 @@ describe("parseCliArguments", () => {
       bindAddress: DEFAULT_BIND_ADDRESS,
       tls: undefined,
       mailboxDir: undefined,
+      webTransportAddress: undefined,
     });
   });
 
@@ -29,6 +30,15 @@ describe("parseCliArguments", () => {
       kind: "serve",
       mailboxDir: "/var/lib/wire-mesh",
     });
+  });
+
+  it("takes the address following --webtransport and validates it like --bind", () => {
+    expect(parseCliArguments(["--webtransport", "0.0.0.0:4433"])).toMatchObject(
+      { kind: "serve", webTransportAddress: "0.0.0.0:4433" },
+    );
+    expect(() => parseCliArguments(["--webtransport", "4433"])).toThrow(
+      "--webtransport expects host:port",
+    );
   });
 
   it("uses the value following --bind", () => {

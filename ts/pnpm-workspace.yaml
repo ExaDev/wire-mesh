@@ -11,8 +11,11 @@ overrides:
 #
 # mediasoup's postinstall either downloads a prebuilt mediasoup-worker binary for the current platform or, where none is published for it, builds one locally through its own bundled Meson and Ninja invocation, needing a C++ toolchain this workspace's Rust build already requires. It is genuinely necessary rather than a convenience: the worker is a separate native process mediasoup's Node bindings spawn and speak to over a pipe, so refusing the script leaves wire-mesh-sfu installed and unable to start one.
 #
+# @fails-components/webtransport-transport-http3-quiche's install script downloads a prebuilt N-API binary of the QUIC and HTTP/3 stack (Node has no built-in QUIC), which packages/node loads as an optional dependency to serve WebTransport to a browser that pins its certificate hash. Where no binary is published for the platform the script fails and the optional dependency is skipped, leaving the node without that role.
+#
 # The other three are refused because nothing here consumes what their scripts produce, and installs complete without them. esbuild and sharp both resolve their platform binaries through optional dependencies rather than the script, and no package in this workspace runs a test suite against the workerd runtime.
 allowBuilds:
+  '@fails-components/webtransport-transport-http3-quiche': true
   esbuild: false
   mediasoup: true
   sharp: false

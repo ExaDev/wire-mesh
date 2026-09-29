@@ -15,6 +15,7 @@ import { CliUsageError, helpText, parseCliArguments } from "./cli-options.js";
 import { createMailbox } from "wire-mesh-core/domain/hub-mailbox";
 import { createNodeFsStorage } from "wire-mesh-core/adapters/node-fs-storage";
 import { nodeMailboxLimits } from "./mailbox-limits.js";
+import { createWebTransportTransport } from "./adapters/webtransport-transport.js";
 import { resolveConsoleFile } from "./static-console.js";
 
 /** What /health says: the relay role always, and the announcer role when the node was given somewhere to hold other devices' logs. */
@@ -140,6 +141,18 @@ async function main(argv: readonly string[]): Promise<void> {
   logOutput(
     `wire-mesh listening on ${tls ? "wss" : "ws"}://${listener.address}`,
   );
+  if (command.webTransportAddress !== undefined) {
+    const webTransport = await createWebTransportTransport({
+      onCertificateRenewed: (address) => {
+        logOutput(`wire-mesh WebTransport address changed: ${address}`);
+      },
+    }).listen(command.webTransportAddress, (connection) => {
+      void hub.handleConnection(connection);
+    });
+    logOutput(
+      `wire-mesh serving WebTransport at ${webTransport.advertisedAddress}`,
+    );
+  }
 }
 
 /** Runs the CLI and turns a failure into a one-line message on stderr and a non-zero exit code, instead of an unhandled rejection's stack trace. */
