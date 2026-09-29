@@ -274,7 +274,7 @@ describe("the public hub's extension policy", () => {
           addresses: ["203.0.113.5:4433"],
           "snapshot-seconds": 1861833600,
           "identity-key": identity.identityKey,
-          "agent/self": agentSelf,
+          "agent/card": agentSelf,
         }),
       ],
     });
