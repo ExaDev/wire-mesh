@@ -22,6 +22,7 @@ import {
   WEBRTC_SIGNAL_SCOPE,
   WEBRTC_SIGNAL_VERB,
   authorizeIncomingOffer,
+  buildOfferCommand,
 } from "wire-mesh-core/domain/webrtc-signaling";
 
 // createNegotiationIdAllocator, buildOfferCommand/buildAnswerCommand/buildIceCandidateCommand, wireIceCandidateFromRtc, and rtcIceCandidateInitFromWire are pure, DOM-free protocol logic that now lives in wire-mesh-core/domain/webrtc-signaling (see its own test/webrtc-signaling.unit.test.ts): this file re-exports them for this package's own callers but no longer duplicates their tests. What remains here is authorizeIncomingOffer (re-tested against this package's own createWebCryptoIdentity, since core's own equivalent test uses a Node identity adapter instead) and, below, createWebrtcNegotiator's real RTCPeerConnection-driven behaviour, which has no DOM-free counterpart to move.
@@ -220,6 +221,13 @@ describe("authorizeIncomingOffer", () => {
 
 /** The parts of RTCPeerConnection initiate() touches before it sends the offer -- Node has no RTCPeerConnection, so this stands in for it. Nothing here ever opens a channel, so the promise initiate() returns never settles. */
 class StubPeerConnection {
+  /** The configuration of every connection constructed since the last reset. */
+  static configurations: (RTCConfiguration | undefined)[] = [];
+
+  constructor(configuration?: RTCConfiguration) {
+    StubPeerConnection.configurations.push(configuration);
+  }
+
   addEventListener(): void {
     return undefined;
   }
@@ -229,7 +237,13 @@ class StubPeerConnection {
   async createOffer(): Promise<{ sdp: string }> {
     return Promise.resolve({ sdp: "v=0" });
   }
+  async createAnswer(): Promise<{ sdp: string }> {
+    return Promise.resolve({ sdp: "v=0" });
+  }
   async setLocalDescription(): Promise<void> {
+    return Promise.resolve();
+  }
+  async setRemoteDescription(): Promise<void> {
     return Promise.resolve();
   }
   close(): void {
@@ -244,9 +258,32 @@ const noIncomingRequests: AsyncIterable<IncomingManageRequest> = {
   }),
 };
 
+/** A stream that yields the given requests once and then ends. */
+function requestsOf(
+  ...requests: readonly IncomingManageRequest[]
+): AsyncIterable<IncomingManageRequest> {
+  return {
+    [Symbol.asyncIterator]: () => {
+      let index = 0;
+      return {
+        next: async () => {
+          const value = requests[index];
+          index += 1;
+          return Promise.resolve(
+            value === undefined
+              ? { done: true as const, value: undefined }
+              : { done: false as const, value },
+          );
+        },
+      };
+    },
+  };
+}
+
 describe("WebrtcNegotiator.initiate", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    StubPeerConnection.configurations = [];
   });
 
   it("sends its offer with a token the receiving side's own authorizeIncomingOffer accepts", async () => {
@@ -259,7 +296,12 @@ describe("WebrtcNegotiator.initiate", () => {
     );
     const negotiator = createWebrtcNegotiator(
       { sendManageRequest, incomingManageRequests: noIncomingRequests },
-      { identity: initiator, clock, onIncomingConnection: () => undefined },
+      {
+        identity: initiator,
+        clock,
+        iceServers: [],
+        onIncomingConnection: () => undefined,
+      },
     );
 
     void negotiator.initiate(responder.deviceId);
@@ -278,6 +320,85 @@ describe("WebrtcNegotiator.initiate", () => {
         revocation: neverRevoked,
       }),
     ).toBe(true);
+  });
+});
+
+describe("WebrtcNegotiator ICE servers", () => {
+  const ICE_SERVERS: readonly RTCIceServer[] = [
+    { urls: "stun:stun.example.test:3478" },
+  ];
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    StubPeerConnection.configurations = [];
+  });
+
+  it("configures the connection it offers on with the given ICE servers", async () => {
+    vi.stubGlobal("RTCPeerConnection", StubPeerConnection);
+    const identity = await createWebCryptoIdentity();
+    const peer = await createWebCryptoIdentity();
+    const sendManageRequest = vi.fn<MeshSession["sendManageRequest"]>(
+      async () => Promise.resolve({ result: "ok" }),
+    );
+    const negotiator = createWebrtcNegotiator(
+      { sendManageRequest, incomingManageRequests: noIncomingRequests },
+      {
+        identity,
+        clock: fixedClock(now),
+        iceServers: ICE_SERVERS,
+        onIncomingConnection: () => undefined,
+      },
+    );
+
+    void negotiator.initiate(peer.deviceId);
+    await vi.waitFor(() => {
+      expect(StubPeerConnection.configurations).toHaveLength(1);
+    });
+
+    expect(StubPeerConnection.configurations[0]).toEqual({
+      iceServers: ICE_SERVERS,
+    });
+  });
+
+  it("configures the connection it answers on with the same ICE servers", async () => {
+    vi.stubGlobal("RTCPeerConnection", StubPeerConnection);
+    const responder = await createWebCryptoIdentity();
+    const offerer = await createWebCryptoIdentity();
+    const clock = fixedClock(now);
+    const respond = vi.fn<IncomingManageRequest["respond"]>(async () =>
+      Promise.resolve(),
+    );
+    const offer: IncomingManageRequest = {
+      requestId: 1,
+      command: buildOfferCommand(1, "v=0"),
+      scope: WEBRTC_SIGNAL_SCOPE,
+      token: await mintOfferToken(offerer, clock),
+      fromDevice: offerer.deviceId,
+      respond,
+    };
+    const sendManageRequest = vi.fn<MeshSession["sendManageRequest"]>(
+      async () => Promise.resolve({ result: "ok" }),
+    );
+    createWebrtcNegotiator(
+      {
+        sendManageRequest,
+        incomingManageRequests: requestsOf(offer),
+      },
+      {
+        identity: responder,
+        clock,
+        iceServers: ICE_SERVERS,
+        onIncomingConnection: () => undefined,
+      },
+    );
+
+    await vi.waitFor(() => {
+      expect(respond).toHaveBeenCalledWith({ result: "ok" });
+    });
+
+    expect(StubPeerConnection.configurations).toEqual([
+      { iceServers: ICE_SERVERS },
+    ]);
   });
 });
 

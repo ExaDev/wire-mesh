@@ -50,6 +50,8 @@ export interface WebrtcNegotiatorOptions {
   clock: Clock;
   /** Called once for each incoming, authorized offer, with the resulting Connection once its data channel opens. */
   onIncomingConnection: (connection: Readonly<Connection>) => void;
+  /** The ICE servers both sides of every negotiation use. Empty restricts a connection to host candidates, which is what a test on one machine wants. */
+  iceServers: readonly RTCIceServer[];
   /** Local media tracks added to every peer connection this negotiator creates, offering or answering alike -- core/webrtc's signaling carries raw SDP opaquely, so the identical offer/answer/ICE exchange already used for the data channel carries these with no wire change (see wire-mesh#35). Omit (or pass none) for a data-channel-only negotiator, exactly today's existing behaviour. */
   localTracks?: readonly MediaStreamTrack[];
   /** Fired for every remote track received on any peer connection this negotiator manages, offering or answering alike. */
@@ -159,8 +161,7 @@ export function createWebrtcNegotiator(
     }
     const negotiationId = offer["negotiation-id"];
     negotiationTargets.set(negotiationId, incoming.fromDevice);
-    // No ICE servers configured -- host candidates alone are enough for the same-LAN scenario this feature exists for; a caller needing cross-network NAT traversal would thread STUN/TURN servers in here, deliberately not built since nothing in this plan calls for it.
-    const pc = new RTCPeerConnection();
+    const pc = new RTCPeerConnection({ iceServers: [...options.iceServers] });
     peerConnections.set(negotiationId, pc);
     wireMediaTracks(pc, options);
     pc.addEventListener("icecandidate", (event) => {
@@ -229,8 +230,7 @@ export function createWebrtcNegotiator(
     async initiate(targetDevice?: DeviceId): Promise<Connection> {
       const negotiationId = allocateNegotiationId();
       negotiationTargets.set(negotiationId, targetDevice);
-      // No ICE servers configured -- see the matching comment in handleIncomingOffer.
-      const pc = new RTCPeerConnection();
+      const pc = new RTCPeerConnection({ iceServers: [...options.iceServers] });
       peerConnections.set(negotiationId, pc);
       wireMediaTracks(pc, options);
       pc.addEventListener("icecandidate", (event) => {

@@ -45,7 +45,7 @@ Messages travel over `core/room`. A conversation is identified by its room path:
 
 - **Group rooms** — direct messages between two peers are supported, but creating, inviting to and joining named multi-member rooms has client logic in `src/room-client.ts` and no UI yet.
 - **Revocation-gossip ingestion** — the console has no way to learn a capability token was revoked after it was issued, so `webrtc-negotiation.ts`'s token check treats every otherwise-valid token as unrevoked (see the `noRevocationCheck` comment there) — an explicit, documented limitation, not a silent gap.
-- **STUN/TURN** — no ICE servers are configured; host candidates alone are enough for the same-LAN scenario this feature exists for today, and cross-network NAT traversal is future work if a caller ever needs it.
+- **TURN**: the console is configured with a STUN server (`src/ice-servers.ts`) so a direct connection can form across NATs, and with no TURN server. Where no direct path exists a conversation is meant to fall back to the hub relay rather than a second relay service.
 - **TLS in dev** — `ws://` against localhost is fine; production deployments serve the console over HTTPS and dial `wss://`, which the adapter already handles.
 
 ## Type environment
