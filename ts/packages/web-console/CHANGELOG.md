@@ -1,3 +1,23 @@
+## [2.3.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.2.0...%40exadev%2Fwire-mesh-web-console%402.3.0) (2026-09-29)
+
+### Features
+
+* **web-console:** show why a message attempt failed ([cb0c325](https://github.com/ExaDev/wire-mesh/commit/cb0c325a5e069740d4ba88683965a5e3ffd791e5))
+
+### Bug Fixes
+
+* **web-console:** send the webrtc:signal token with every offer ([2b83cbb](https://github.com/ExaDev/wire-mesh/commit/2b83cbb152d1123106445ea05fc38307e528aaa7))
+
+### Tests
+
+* **web-console:** fail the e2e specs when the data channel does not open ([a49cf00](https://github.com/ExaDev/wire-mesh/commit/a49cf00afd39f0137784f12a6655255b5717c6d2))
+* **web-console:** send before approving in the room-messaging e2e ([04cec8e](https://github.com/ExaDev/wire-mesh/commit/04cec8e731a376767b902633ae0f28775bd9e32a))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 2.0.2
+
 ## [2.2.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.1.0...%40exadev%2Fwire-mesh-web-console%402.2.0) (2026-09-28)
 
 ### Features

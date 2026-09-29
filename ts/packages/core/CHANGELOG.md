@@ -1,3 +1,9 @@
+## [2.0.2](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%402.0.1...wire-mesh-core%402.0.2) (2026-09-29)
+
+### Bug Fixes
+
+* **core:** do not call unref on a timer handle that has none ([5216d23](https://github.com/ExaDev/wire-mesh/commit/5216d23aafd6a69ede7e38cce7840d58f3246976))
+
 ## [2.0.1](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%402.0.0...wire-mesh-core%402.0.1) (2026-09-20)
 
 ### Bug Fixes
