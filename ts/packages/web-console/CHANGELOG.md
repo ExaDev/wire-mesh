@@ -1,3 +1,9 @@
+## [2.6.1](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.6.0...%40exadev%2Fwire-mesh-web-console%402.6.1) (2026-09-29)
+
+### Tests
+
+* **web-console:** run the two consoles on networks with only the hub in common ([7f4e042](https://github.com/ExaDev/wire-mesh/commit/7f4e04274eac82e7340886507ceac55de8081498))
+
 ## [2.6.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.5.2...%40exadev%2Fwire-mesh-web-console%402.6.0) (2026-09-29)
 
 ### Features

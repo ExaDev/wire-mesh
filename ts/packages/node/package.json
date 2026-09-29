@@ -1,6 +1,6 @@
 {
   "name": "wire-mesh",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "bin": {
     "wire-mesh": "./dist/server.mjs"
   },
@@ -12,7 +12,7 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
     "@exadev/eslint-config": "2.18.0",
-    "@exadev/wire-mesh-web-console": "2.6.0",
+    "@exadev/wire-mesh-web-console": "2.6.1",
     "@types/node": "26.4.1",
     "@types/ws": "8.18.1",
     "eslint": "10.10.0",
