@@ -73,8 +73,13 @@ export default defineConfig({
     outDir: "dist",
   },
   test: {
-    // test/e2e/*.spec.ts matches vitest's own default test-file glob, but those are @playwright/test specs (run via `pnpm test:e2e`, not `pnpm test`) with a fixture-based signature vitest doesn't understand -- exclude the whole directory rather than let vitest try and fail to run them. test/e2e-containers holds the same kind of spec, run inside containers.
-    exclude: ["test/e2e/**", "test/e2e-containers/**", "**/node_modules/**"],
+    // test/e2e/*.spec.ts matches vitest's own default test-file glob, but those are @playwright/test specs (run via `pnpm test:e2e`, not `pnpm test`) with a fixture-based signature vitest doesn't understand -- exclude the whole directory rather than let vitest try and fail to run them. test/e2e-containers and test/e2e-containers-offline hold the same kind of spec, run inside containers.
+    exclude: [
+      "test/e2e/**",
+      "test/e2e-containers/**",
+      "test/e2e-containers-offline/**",
+      "**/node_modules/**",
+    ],
     // Per-file environment overrides (main.test.ts opts into jsdom via its own `// @vitest-environment jsdom` docblock) rather than a global switch here: jsdom runs its own separate JS realm, so a Uint8Array built under the default Node environment fails `instanceof` checks against jsdom's own Uint8Array constructor -- confirmed directly, switching this globally broke indexeddb-storage.test.ts and web-crypto-identity.test.ts, neither of which touches the DOM at all.
   },
 });
