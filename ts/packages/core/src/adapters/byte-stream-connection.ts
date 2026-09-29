@@ -89,16 +89,25 @@ async function* readFrames(
 }
 
 /**
- * A Connection over an ordered, reliable byte stream, one frame per length-prefixed CBOR body. `close` ends the writable side and cancels the readable side, so the peer sees the stream finish and this side's `receive()` ends.
+ * A Connection over an ordered, reliable byte stream, one frame per length-prefixed CBOR body. Pass `opened: true` on the side that opened the stream: it writes a STREAM_OPEN_MARKER first, so the peer sees the stream before the first real frame. Pass `opened: true` on the side that opened the stream, which writes a STREAM_OPEN_MARKER first so the peer sees the stream before the first real frame. `close` ends the writable side and cancels the readable side, so the peer sees the stream finish and this side's `receive()` ends.
  */
 export function connectionFromByteStream(
   stream: Readonly<ByteStream>,
+  options: Readonly<{ opened: boolean }> = { opened: false },
 ): Connection {
   const writer = stream.writable.getWriter();
   const reader = stream.readable.getReader();
   const frames = readFrames(reader);
+  const marked = options.opened
+    ? writer.write(STREAM_OPEN_MARKER)
+    : Promise.resolve();
+  // A failure to write the marker resurfaces on the first send, which awaits it.
+  marked.catch(() => undefined);
   return {
-    send: async (frame) => writer.write(encodeLengthPrefixedFrame(frame)),
+    send: async (frame) => {
+      await marked;
+      await writer.write(encodeLengthPrefixedFrame(frame));
+    },
     receive: () => frames,
     close: async () => {
       await writer.close();
