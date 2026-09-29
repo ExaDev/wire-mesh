@@ -46,9 +46,11 @@ services:
     hostname: lan-node-plain
     command: ["node", "dist/server.mjs", "--bind", "0.0.0.0:8790"]
 
+  # The WebTransport package's prebuilt native binary needs glibc 2.38 or newer, which Debian 12 (the base of the other nodes' image) does not have.
   lan-node-wt:
     extends:
       service: node-base
+    image: node:26-trixie-slim
     hostname: lan-node-wt
     command:
       ["node", "dist/server.mjs", "--bind", "0.0.0.0:8790", "--webtransport", "0.0.0.0:4433"]
