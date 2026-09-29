@@ -1,3 +1,15 @@
+## [3.1.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.0.3...wire-mesh%403.1.0) (2026-09-29)
+
+### Features
+
+* **node:** serve the announcer role from a directory with --mailbox-dir ([11fefc6](https://github.com/ExaDev/wire-mesh/commit/11fefc6f29fd51f0600615fda9b4a42f77d2b37e))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.1.0
+- Updated @exadev/wire-mesh-web-console to 2.6.2
+
 ## [3.0.3](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.0.2...wire-mesh%403.0.3) (2026-09-29)
 
 

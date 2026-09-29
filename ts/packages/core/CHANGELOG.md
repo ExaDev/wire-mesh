@@ -1,3 +1,9 @@
+## [3.1.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.0.1...wire-mesh-core%403.1.0) (2026-09-29)
+
+### Features
+
+* **core:** let a relay hub hold other devices' logs while they are offline ([0100500](https://github.com/ExaDev/wire-mesh/commit/01005001f0b0f7adac7acdf27b9d2d10458657c5))
+
 ## [3.0.1](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.0.0...wire-mesh-core%403.0.1) (2026-09-29)
 
 ### Code Refactoring

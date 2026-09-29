@@ -1,3 +1,14 @@
+## [2.1.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%402.0.5...%40exadev%2Fwire-mesh-cloudflare-hub%402.1.0) (2026-09-29)
+
+### Features
+
+* **cloudflare-hub:** serve the announcer role from Durable Object storage ([3302325](https://github.com/ExaDev/wire-mesh/commit/3302325b078426f578cfeec02dc6a91bce7d1a11))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.1.0
+
 ## [2.0.5](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%402.0.4...%40exadev%2Fwire-mesh-cloudflare-hub%402.0.5) (2026-09-29)
 
 
