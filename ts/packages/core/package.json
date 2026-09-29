@@ -26,6 +26,10 @@
     "vitest": "5.0.0"
   },
   "exports": {
+    "./adapters/byte-stream-connection": {
+      "import": "./dist/adapters/byte-stream-connection.mjs",
+      "require": "./dist/adapters/byte-stream-connection.cjs"
+    },
     "./adapters/frame-codec": {
       "import": "./dist/adapters/frame-codec.mjs",
       "require": "./dist/adapters/frame-codec.cjs"
@@ -141,6 +145,10 @@
     "./domain/ping-round-trips": {
       "import": "./dist/domain/ping-round-trips.mjs",
       "require": "./dist/domain/ping-round-trips.cjs"
+    },
+    "./domain/pinned-address": {
+      "import": "./dist/domain/pinned-address.mjs",
+      "require": "./dist/domain/pinned-address.cjs"
     },
     "./domain/relay-hub": {
       "import": "./dist/domain/relay-hub.mjs",
