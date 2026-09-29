@@ -1,8 +1,10 @@
-# Two consoles in two containers and a hub in a third, on one Docker network. Each browser has its own address and its own network stack, and Chrome's default handling of local addresses is left on (an address is advertised as a random .local name the other side has to resolve), which the single-host e2e in test/e2e cannot exercise because it has to switch that off.
+# Two consoles in two containers and a hub in a third. Each browser has its own address and its own network stack, and Chrome's default handling of local addresses is left on (an address is advertised as a random .local name the other side has to resolve), which the single-host e2e in test/e2e cannot exercise because it has to switch that handling off.
+#
+# Two topologies share this file. By default every container is on one network, so the browsers can reach each other directly. With INITIATOR_NETWORK=left and RESPONDER_NETWORK=right each browser is on a network of its own and the hub is the only container on both, which are internal networks with no route out either, so no direct path between the browsers can form and a conversation only works if it is carried through the hub.
 #
 # The hub serves https and wss with a certificate made for the run, which the browsers are told to accept: the console needs Web Crypto, which a page served over plain http from a container name does not get.
 #
-# Run from ts/packages/web-console with `pnpm run test:e2e:containers`. It expects wire-mesh (packages/node) to have been built, since the hub is that build and it serves the console it carries.
+# Run from ts/packages/web-console with `pnpm run test:e2e:containers` (one network) or `pnpm run test:e2e:containers:isolated` (two). It expects wire-mesh (packages/node) to have been built, since the hub is that build and it serves the console it carries.
 
 name: wire-mesh-two-containers
 
@@ -60,6 +62,8 @@ services:
       retries: 30
     networks:
       - mesh
+      - left
+      - right
 
   responder:
     extends:
@@ -72,7 +76,7 @@ services:
       hub:
         condition: service_healthy
     networks:
-      - mesh
+      - ${RESPONDER_NETWORK:-mesh}
 
   initiator:
     extends:
@@ -85,10 +89,14 @@ services:
       hub:
         condition: service_healthy
     networks:
-      - mesh
+      - ${INITIATOR_NETWORK:-mesh}
 
 networks:
   mesh: {}
+  left:
+    internal: true
+  right:
+    internal: true
 
 volumes:
   certs: {}
