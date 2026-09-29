@@ -50,6 +50,8 @@ export interface WebTransportTransport extends Transport {
 }
 
 export interface WebTransportTransportOptions {
+  /** Called with a failure that belongs to one session or to a certificate renewal, neither of which should stop the listener. */
+  onError?: (error: unknown) => void;
   /** Called with the new advertised address each time the certificate is renewed. */
   onCertificateRenewed?: (advertisedAddress: string) => void;
   /** The current time, injected so a test can move it. */
@@ -92,6 +94,9 @@ export function createWebTransportTransport(
   options: Readonly<WebTransportTransportOptions> = {},
 ): WebTransportTransport {
   const now = options.now ?? (() => new Date());
+  const reportError = (error: unknown): void => {
+    options.onError?.(error);
+  };
   return {
     // The package's Node client verifies a server certificate against the system's trust and has no way to pin a hash, so it cannot reach a server that serves a self-signed certificate. A browser is the client of this transport; node peers reach each other over WebSocket.
     async connect(): Promise<Connection> {
@@ -133,24 +138,29 @@ export function createWebTransportTransport(
               );
             }
             await session.ready;
-            for await (const stream of session.incomingBidirectionalStreams) {
-              onConnection(connectionFromByteStream(stream));
-              return;
+            // Take the first stream and release the reader without cancelling: leaving a for-await loop early cancels the stream, and the package then closes the cancelled stream again when the session ends, which throws in its own UDP handler and takes the process down.
+            const reader = session.incomingBidirectionalStreams.getReader();
+            const first = await reader.read();
+            reader.releaseLock();
+            if (!first.done) {
+              onConnection(connectionFromByteStream(first.value));
             }
-          })().catch(() => undefined);
+          })().catch(reportError);
         }
-      })().catch(() => undefined);
+      })().catch(reportError);
 
       const renewal = setInterval(() => {
-        void mintPinnedCertificate(now()).then((renewed) => {
-          certificate = renewed;
-          server.updateCert(
-            renewed.certificatePem,
-            renewed.privateKeyPem,
-            false,
-          );
-          options.onCertificateRenewed?.(advertise());
-        });
+        mintPinnedCertificate(now())
+          .then((renewed) => {
+            certificate = renewed;
+            server.updateCert(
+              renewed.certificatePem,
+              renewed.privateKeyPem,
+              false,
+            );
+            options.onCertificateRenewed?.(advertise());
+          })
+          .catch(reportError);
       }, RENEWAL_DELAY_MS);
       renewal.unref();
 
