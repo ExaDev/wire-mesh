@@ -5,20 +5,27 @@
 // Eviction honesty: no instance field survives eviction, only the sockets, via hibernation. The hub therefore keeps every connection's relay state (its device-id, its adverts, its pairings) on the socket that state belongs to, through serializeAttachment, and rebuilds itself from ctx.getWebSockets() the first time a woken instance is asked to do anything. Both the device registry and the relay pairings come back that way, so a client whose socket stayed open through an eviction needs to do nothing and notice nothing: its next frame routes exactly as it would have. See hibernating-hub.ts for why an attachment rather than Durable Object storage holds it, and why adoption resolves the whole set of sockets at once rather than one at a time.
 
 import { DurableObject } from "cloudflare:workers";
+import { createMailbox } from "wire-mesh-core/domain/hub-mailbox";
+import { durableObjectStorage } from "./adapters/durable-object-storage.js";
 import { createHibernatingRelayHub } from "./hibernating-hub.js";
+import { mailboxLimits } from "./mailbox-limits.js";
 
 export function healthResponse(): Response {
   return Response.json({
     ok: true,
     node: "wire-mesh-cloudflare-hub",
-    roles: ["relay"],
+    roles: ["relay", "announcer"],
   });
 }
 
 export class RelayHubDurableObject extends DurableObject<unknown> {
   // The sockets are read through a callback rather than captured once: on a wake this instance is constructed before the runtime hands it the message that woke it, and getWebSockets() is what tells it which sockets it inherited.
-  private readonly hub = createHibernatingRelayHub(() =>
-    this.ctx.getWebSockets(),
+  private readonly hub = createHibernatingRelayHub(
+    () => this.ctx.getWebSockets(),
+    createMailbox({
+      storage: durableObjectStorage(this.ctx.storage),
+      limits: mailboxLimits,
+    }),
   );
 
   fetch(request: Request): Response {
