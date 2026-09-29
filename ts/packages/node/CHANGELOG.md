@@ -1,3 +1,25 @@
+## [3.2.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.1.2...wire-mesh%403.2.0) (2026-09-29)
+
+### Features
+
+* **node:** advertise a WebTransport address for each reachable interface and cover the route in the offline scenario ([327c21b](https://github.com/ExaDev/wire-mesh/commit/327c21bd975958c875514c36aed2c0cbf93d5768))
+* **node:** serve WebTransport with a self-renewing pinned certificate behind --webtransport ([1440989](https://github.com/ExaDev/wire-mesh/commit/144098983db85bca3484f7de5d360cddf3f6d1da))
+
+### Documentation
+
+* **node:** record the browser and platform coverage of pinned-hash WebTransport ([f0e5a5e](https://github.com/ExaDev/wire-mesh/commit/f0e5a5ec4c656755a9e03e4301677c93d4c14228))
+
+### Tests
+
+* **web-console:** converse through a node over pinned-hash WebTransport in real Chromium ([5258ba4](https://github.com/ExaDev/wire-mesh/commit/5258ba410884cbae6ee8a87e1f76c0b7d8070e70))
+* **web-console:** run the WebTransport LAN node on an image with a new enough glibc ([773469b](https://github.com/ExaDev/wire-mesh/commit/773469bbb0f013f5c2986b94da707a9ca6e53978))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.2.0
+- Updated @exadev/wire-mesh-web-console to 2.8.0
+
 ## [3.1.2](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.1.1...wire-mesh%403.1.2) (2026-09-29)
 
 ### Documentation

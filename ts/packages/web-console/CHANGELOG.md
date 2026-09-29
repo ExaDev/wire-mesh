@@ -1,3 +1,23 @@
+## [2.8.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.7.0...%40exadev%2Fwire-mesh-web-console%402.8.0) (2026-09-29)
+
+### Features
+
+* **node:** advertise a WebTransport address for each reachable interface and cover the route in the offline scenario ([327c21b](https://github.com/ExaDev/wire-mesh/commit/327c21bd975958c875514c36aed2c0cbf93d5768))
+* **web-console:** dial a pinned-hash address over WebTransport ([d6f2d2b](https://github.com/ExaDev/wire-mesh/commit/d6f2d2b408c163dc1adeaf57619d36802dbb8087))
+
+### Tests
+
+* **web-console:** converse through a node over pinned-hash WebTransport in real Chromium ([5258ba4](https://github.com/ExaDev/wire-mesh/commit/5258ba410884cbae6ee8a87e1f76c0b7d8070e70))
+* **web-console:** print each side's page when the offline exchange fails ([9ec9595](https://github.com/ExaDev/wire-mesh/commit/9ec95950f2b9243075baffa81050800e13fac63e))
+* **web-console:** run the WebTransport LAN node on an image with a new enough glibc ([773469b](https://github.com/ExaDev/wire-mesh/commit/773469bbb0f013f5c2986b94da707a9ca6e53978))
+* **web-console:** show the LAN node's output when it prints no WebTransport address ([75dd094](https://github.com/ExaDev/wire-mesh/commit/75dd094c2be4683c6372331ee247286291745ed1))
+* **web-console:** start each offline route from a copy of the warmed profile ([94b2907](https://github.com/ExaDev/wire-mesh/commit/94b2907d2f74522303a2befc6432f9a96914f868))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.2.0
+
 ## [2.7.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.6.3...%40exadev%2Fwire-mesh-web-console%402.7.0) (2026-09-29)
 
 ### Features

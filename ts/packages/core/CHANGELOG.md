@@ -1,3 +1,10 @@
+## [3.2.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.1.0...wire-mesh-core%403.2.0) (2026-09-29)
+
+### Features
+
+* **core:** carry frames over a byte stream and address a node by a pinned certificate hash ([846f8cc](https://github.com/ExaDev/wire-mesh/commit/846f8cc92963d145ed86e1cd59115d22961615a4))
+* **core:** let the side that opens a byte stream make it visible to its peer ([4d5d07f](https://github.com/ExaDev/wire-mesh/commit/4d5d07f44787454f1c1a30ff1a9bf6781db1b1e4))
+
 ## [3.1.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.0.1...wire-mesh-core%403.1.0) (2026-09-29)
 
 ### Features

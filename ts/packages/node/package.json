@@ -1,6 +1,6 @@
 {
   "name": "wire-mesh",
-  "version": "3.1.2",
+  "version": "3.2.0",
   "bin": {
     "wire-mesh": "./dist/server.mjs"
   },
@@ -8,13 +8,13 @@
     "@peculiar/x509": "2.1.0",
     "cbor2": "2.3.0",
     "reflect-metadata": "0.2.2",
-    "wire-mesh-core": "3.1.0",
+    "wire-mesh-core": "3.2.0",
     "ws": "8.21.3"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
     "@exadev/eslint-config": "2.18.0",
-    "@exadev/wire-mesh-web-console": "2.7.0",
+    "@exadev/wire-mesh-web-console": "2.8.0",
     "@types/node": "26.4.1",
     "@types/ws": "8.18.1",
     "eslint": "10.10.0",
