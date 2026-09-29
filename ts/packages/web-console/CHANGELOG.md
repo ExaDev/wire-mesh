@@ -1,3 +1,11 @@
+## [2.5.2](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.5.1...%40exadev%2Fwire-mesh-web-console%402.5.2) (2026-09-29)
+
+### Tests
+
+* **web-console:** keep the certificate service running and bound the job ([d8c5014](https://github.com/ExaDev/wire-mesh/commit/d8c501407b8fa4b5527c59a8bf39aab2871593a8))
+* **web-console:** run the two consoles in separate containers ([e495287](https://github.com/ExaDev/wire-mesh/commit/e495287e4e7c08f2d0d689528302fd335057bb9e))
+* **web-console:** serve the container hub over TLS ([efaac12](https://github.com/ExaDev/wire-mesh/commit/efaac122b7dc8f6d41482608f537449dce044948))
+
 ## [2.5.1](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.5.0...%40exadev%2Fwire-mesh-web-console%402.5.1) (2026-09-29)
 
 
