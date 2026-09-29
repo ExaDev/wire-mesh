@@ -53,7 +53,7 @@ describe("wire-mesh relay, end to end", () => {
     const serverTransport = createNodeWebSocketTransport({
       onHttpRequest: (_request, response) => {
         response.writeHead(HTTP_OK, { "content-type": "application/json" });
-        response.end(JSON.stringify(healthResponse()));
+        response.end(JSON.stringify(healthResponse(false)));
       },
     });
     const listener = await serverTransport.listen(
@@ -122,7 +122,7 @@ describe("wire-mesh relay, end to end", () => {
     const serverTransport = createNodeWebSocketTransport({
       onHttpRequest: (_request, response) => {
         response.writeHead(HTTP_OK, { "content-type": "application/json" });
-        response.end(JSON.stringify(healthResponse()));
+        response.end(JSON.stringify(healthResponse(false)));
       },
     });
     const listener = await serverTransport.listen(
@@ -134,7 +134,7 @@ describe("wire-mesh relay, end to end", () => {
 
     const response = await fetch(`http://${listener.address}/`);
     expect(response.status).toBe(HTTP_OK);
-    expect(await response.json()).toEqual(healthResponse());
+    expect(await response.json()).toEqual(healthResponse(false));
 
     await listener.close();
   });

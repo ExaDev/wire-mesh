@@ -36,6 +36,12 @@ export const FLAGS = {
     valueName: "path",
     description: "PEM private key file for --tls-cert. Requires --tls-cert.",
   },
+  "mailbox-dir": {
+    type: "string",
+    valueName: "path",
+    description:
+      "Directory to hold other devices' logs in while they are offline, which makes this node an announcer as well as a relay. Bounded by fixed limits. Off unless given.",
+  },
   help: {
     type: "boolean",
     short: "h",
@@ -57,7 +63,12 @@ export interface TlsFilePaths {
 export type CliCommand =
   | { kind: "help" }
   | { kind: "version" }
-  | { kind: "serve"; bindAddress: string; tls: TlsFilePaths | undefined };
+  | {
+      kind: "serve";
+      bindAddress: string;
+      tls: TlsFilePaths | undefined;
+      mailboxDir: string | undefined;
+    };
 
 /** Thrown for arguments the CLI cannot act on; the message names the offending flag and is fit to print as-is. */
 export class CliUsageError extends Error {
@@ -146,5 +157,6 @@ export function parseCliArguments(argv: readonly string[]): CliCommand {
       certPath === undefined || keyPath === undefined
         ? undefined
         : { certPath, keyPath },
+    mailboxDir: values["mailbox-dir"],
   };
 }

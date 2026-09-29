@@ -34,11 +34,12 @@ Every flag the CLI accepts, exactly as `wire-mesh --help` prints it. An unknown 
 Usage: wire-mesh [options]
 
 Options:
-      --bind <host:port>  Address to listen on. Port 0 asks the OS for a free port. Use 127.0.0.1:8787 to accept local connections only. (default: 0.0.0.0:8787)
-      --tls-cert <path>   PEM certificate file, to serve wss:// and https://. Requires --tls-key.
-      --tls-key <path>    PEM private key file for --tls-cert. Requires --tls-cert.
-  -h, --help              Print this help and exit.
-  -v, --version           Print the version and exit.
+      --bind <host:port>    Address to listen on. Port 0 asks the OS for a free port. Use 127.0.0.1:8787 to accept local connections only. (default: 0.0.0.0:8787)
+      --tls-cert <path>     PEM certificate file, to serve wss:// and https://. Requires --tls-key.
+      --tls-key <path>      PEM private key file for --tls-cert. Requires --tls-cert.
+      --mailbox-dir <path>  Directory to hold other devices' logs in while they are offline, which makes this node an announcer as well as a relay. Bounded by fixed limits. Off unless given.
+  -h, --help                Print this help and exit.
+  -v, --version             Print the version and exit.
 ```
 
 **Default bind address is `0.0.0.0:8787`, not loopback.** Unlike a typical dev-server tool, whose loopback-only default assumes only the machine itself needs to reach it, this package's whole purpose is LAN reachability — a phone on the same network, a laptop in the next room. `--bind` overrides the address if you want to restrict it (loopback-only, a specific interface, a different port).
@@ -49,6 +50,8 @@ Point a browser at the bound address to reach the console, or check its health d
 curl http://<host>:8787/health
 # {"ok":true,"node":"wire-mesh","roles":["relay"]}
 ```
+
+With `--mailbox-dir` the node also serves the announcer role and `/health` says so (`"roles":["relay","announcer"]`). It then holds other devices' `core/data` logs in that directory while those devices are offline, so a peer that reconnects catches up from the node. Only the device that owns a log can write to it: the node takes a log's entries from the connection whose verified advert names that device and from no one else. Any client that has gossiped an advert can read a log. Entries are opaque bytes to the node, and the applications that write them sign and encrypt their own. The number of logs, the bytes in each and the size of an entry are bounded (`src/mailbox-limits.ts`), and a frame that would exceed a bound is refused whole; nothing is evicted, so a full log stays full until the directory is cleared.
 
 **TLS (`wss://`/`https://`)** is opt-in via `--tls-cert`/`--tls-key`, both required together — this package generates no certificate of its own, so bring your own (a real one from a CA, or a self-signed one for a LAN). This matters specifically for wire-mesh#182/#183: an `https://`-served PWA (`mesh.exadev.io`) can only reach a plain `ws://` node if it's literally on `localhost` of the same machine, since browsers block mixed-content WebSocket connections from a secure page to an insecure one — a self-hosted node on someone's LAN, addressed by its own IP, needs to answer `wss://` for that PWA to reach it at all. How a LAN node is meant to be reached from the HTTPS-served console, and why a certificate is not the whole answer, is worked through in [docs/lan-certificates.md](docs/lan-certificates.md).
 

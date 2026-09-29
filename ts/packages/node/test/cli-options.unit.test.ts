@@ -18,6 +18,16 @@ describe("parseCliArguments", () => {
       kind: "serve",
       bindAddress: DEFAULT_BIND_ADDRESS,
       tls: undefined,
+      mailboxDir: undefined,
+    });
+  });
+
+  it("takes the directory following --mailbox-dir", () => {
+    expect(
+      parseCliArguments(["--mailbox-dir", "/var/lib/wire-mesh"]),
+    ).toMatchObject({
+      kind: "serve",
+      mailboxDir: "/var/lib/wire-mesh",
     });
   });
 
@@ -93,7 +103,7 @@ describe("parseCliArguments rejecting bad input", () => {
     expect(usageErrorOf(["stray"]).message).toContain("stray");
   });
 
-  it.each([["--bind"], ["--tls-cert"], ["--tls-key"]])(
+  it.each([["--bind"], ["--tls-cert"], ["--tls-key"], ["--mailbox-dir"]])(
     "names %s when it is the last argument with no value",
     (flag) => {
       expect(usageErrorOf([flag]).message).toContain(flag);
