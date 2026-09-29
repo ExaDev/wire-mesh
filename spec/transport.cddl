@@ -107,8 +107,8 @@ observed-address-frame = { type: "observed-address", address: tstr }
 ; Relay: when two peers cannot connect directly, a relay carries their
 ; traffic as an opaque, unreadable byte pipe. The relay never holds the keys
 ; to decrypt what it forwards — relay-data-frame's payload is ciphertext
-; established one layer above the transport, not something this frame
-; interprets. Who is allowed to use a given relay as a service is
+; established one layer above the transport (secure-channel.cddl defines
+; that layer), not something this frame interprets. Who is allowed to use a given relay as a service is
 ; deliberately not part of this shape: relay-connect-frame carries no
 ; capability-token field, so an operator that wants to gate relay access
 ; (rather than run an open relay) enforces it the same way any other
