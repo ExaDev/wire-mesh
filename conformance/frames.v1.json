@@ -190,6 +190,42 @@
       "wire_hex": "a264747970656d72656c61792d696e626f756e646d736f757263652d64657669636558202222222222222222222222222222222222222222222222222222222222222222"
     },
     {
+      "name": "secure_hello_v1",
+      "message": {
+        "type": "secure-hello",
+        "ephemeral-key": {
+          "hex": "04aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "nonce": {
+          "hex": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "identity-key": {
+          "alg": -8,
+          "public-key": {
+            "hex": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          }
+        },
+        "to-device": {
+          "hex": "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        "signature": {
+          "hex": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "wire_hex": "a664747970656c7365637572652d68656c6c6f656e6f6e636550bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb697369676e61747572655840cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc69746f2d646576696365582022222222222222222222222222222222222222222222222222222222222222226c6964656e746974792d6b6579a263616c67276a7075626c69632d6b65795820eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee6d657068656d6572616c2d6b6579584104aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "name": "secure_data_v1",
+      "message": {
+        "type": "secure-data",
+        "counter": 3,
+        "ciphertext": {
+          "hex": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        }
+      },
+      "wire_hex": "a364747970656b7365637572652d6461746167636f756e746572036a636970686572746578745820dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    {
       "name": "coordinator_v1_with_capacity_hint",
       "message": {
         "type": "coordinator",

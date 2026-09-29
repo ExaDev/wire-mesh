@@ -28,6 +28,9 @@ const ED25519_PUBLIC_KEY_BYTE_LENGTH = 32;
 const SIGNATURE_BYTE_LENGTH = 64; // raw ES256/EdDSA signature length
 const TOKEN_ID_BYTE_LENGTH = 16; // opaque token-id, arbitrarily sized like a UUID
 const EXAMPLE_RELAY_PAYLOAD_BYTE_LENGTH = 24; // arbitrary example ciphertext length for relay-data-frame
+const SECURE_EPHEMERAL_KEY_BYTE_LENGTH = 65; // SEC1 uncompressed P-256 point in secure-hello-frame: 0x04 || X || Y
+const SECURE_NONCE_BYTE_LENGTH = 16; // secure-hello-frame nonce
+const EXAMPLE_SECURE_CIPHERTEXT_BYTE_LENGTH = 32; // arbitrary example AEAD output length for secure-data-frame
 
 // -- Shared synthetic identities, reused across files for a coherent story --
 
@@ -351,6 +354,21 @@ const frameVectors: Vector[] = [
   vector("relay_inbound_v1", {
     type: "relay-inbound",
     "source-device": deviceB,
+  }),
+  vector("secure_hello_v1", {
+    type: "secure-hello",
+    "ephemeral-key": hex(
+      "04" + "aa".repeat(SECURE_EPHEMERAL_KEY_BYTE_LENGTH - 1),
+    ),
+    nonce: hex("bb".repeat(SECURE_NONCE_BYTE_LENGTH)),
+    "identity-key": { alg: -8, "public-key": publicKeyEd25519D },
+    "to-device": deviceB,
+    signature: hex("cc".repeat(SIGNATURE_BYTE_LENGTH)),
+  }),
+  vector("secure_data_v1", {
+    type: "secure-data",
+    counter: 3,
+    ciphertext: hex("dd".repeat(EXAMPLE_SECURE_CIPHERTEXT_BYTE_LENGTH)),
   }),
   vector("coordinator_v1_with_capacity_hint", {
     type: "coordinator",

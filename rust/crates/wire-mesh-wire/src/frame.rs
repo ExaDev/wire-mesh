@@ -27,6 +27,9 @@ use crate::management::{
     manage_request_from, manage_response_from, revocation_announce_from, ManageRequestFrame,
     ManageResponseFrame, RevocationAnnounceFrame,
 };
+use crate::secure_channel::{
+    secure_data_from, secure_hello_from, SecureDataFrame, SecureHelloFrame,
+};
 use crate::streaming::{
     stream_ack_from, stream_data_from, stream_end_from, StreamAckFrame, StreamDataFrame,
     StreamEndFrame,
@@ -73,6 +76,8 @@ pub enum Frame {
     BulkData(BulkDataFrame),
     BulkAck(BulkAckFrame),
     BulkEnd(BulkEndFrame),
+    SecureHello(SecureHelloFrame),
+    SecureData(SecureDataFrame),
 }
 
 impl Frame {
@@ -104,6 +109,8 @@ impl Frame {
             Frame::BulkData(_) => BulkDataFrame::TYPE,
             Frame::BulkAck(_) => BulkAckFrame::TYPE,
             Frame::BulkEnd(_) => BulkEndFrame::TYPE,
+            Frame::SecureHello(_) => SecureHelloFrame::TYPE,
+            Frame::SecureData(_) => SecureDataFrame::TYPE,
         }
     }
 
@@ -196,6 +203,8 @@ impl Encode<()> for Frame {
             Frame::BulkData(f) => f.encode(e, &mut ()),
             Frame::BulkAck(f) => f.encode(e, &mut ()),
             Frame::BulkEnd(f) => f.encode(e, &mut ()),
+            Frame::SecureHello(f) => f.encode(e, &mut ()),
+            Frame::SecureData(f) => f.encode(e, &mut ()),
         }
     }
 }
@@ -252,6 +261,8 @@ pub(crate) fn frame_from(d: &mut Decoder<'_>) -> Result<Frame, DecodeError> {
         BulkDataFrame::TYPE => Ok(Frame::BulkData(bulk_data_from(d)?)),
         BulkAckFrame::TYPE => Ok(Frame::BulkAck(bulk_ack_from(d)?)),
         BulkEndFrame::TYPE => Ok(Frame::BulkEnd(bulk_end_from(d)?)),
+        SecureHelloFrame::TYPE => Ok(Frame::SecureHello(secure_hello_from(d)?)),
+        SecureDataFrame::TYPE => Ok(Frame::SecureData(secure_data_from(d)?)),
         other => Err(DecodeError::BadLiteral {
             expected: "a known frame type",
             found: other.to_owned(),
