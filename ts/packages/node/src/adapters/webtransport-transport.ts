@@ -11,18 +11,16 @@ import type {
   Listener,
   Transport,
 } from "wire-mesh-core/ports/transport";
+import { createMemoryStorage } from "wire-mesh-core/adapters/memory-storage";
+import type { KeyValueStorage } from "wire-mesh-core/ports/storage";
 import {
-  mintPinnedCertificate,
-  PINNED_CERTIFICATE_LIFETIME_MS,
-  type PinnedCertificate,
-} from "./pinned-certificate.js";
+  advanceCertificateSchedule,
+  type CertificateSchedule,
+} from "./certificate-schedule.js";
 
 /** The path a client opens its WebTransport session on. */
 export const WEBTRANSPORT_PATH = "/wire-mesh";
 
-/** A certificate is replaced once half its lifetime has passed, so a client that pinned the previous hash has half a lifetime to learn the new one before the old certificate stops being served. */
-const RENEWAL_FRACTION = 0.5;
-const RENEWAL_DELAY_MS = PINNED_CERTIFICATE_LIFETIME_MS * RENEWAL_FRACTION;
 const SECRET_BYTES = 32;
 
 const WILDCARD_HOSTS: readonly string[] = ["0.0.0.0", "::"];
@@ -49,9 +47,9 @@ export class WebTransportUnavailableError extends Error {
   }
 }
 
-/** A listener that also says the addresses a client pins, which change when the certificate is renewed. */
+/** A listener that also says the addresses a client pins, which change as the certificate schedule advances. */
 export interface WebTransportListener extends Listener {
-  /** One `https://host:port#sha256=<hex>` per address a client can reach: the address and the hash of the certificate currently served. A listener bound to a wildcard address has one for each non-internal IPv4 address of this machine, since a wildcard is not something a client can dial. */
+  /** One `https://host:port#sha256=<hex>[,<hex>...]` per address a client can reach: the address and the hashes of the certificate served now and those that will replace it. A listener bound to a wildcard address has one for each non-internal IPv4 address of this machine, since a wildcard is not something a client can dial. */
   readonly advertisedAddresses: readonly string[];
 }
 
@@ -64,9 +62,13 @@ export interface WebTransportTransport extends Transport {
 }
 
 export interface WebTransportTransportOptions {
+  /** Where the certificate schedule is kept. A node restarted over the same storage serves the same certificates, so the addresses it already handed out stay valid; the default keeps them in memory only, and a restart then starts a new schedule. */
+  storage?: KeyValueStorage;
+  /** How long each certificate is valid; the WebTransport limit less a margin unless a test asks for less. */
+  certificateLifetimeMs?: number;
   /** Called with a failure that belongs to one session or to a certificate renewal, neither of which should stop the listener. */
   onError?: (error: unknown) => void;
-  /** Called with the new advertised addresses each time the certificate is renewed. */
+  /** Called with the new advertised addresses each time the schedule rotates to its next certificate. */
   onCertificateRenewed?: (advertisedAddresses: readonly string[]) => void;
   /** The current time, injected so a test can move it. */
   now?: () => Date;
@@ -124,79 +126,113 @@ export function createWebTransportTransport(
     },
     async listen(address, onConnection): Promise<WebTransportListener> {
       const Http3ServerClass = await loadHttp3Server();
+      const storage = options.storage ?? createMemoryStorage();
+      const scheduleOptions =
+        options.certificateLifetimeMs === undefined
+          ? {}
+          : { lifetimeMs: options.certificateLifetimeMs };
       const lastColon = address.lastIndexOf(":");
       const host = address.slice(0, lastColon);
-      const port = Number(address.slice(lastColon + 1));
-      let certificate: PinnedCertificate = await mintPinnedCertificate(now());
-      const server = new Http3ServerClass({
-        host,
-        port,
-        secret: randomBytes(SECRET_BYTES).toString("hex"),
-        cert: certificate.certificatePem,
-        privKey: certificate.privateKeyPem,
-      });
-      server.startServer();
-      await server.ready;
-      const bound = server.address();
-      if (bound === null) {
-        throw new Error("the WebTransport server bound no address");
-      }
-      const boundAddress = `${host}:${String(bound.port)}`;
+      let port = Number(address.slice(lastColon + 1));
+      let schedule: CertificateSchedule = await advanceCertificateSchedule(
+        storage,
+        now(),
+        scheduleOptions,
+      );
+
+      /** Starts a server presenting the schedule's serving certificate. The package cannot change the certificate of a running HTTP/3 server (`updateCert` only reaches the HTTP/2 side), so a rotation replaces the server. */
+      const startServer = async (): Promise<
+        InstanceType<typeof Http3Server>
+      > => {
+        const started = new Http3ServerClass({
+          host,
+          port,
+          secret: randomBytes(SECRET_BYTES).toString("hex"),
+          cert: schedule.serving.certificatePem,
+          privKey: schedule.serving.privateKeyPem,
+        });
+        started.startServer();
+        await started.ready;
+        const bound = started.address();
+        if (bound === null) {
+          throw new Error("the WebTransport server bound no address");
+        }
+        port = bound.port;
+        void (async () => {
+          for await (const session of started.sessionStream(
+            WEBTRANSPORT_PATH,
+          )) {
+            void (async () => {
+              if (!isIncomingSession(session)) {
+                throw new Error(
+                  "the WebTransport server yielded a malformed session",
+                );
+              }
+              await session.ready;
+              // Take the first stream and release the reader without cancelling: leaving a for-await loop early cancels the stream, and the package then closes the cancelled stream again when the session ends, which throws in its own UDP handler and takes the process down.
+              const reader = session.incomingBidirectionalStreams.getReader();
+              const first = await reader.read();
+              reader.releaseLock();
+              if (!first.done) {
+                onConnection(connectionFromByteStream(first.value));
+              }
+            })().catch(reportError);
+          }
+        })().catch(reportError);
+        return started;
+      };
+
+      let server = await startServer();
       const advertise = (): readonly string[] =>
         reachableHosts(host).map((reachable) =>
           formatPinnedAddress(
-            `${reachable}:${String(bound.port)}`,
-            certificate.sha256Hex,
+            `${reachable}:${String(port)}`,
+            schedule.advertised.map((certificate) => certificate.sha256Hex),
           ),
         );
 
-      void (async () => {
-        for await (const session of server.sessionStream(WEBTRANSPORT_PATH)) {
-          void (async () => {
-            if (!isIncomingSession(session)) {
-              throw new Error(
-                "the WebTransport server yielded a malformed session",
+      let rotation: NodeJS.Timeout | undefined;
+      let closed = false;
+      const armRotation = (): void => {
+        rotation = setTimeout(
+          () => {
+            void (async () => {
+              schedule = await advanceCertificateSchedule(
+                storage,
+                now(),
+                scheduleOptions,
               );
-            }
-            await session.ready;
-            // Take the first stream and release the reader without cancelling: leaving a for-await loop early cancels the stream, and the package then closes the cancelled stream again when the session ends, which throws in its own UDP handler and takes the process down.
-            const reader = session.incomingBidirectionalStreams.getReader();
-            const first = await reader.read();
-            reader.releaseLock();
-            if (!first.done) {
-              onConnection(connectionFromByteStream(first.value));
-            }
-          })().catch(reportError);
-        }
-      })().catch(reportError);
-
-      const renewal = setInterval(() => {
-        mintPinnedCertificate(now())
-          .then((renewed) => {
-            certificate = renewed;
-            server.updateCert(
-              renewed.certificatePem,
-              renewed.privateKeyPem,
-              false,
-            );
-            options.onCertificateRenewed?.(advertise());
-          })
-          .catch(reportError);
-      }, RENEWAL_DELAY_MS);
-      renewal.unref();
+              server.stopServer();
+              await server.closed;
+              if (closed) {
+                return;
+              }
+              server = await startServer();
+              options.onCertificateRenewed?.(advertise());
+              armRotation();
+            })().catch(reportError);
+          },
+          Math.max(schedule.rotatesAt.getTime() - now().getTime(), 0),
+        );
+        rotation.unref();
+      };
+      armRotation();
 
       return {
-        address: boundAddress,
+        get address() {
+          return `${host}:${String(port)}`;
+        },
         get advertisedAddresses() {
           return advertise();
         },
         close: async () => {
-          clearInterval(renewal);
+          closed = true;
+          clearTimeout(rotation);
           server.stopServer();
           await server.closed;
         },
         unref: () => {
-          renewal.unref();
+          rotation?.unref();
         },
       };
     },

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The wire-mesh CLI entrypoint: a self-hostable, no-cloud LAN counterpart to cloudflare-hub, wiring the same shared relay-hub domain logic from wire-mesh-core over a real Node WebSocket + http server instead of a Cloudflare Durable Object. Default bind address (DEFAULT_BIND_ADDRESS in cli-options.ts) is 0.0.0.0, not loopback: the whole point of this package is LAN reachability, unlike a dev-server tool's usual loopback-only default. The same listener also answers a browser: any non-Upgrade request is served from web-console's built static output (wire-mesh#184), so a self-hosted node has somewhere to point a browser at, not just other wire-mesh peers.
 
-import { readFileSync, realpathSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,6 +33,9 @@ export function healthResponse(announcer: boolean): {
 
 const HTTP_OK = 200;
 const HTTP_NOT_FOUND = 404;
+/** Owner read, write and search only: the state directory holds private keys. */
+const STATE_DIR_MODE = 0o700;
+
 const HEALTH_PATH = "/health";
 // Exit codes: 1 for a failure after the arguments were accepted (an unreadable TLS file, a port already in use), 2 for arguments the CLI rejects, the conventional code for a usage error.
 const EXIT_FAILURE = 1;
@@ -142,7 +145,14 @@ async function main(argv: readonly string[]): Promise<void> {
     `wire-mesh listening on ${tls ? "wss" : "ws"}://${listener.address}`,
   );
   if (command.webTransportAddress !== undefined) {
+    // The certificate schedule holds private keys, so the directory is created for this user alone before anything is written to it.
+    if (command.stateDir !== undefined) {
+      mkdirSync(command.stateDir, { recursive: true, mode: STATE_DIR_MODE });
+    }
     const webTransport = await createWebTransportTransport({
+      ...(command.stateDir !== undefined
+        ? { storage: createNodeFsStorage({ dir: command.stateDir }) }
+        : {}),
       onError: (error) => {
         logError(`wire-mesh: WebTransport: ${String(error)}`);
       },

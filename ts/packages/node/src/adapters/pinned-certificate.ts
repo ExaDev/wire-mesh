@@ -47,6 +47,7 @@ export interface PinnedCertificate {
   readonly privateKeyPem: string;
   /** SHA-256 of the certificate's DER encoding, lowercase hex: the value a client pins. */
   readonly sha256Hex: string;
+  readonly notBefore: Date;
   readonly notAfter: Date;
 }
 
@@ -62,22 +63,23 @@ function toPem(label: string, der: Readonly<ArrayBuffer>): string {
 }
 
 /**
- * Mints an ECDSA P-256 certificate valid from `now` for PINNED_CERTIFICATE_LIFETIME_MS. Clients pin it by hash rather than by name, so it carries only a common name.
+ * Mints an ECDSA P-256 certificate valid from `notBefore` for `lifetimeMs` (PINNED_CERTIFICATE_LIFETIME_MS unless a test asks for less). Clients pin it by hash rather than by name, so it carries only a common name.
  */
 export async function mintPinnedCertificate(
-  now: Readonly<Date>,
+  notBefore: Readonly<Date>,
+  lifetimeMs: number = PINNED_CERTIFICATE_LIFETIME_MS,
 ): Promise<PinnedCertificate> {
   const keys = await crypto.subtle.generateKey(SIGNING_ALGORITHM, true, [
     "sign",
     "verify",
   ]);
-  const notAfter = new Date(now.getTime() + PINNED_CERTIFICATE_LIFETIME_MS);
+  const notAfter = new Date(notBefore.getTime() + lifetimeMs);
   const certificate = await X509CertificateGenerator.createSelfSigned({
     serialNumber: toHex(
       crypto.getRandomValues(new Uint8Array(SERIAL_NUMBER_BYTES)),
     ),
     name: "CN=wire-mesh",
-    notBefore: now,
+    notBefore,
     notAfter,
     signingAlgorithm: SIGNING_ALGORITHM,
     keys,
@@ -96,6 +98,7 @@ export async function mintPinnedCertificate(
       await crypto.subtle.exportKey("pkcs8", keys.privateKey),
     ),
     sha256Hex: toHex(new Uint8Array(digest)),
+    notBefore,
     notAfter,
   };
 }

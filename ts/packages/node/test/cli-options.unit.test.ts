@@ -20,6 +20,7 @@ describe("parseCliArguments", () => {
       tls: undefined,
       mailboxDir: undefined,
       webTransportAddress: undefined,
+      stateDir: undefined,
     });
   });
 
@@ -39,6 +40,20 @@ describe("parseCliArguments", () => {
     expect(() => parseCliArguments(["--webtransport", "4433"])).toThrow(
       "--webtransport expects host:port",
     );
+  });
+
+  it("takes --state-dir only alongside --webtransport", () => {
+    expect(
+      parseCliArguments([
+        "--webtransport",
+        "0.0.0.0:4433",
+        "--state-dir",
+        "/var/lib/wire-mesh",
+      ]),
+    ).toMatchObject({ kind: "serve", stateDir: "/var/lib/wire-mesh" });
+    expect(() =>
+      parseCliArguments(["--state-dir", "/var/lib/wire-mesh"]),
+    ).toThrow("--state-dir needs --webtransport");
   });
 
   it("uses the value following --bind", () => {

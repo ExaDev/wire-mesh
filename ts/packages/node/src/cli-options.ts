@@ -48,6 +48,12 @@ export const FLAGS = {
     description:
       "Also serve WebTransport on this UDP address, with a self-signed certificate renewed on a schedule that a browser accepts by pinning its hash, and print the address to give a console. Needs the optional @fails-components/webtransport dependency. Off unless given.",
   },
+  "state-dir": {
+    type: "string",
+    valueName: "path",
+    description:
+      "Directory to keep the WebTransport certificates in, private keys included, so a restart serves the same certificates and the addresses already handed out stay valid. Created readable by this user only. Without it the certificates live in memory and a restart starts a new set. Needs --webtransport.",
+  },
   help: {
     type: "boolean",
     short: "h",
@@ -75,6 +81,7 @@ export type CliCommand =
       tls: TlsFilePaths | undefined;
       mailboxDir: string | undefined;
       webTransportAddress: string | undefined;
+      stateDir: string | undefined;
     };
 
 /** Thrown for arguments the CLI cannot act on; the message names the offending flag and is fit to print as-is. */
@@ -157,6 +164,9 @@ export function parseCliArguments(argv: readonly string[]): CliCommand {
   if ((certPath === undefined) !== (keyPath === undefined)) {
     throw new CliUsageError("--tls-cert and --tls-key must be given together");
   }
+  if (values["state-dir"] !== undefined && values.webtransport === undefined) {
+    throw new CliUsageError("--state-dir needs --webtransport");
+  }
   return {
     kind: "serve",
     bindAddress: validatedBindAddress("bind", values.bind),
@@ -169,5 +179,6 @@ export function parseCliArguments(argv: readonly string[]): CliCommand {
       values.webtransport === undefined
         ? undefined
         : validatedBindAddress("webtransport", values.webtransport),
+    stateDir: values["state-dir"],
   };
 }
