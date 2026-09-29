@@ -1,12 +1,14 @@
 // One side of a conversation between two consoles that have no route to the internet. Phase "warm" loads the console from the cloud container so its service worker caches the app shell. Phase "connect" runs after the cloud has been stopped: the console must load from the cache, and both sides then connect to the LAN node at NODE_ADDRESS and exchange a message each way, as in test/e2e-containers. TRUST_LAN_NODE=spki tells the browser to accept the LAN node's certificate by the hash of its public key, which stands in for a certificate the browser's own trust store would accept.
 
-import { readFileSync } from "node:fs";
+import { cpSync, readFileSync } from "node:fs";
 import { chromium, expect, test, type Page } from "@playwright/test";
 
 const STEP_TIMEOUT_MS = 60_000;
 const FIRST_MESSAGE = "hello from the initiator container";
 const REPLY_MESSAGE = "reply from the responder container";
 const PROFILE_DIR = "/profile";
+/** Where a connect run works: a copy of the warmed profile, so every route starts from the same cached console and an empty message store, instead of finding the messages the route before it stored. */
+const RUN_PROFILE_DIR = "/tmp/run-profile";
 const LAN_NODE_SPKI_FILE = "/certs/lan-node.spki";
 
 function requiredEnvironment(name: string): string {
@@ -34,9 +36,15 @@ function launchArguments(): string[] {
 }
 
 async function openConsole(): Promise<Page> {
-  const context = await chromium.launchPersistentContext(PROFILE_DIR, {
-    args: launchArguments(),
-  });
+  if (phase === "connect") {
+    cpSync(PROFILE_DIR, RUN_PROFILE_DIR, { recursive: true });
+  }
+  const context = await chromium.launchPersistentContext(
+    phase === "connect" ? RUN_PROFILE_DIR : PROFILE_DIR,
+    {
+      args: launchArguments(),
+    },
+  );
   const page = context.pages()[0] ?? (await context.newPage());
   page.on("console", (message) => {
     console.log(`[${role} console] ${message.text()}`);
