@@ -27,6 +27,7 @@ import type { DeviceId } from "wire-mesh-core/generated/protocol";
 import { deviceIdToHex } from "wire-mesh-core/domain/device-id";
 import { dmRoomPath } from "wire-mesh-core/domain/room-path";
 import { createBrowserTransport } from "./adapters/websocket-transport.js";
+import { DEFAULT_ICE_SERVERS } from "./ice-servers.js";
 import { createWebrtcNegotiator } from "./webrtc-negotiation.js";
 import type { WebrtcNegotiator } from "./webrtc-negotiation.js";
 import { ConnectionPanel, deviceHex } from "./components/ConnectionPanel.js";
@@ -144,6 +145,7 @@ export function App({
     const negotiator = createWebrtcNegotiator(session, {
       identity,
       clock,
+      iceServers: DEFAULT_ICE_SERVERS,
       onIncomingConnection: (connection: Readonly<Connection>) => {
         void attachRef.current(connection);
       },
