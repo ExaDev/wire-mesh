@@ -2,7 +2,7 @@
 //
 // core's relay-hub domain (shared by wire-mesh and cloudflare-hub) deliberately drops manage-request/manage-response frames sent directly to it -- see relay-hub.ts's own handleFrame, whose final branch comment says so. That is correct for relay-hub's actual job (gossip/relay-connect/ relay-data), and it is exactly why core/webrtc signaling addressed to a specific peer rides inside relay-data's own opaque payload instead (see mesh-session.ts's sendManageRequest targetDevice parameter): relay-data is the one frame kind relay-hub already forwards blindly between an established relay-connect pairing. This test's relay is the real thing, not a stand-in, specifically to prove the signaling traverses an unmodified relay-hub's real forwarding.
 //
-// ICE itself may not reach "connected" on a host whose only routable network interface refuses to hairpin a UDP packet back to itself (confirmed directly on at least one development machine with a bare dgram socket, independent of Chromium/WebRTC entirely) -- two genuinely separate hosts on a LAN, the actual scenario this feature exists for, do not share this failure mode, and CI runners have not exhibited it. The signaling assertions below (the offer/answer round trip completing via the relay's real relay-data forwarding) are independent of whether the resulting RTCPeerConnection's own ICE handshake completes, and are the assertions that actually matter for proving this fix works; the data-channel-open assertion is kept as a stronger check but is written to skip gracefully rather than fail if this specific environment property blocks it.
+// Every assertion is unconditional: the signaling round trip must complete through the relay's real relay-data forwarding, and the data channel must then open on both sides. A run where ICE does not complete fails. Both browsers run on loopback with the flags in SAME_MACHINE_WEBRTC_ARGS, which is what lets ICE complete on a single host.
 
 import {
   type Browser,
@@ -104,6 +104,29 @@ async function newDevicePage(
     throw error;
   });
   return page;
+}
+
+/** Settles with the promise's value, or rejects naming what did not happen, so a stalled step fails the test with a reason rather than passing or hanging. */
+async function within<T>(
+  promise: Readonly<Promise<T>>,
+  timeoutMs: number,
+  description: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expiry = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(
+        new Error(
+          `timed out after ${String(timeoutMs)}ms waiting for ${description}`,
+        ),
+      );
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, expiry]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 test("two independent browser instances negotiate a real WebRTC data channel, signaled through a real wire-mesh relay", async ({
@@ -216,36 +239,12 @@ async function runNegotiationTest(
     ),
   ).toBe(true);
 
-  // The data channel itself reaching "open" additionally depends on ICE completing, which this specific host's network may not permit (see the module comment) -- both genuinely separate hosts on a LAN, the actual deployment scenario, and CI runners have not exhibited this. Race a generous timeout so the test still passes on a host where it can't complete, having already asserted the part that must always work.
-  const dataChannelRace = await Promise.race([
-    Promise.all([initiatePromise, bIncoming]).then(
-      ([aConnectionId, bConnectionId]) => ({
-        ok: true as const,
-        aConnectionId,
-        bConnectionId,
-      }),
-    ),
-    new Promise<{ ok: false }>((resolve) => {
-      setTimeout(() => {
-        resolve({ ok: false });
-      }, NEGOTIATION_TIMEOUT_MS);
-    }),
-  ]);
-
-  test.info().annotations.push({
-    type: dataChannelRace.ok
-      ? "webrtc-datachannel-opened"
-      : "webrtc-datachannel-not-opened",
-    description: dataChannelRace.ok
-      ? "RTCDataChannel reached open in this environment"
-      : "ICE did not complete in this environment (see module comment) -- signaling correctness was already asserted above",
-  });
-
-  if (!dataChannelRace.ok) {
-    return;
-  }
-
-  const { aConnectionId, bConnectionId } = dataChannelRace;
+  // The channel must open on both sides: a run where it does not is a failure, not a skip, because a channel that never opens is exactly the defect this test exists to catch.
+  const [aConnectionId, bConnectionId] = await within(
+    Promise.all([initiatePromise, bIncoming]),
+    NEGOTIATION_TIMEOUT_MS,
+    "the data channel to open on both sides",
+  );
 
   // Synthetic filler for the key and signature as well as the device-id: this frame rides the established data channel directly, so nothing between the two pages verifies the advert, and the only thing being proved is that the exact bytes come out the other end.
   const sentPeer = {
@@ -357,35 +356,17 @@ async function runMediaNegotiationTest(
     },
   );
 
-  // Same best-effort posture as the data-channel test above: whether the resulting RTCPeerConnection's own ICE handshake reaches "connected" -- required for any track to actually arrive -- depends on a host property outside this test's control (see the module comment). A genuine signaling rejection (as opposed to ICE simply not completing) is still a real failure and must fail the test.
-  const dataChannelRace = await Promise.race([
-    Promise.all([initiatePromise, bIncoming]).then(() => ({
-      ok: true as const,
-    })),
-    new Promise<{ ok: false }>((resolve) => {
-      setTimeout(() => {
-        resolve({ ok: false });
-      }, NEGOTIATION_TIMEOUT_MS);
-    }),
-  ]);
+  // As with the data channel, tracks can only arrive once the channel is negotiated, so failing to negotiate is a failure.
+  await within(
+    Promise.all([initiatePromise, bIncoming]),
+    NEGOTIATION_TIMEOUT_MS,
+    "the peer connection to negotiate on both sides",
+  );
 
   if (initiateRejection !== undefined) {
     throw initiateRejection instanceof Error
       ? initiateRejection
       : new Error(JSON.stringify(initiateRejection));
-  }
-
-  test.info().annotations.push({
-    type: dataChannelRace.ok
-      ? "webrtc-media-negotiated"
-      : "webrtc-media-not-negotiated",
-    description: dataChannelRace.ok
-      ? "RTCPeerConnection reached open in this environment"
-      : "ICE did not complete in this environment (see module comment) -- media wiring cannot be proven end-to-end here",
-  });
-
-  if (!dataChannelRace.ok) {
-    return;
   }
 
   const [kindsA, kindsB] = await pollUntil(

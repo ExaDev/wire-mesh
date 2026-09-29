@@ -1,6 +1,6 @@
 // A real, checked-in end-to-end test for the actual console UI's room-messaging flow (wire-mesh#101) -- webrtc.spec.ts already proves the raw WebRTC/relay signaling works against a bare test harness page; this drives the real production App/ConnectionPanel/RoomPanel components instead, the way a person actually uses the console: two independent browser instances, each its own persisted identity, connect to a real relay, one clicks "Message" on the other's directory row, the other approves the resulting request, a message is sent, and it renders on the receiving side -- with no manually copy-pasted token anywhere in the flow.
 //
-// The RoomPanel this test drives into existence only ever appears once negotiator.initiate()'s real WebRTC offer/answer/ICE exchange actually reaches a connected data channel -- the same host-network caveat webrtc.spec.ts's own module comment documents (ICE may not reach "connected" on a host whose only routable interface refuses to hairpin a loopback UDP packet, independent of Chromium/WebRTC). This test asserts directory visibility (which only needs the relay's WebSocket signaling, not ICE) unconditionally, then races the RoomPanel's appearance against a generous timeout and skips the rest of the flow gracefully -- with an annotation, not a failure -- if this specific environment can't complete ICE, exactly mirroring webrtc.spec.ts's own data-channel-open race.
+// The RoomPanel this test drives into existence only appears once negotiator.initiate()'s real WebRTC offer/answer/ICE exchange reaches a connected data channel, so every step is asserted unconditionally: directory visibility, the incoming message request, its approval, and the message rendering on the receiving side. A run where ICE does not complete fails. Both browsers run on loopback with the flags in SAME_MACHINE_WEBRTC_ARGS, which is what lets ICE complete on a single host.
 
 import {
   type Browser,
@@ -86,31 +86,10 @@ async function runRoomMessagingTest(
   // A clicks "Message" on B's directory row -- this negotiates a real peer-to-peer WebRTC connection (webrtc-negotiation.ts's initiate()), which is what determines whether a RoomPanel ever appears on either side at all.
   await messageButtonA.click();
 
-  const roomPanelAppeared = await Promise.race([
-    pageB
-      .getByText("wants to message you")
-      .waitFor({ timeout: ROOM_PANEL_TIMEOUT_MS })
-      .then(() => true)
-      .catch(() => false),
-    new Promise<boolean>((resolve) => {
-      setTimeout(() => {
-        resolve(false);
-      }, ROOM_PANEL_TIMEOUT_MS);
-    }),
-  ]);
-
-  test.info().annotations.push({
-    type: roomPanelAppeared
-      ? "webrtc-datachannel-opened"
-      : "webrtc-datachannel-not-opened",
-    description: roomPanelAppeared
-      ? "RTCDataChannel reached open in this environment; full room-messaging flow exercised"
-      : "ICE did not complete in this environment (see module comment) -- directory visibility over the real relay was already asserted above",
+  // The request only reaches B once the data channel is up on both sides, so its absence is a failure, not a skip.
+  await expect(pageB.getByText("wants to message you")).toBeVisible({
+    timeout: ROOM_PANEL_TIMEOUT_MS,
   });
-
-  if (!roomPanelAppeared) {
-    return;
-  }
 
   // B approves A's message request through the real UI, not a scripted decide() call.
   await pageB.getByRole("button", { name: "Allow" }).click();
