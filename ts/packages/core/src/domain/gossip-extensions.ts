@@ -7,7 +7,7 @@ import {
 } from "./peer-advert.js";
 
 /** peer-advert's own typed fields, reserved so a `sendGossipUpdate` caller can never override the session's own device-id, address list, freshness timestamp, self-certifying key, or signature by supplying an extension of the same name. The last two matter most: an extension able to shadow them would let a caller replace the very fields wire-mesh#225's authentication rests on. */
-const RESERVED_PEER_ADVERT_KEYS = new Set([
+export const RESERVED_PEER_ADVERT_KEYS: ReadonlySet<string> = new Set([
   "device",
   "addresses",
   "snapshot-seconds",
