@@ -288,6 +288,40 @@ describe("App", () => {
     expect(screen.queryByTestId("discovered-peers")).toBeNull();
   });
 
+  it("shows why a message attempt failed, and lets the user dismiss it", async () => {
+    renderApp();
+
+    submitConnectForm();
+    await vi.waitFor(() => {
+      expect(sockets).toHaveLength(1);
+    });
+    const rootSocket = sockets[0];
+    if (rootSocket === undefined) {
+      throw new Error("expected the root socket to exist");
+    }
+    rootSocket.emitOpen();
+    await screen.findByText(/^connected/);
+    rootSocket.emitMessage(arrayBuffer(messageFromFrame(gossipedFrame)));
+
+    // jsdom has no RTCPeerConnection, so the negotiation fails as soon as it starts.
+    const directoryRow = (await screen.findAllByText(gossipedDeviceHex))
+      .map((cell) => cell.closest("tr"))
+      .find((row) => row?.querySelector("button")?.textContent === "Message");
+    if (directoryRow === null || directoryRow === undefined) {
+      throw new Error("expected a directory row with a Message button");
+    }
+    fireEvent.click(
+      within(directoryRow).getByRole("button", { name: "Message" }),
+    );
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(`Could not message ${gossipedDeviceHex}`);
+    expect(alert).toHaveTextContent(/RTCPeerConnection/);
+
+    fireEvent.click(within(alert).getByRole("button"));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("dismissing a discovered peer removes it without dialling", async () => {
     renderApp();
 
