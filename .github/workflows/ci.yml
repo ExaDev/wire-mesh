@@ -237,7 +237,7 @@ jobs:
         working-directory: ts/packages/web-console
         run: pnpm run test:e2e:containers:isolated
 
-      - name: Report which routes to a LAN node carry a conversation with the internet gone
+      - name: Check which routes to a LAN node carry a conversation with the internet gone
         working-directory: ts/packages/web-console
         run: pnpm run test:e2e:containers:offline
 

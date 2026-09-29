@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the offline scenario against each way a browser could be asked to reach the LAN node, and prints which ones carry a conversation. Run from ts/packages/web-console after the node package has been built.
+# Runs the offline scenario against each way a browser could be asked to reach the LAN node, and checks that only the one with a certificate the browser accepts carries a conversation. The other two are expected to fail today (an untrusted certificate cannot be clicked through on a WebSocket, and a plain ws:// address is blocked from an https page); when a route that removes either limit lands, its expectation here changes with it. Run from ts/packages/web-console after the node package has been built.
 set -u
 cd "$(dirname "$0")"
 compose=(docker compose -f compose.yaml)
@@ -23,4 +23,10 @@ for variant in "wss untrusted:wss://lan-node:8790:" "wss trusted:wss://lan-node:
   name=${variant%%:*}; rest=${variant#*:}; trust=${rest##*:}; address=${rest%:*}
   if peers connect "$address" "$trust"; then results[$name]=carries; else results[$name]=fails; fi
 done
-for name in "${!results[@]}"; do echo "RESULT $name: ${results[$name]}"; done
+declare -A expected=(["wss untrusted"]=fails ["wss trusted"]=carries ["ws plain"]=fails)
+status=0
+for name in "${!expected[@]}"; do
+  echo "RESULT $name: ${results[$name]} (expected ${expected[$name]})"
+  [[ ${results[$name]} == "${expected[$name]}" ]] || status=1
+done
+exit $status
