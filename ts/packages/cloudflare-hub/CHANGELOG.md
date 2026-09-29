@@ -1,3 +1,17 @@
+## [2.0.3](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%402.0.2...%40exadev%2Fwire-mesh-cloudflare-hub%402.0.3) (2026-09-29)
+
+### Bug Fixes
+
+* **cloudflare-hub:** admit the keys agent-comms sends a public hub ([2abe9b8](https://github.com/ExaDev/wire-mesh/commit/2abe9b8577bcd24f94ffdd939e0e489a873cde14))
+* **cloudflare-hub:** admit the keys and shapes released agent-comms sends a public hub ([5d92687](https://github.com/ExaDev/wire-mesh/commit/5d926872d3d06e9c517bea6c0b7b8ba52ad51afe))
+* **cloudflare-hub:** carry only the advert extensions a public hub can expose ([0dd3f1d](https://github.com/ExaDev/wire-mesh/commit/0dd3f1ddbf197c8eb4676334f50f28dd508bac0f))
+* **cloudflare-hub:** carry public rooms by path and name ([a2a1a9e](https://github.com/ExaDev/wire-mesh/commit/a2a1a9e463ce13c5127e5a6fe27f5d9695424fb1))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 2.1.0
+
 ## [2.0.2](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%402.0.1...%40exadev%2Fwire-mesh-cloudflare-hub%402.0.2) (2026-09-29)
 
 

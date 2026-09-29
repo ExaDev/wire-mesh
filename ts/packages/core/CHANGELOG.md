@@ -1,3 +1,9 @@
+## [2.1.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%402.0.2...wire-mesh-core%402.1.0) (2026-09-29)
+
+### Features
+
+* **core:** let a relay hub restrict which advert extensions it carries ([0bfe487](https://github.com/ExaDev/wire-mesh/commit/0bfe487996827602709b8f145bc6627a0f2d330a))
+
 ## [2.0.2](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%402.0.1...wire-mesh-core%402.0.2) (2026-09-29)
 
 ### Bug Fixes
