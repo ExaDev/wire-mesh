@@ -1,0 +1,55 @@
+# Two consoles in two containers and a hub in a third, on one Docker network. Each browser has its own address and its own network stack, and Chrome's default handling of local addresses is left on (an address is advertised as a random .local name the other side has to resolve), which the single-host e2e in test/e2e cannot exercise because it has to switch that off.
+#
+# Run from ts/packages/web-console with `pnpm run test:e2e:containers`. It expects wire-mesh (packages/node) to have been built, since the hub is that build and it serves the console it carries.
+
+name: wire-mesh-two-containers
+
+services:
+  hub:
+    image: node:26-bookworm-slim
+    working_dir: /work/packages/node
+    command: ["node", "dist/server.mjs", "--bind", "0.0.0.0:8790"]
+    volumes:
+      - ../../../..:/work:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8790/').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    networks:
+      - mesh
+
+  responder:
+    extends:
+      file: peer.yaml
+      service: peer
+    environment:
+      PEER_ROLE: responder
+      HUB_ORIGIN: http://hub:8790
+    depends_on:
+      hub:
+        condition: service_healthy
+    networks:
+      - mesh
+
+  initiator:
+    extends:
+      file: peer.yaml
+      service: peer
+    environment:
+      PEER_ROLE: initiator
+      HUB_ORIGIN: http://hub:8790
+    depends_on:
+      hub:
+        condition: service_healthy
+    networks:
+      - mesh
+
+networks:
+  mesh: {}

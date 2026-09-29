@@ -203,6 +203,34 @@ jobs:
         working-directory: ts/packages/web-console
         run: pnpm run test:e2e
 
+  web-console-e2e-containers:
+    name: web-console E2E (containers)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: ts/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .tool-versions
+          cache: pnpm
+          cache-dependency-path: ts/pnpm-lock.yaml
+
+      - name: Install ts/ workspace
+        working-directory: ts
+        run: pnpm install --frozen-lockfile
+
+      - name: Build wire-mesh, the hub the containers run and the console it serves
+        working-directory: ts
+        run: pnpm --filter wire-mesh build
+
+      - name: Run two consoles in separate containers against a hub in a third
+        working-directory: ts/packages/web-console
+        run: pnpm run test:e2e:containers
+
   rust-verify:
     name: rust/ Verify
     runs-on: ubuntu-latest
@@ -240,7 +268,14 @@ jobs:
   required-checks:
     name: Required Checks
     needs:
-      [cddl-validate, conformance-verify, ts-verify, web-console-e2e, rust-verify]
+      [
+        cddl-validate,
+        conformance-verify,
+        ts-verify,
+        web-console-e2e,
+        web-console-e2e-containers,
+        rust-verify,
+      ]
     if: always()
     runs-on: ubuntu-latest
     steps:
