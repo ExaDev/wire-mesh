@@ -8,6 +8,7 @@
 
 import { z } from "zod";
 import { publicHubAdvertPolicy } from "./advert-policy.js";
+import type { Mailbox } from "wire-mesh-core/domain/hub-mailbox";
 import {
   createRelayHub,
   type RelayConnectionRestore,
@@ -98,14 +99,24 @@ export interface HibernatingRelayHub {
 /**
  * Builds a relay hub over the sockets of one Durable Object instance.
  * @param survivors - Every socket the runtime currently holds for this instance. On a wake these are sockets an earlier instance accepted and this one has never seen, which is what makes them the only record of what the hub was doing.
+ * @param mailbox - The announcer role: the store this hub holds other devices' logs in. Absent, the hub serves the relay role alone.
  */
 export function createHibernatingRelayHub(
   survivors: () => readonly Readonly<HubSocket>[],
+  mailbox?: Mailbox,
 ): HibernatingRelayHub {
   const hub = createRelayHub({
     // Only the verification half of this runtime's Web Crypto identity: a gossiped advert is self-certifying (wire-mesh#225), so the hub checks each one against the key the advert itself carries and never needs a signing identity of its own.
     identity: { verify: verifyWithPublicKey, deriveDeviceId },
     extensionPolicy: publicHubAdvertPolicy,
+    ...(mailbox !== undefined
+      ? {
+          mailbox,
+          onMailboxRefused: ({ reason }) => {
+            console.warn(`refused a data frame: ${reason}`);
+          },
+        }
+      : {}),
     onAdvertRefused: ({ key }) => {
       console.warn(`refused an advert carrying the extension "${key}"`);
     },
