@@ -56,12 +56,25 @@ describe("publicHubAdvertPolicy", () => {
     });
   });
 
-  it("refuses hosted rooms, which name rooms to every client", async () => {
+  it("carries public rooms by path and name", async () => {
     const advert = await advertWith({
-      "room/hosted": [
-        { path: "p", name: "n", type: "private", description: "d" },
-      ],
+      "room/hosted": [{ path: "p", name: "n", type: "public" }],
     });
+
+    expect(checkAdvertExtensions(advert, publicHubAdvertPolicy)).toEqual({
+      ok: true,
+    });
+  });
+
+  it.each([
+    ["a private room", [{ path: "p", name: "n", type: "private" }]],
+    [
+      "a room description",
+      [{ path: "p", name: "n", type: "public", description: "d" }],
+    ],
+    ["something that is not a list", { path: "p", name: "n", type: "public" }],
+  ])("refuses hosted rooms with %s", async (_label, rooms) => {
+    const advert = await advertWith({ "room/hosted": rooms });
 
     expect(checkAdvertExtensions(advert, publicHubAdvertPolicy)).toEqual({
       ok: false,
