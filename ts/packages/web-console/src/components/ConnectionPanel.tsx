@@ -1,14 +1,6 @@
 // One open relay/hub connection's own UI: status line, ping/disconnect controls, peer directory, and frame log. All behaviour lives in wire-mesh-core's own mesh-session domain module; this component only renders whatever useMeshSessionEvents last reported and forwards clicks back onto the session.
 
-import {
-  Alert,
-  Button,
-  Card,
-  Group,
-  Table,
-  Text,
-  Tooltip,
-} from "@mantine/core";
+import { Alert, Button, Card, Group, Text, Tooltip } from "@mantine/core";
 import type {
   MeshSession,
   ReconnectPolicy,
@@ -27,10 +19,11 @@ import { formatAgo } from "../format-duration.js";
 import { presentedCertificates } from "../certificate-trust.js";
 import { toDialAddress } from "../dial-address.js";
 import type { NodeCertificateChange } from "../hooks/use-certificate-trust.js";
-import { stackedTable } from "../App.css.js";
 import { ActivityLog } from "./ActivityLog.js";
 import { ConnectionHealth } from "./ConnectionHealth.js";
 import { PeerLabel } from "./PeerLabel.js";
+import { StackedTable } from "./StackedTable.js";
+import type { StackedColumn } from "./StackedTable.js";
 
 const HEX_RADIX = 16;
 const MS_PER_SECOND = 1000;
@@ -91,6 +84,13 @@ export interface ConnectionPanelProps {
 
 /** How often elapsed times and the reconnect countdown refresh. */
 const CLOCK_TICK_MS = 1000;
+
+const DIRECTORY_COLUMNS: readonly StackedColumn[] = [
+  { label: "device" },
+  { label: "addresses" },
+  { label: "last seen" },
+  { label: "actions", headerless: true },
+];
 
 export function ConnectionPanel({
   address,
@@ -198,47 +198,35 @@ export function ConnectionPanel({
           No gossip received yet.
         </Text>
       ) : (
-        <Table striped className={stackedTable}>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>device</Table.Th>
-              <Table.Th>addresses</Table.Th>
-              <Table.Th>last seen</Table.Th>
-              <Table.Th />
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {directory.map((entry) => (
-              <Table.Tr key={deviceHex(entry.device)}>
-                <Table.Td data-label="device">
-                  <PeerLabel deviceHex={deviceHex(entry.device)} />
-                </Table.Td>
-                <Table.Td data-label="addresses">
-                  {entry.advert.addresses.join(", ")}
-                </Table.Td>
-                <Table.Td data-label="last seen">
-                  <Tooltip label="As the peer advertised it, by its own clock">
-                    <span>
-                      {formatAgo(
-                        now - entry.advert["snapshot-seconds"] * MS_PER_SECOND,
-                      )}
-                    </span>
-                  </Tooltip>
-                </Table.Td>
-                <Table.Td data-label="actions">
-                  <Button
-                    size="xs"
-                    onClick={() => {
-                      onMessagePeer(entry.device);
-                    }}
-                  >
-                    Message
-                  </Button>
-                </Table.Td>
-              </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+        <StackedTable
+          columns={DIRECTORY_COLUMNS}
+          rows={directory.map((entry) => ({
+            key: deviceHex(entry.device),
+            cells: [
+              <PeerLabel key="device" deviceHex={deviceHex(entry.device)} />,
+              entry.advert.addresses.join(", "),
+              <Tooltip
+                key="last seen"
+                label="As the peer advertised it, by its own clock"
+              >
+                <span>
+                  {formatAgo(
+                    now - entry.advert["snapshot-seconds"] * MS_PER_SECOND,
+                  )}
+                </span>
+              </Tooltip>,
+              <Button
+                key="actions"
+                size="xs"
+                onClick={() => {
+                  onMessagePeer(entry.device);
+                }}
+              >
+                Message
+              </Button>,
+            ],
+          }))}
+        />
       )}
 
       <ActivityLog activity={activity} frameLog={frameLog} />
