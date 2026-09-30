@@ -213,17 +213,19 @@ export function createWebTransportTransport(
                 .finally(() => {
                   liveSessions.delete(session);
                 });
-              // Tell the client which certificates this node serves now and will serve next, on a stream of its own, so an address it was given long ago keeps working: it pins these on its next dial. The session is the pinned one, so the message needs no signature.
-              const announce = await session.createUnidirectionalStream();
-              const announcer = announce.getWriter();
-              await announcer.write(
-                encodeCertificateHashes(
-                  schedule.advertised.map(
-                    (certificate) => certificate.sha256Hex,
+              // Tell the client which certificates this node serves now and will serve next, on a stream of its own, so an address it was given long ago keeps working: it pins these on its next dial. The session is the pinned one, so the message needs no signature. It runs alongside accepting the client's stream and never in front of it: a stream to the client can stall for as long as the client withholds credit for it, and the connection must not wait on that.
+              void (async () => {
+                const announce = await session.createUnidirectionalStream();
+                const announcer = announce.getWriter();
+                await announcer.write(
+                  encodeCertificateHashes(
+                    schedule.advertised.map(
+                      (certificate) => certificate.sha256Hex,
+                    ),
                   ),
-                ),
-              );
-              await announcer.close();
+                );
+                await announcer.close();
+              })().catch(reportError);
               // Take the first stream and release the reader without cancelling: leaving a for-await loop early cancels the stream, and the package then closes the cancelled stream again when the session ends, which throws in its own UDP handler and takes the process down.
               const reader = session.incomingBidirectionalStreams.getReader();
               const first = await reader.read();
