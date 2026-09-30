@@ -1,4 +1,4 @@
-// A small line of recent round-trip times, drawn as inline SVG so it follows the colour scheme through `currentColor`. A probe that got no pong is a red tick on the baseline, so a gap in service reads differently from a slow link.
+// A small line of recent round-trip times, drawn as inline SVG so it follows the colour scheme through `currentColor`. Every measured sample also gets a dot, because a line needs two points and the first probe alone would otherwise draw nothing. A probe that got no pong is a red tick on the baseline, so a gap in service reads differently from a slow link.
 
 import { Text } from "@mantine/core";
 import type { RttSample } from "../hooks/use-connection-health.js";
@@ -7,6 +7,8 @@ import { MAX_SAMPLES } from "../hooks/use-connection-health.js";
 const WIDTH = 160;
 const HEIGHT = 32;
 const PADDING = 3;
+/** The radius of the dot marking a measured sample. */
+const DOT_RADIUS = 2;
 /** How tall the tick marking a lost probe is. */
 const TICK_HEIGHT = 8;
 const PLOT_HEIGHT = HEIGHT - PADDING * 2;
@@ -59,6 +61,17 @@ export function RttSparkline({
           stroke="currentColor"
           strokeWidth={1.5}
         />
+        {points.map((point) =>
+          point.y === undefined ? null : (
+            <circle
+              key={point.x}
+              cx={point.x}
+              cy={point.y}
+              r={DOT_RADIUS}
+              fill="currentColor"
+            />
+          ),
+        )}
         {points
           .filter((point) => point.y === undefined)
           .map((point) => (
