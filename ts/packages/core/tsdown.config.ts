@@ -28,6 +28,7 @@ export default defineConfig({
     "src/domain/peer-advert.ts",
     "src/domain/pinned-address.ts",
     "src/domain/relay-hub.ts",
+    "src/domain/relay-advert.ts",
     "src/domain/relay-use-gate.ts",
     "src/domain/room.ts",
     "src/domain/room-path.ts",
