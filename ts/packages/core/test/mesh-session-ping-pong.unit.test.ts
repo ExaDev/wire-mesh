@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Clock } from "../src/ports/clock.js";
 import { createMeshSession } from "../src/domain/mesh-session.js";
+import { PingTimeoutError } from "../src/domain/ping-round-trips.js";
 import {
   fakeTransport,
   testIdentity,
@@ -82,6 +83,7 @@ describe("sendPingMeasureRtt", () => {
     const pending = session.sendPingMeasureRtt();
     connection.fail(new Error("dropped"));
     await expect(pending).rejects.toThrow("disconnected before a pong arrived");
+    await expect(pending).rejects.not.toBeInstanceOf(PingTimeoutError);
   });
 
   it("times out rather than hanging forever when no pong ever arrives", async () => {
@@ -97,7 +99,7 @@ describe("sendPingMeasureRtt", () => {
         .catch((error: unknown) => error);
       await vi.advanceTimersByTimeAsync(PING_ROUND_TRIP_TIMEOUT_MS);
       const outcome = await pending;
-      expect(outcome).toBeInstanceOf(Error);
+      expect(outcome).toBeInstanceOf(PingTimeoutError);
       expect((outcome as Error).message).toBe("timed out waiting for pong");
       await session.close();
     } finally {

@@ -29,11 +29,15 @@ export function shortId(deviceHex: string): string {
   return deviceHex.slice(0, SHORT_ID_LENGTH);
 }
 
-/** A name fit to display: trimmed, non-empty, and within MAX_NAME_LENGTH. */
+/** Control characters and the bidirectional formatting characters (marks, embeddings, overrides, isolates). A self-asserted name is laid out beside neighbouring text, and these let a stranger reorder or hide that text. Other format characters such as the zero-width joiner stay, since emoji sequences need them. */
+const UNSAFE_NAME_CHARACTERS =
+  /[\p{Cc}\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/gu;
+
+/** A name fit to display: free of control and bidirectional formatting characters, trimmed, non-empty, and within MAX_NAME_LENGTH code points (never cutting a surrogate pair in half). */
 export function cleanName(name: string): string | undefined {
-  const trimmed = name.trim();
+  const trimmed = name.replace(UNSAFE_NAME_CHARACTERS, "").trim();
   if (trimmed === "") return undefined;
-  return trimmed.slice(0, MAX_NAME_LENGTH);
+  return Array.from(trimmed).slice(0, MAX_NAME_LENGTH).join("");
 }
 
 /** The display name a peer signed about itself, read from its verified advert, or undefined when it published none or a malformed one. */
@@ -68,4 +72,12 @@ export function labelPeer(
     return { primary: selfName, secondary: shortId(deviceHex), source: "self" };
   }
   return { primary: shortId(deviceHex), secondary: undefined, source: "id" };
+}
+
+/** A label as one line of plain text. A self-asserted name carries the short id so that two peers claiming the same name still read differently; a petname or a short id stands alone. */
+export function labelText(label: Readonly<PeerLabel>): string {
+  if (label.source === "self" && label.secondary !== undefined) {
+    return `${label.primary} (${label.secondary})`;
+  }
+  return label.primary;
 }

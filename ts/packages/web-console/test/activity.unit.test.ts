@@ -152,6 +152,47 @@ describe("advanceActivity", () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 
+  it("reports a peer as seen the first time its advert arrives, not each time a directory repeats it", () => {
+    const state: SessionEvent["state"] = {
+      status: "connected",
+      address: ADDRESS,
+      handshake: { status: "pending" },
+    };
+    const gossip = (...devices: readonly Uint8Array<ArrayBuffer>[]): Frame => ({
+      type: "gossip",
+      peers: devices.map((device) => ({
+        device,
+        addresses: [],
+        "snapshot-seconds": 0,
+        ...syntheticAdvertProof(),
+      })),
+    });
+    const OTHER = deviceIdFromFillHex("33");
+    const OTHER_HEX = "33".repeat(DEVICE_ID_BYTES);
+    const first = advanceActivity(
+      initialTracker,
+      event(state, [{ direction: "received", frame: gossip(PEER, PEER) }]),
+      1,
+    );
+    const second = advanceActivity(
+      first.tracker,
+      event(state, [
+        { direction: "received", frame: gossip(PEER, PEER) },
+        { direction: "received", frame: gossip(PEER, OTHER) },
+      ]),
+      2,
+    );
+    const peersSeen = (entries: readonly { peer: string | undefined }[]) =>
+      entries.map((entry) => entry.peer);
+
+    expect(peersSeen(first.entries.filter((e) => e.kind === "peer"))).toEqual([
+      PEER_HEX,
+    ]);
+    expect(peersSeen(second.entries.filter((e) => e.kind === "peer"))).toEqual([
+      OTHER_HEX,
+    ]);
+  });
+
   it("distinguishes the first loss of a connection from a failed retry", () => {
     const lost = advanceActivity(
       initialTracker,

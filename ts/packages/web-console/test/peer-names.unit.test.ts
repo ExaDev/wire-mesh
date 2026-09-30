@@ -5,6 +5,7 @@ import {
   SHORT_ID_LENGTH,
   cleanName,
   labelPeer,
+  labelText,
   selfAssertedName,
   selfNameExtension,
   shortId,
@@ -38,6 +39,24 @@ describe("cleanName", () => {
     expect(
       cleanName("x".repeat(MAX_NAME_LENGTH + OVERLONG_EXTRA)),
     ).toHaveLength(MAX_NAME_LENGTH);
+  });
+
+  it("strips control and bidirectional formatting characters", () => {
+    expect(cleanName("A\u202Eda\u0000\u2066!\u200F")).toBe("Ada!");
+    expect(cleanName("\u202E\u0007")).toBeUndefined();
+  });
+
+  it("keeps the zero-width joiner that emoji sequences need", () => {
+    const family = "\u{1F468}\u200D\u{1F469}\u200D\u{1F467}";
+    expect(cleanName(family)).toBe(family);
+  });
+
+  it("bounds by code point, never cutting a surrogate pair", () => {
+    const name = cleanName(
+      "\u{1F600}".repeat(MAX_NAME_LENGTH + OVERLONG_EXTRA),
+    );
+    expect(Array.from(name ?? "")).toHaveLength(MAX_NAME_LENGTH);
+    expect(name).toBe("\u{1F600}".repeat(MAX_NAME_LENGTH));
   });
 
   it("rejects a blank name", () => {
@@ -107,5 +126,20 @@ describe("selfNameExtension", () => {
     expect(selfNameExtension("Ada")).toEqual({
       "agent/self": { name: "Ada", harness: "wire-mesh-console" },
     });
+  });
+});
+
+describe("labelText", () => {
+  it("puts the short id beside a self-asserted name", () => {
+    expect(labelText(labelPeer(DEVICE_HEX, undefined, "Ada"))).toBe(
+      `Ada (${shortId(DEVICE_HEX)})`,
+    );
+  });
+
+  it("shows a petname or a short id alone", () => {
+    expect(labelText(labelPeer(DEVICE_HEX, "Grace", "Ada"))).toBe("Grace");
+    expect(labelText(labelPeer(DEVICE_HEX, undefined, undefined))).toBe(
+      shortId(DEVICE_HEX),
+    );
   });
 });

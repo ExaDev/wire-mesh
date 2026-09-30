@@ -236,6 +236,19 @@ function publishedSelfNames(
   });
 }
 
+/** The display-name claim of each advert in every gossip frame a socket sent after `from` sends, with undefined for an advert that asserts none. */
+function gossipedClaims(
+  socket: Readonly<FakeWebSocket>,
+  from: number,
+): (string | undefined)[] {
+  return socket.sent.slice(from).flatMap((data) => {
+    const frame = decodeMessage(data);
+    return frame.type === "gossip"
+      ? frame.peers.map((advert) => selfAssertedName(advert))
+      : [];
+  });
+}
+
 describe("App", () => {
   beforeEach(() => {
     sockets = [];
@@ -512,8 +525,9 @@ describe("App", () => {
     const NODE = "192.0.2.5:4433";
     const pinned = (digit: string): string =>
       formatPinnedAddress(NODE, [digit.repeat(SHA256_HEX_LENGTH)]);
+    const hashHex = (digit: string): string => digit.repeat(SHA256_HEX_LENGTH);
     const hashBytes = (digit: string): Uint8Array<ArrayBuffer> =>
-      bytesFromHex(digit.repeat(SHA256_HEX_LENGTH));
+      bytesFromHex(hashHex(digit));
 
     function submitAddress(address: string): void {
       fireEvent.change(screen.getByLabelText(/^Node/), {
@@ -568,6 +582,50 @@ describe("App", () => {
 
       await screen.findByText(/^closed|connecting/);
       expect(screen.queryByTestId("certificate-prompt")).toBeNull();
+    });
+
+    it("dials a remembered node with only the presented pins it remembers, never one the address adds", async () => {
+      const certificateMemory = createCertificateMemory(createMemoryStorage());
+      await certificateMemory.remember(NODE, [hashBytes("a")]);
+      const webTransport = vi.fn<(url: string, options: unknown) => never>(
+        () => {
+          throw new Error("no transport in this test");
+        },
+      );
+      vi.stubGlobal("WebTransport", webTransport);
+      renderApp({ certificateMemory });
+
+      submitAddress(formatPinnedAddress(NODE, [hashHex("a"), hashHex("b")]));
+
+      await vi.waitFor(() => {
+        expect(webTransport).toHaveBeenCalledTimes(1);
+      });
+      expect(webTransport.mock.calls[0]?.[1]).toEqual({
+        serverCertificateHashes: [
+          { algorithm: "sha-256", value: hashBytes("a") },
+        ],
+      });
+      expect(screen.queryByTestId("certificate-prompt")).toBeNull();
+    });
+
+    it("dials nothing for an address whose certificate decision settles after the console is closed", async () => {
+      const certificateMemory = createCertificateMemory(createMemoryStorage());
+      await certificateMemory.remember(NODE, [hashBytes("a")]);
+      const webTransport = vi.fn<(url: string, options: unknown) => never>(
+        () => {
+          throw new Error("no transport in this test");
+        },
+      );
+      vi.stubGlobal("WebTransport", webTransport);
+      const { unmount } = renderApp({ certificateMemory });
+
+      submitAddress(pinned("a"));
+      unmount();
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
+
+      expect(webTransport).not.toHaveBeenCalled();
     });
 
     it("warns, and dials nothing, when an address presents a different certificate than the remembered one", async () => {
@@ -740,5 +798,27 @@ describe("App", () => {
       "gossiped by",
       "actions",
     ]);
+  });
+
+  it("retracts a published display name with an advert that carries none once the name is cleared", async () => {
+    renderApp();
+    const rootSocket = await connectRoot();
+    fireEvent.change(screen.getByLabelText(/^Your display name/), {
+      target: { value: "Grace" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save name" }));
+    await vi.waitFor(() => {
+      expect(publishedSelfNames(rootSocket, 0)).toEqual(["Grace"]);
+    });
+    const sentBefore = rootSocket.sent.length;
+
+    fireEvent.change(screen.getByLabelText(/^Your display name/), {
+      target: { value: "" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save name" }));
+
+    await vi.waitFor(() => {
+      expect(gossipedClaims(rootSocket, sentBefore)).toEqual([undefined]);
+    });
   });
 });

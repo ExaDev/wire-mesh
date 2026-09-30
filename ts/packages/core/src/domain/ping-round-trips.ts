@@ -1,5 +1,13 @@
 // FIFO pairing between sendPingMeasureRtt calls and the pong-frames that answer them (wire-mesh#181) -- ping-frame/pong-frame carry no correlation id of their own (spec/transport.cddl), so the Nth outstanding call is paired against the Nth pong a connection receives. Extracted out of mesh-session.ts the same way relay-pairing.ts already extracts its own relay-pairing bookkeeping, so mesh-session.ts's own applyFrame/sendPingMeasureRtt stay thin wiring rather than owning this queue's mechanics directly.
 
+/** Why a ping was given up on: no pong arrived within the caller's `timeoutMs`. A call rejected for any other reason (the connection dropped or closed first) rejects with a plain Error, so a caller counting unanswered pings tells the two apart by this class rather than by message text. */
+export class PingTimeoutError extends Error {
+  constructor() {
+    super("timed out waiting for pong");
+    this.name = "PingTimeoutError";
+  }
+}
+
 interface PendingPingRoundTrip {
   sentAt: number;
   resolve: (rttMs: number) => void;
@@ -58,7 +66,7 @@ export function createPingRoundTrips(): PingRoundTrips {
         new Promise<number>((_resolve, reject) => {
           setTimeout(() => {
             if (cancel(sentAt)) {
-              reject(new Error("timed out waiting for pong"));
+              reject(new PingTimeoutError());
             }
           }, timeoutMs);
         }),
