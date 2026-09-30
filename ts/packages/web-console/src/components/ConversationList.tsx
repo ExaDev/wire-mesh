@@ -3,6 +3,7 @@
 import { Badge, Group, NavLink, Stack, Text } from "@mantine/core";
 import { participantLabel, type ConversationView } from "../conversations.js";
 import { usePeerNames } from "../hooks/use-peer-names.js";
+import { labelText } from "../peer-names.js";
 
 export interface ConversationListProps {
   conversations: readonly ConversationView[];
@@ -28,9 +29,8 @@ export function ConversationList({
         <NavLink
           key={conversation.roomPath}
           active={conversation.roomPath === selected}
-          label={participantLabel(
-            conversation,
-            (hex) => names.labelOf(hex).primary,
+          label={participantLabel(conversation, (hex) =>
+            labelText(names.labelOf(hex)),
           )}
           description={
             conversation.status === "connected" ? undefined : "offline"

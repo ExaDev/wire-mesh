@@ -1,6 +1,14 @@
 // One open relay/hub connection's own UI: status line, ping/disconnect controls, peer directory, and frame log. All behaviour lives in wire-mesh-core's own mesh-session domain module; this component only renders whatever useMeshSessionEvents last reported and forwards clicks back onto the session.
 
-import { Button, Card, Group, Table, Text, Tooltip } from "@mantine/core";
+import {
+  Alert,
+  Button,
+  Card,
+  Group,
+  Table,
+  Text,
+  Tooltip,
+} from "@mantine/core";
 import type {
   MeshSession,
   ReconnectPolicy,
@@ -8,7 +16,7 @@ import type {
 } from "wire-mesh-core/domain/mesh-session";
 import type { Clock } from "wire-mesh-core/ports/clock";
 import type { DeviceId } from "wire-mesh-core/generated/protocol";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMeshSessionEvents } from "../hooks/use-mesh-session-events.js";
 import { usePeerNames } from "../hooks/use-peer-names.js";
 import { selfNameExtension } from "../peer-names.js";
@@ -104,13 +112,29 @@ export function ConnectionPanel({
       observeDirectory(event.directory);
     }
   }, [event, observeDirectory]);
-  // A session's initial self-advert carries no extensions, so this console's own display name is published by re-sending it once the link is up, and again whenever the name changes.
+  // A session's initial self-advert carries no extensions, so this console's own display name is published by re-sending it once the link is up, and again whenever the name changes. Clearing the name re-sends the advert with no extensions, which is what retracts the earlier claim; that is only needed once a name has been published on this session.
+  const namePublished = useRef(false);
+  const [publishFailure, setPublishFailure] = useState<string | undefined>(
+    undefined,
+  );
   useEffect(() => {
-    if (connected && selfName !== undefined) {
-      session.sendGossipUpdate(selfNameExtension(selfName)).catch(() => {
-        // The link dropped between the status read and the send; this effect runs again when the session reconnects, which republishes the name.
-      });
-    }
+    if (!connected) return;
+    if (selfName === undefined && !namePublished.current) return;
+    namePublished.current = selfName !== undefined;
+    session
+      .sendGossipUpdate(
+        selfName === undefined ? undefined : selfNameExtension(selfName),
+      )
+      .then(
+        () => {
+          setPublishFailure(undefined);
+        },
+        (error: unknown) => {
+          setPublishFailure(
+            error instanceof Error ? error.message : String(error),
+          );
+        },
+      );
   }, [connected, selfName, session]);
   const status = event === undefined ? "idle" : describeStatus(event);
   const directory = event?.directory ?? [];
@@ -158,6 +182,11 @@ export function ConnectionPanel({
           policy={reconnectPolicy}
           health={health}
         />
+      )}
+      {publishFailure !== undefined && (
+        <Alert color="red" title="Could not publish your display name" mb="sm">
+          {publishFailure}
+        </Alert>
       )}
 
       <Text fw={600} size="sm">
