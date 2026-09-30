@@ -1,3 +1,9 @@
+## [3.5.1](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.5.0...wire-mesh%403.5.1) (2026-09-30)
+
+### Documentation
+
+* **node:** record the browser results so far and the install-script requirement ([c297d67](https://github.com/ExaDev/wire-mesh/commit/c297d67ef7c27846daefeb029a2627bc63a41ccf))
+
 ## [3.5.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.4.0...wire-mesh%403.5.0) (2026-09-30)
 
 ### Features
