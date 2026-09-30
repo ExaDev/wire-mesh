@@ -32,6 +32,7 @@ import { formatPinnedAddress } from "wire-mesh-core/domain/pinned-address";
 import { signPeerAdvert } from "wire-mesh-core/domain/peer-advert";
 import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
 import { createMemoryStorage } from "wire-mesh-core/adapters/memory-storage";
+import { createPreferencesStore } from "../src/preferences-store.js";
 import { createNameStore } from "../src/name-store.js";
 import {
   selfAssertedName,
@@ -78,6 +79,13 @@ class TrackedFakeWebSocket extends FakeWebSocket {
   }
 }
 
+/** Storage holding the answer of a device whose user has already dismissed the intro. */
+function dismissedPreferencesStorage(): KeyValueStorage {
+  const storage = createMemoryStorage();
+  void createPreferencesStore(storage).setIntroDismissed(true);
+  return storage;
+}
+
 function renderApp(
   options: Readonly<{
     discoverLocalNode?: () => Promise<string | undefined>;
@@ -85,6 +93,8 @@ function renderApp(
     messageStore?: MessageStore;
     nameStorage?: KeyValueStorage;
     certificateMemory?: CertificateMemory;
+    /** The storage the intro preference is kept in. Defaults to one where the intro was already dismissed, so tests not about it see the console as a returning user does. */
+    preferencesStorage?: KeyValueStorage;
   }> = {},
 ): ReturnType<typeof render> {
   const {
@@ -93,6 +103,7 @@ function renderApp(
     messageStore = fakeMessageStore(),
     nameStorage = createMemoryStorage(),
     certificateMemory = createCertificateMemory(createMemoryStorage()),
+    preferencesStorage = dismissedPreferencesStorage(),
   } = options;
   return render(
     <MantineProvider>
@@ -103,6 +114,7 @@ function renderApp(
         roomStorage={createMemoryStorage()}
         certificateMemory={certificateMemory}
         nameStore={createNameStore(nameStorage)}
+        preferences={createPreferencesStore(preferencesStorage)}
         {...(discoverLocalNode === undefined ? {} : { discoverLocalNode })}
         {...(defaultAddress === undefined ? {} : { defaultAddress })}
       />
@@ -690,5 +702,79 @@ describe("App", () => {
     expect(
       within(panel).getByText("over ws://hub.example:8787"),
     ).toBeInTheDocument();
+  });
+
+  describe("first-run intro", () => {
+    it("shows on a device that has never dismissed it, and explains why discovered peers wait", async () => {
+      renderApp({ preferencesStorage: createMemoryStorage() });
+
+      const intro = await screen.findByTestId("onboarding-intro");
+      expect(
+        within(intro).getByText(/Discovered peers wait for you/),
+      ).toBeInTheDocument();
+    });
+
+    it("is dismissed by Got it, stays dismissed on the next visit, and comes back from the header", async () => {
+      const preferencesStorage = createMemoryStorage();
+      const first = renderApp({ preferencesStorage });
+      fireEvent.click(await screen.findByRole("button", { name: "Got it" }));
+
+      expect(screen.queryByTestId("onboarding-intro")).toBeNull();
+      first.unmount();
+
+      renderApp({ preferencesStorage });
+      fireEvent.click(
+        await screen.findByRole("button", { name: "How this works" }),
+      );
+
+      expect(screen.getByTestId("onboarding-intro")).toBeInTheDocument();
+    });
+
+    it("does not show to a returning user", async () => {
+      renderApp();
+
+      await screen.findByRole("button", { name: "How this works" });
+      expect(screen.queryByTestId("onboarding-intro")).toBeNull();
+    });
+  });
+
+  it("finds a stored message by search and opens its conversation", async () => {
+    const peerHex = "2".repeat(DEVICE_ID_HEX_LENGTH);
+    const store = fakeMessageStore();
+    await store.append(
+      dmRoomPath(deviceIdToHex(appIdentity.deviceId), peerHex),
+      {
+        direction: "received",
+        text: "meet by the harbour",
+        messageId: new Uint8Array([1]),
+        sentAt: 1000,
+      },
+    );
+    renderApp({ messageStore: store });
+
+    fireEvent.change(
+      await screen.findByLabelText("Search conversations and notices"),
+      { target: { value: "harbour" } },
+    );
+
+    const panel = await screen.findByTestId("search-panel");
+    expect(
+      within(panel).getByText("harbour", { selector: "mark" }),
+    ).toBeInTheDocument();
+  });
+
+  it("labels every directory cell with its column so the table can stack on a phone", async () => {
+    renderApp();
+    const rootSocket = await connectRoot();
+    rootSocket.emitMessage(arrayBuffer(messageFromFrame(gossipedFrame)));
+
+    const panel = await screen.findByTestId("discovered-peers");
+    const cells = [...panel.querySelectorAll("tbody td")];
+    expect(cells.map((cell) => cell.getAttribute("data-label"))).toEqual([
+      "device",
+      "addresses",
+      "gossiped by",
+      "actions",
+    ]);
   });
 });

@@ -3,6 +3,7 @@
 import { Button, Card, Group, Table, Text } from "@mantine/core";
 import type { DeviceId } from "wire-mesh-core/generated/protocol";
 import { deviceHex } from "./ConnectionPanel.js";
+import { stackedTable } from "../App.css.js";
 import { PeerLabel } from "./PeerLabel.js";
 
 /** Where a discovered peer was learned of: the connection whose directory gossiped it, and, when that connection was itself reached by gossip, the device that vouched for it. */
@@ -44,7 +45,7 @@ export function DiscoveredPeersPanel({
         to, which is the only thing vouching for it: the address it lists may
         not be a wire-mesh node at all. Nothing is dialled until you connect.
       </Text>
-      <Table striped>
+      <Table striped className={stackedTable}>
         <Table.Thead>
           <Table.Tr>
             <Table.Th>device</Table.Th>
@@ -56,11 +57,13 @@ export function DiscoveredPeersPanel({
         <Table.Tbody>
           {peers.map((peer) => (
             <Table.Tr key={peer.key}>
-              <Table.Td>
+              <Table.Td data-label="device">
                 <PeerLabel deviceHex={deviceHex(peer.device)} />
               </Table.Td>
-              <Table.Td>{peer.addresses.join(", ")}</Table.Td>
-              <Table.Td>
+              <Table.Td data-label="addresses">
+                {peer.addresses.join(", ")}
+              </Table.Td>
+              <Table.Td data-label="gossiped by">
                 {peer.via.device !== undefined && (
                   <PeerLabel deviceHex={peer.via.device} />
                 )}
@@ -68,7 +71,7 @@ export function DiscoveredPeersPanel({
                   over {peer.via.address}
                 </Text>
               </Table.Td>
-              <Table.Td>
+              <Table.Td data-label="actions">
                 <Group gap="xs">
                   <Button
                     size="xs"
