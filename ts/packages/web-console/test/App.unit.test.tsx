@@ -26,6 +26,8 @@ import { deviceIdToHex } from "wire-mesh-core/domain/device-id";
 import { dmRoomPath } from "wire-mesh-core/domain/room-path";
 import { signPeerAdvert } from "wire-mesh-core/domain/peer-advert";
 import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
+import { createMemoryStorage } from "wire-mesh-core/adapters/memory-storage";
+import { createCertificateMemory } from "../src/certificate-memory.js";
 import { App } from "../src/App.js";
 import type { MessageStore, StoredMessage } from "../src/message-store.js";
 import { FakeWebSocket } from "./fake-websocket.js";
@@ -81,6 +83,7 @@ function renderApp(
         identity={appIdentity}
         clock={fixedClock}
         messageStore={messageStore}
+        certificateMemory={createCertificateMemory(createMemoryStorage())}
         {...(discoverLocalNode === undefined ? {} : { discoverLocalNode })}
         {...(defaultAddress === undefined ? {} : { defaultAddress })}
       />

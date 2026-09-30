@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import { MantineProvider } from "@mantine/core";
 import { createIndexedDbStorage } from "./adapters/indexeddb-storage.js";
 import { createPersistedWebCryptoIdentity } from "./adapters/web-crypto-identity.js";
+import { createCertificateMemory } from "./certificate-memory.js";
 import { createMessageStore } from "./message-store.js";
 import { App } from "./App.js";
 import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt.js";
@@ -16,6 +17,9 @@ const identity = await createPersistedWebCryptoIdentity(
 );
 const clock = { now: () => Date.now() };
 const messageStore = createMessageStore(await createIndexedDbStorage());
+const certificateMemory = createCertificateMemory(
+  await createIndexedDbStorage(),
+);
 const address = defaultHubAddress(import.meta.env.DEV, window.location);
 
 const container = document.getElementById("root");
@@ -30,6 +34,7 @@ createRoot(container).render(
         identity={identity}
         clock={clock}
         messageStore={messageStore}
+        certificateMemory={certificateMemory}
         defaultAddress={address}
       />
       <PwaUpdatePrompt />
