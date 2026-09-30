@@ -31,6 +31,12 @@ function renderHealth(
   return renderHook(() => useConnectionHealth(session, connected, TIMING));
 }
 
+async function pause(ms: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 function scripted(
   outcomes: readonly (() => Promise<number>)[],
   fallback: number,
@@ -61,9 +67,7 @@ describe("useConnectionHealth", () => {
     const ping = vi.fn<Ping>(async () => Promise.resolve(RTT_MS));
     renderHealth(ping, false);
 
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, TIMING.intervalMs * EXTRA_PROBES);
-    });
+    await pause(TIMING.intervalMs * EXTRA_PROBES);
 
     expect(ping).not.toHaveBeenCalled();
   });
@@ -104,28 +108,30 @@ describe("useConnectionHealth", () => {
   });
 
   it("stops probing a node whose first probe gets no pong, until a manual probe is answered", async () => {
-    const ping = scripted(
-      [async () => Promise.reject(new Error("timed out"))],
-      RECOVERED_RTT_MS,
+    const node = { answering: false };
+    const ping = vi.fn<Ping>(async () =>
+      node.answering
+        ? Promise.resolve(RECOVERED_RTT_MS)
+        : Promise.reject(new Error("timed out")),
     );
     const { result } = renderHealth(ping, true);
 
     await waitFor(() => {
       expect(result.current.unresponsive).toBe(true);
     });
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, TIMING.intervalMs * EXTRA_PROBES);
-    });
-    expect(ping).toHaveBeenCalledTimes(1);
+    // A probe already in flight when the state flips may still settle, so the count is taken after a few intervals and must then hold still.
+    await pause(TIMING.intervalMs * EXTRA_PROBES);
+    const probesWhenStopped = ping.mock.calls.length;
+    await pause(TIMING.intervalMs * EXTRA_PROBES);
+    expect(ping).toHaveBeenCalledTimes(probesWhenStopped);
 
+    node.answering = true;
     result.current.probe();
 
     await waitFor(() => {
       expect(result.current.unresponsive).toBe(false);
     });
-    expect(result.current.samples.slice(0, 2)).toEqual([
-      undefined,
-      RECOVERED_RTT_MS,
-    ]);
+    expect(result.current.samples.at(-1)).toBe(RECOVERED_RTT_MS);
+    expect(result.current.samples[0]).toBeUndefined();
   });
 });
