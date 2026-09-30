@@ -12,7 +12,7 @@ export const appShell = style({
 /** Mantine's `xs` breakpoint (the same 36em vite.config.ts hands the PostCSS pipeline), below which a peer table no longer fits a row of columns. */
 const PHONE_MEDIA = "screen and (max-width: 36em)";
 
-/** A table whose rows become cards on a phone: the header row is hidden and each cell shows its column's name (its `data-label`) above its value. */
+/** A table whose rows become cards on a phone: the header row is hidden and each cell shows its column's name (its `data-label`) above its value. Use it through `StackedTable`, which also states each element's ARIA role, because changing `display` on table elements makes Safari drop their table semantics. */
 export const stackedTable = style({});
 
 globalStyle(`${stackedTable} thead`, {
