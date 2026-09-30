@@ -7,7 +7,8 @@ import type { KeyValueStorage } from "wire-mesh-core/ports/storage";
 
 const ES256 = -7;
 const EDDSA = -8;
-const IDENTITY_STORAGE_KEY = "web-console/identity/es256";
+/** Where the persisted identity envelope lives, shared with the backup service so both read and write one record. */
+export const IDENTITY_STORAGE_KEY = "web-console/identity/es256";
 
 function algParams(alg: number): EcdsaParams | { name: "Ed25519" } {
   if (alg === ES256) {
@@ -98,12 +99,12 @@ export async function createWebCryptoIdentity(): Promise<IdentityPort> {
   };
 }
 
-interface StoredIdentityEnvelope {
+export interface StoredIdentityEnvelope {
   privateJwk: JsonWebKey;
   publicKeyRaw: Uint8Array<ArrayBuffer>;
 }
 
-function isStoredIdentityEnvelope(
+export function isStoredIdentityEnvelope(
   value: unknown,
 ): value is StoredIdentityEnvelope {
   if (typeof value !== "object" || value === null) return false;
