@@ -24,7 +24,7 @@ import {
   sendRoomMessage,
   type RoomRouterHandlers,
 } from "../room-client.js";
-import { noRevocationCheck } from "../webrtc-negotiation.js";
+import type { CapabilityServices } from "../capability-services.js";
 import type { MessageStore, StoredMessage } from "../message-store.js";
 import {
   participantsOf,
@@ -100,7 +100,9 @@ export function useRoomMessaging(
   clock: Readonly<Clock>,
   messageStore: Readonly<MessageStore>,
   roomStorage: Readonly<KeyValueStorage>,
+  capabilities: Readonly<CapabilityServices>,
 ): RoomMessaging {
+  const { revocation, grants } = capabilities;
   const [sessions, dispatch] = useReducer(
     reduceConversations,
     new Map<string, ConversationInternal>(),
@@ -195,7 +197,7 @@ export function useRoomMessaging(
       storage: roomStorage,
       identity,
       clock,
-      revocation: noRevocationCheck,
+      revocation,
       roomKeys: roomKeyStore,
       onChange: () => {
         refresh();
@@ -220,6 +222,9 @@ export function useRoomMessaging(
         };
         void messageStore.append(roomPath, stored);
         dispatch({ type: "message", roomPath, message: stored });
+      },
+      onGrantIssued: (token) => {
+        void grants.record("issued", token, clock.now());
       },
       onJoinRequest: (event) => {
         dispatch({
@@ -259,7 +264,7 @@ export function useRoomMessaging(
         const handler = createRoomRekeyHandler({
           identity,
           clock,
-          revocation: noRevocationCheck,
+          revocation: revocation,
           ownRoomMemberToken: ownToken,
           onRekey: async (event) => {
             for (const [i, key] of event.contentKeys.entries()) {
@@ -330,7 +335,7 @@ export function useRoomMessaging(
         {
           identity,
           clock,
-          revocation: noRevocationCheck,
+          revocation: revocation,
           peerDevice,
           currentMembers: () => [identity.deviceId, peerDevice],
         },
@@ -364,6 +369,7 @@ export function useRoomMessaging(
         onPhase("sending");
         token = joined.token;
         await rememberToken(roomPath, token);
+        void grants.record("held", token, clock.now());
         dispatch({ type: "token", roomPath, token });
         // Opportunistic DM bootstrap: once this side holds its join-grant,
         // the lower participant mints epoch 1 for the noticeboard. Fire-and-
@@ -375,7 +381,7 @@ export function useRoomMessaging(
             session: entry.direct,
             identity,
             clock,
-            revocation: noRevocationCheck,
+            revocation: revocation,
             ownRoomMemberToken: token,
             roomPath,
             roomKeys: notice.roomKeys,
@@ -472,6 +478,7 @@ export function useRoomMessaging(
         const joined = await requestToJoin(session, roomPath);
         token = joined.token;
         await rememberToken(roomPath, token);
+        void grants.record("held", token, clock.now());
         dispatch({ type: "token", roomPath, token });
       }
       // Awaited here (unlike send()'s opportunistic trigger): posting
@@ -482,7 +489,7 @@ export function useRoomMessaging(
         session,
         identity,
         clock,
-        revocation: noRevocationCheck,
+        revocation: revocation,
         ownRoomMemberToken: token,
         roomPath,
         roomKeys: notice.roomKeys,
@@ -539,7 +546,7 @@ export function useRoomMessaging(
               {
                 identity,
                 clock,
-                revocation: noRevocationCheck,
+                revocation: revocation,
                 peerDevice: peer,
                 currentMembers: () => [identity.deviceId, peer],
               },

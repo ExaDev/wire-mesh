@@ -1,4 +1,4 @@
-// jsdom implements neither matchMedia nor ResizeObserver -- Mantine's MantineProvider reads the former to detect the OS colour-scheme preference, and its ScrollArea (which Table.ScrollContainer and RoomPanel's own message list both use) reads the latter to decide when scrollbars are needed. Every jsdom+Mantine test suite needs both stubs; shared here once two test files needed the identical setup.
+// jsdom implements none of matchMedia, ResizeObserver or document.fonts -- Mantine's MantineProvider reads the former to detect the OS colour-scheme preference, and its ScrollArea (which Table.ScrollContainer and RoomPanel's own message list both use) reads the latter to decide when scrollbars are needed. Every jsdom+Mantine test suite needs both stubs; shared here once two test files needed the identical setup.
 
 import { vi } from "vitest";
 
@@ -27,7 +27,17 @@ export class ResizeObserverStub {
   }
 }
 
+/** jsdom has no `document.fonts`, which Mantine's autosizing Textarea listens to so it can resize once a web font has loaded. */
+const fontsStub = {
+  addEventListener: vi.fn<() => void>(),
+  removeEventListener: vi.fn<() => void>(),
+};
+
 export function stubMantineJsdomGlobals(): void {
   vi.stubGlobal("matchMedia", matchMediaStub);
   vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+  Object.defineProperty(document, "fonts", {
+    value: fontsStub,
+    configurable: true,
+  });
 }

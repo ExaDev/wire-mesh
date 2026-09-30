@@ -38,16 +38,11 @@ import { wrapRtcDataChannel } from "./adapters/webrtc-transport.js";
 
 const DATA_CHANNEL_LABEL = "wire-mesh";
 
-/**
- * web-console has no revocation-gossip ingestion yet -- there is nowhere for a revocation-announce frame to land and be recorded. This is an explicit, deliberate limitation of this console specifically (not core, not the protocol): every otherwise-valid token is treated as unrevoked. A future console revision that ingests revocation-announce frames into a real store should replace this, not extend it. Exported since useRoomMessaging's own createRoomRouter needs the identical limitation for the identical reason -- there is exactly one revocation posture for the whole console, not one per domain.
- */
-export const noRevocationCheck: RevocationCheck = {
-  entriesFor: async () => Promise.resolve([]),
-};
-
 export interface WebrtcNegotiatorOptions {
   identity: IdentityPort;
   clock: Clock;
+  /** What an incoming offer's token is checked against, so an offer under a revoked token is refused. */
+  revocation: RevocationCheck;
   /** Called once for each incoming, authorized offer, with the resulting Connection once its data channel opens. */
   onIncomingConnection: (connection: Readonly<Connection>) => void;
   /** The ICE servers both sides of every negotiation use. Empty restricts a connection to host candidates, which is what a test on one machine wants. */
@@ -127,7 +122,7 @@ export function createWebrtcNegotiator(
   const verifyOptions: VerifyCapabilityTokenOptions = {
     identity: options.identity,
     clock: options.clock,
-    revocation: noRevocationCheck,
+    revocation: options.revocation,
   };
   // Keyed by negotiation-id, shared by both roles this negotiator plays: an outgoing initiate() call and an incoming accepted offer both register here, so a later ice-candidate message (which carries no role information of its own) routes to the right peer connection regardless of who initiated.
   const peerConnections = new Map<number, RTCPeerConnection>();

@@ -4,6 +4,7 @@ import { Alert, Button, Divider, Group, Stack, Text } from "@mantine/core";
 import { SubmitRow } from "web-ui-primitives";
 import { participantLabel, type ConversationView } from "../conversations.js";
 import { usePeerNames } from "../hooks/use-peer-names.js";
+import { labelText } from "../peer-names.js";
 import { PeerName } from "./PeerName.js";
 import { MessageList } from "./MessageList.js";
 import { NoticesView } from "./NoticesView.js";

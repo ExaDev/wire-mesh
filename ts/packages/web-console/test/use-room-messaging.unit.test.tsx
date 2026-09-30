@@ -8,6 +8,7 @@ import { deviceIdToHex } from "wire-mesh-core/domain/device-id";
 import { dmRoomPath } from "wire-mesh-core/domain/room-path";
 import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
 import { useRoomMessaging } from "../src/hooks/use-room-messaging.js";
+import { testCapabilities } from "./capability-services.js";
 import { createMessageStore } from "../src/message-store.js";
 
 const DEVICE_ID_HEX_LENGTH = 64;
@@ -33,8 +34,9 @@ async function renderRestoredConversation(): Promise<
     messageId: new Uint8Array([1]),
     sentAt: 1,
   });
+  const { services } = await testCapabilities(identity, clock);
   const rendered = renderHook(() =>
-    useRoomMessaging(identity, clock, store, createMemoryStorage()),
+    useRoomMessaging(identity, clock, store, createMemoryStorage(), services),
   );
   await waitFor(() => {
     expect(rendered.result.current.conversations).toHaveLength(1);
