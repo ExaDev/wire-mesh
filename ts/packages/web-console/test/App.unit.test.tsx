@@ -32,6 +32,9 @@ import { formatPinnedAddress } from "wire-mesh-core/domain/pinned-address";
 import { signPeerAdvert } from "wire-mesh-core/domain/peer-advert";
 import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
 import { createMemoryStorage } from "wire-mesh-core/adapters/memory-storage";
+import { createIdentityBackupService } from "../src/adapters/identity-backup.js";
+import { testCapabilities } from "./capability-services.js";
+import type { TestCapabilities } from "./capability-services.js";
 import { createPreferencesStore } from "../src/preferences-store.js";
 import { createNameStore } from "../src/name-store.js";
 import {
@@ -49,6 +52,9 @@ import { stubMantineJsdomGlobals } from "./jsdom-mantine-polyfills.js";
 
 /** The identity App runs as. Real rather than a stub deriving one fixed device-id: the session verifies every gossiped advert with it (wire-mesh#225), and a stub would refuse any advert naming a different device, so a gossiped peer would never reach the directory these tests read. */
 let appIdentity: IdentityPort;
+
+/** The grant and revocation stores a test renders App with unless it supplies its own, recreated for every test so one test's grants never show in the next. */
+let currentCapabilities: TestCapabilities;
 
 const fixedClock: Clock = { now: () => 0 };
 
@@ -95,6 +101,9 @@ function renderApp(
     certificateMemory?: CertificateMemory;
     /** The storage the intro preference is kept in. Defaults to one where the intro was already dismissed, so tests not about it see the console as a returning user does. */
     preferencesStorage?: KeyValueStorage;
+    /** Defaults to fresh grant and revocation stores for this test. */
+    capabilities?: TestCapabilities;
+    identityBackupStorage?: KeyValueStorage;
   }> = {},
 ): ReturnType<typeof render> {
   const {
@@ -104,6 +113,8 @@ function renderApp(
     nameStorage = createMemoryStorage(),
     certificateMemory = createCertificateMemory(createMemoryStorage()),
     preferencesStorage = dismissedPreferencesStorage(),
+    capabilities = currentCapabilities,
+    identityBackupStorage = createMemoryStorage(),
   } = options;
   return render(
     <MantineProvider>
@@ -115,6 +126,9 @@ function renderApp(
         certificateMemory={certificateMemory}
         nameStore={createNameStore(nameStorage)}
         preferences={createPreferencesStore(preferencesStorage)}
+        grants={capabilities.grants}
+        revocations={capabilities.revocations}
+        identityBackup={createIdentityBackupService(identityBackupStorage)}
         {...(discoverLocalNode === undefined ? {} : { discoverLocalNode })}
         {...(defaultAddress === undefined ? {} : { defaultAddress })}
       />
@@ -251,7 +265,8 @@ function gossipedClaims(
 }
 
 describe("App", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    currentCapabilities = await testCapabilities(appIdentity, fixedClock);
     sockets = [];
     vi.stubGlobal("WebSocket", TrackedFakeWebSocket);
     stubMantineJsdomGlobals();
@@ -295,7 +310,8 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
 
-    expect(screen.queryByText(/connecting|connected|closed/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Disconnect" })).toBeNull();
+    expect(screen.queryByTestId("activity-log")).toBeNull();
   });
 
   it("does not start a second connection attempt for an address that already has one live", async () => {

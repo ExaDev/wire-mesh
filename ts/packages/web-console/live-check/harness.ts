@@ -141,6 +141,7 @@ window.harness = {
     const negotiator = createWebrtcNegotiator(session, {
       identity,
       clock,
+      revocation: { entriesFor: async () => Promise.resolve([]) },
       // Both browsers of the check run on one machine, where host candidates are all that is needed, and the check must not depend on reaching an outside server.
       iceServers: [],
       onIncomingConnection: (connection) => {

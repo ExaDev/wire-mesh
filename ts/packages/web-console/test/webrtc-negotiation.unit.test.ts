@@ -299,6 +299,7 @@ describe("WebrtcNegotiator.initiate", () => {
       {
         identity: initiator,
         clock,
+        revocation: neverRevoked,
         iceServers: [],
         onIncomingConnection: () => undefined,
       },
@@ -345,6 +346,7 @@ describe("WebrtcNegotiator ICE servers", () => {
       {
         identity,
         clock: fixedClock(now),
+        revocation: neverRevoked,
         iceServers: ICE_SERVERS,
         onIncomingConnection: () => undefined,
       },
@@ -387,6 +389,7 @@ describe("WebrtcNegotiator ICE servers", () => {
       {
         identity: responder,
         clock,
+        revocation: neverRevoked,
         iceServers: ICE_SERVERS,
         onIncomingConnection: () => undefined,
       },

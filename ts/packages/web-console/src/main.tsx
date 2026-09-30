@@ -7,6 +7,9 @@ import { MantineProvider } from "@mantine/core";
 import { createIndexedDbStorage } from "./adapters/indexeddb-storage.js";
 import { createPersistedWebCryptoIdentity } from "./adapters/web-crypto-identity.js";
 import { createCertificateMemory } from "./certificate-memory.js";
+import { createIdentityBackupService } from "./adapters/identity-backup.js";
+import { createGrantStore } from "./grant-store.js";
+import { createRevocationStore } from "./revocation-store.js";
 import { createPreferencesStore } from "./preferences-store.js";
 import { createNameStore } from "./name-store.js";
 import { createMessageStore } from "./message-store.js";
@@ -14,10 +17,16 @@ import { App } from "./App.js";
 import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt.js";
 import { defaultHubAddress } from "./default-hub-address.js";
 
-const identity = await createPersistedWebCryptoIdentity(
-  await createIndexedDbStorage(),
-);
+const identityStorage = await createIndexedDbStorage();
+const identity = await createPersistedWebCryptoIdentity(identityStorage);
 const clock = { now: () => Date.now() };
+const grants = createGrantStore(await createIndexedDbStorage());
+const revocations = await createRevocationStore({
+  storage: await createIndexedDbStorage(),
+  identity,
+  clock,
+});
+const identityBackup = createIdentityBackupService(identityStorage);
 const messageStore = createMessageStore(await createIndexedDbStorage());
 const roomStorage = await createIndexedDbStorage();
 const certificateMemory = createCertificateMemory(
@@ -43,6 +52,9 @@ createRoot(container).render(
         certificateMemory={certificateMemory}
         nameStore={nameStore}
         preferences={preferences}
+        grants={grants}
+        revocations={revocations}
+        identityBackup={identityBackup}
         defaultAddress={address}
       />
       <PwaUpdatePrompt />

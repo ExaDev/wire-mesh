@@ -14,6 +14,8 @@ import { dmRoomPath } from "wire-mesh-core/domain/room-path";
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
 import { useRoomMessaging } from "../src/hooks/use-room-messaging.js";
+import { testCapabilities } from "./capability-services.js";
+import type { TestCapabilities } from "./capability-services.js";
 import { createMessageStore } from "../src/message-store.js";
 import {
   buildRoomSendCommand,
@@ -29,6 +31,7 @@ const MESSAGE_ID = new Uint8Array([SOME_BYTE]);
 let own: IdentityPort;
 let peer: IdentityPort;
 let roomPath: string;
+let capabilities: TestCapabilities;
 
 beforeAll(async () => {
   own = await createWebCryptoIdentity();
@@ -37,6 +40,7 @@ beforeAll(async () => {
     deviceIdToHex(own.deviceId),
     deviceIdToHex(peer.deviceId),
   );
+  capabilities = await testCapabilities(own, clock);
 });
 
 type SendManageRequest = MeshSession["sendManageRequest"];
@@ -71,7 +75,13 @@ function render(): ReturnType<
 > {
   const store = createMessageStore(createMemoryStorage());
   return renderHook(() =>
-    useRoomMessaging(own, clock, store, createMemoryStorage()),
+    useRoomMessaging(
+      own,
+      clock,
+      store,
+      createMemoryStorage(),
+      capabilities.services,
+    ),
   );
 }
 
@@ -246,5 +256,83 @@ describe("a conversation over a hub", () => {
     await expect(result.current.postNotice(roomPath, "note")).rejects.toThrow(
       "durable notices need a direct connection",
     );
+  });
+
+  it("records the grant a join is answered with as held", async () => {
+    const { result } = render();
+    const hub = await answeringHub();
+    act(() => {
+      result.current.openRelay(hub, peer.deviceId);
+    });
+
+    await act(async () => result.current.send(roomPath, "hello"));
+
+    const held = (await capabilities.grants.list()).filter(
+      (record) => record.direction === "held",
+    );
+    expect(held.map((record) => deviceIdToHex(record.claims.issuer))).toContain(
+      deviceIdToHex(peer.deviceId),
+    );
+  });
+
+  it("records the grant an accepted join request issues, and refuses the peer's messages once it is revoked", async () => {
+    const { result } = render();
+    const incoming = createAsyncQueue<IncomingManageRequest>();
+    act(() => {
+      result.current.watchHub({
+        sendManageRequest: async () => Promise.resolve({ result: "ok" }),
+        incomingManageRequests: incoming.stream,
+      });
+    });
+    const respondToJoin = vi.fn<IncomingManageRequest["respond"]>(async () =>
+      Promise.resolve(),
+    );
+    incoming.push(incomingFromPeer({ respond: respondToJoin }));
+    await waitFor(() => {
+      expect(result.current.conversations[0]?.pendingJoinRequest).toBeDefined();
+    });
+
+    await act(async () =>
+      result.current.conversations[0]?.pendingJoinRequest?.decide({
+        kind: "accept",
+        capability: "room:member",
+        expires: TOKEN_EXPIRES,
+      }),
+    );
+
+    const issued = (await capabilities.grants.list()).filter(
+      (record) =>
+        record.direction === "issued" &&
+        deviceIdToHex(record.claims.bearer) === deviceIdToHex(peer.deviceId),
+    );
+    const grant = issued[0];
+    if (grant === undefined) {
+      throw new Error("expected the accepted join to be recorded as issued");
+    }
+    const send = async (text: string): Promise<ReturnType<typeof vi.fn>> => {
+      const respond = vi.fn<IncomingManageRequest["respond"]>(async () =>
+        Promise.resolve(),
+      );
+      incoming.push(
+        incomingFromPeer({
+          command: buildRoomSendCommand(text, MESSAGE_ID, SENT_AT),
+          token: grant.token,
+          respond,
+        }),
+      );
+      await waitFor(() => {
+        expect(respond).toHaveBeenCalled();
+      });
+      return respond;
+    };
+
+    expect(await send("before")).toHaveBeenCalledWith({ result: "ok" });
+
+    await capabilities.revocations.revoke(grant.claims["token-id"]);
+
+    expect(await send("after")).toHaveBeenCalledWith({
+      result: "error",
+      code: "unauthorized",
+    });
   });
 });

@@ -1,6 +1,6 @@
 // Top-level layout: the connect form, the list of currently open relay connection panels, and every peer-to-peer room-messaging panel. Owns only the set of live sessions and negotiators -- everything about rendering one relay session's own state lives in ConnectionPanel, and everything about a room session's own state lives in the useRoomMessaging hook plus RoomPanel.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Button,
@@ -22,6 +22,10 @@ import type { Clock } from "wire-mesh-core/ports/clock";
 import type { Connection } from "wire-mesh-core/ports/transport";
 import type { KeyValueStorage } from "wire-mesh-core/ports/storage";
 import type { DeviceId } from "wire-mesh-core/generated/protocol";
+import type {
+  DeviceId,
+  RevocationEntry,
+} from "wire-mesh-core/generated/protocol";
 import { deviceIdToHex } from "wire-mesh-core/domain/device-id";
 import { dmRoomPath } from "wire-mesh-core/domain/room-path";
 import { reconnectPolicy } from "./reconnect-policy.js";
@@ -43,6 +47,10 @@ import { PeerName } from "./components/PeerName.js";
 import { SelfNameField } from "./components/SelfNameField.js";
 import { OnboardingIntro } from "./components/OnboardingIntro.js";
 import { SearchPanel } from "./components/SearchPanel.js";
+import { IdentitySection } from "./components/IdentitySection.js";
+import type { IdentityBackupService } from "./adapters/identity-backup.js";
+import type { GrantStore } from "./grant-store.js";
+import type { RevocationStore } from "./revocation-store.js";
 import { useIntro } from "./hooks/use-intro.js";
 import type { PreferencesStore } from "./preferences-store.js";
 import type { NameStore } from "./name-store.js";
@@ -69,6 +77,12 @@ export interface AppProps {
   nameStore: NameStore;
   /** Interface preferences kept in the console's own storage, such as whether the first-run intro has been dismissed. */
   preferences: PreferencesStore;
+  /** The grants this device holds and has issued, kept in the console's own storage. */
+  grants: GrantStore;
+  /** The revocations this device has made or heard, which every token check in the console consults. */
+  revocations: RevocationStore;
+  /** Backs up and restores this device's identity key material. */
+  identityBackup: IdentityBackupService;
   /** Attempts same-device node auto-discovery once, on mount. Defaults to the real `discoverLocalNode` (a no-op when this console is served from a loopback origin, a real localhost probe otherwise); tests inject a fake to avoid depending on `location`/`fetch`. */
   discoverLocalNode?: () => Promise<string | undefined>;
   // Seeds the Node field. Left as a prop (rather than App reading location/import.meta.env itself) so App stays the plain, testable component its own header comment describes; main.tsx computes the real value via default-hub-address.ts.
@@ -108,6 +122,9 @@ export function App({
   certificateMemory,
   nameStore,
   preferences,
+  grants,
+  revocations,
+  identityBackup,
   discoverLocalNode = discoverLocalNodeDefault,
   defaultAddress = DEFAULT_ADDRESS,
 }: Readonly<AppProps>): React.JSX.Element {
@@ -118,11 +135,16 @@ export function App({
   const [failures, setFailures] = useState<ConnectionFailure[]>([]);
   const intro = useIntro(preferences);
   const trust = useCertificateTrust(certificateMemory, clock);
+  const capabilities = useMemo(
+    () => ({ revocation: revocations.view, grants }),
+    [revocations, grants],
+  );
   const roomMessaging = useRoomMessaging(
     identity,
     clock,
     messageStore,
     roomStorage,
+    capabilities,
   );
   const [selectedPath, setSelectedPath] = useState<string | undefined>();
   // The conversation shown is the one the user picked, falling back to the first while nothing is picked or the picked one no longer exists.
@@ -179,12 +201,19 @@ export function App({
       {
         identity,
         clock,
+        revocation: capabilities.revocation,
         iceServers: DEFAULT_ICE_SERVERS,
         onIncomingConnection: (connection: Readonly<Connection>) => {
           void attachRef.current(connection);
         },
       },
     );
+    // Revocations a node announces are verified and recorded by the store, so every token check in the console honours them.
+    void (async (): Promise<void> => {
+      for await (const entry of session.revocationAnnouncements) {
+        await revocations.ingest(entry);
+      }
+    })();
     watchHubRef.current({
       sendManageRequest: async (...args) => session.sendManageRequest(...args),
       incomingManageRequests: demux.stream(ROOM_MEMBER_CAPABILITY),
@@ -325,6 +354,15 @@ export function App({
     connectTo(address);
   }
 
+  /** Tells every connected node about a revocation. A connection that is down cannot be told, so it is skipped rather than failing the revocation, which has already been recorded here. */
+  async function announceRevocation(entry: RevocationEntry): Promise<void> {
+    await Promise.allSettled(
+      connectionsRef.current.map(async (connection) =>
+        connection.session.sendRevocationAnnounce([entry]),
+      ),
+    );
+  }
+
   function handleClose(target: Readonly<ConnectionEntry>): void {
     roomMessaging.dropHub(target.session);
     void target.session.close();
@@ -447,6 +485,14 @@ export function App({
         <SearchPanel
           conversations={roomMessaging.conversations}
           onSelect={setSelectedPath}
+        />
+        <IdentitySection
+          identity={identity}
+          clock={clock}
+          grants={grants}
+          revocations={revocations}
+          identityBackup={identityBackup}
+          announceRevocation={announceRevocation}
         />
         <ConversationList
           conversations={roomMessaging.conversations}

@@ -6,7 +6,10 @@ import type {
   ManageCommand,
   RoomMember,
 } from "wire-mesh-core/generated/protocol";
-import { roomJoinOkSchema } from "wire-mesh-core/generated/protocol";
+import {
+  capabilityTokenSchema,
+  roomJoinOkSchema,
+} from "wire-mesh-core/generated/protocol";
 import type {
   IncomingManageRequest,
   ManageOutcome,
@@ -213,6 +216,8 @@ export interface RoomRouterHandlers {
   onMessage?: (message: Readonly<IncomingRoomMessage>) => void;
   /** Called for an incoming, deliberately ungated room.join, for a human to accept or reject via the given event's own decide(). */
   onJoinRequest?: (event: Readonly<RoomJoinRequestEvent>) => void;
+  /** Called with the token an accepted room.join just granted the requester, as it goes out on the response, so the grant can be recorded: the request handler mints it internally and exposes it nowhere else. */
+  onGrantIssued?: (token: CapabilityToken) => void;
   /** Called for an incoming, verified room.invite -- there is no decision to make (unlike onJoinRequest): by the time this fires, capability-grant.ts's own handler has already responded ok on the wire, so this is purely a notification for the domain to act on (persist the token, surface a UI notice, etc.). Omit for a router that only ever handles room.send/room.join -- an incoming room.invite is then refused with `unsupported_verb`, the same precondition handleRoomJoin already applies to onJoinRequest. */
   onRoomInvite?: (event: Readonly<RoomInviteEvent>) => void;
   /** Called for an incoming room.rekey -- the caller supplies core's createRoomRekeyHandler output (or any handler with the same shape); the router only recognises the verb and forwards the whole incoming request, since the rekey handler answers on the wire itself (ok on successful unwrap, its own specific error codes otherwise). Omit and an incoming room.rekey is left unanswered, this router's default behaviour for any verb it does not recognise. */
@@ -327,7 +332,20 @@ export function createRoomRouter(
       await incoming.respond({ result: "error", code: "unsupported_verb" });
       return;
     }
-    await handleCapabilityGrantRequest(incoming);
+    await handleCapabilityGrantRequest({
+      ...incoming,
+      respond: async (outcome) => {
+        if (outcome.result === "ok") {
+          const granted = capabilityTokenSchema.safeParse(
+            outcome["granted-token"],
+          );
+          if (granted.success) {
+            handlers.onGrantIssued?.(granted.data);
+          }
+        }
+        await incoming.respond(outcome);
+      },
+    });
   }
 
   const handleCapabilityGrant = createCapabilityGrantHandler({
