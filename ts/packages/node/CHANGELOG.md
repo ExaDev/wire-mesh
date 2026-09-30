@@ -1,3 +1,9 @@
+## [3.5.5](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.5.4...wire-mesh%403.5.5) (2026-09-30)
+
+### Documentation
+
+* **node:** record the real-device offline run and what it does not show, and desktop Safari's status ([ac72f80](https://github.com/ExaDev/wire-mesh/commit/ac72f805d81f3915d4eeda782f6b657b7616b654))
+
 ## [3.5.4](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.5.3...wire-mesh%403.5.4) (2026-09-30)
 
 

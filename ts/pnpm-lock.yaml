@@ -547,7 +547,7 @@ importers:
         specifier: 3.0.0
         version: 3.0.0
       wire-mesh:
-        specifier: 3.5.4
+        specifier: 3.5.5
         version: link:../node
       wire-mesh-core:
         specifier: 3.5.0
