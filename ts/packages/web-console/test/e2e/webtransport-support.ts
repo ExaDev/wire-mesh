@@ -86,7 +86,7 @@ export async function startNode(
   };
 }
 
-/** A console in a browser context of its own, connected to `nodeAddress` through the real connect form. */
+/** A console in a browser context of its own, connected to `nodeAddress` through the real connect form. A pinned address is a first connection to that node, so the console asks whether to trust the certificate before it dials, and this accepts it the way a person would. */
 export async function openConsole(
   browser: Readonly<Browser>,
   nodeAddress: string,
@@ -95,6 +95,10 @@ export async function openConsole(
   await page.goto(`http://localhost:${String(VITE_PORT)}/`);
   await page.getByLabel("Node").fill(nodeAddress);
   await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByTestId("certificate-prompt")).toContainText(
+    "First connection to",
+  );
+  await page.getByRole("button", { name: "Trust and connect" }).click();
   return page;
 }
 
