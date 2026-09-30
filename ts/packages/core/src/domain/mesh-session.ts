@@ -19,6 +19,7 @@ import {
   type ProtocolVersion,
   type RevocationAnnounceFrame,
   type RevocationEntry,
+  type CoordinatorFrame,
   type TopologyPeers,
 } from "../generated/protocol.js";
 import { SUPPORTED_PROTOCOL_VERSION, negotiate } from "./handshake.js";
@@ -109,6 +110,8 @@ export interface MeshSession {
   readonly incomingManageRequests: AsyncIterable<IncomingManageRequest>;
   /** Every `revocation-entry` received from the peer, in arrival order -- a `revocation-announce` frame's own `entries` array is flattened to one item per entry, since each entry is independently verifiable and independently meaningful regardless of which frame carried it. A consumer typically feeds each one into a RevocationView's own `record`. */
   readonly revocationAnnouncements: AsyncIterable<RevocationEntry>;
+  /** Every `coordinator-frame` received from the peer, in arrival order: a gossiped, term-based claim to the rendezvous role (spec/transport.cddl), surfaced raw exactly like revocationAnnouncements because what a claim means is coordinator-election.ts's own business, not the session's. A consumer feeds each one into a CoordinatorElection's evaluate, and sends its own claims with sendCoordinatorClaim. */
+  readonly coordinatorFrames: AsyncIterable<CoordinatorFrame>;
   connect: (address: string, localDomains: readonly string[]) => Promise<void>;
   sendPing: () => Promise<void>;
   /** Sends a ping-frame and resolves with the round-trip time in milliseconds once the correlated pong-frame arrives -- FIFO-paired against this call's own ping, since ping-frame carries no correlation id of its own (spec/transport.cddl): the Nth call's own promise resolves against the Nth pong received after it, never matched by any other means. Rejects if the connection closes, or (when timeoutMs is given) if no pong arrives within timeoutMs, rather than resolving a sentinel value the way sendManageRequest's own timeout does -- there is no natural "no answer" value for a bare millisecond count to double as. Unlike sendPing (fire-and-forget, answered by nothing on an ordinary peer connection), this is answered only by a peer that replies to ping with pong -- today, relay-hub's own frame handling (wire-mesh#181) -- so calling this against a connection to a plain peer that never sends pong hangs until timeoutMs (if given) or forever. Exists to isolate the sender-to-hub leg of a relayed path.trace round trip: time this over the same connection a relayed manage-request travelled, then subtract it from path.trace's own end-to-end RTT to recover the hub-to-target leg. */
@@ -119,6 +122,8 @@ export interface MeshSession {
   sendRevocationAnnounce: (
     entries: readonly RevocationEntry[],
   ) => Promise<void>;
+  /** Sends one coordinator-frame directly over this session's own connection, never relay-wrapped: the claim is a gossiped broadcast like revocation-announce, not a request addressed to a specific peer. The frame itself comes from a CoordinatorElection (claim, or announceCurrent for a refresh), so the session never invents a term on its own. */
+  sendCoordinatorClaim: (frame: Readonly<CoordinatorFrame>) => Promise<void>;
   /** Re-sends this side's own self-advert with a fresh snapshot-seconds and, when given, extensions merged onto peer-advert's own open `* tstr => any` tail -- the mechanism a caller uses to keep gossiped presence status (or any other advertised fact) live over a connection's lifetime, since the initial self-advert wireUpConnection sends at connect time is otherwise never repeated. Callers own their own re-advertisement cadence (there is no timer inside MeshSession itself, matching its own DOM-free, fully unit-testable design); a caller not calling this again after connecting is exactly today's existing gossip-once-on-connect behaviour. */
   sendGossipUpdate: (extensions?: Record<string, unknown>) => Promise<void>;
   /** This session's own current topology snapshot -- the identical `topology/peers` value buildSelfAdvert merges into every gossiped self-advert (wire-mesh#180), read back directly rather than only from a possibly-stale gossiped copy elsewhere in the mesh. The live, cache-bust half of the cached-vs-live split `topology.get` itself establishes: a caller answering an incoming topology.get manage-request (see topology.ts's createTopologyGetHandler) calls this to build the response. Synchronous and side-effect-free -- unlike every other method here, it sends nothing and works even before this session has ever connected (an unconnected session simply has no direct peer and no relay pairings yet, both honestly empty). */
@@ -216,6 +221,7 @@ function createSessionCore(
   });
   const incomingQueue = createAsyncQueue<IncomingManageRequest>();
   const revocationQueue = createAsyncQueue<RevocationEntry>();
+  const coordinatorQueue = createAsyncQueue<CoordinatorFrame>();
   const pingRoundTrips = createPingRoundTrips();
 
   function snapshot(): SessionEvent {
@@ -397,6 +403,9 @@ function createSessionCore(
       for (const entry of frame.entries) {
         revocationQueue.push(entry);
       }
+    } else if (frame.type === "coordinator") {
+      // The frame reaches this session the same way gossip does, forwarded by whichever peers carried it; this layer only delivers it, and coordinator-election.ts owns what it means (a gossiped, term-based claim whose evaluation supersedes or retains an incumbent).
+      coordinatorQueue.push(frame);
     }
   }
 
@@ -602,6 +611,7 @@ function createSessionCore(
       events: eventQueue.stream,
       incomingManageRequests: incomingQueue.stream,
       revocationAnnouncements: revocationQueue.stream,
+      coordinatorFrames: coordinatorQueue.stream,
       async connect(address, localDomains): Promise<void> {
         if (connection !== null) {
           throw new Error(
@@ -697,6 +707,15 @@ function createSessionCore(
         };
         frameLog.push({ direction: "sent", frame });
         await transmit(frame, false);
+        emit();
+      },
+      async sendCoordinatorClaim(
+        frame: Readonly<CoordinatorFrame>,
+      ): Promise<void> {
+        requireConnectedLink();
+        const claim: CoordinatorFrame = { ...frame };
+        frameLog.push({ direction: "sent", frame: claim });
+        await transmit(claim, false);
         emit();
       },
       async sendGossipUpdate(
