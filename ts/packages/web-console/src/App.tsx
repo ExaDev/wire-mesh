@@ -33,7 +33,12 @@ import { createWebrtcNegotiator } from "./webrtc-negotiation.js";
 import type { WebrtcNegotiator } from "./webrtc-negotiation.js";
 import { ConnectionPanel, deviceHex } from "./components/ConnectionPanel.js";
 import { DiscoveredPeersPanel } from "./components/DiscoveredPeersPanel.js";
-import type { DiscoveredPeerRow } from "./components/DiscoveredPeersPanel.js";
+import type {
+  DiscoveredPeerRow,
+  DiscoveredVia,
+} from "./components/DiscoveredPeersPanel.js";
+import { CertificateTrustPanel } from "./components/CertificateTrustPanel.js";
+import { useCertificateTrust } from "./hooks/use-certificate-trust.js";
 import { PeerNamesProvider } from "./components/PeerNamesProvider.js";
 import { PeerName } from "./components/PeerName.js";
 import { SelfNameField } from "./components/SelfNameField.js";
@@ -116,6 +121,7 @@ export function App({
   const [connections, setConnections] = useState<ConnectionEntry[]>([]);
   const [discovered, setDiscovered] = useState<PendingExpansion[]>([]);
   const [failures, setFailures] = useState<ConnectionFailure[]>([]);
+  const trust = useCertificateTrust(certificateMemory);
   const roomMessaging = useRoomMessaging(identity, clock, messageStore);
   const [selectedPath, setSelectedPath] = useState<string | undefined>();
   // The conversation shown is the one the user picked, falling back to the first while nothing is picked or the picked one no longer exists.
@@ -152,6 +158,9 @@ export function App({
   }, [connections]);
 
   // The current domains value, read from a ref rather than closed over directly -- dialExpanded/createExpandableSession are invoked from callbacks createGossipExpansion holds onto for as long as a given session's own gossip directory keeps discovering new peers, well outliving any single render, and must still dial with whatever domains the connect form currently offers, not whichever were selected when that session's own expansion was first wired up.
+  // Addresses of this console's own connect attempts still waiting on a certificate decision, and which node gossiped each address this console has been offered.
+  const confirmingRef = useRef(new Set<string>());
+  const vouchedBy = useRef(new Map<string, string>());
   const domainsRef = useRef(domains);
   useEffect(() => {
     domainsRef.current = domains;
@@ -188,14 +197,21 @@ export function App({
   /** Asks this console's own user whether to dial a gossiped candidate at all (wire-mesh#187) -- the explicit-confirmation half of the issue's own two named options, since this console holds no persistent device-trust store a gateway_trust-style allow-list could check instead. Resolves once the user clicks Connect or Dismiss in DiscoveredPeersPanel. */
   async function confirmExpansion(
     candidate: Readonly<GossipExpansionCandidate>,
+    via: Readonly<DiscoveredVia>,
   ): Promise<boolean> {
+    const key = deviceHex(candidate.device);
+    // A gossiped address is dialled as the vouching node's own peer, so a connection made through it can name who vouched for what it gossips in turn.
+    for (const candidateAddress of candidate.addresses) {
+      vouchedBy.current.set(candidateAddress, key);
+    }
     return new Promise<boolean>((resolve) => {
       setDiscovered((current) => [
         ...current,
         {
-          key: deviceHex(candidate.device),
+          key,
           device: candidate.device,
           addresses: candidate.addresses,
+          via,
           resolve,
         },
       ]);
@@ -210,12 +226,12 @@ export function App({
   }
 
   /** Builds a session wired to attempt direct connections to its own gossip directory's newly-discovered peers (wire-mesh#187's "discover once connected, expand outward"), confirmed by this console's own user first. Every expansion-dialled session gets the identical wiring in turn, so discovery keeps expanding outward through however many hops of directly-reachable peers actually exist -- not just the one node dialled first, and not just its own immediate peers. */
-  function createExpandableSession(): MeshSession {
+  function createExpandableSession(via: Readonly<DiscoveredVia>): MeshSession {
     const expansionRef: { current: GossipExpansion | null } = {
       current: null,
     };
     const session = createMeshSession(
-      createDialTransport(certificateMemory),
+      createDialTransport(trust.memory),
       identity,
       clock,
       reconnectPolicy,
@@ -226,7 +242,7 @@ export function App({
     );
     expansionRef.current = createGossipExpansion({
       selfDeviceId: identity.deviceId,
-      shouldExpand: confirmExpansion,
+      shouldExpand: async (candidate) => confirmExpansion(candidate, via),
       dial: dialExpanded,
       onExpanded: (_candidate, expandedAddress, expandedSession) => {
         attachConnection(expandedAddress, expandedSession);
@@ -237,10 +253,15 @@ export function App({
   }
 
   async function dialExpanded(gossipedAddress: string): Promise<MeshSession> {
-    const session = createExpandableSession();
-    return session
-      .connect(toDialAddress(gossipedAddress), domainsRef.current)
-      .then(() => session);
+    const dialAddress = toDialAddress(gossipedAddress);
+    if (!(await trust.confirmAddress(dialAddress))) {
+      throw new Error(`the certificate of ${gossipedAddress} was not trusted`);
+    }
+    const session = createExpandableSession({
+      address: gossipedAddress,
+      device: vouchedBy.current.get(gossipedAddress),
+    });
+    return session.connect(dialAddress, domainsRef.current).then(() => session);
   }
 
   function connectTo(targetAddress: string): void {
@@ -250,11 +271,30 @@ export function App({
     ) {
       return;
     }
-    const session = createExpandableSession();
-    attachConnection(targetAddress, session);
-    void session.connect(toDialAddress(targetAddress), domains).catch(() => {
-      // ConnectionPanel's own render of the session's events already surfaces a connect failure via its status line; nothing further to do here beyond letting the entry remain (its own close button still works on a failed session).
-    });
+    const dialAddress = toDialAddress(targetAddress);
+    // The same address submitted again while its certificate is awaiting a decision is the same attempt, not a second one.
+    if (confirmingRef.current.has(targetAddress)) {
+      return;
+    }
+    confirmingRef.current.add(targetAddress);
+    void trust
+      .confirmAddress(dialAddress)
+      .then((trusted) => {
+        if (!trusted) {
+          return;
+        }
+        const session = createExpandableSession({
+          address: targetAddress,
+          device: undefined,
+        });
+        attachConnection(targetAddress, session);
+        void session.connect(dialAddress, domains).catch(() => {
+          // ConnectionPanel's own render of the session's events already surfaces a connect failure via its status line; nothing further to do here beyond letting the entry remain (its own close button still works on a failed session).
+        });
+      })
+      .finally(() => {
+        confirmingRef.current.delete(targetAddress);
+      });
   }
 
   // discoverLocalNode is a fresh closure every render (or a caller-supplied fake in tests), so the mount-only effect below reads it through a ref (the same pattern attachRef already uses above) rather than listing it as an effect dependency, which would either re-run the probe every render or need a lint suppression. connectTo is a plain function, recreated every render like attachConnection/createExpandableSession above it -- its own ref-update effect below simply runs every render too, which is cheap and still gives the mount effect the latest version by the time it actually fires.
@@ -346,6 +386,11 @@ export function App({
             </Group>
           </Checkbox.Group>
         </form>
+        <CertificateTrustPanel
+          prompts={trust.prompts}
+          changes={trust.changes}
+          onDismissChange={trust.dismissChange}
+        />
         <DiscoveredPeersPanel
           peers={discovered}
           onConnect={(key) => {

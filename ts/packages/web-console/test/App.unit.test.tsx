@@ -28,6 +28,7 @@ import {
 } from "wire-mesh-core/adapters/frame-codec";
 import { deviceIdToHex } from "wire-mesh-core/domain/device-id";
 import { dmRoomPath } from "wire-mesh-core/domain/room-path";
+import { formatPinnedAddress } from "wire-mesh-core/domain/pinned-address";
 import { signPeerAdvert } from "wire-mesh-core/domain/peer-advert";
 import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
 import { createMemoryStorage } from "wire-mesh-core/adapters/memory-storage";
@@ -38,8 +39,10 @@ import {
   shortId,
 } from "../src/peer-names.js";
 import { createCertificateMemory } from "../src/certificate-memory.js";
+import type { CertificateMemory } from "../src/certificate-memory.js";
 import { App } from "../src/App.js";
 import type { MessageStore, StoredMessage } from "../src/message-store.js";
+import { bytesFromHex } from "./hex.js";
 import { FakeWebSocket } from "./fake-websocket.js";
 import { stubMantineJsdomGlobals } from "./jsdom-mantine-polyfills.js";
 
@@ -81,6 +84,7 @@ function renderApp(
     defaultAddress?: string;
     messageStore?: MessageStore;
     nameStorage?: KeyValueStorage;
+    certificateMemory?: CertificateMemory;
   }> = {},
 ): ReturnType<typeof render> {
   const {
@@ -88,6 +92,7 @@ function renderApp(
     defaultAddress,
     messageStore = fakeMessageStore(),
     nameStorage = createMemoryStorage(),
+    certificateMemory = createCertificateMemory(createMemoryStorage()),
   } = options;
   return render(
     <MantineProvider>
@@ -95,7 +100,7 @@ function renderApp(
         identity={appIdentity}
         clock={fixedClock}
         messageStore={messageStore}
-        certificateMemory={createCertificateMemory(createMemoryStorage())}
+        certificateMemory={certificateMemory}
         nameStore={createNameStore(nameStorage)}
         {...(discoverLocalNode === undefined ? {} : { discoverLocalNode })}
         {...(defaultAddress === undefined ? {} : { defaultAddress })}
@@ -109,6 +114,7 @@ function submitConnectForm(): void {
 }
 
 const DEVICE_ID_HEX_LENGTH = 64;
+const SHA256_HEX_LENGTH = 64;
 const GOSSIPED_ADDRESS = "203.0.113.5:4433";
 
 /** The frame a remote peer gossips, carrying that peer's own signed advert, and the hex of the device it names as the UI renders it. Built once for the suite because signing is asynchronous. */
@@ -119,6 +125,11 @@ let gossipedDeviceHex: string;
 const SELF_ASSERTED_NAME = "Ada's laptop";
 let namedFrame: GossipFrame;
 let namedDeviceHex: string;
+
+/** A third remote that gossips only a certificate-pinned WebTransport address. */
+const PINNED_GOSSIP_NODE = "198.51.100.7:4433";
+let pinnedGossipFrame: GossipFrame;
+let pinnedGossipDeviceHex: string;
 
 beforeAll(async () => {
   appIdentity = await createWebCryptoIdentity();
@@ -145,6 +156,23 @@ beforeAll(async () => {
     ],
   };
   namedDeviceHex = deviceIdToHex(named.deviceId);
+  const pinnedRemote = await createWebCryptoIdentity();
+  pinnedGossipFrame = {
+    type: "gossip",
+    peers: [
+      await signPeerAdvert(pinnedRemote, {
+        device: pinnedRemote.deviceId,
+        addresses: [
+          formatPinnedAddress(PINNED_GOSSIP_NODE, [
+            "e".repeat(SHA256_HEX_LENGTH),
+          ]),
+        ],
+        "snapshot-seconds": 0,
+        "identity-key": pinnedRemote.identityKey,
+      }),
+    ],
+  };
+  pinnedGossipDeviceHex = deviceIdToHex(pinnedRemote.deviceId);
 });
 
 /** messageFromFrame's own Uint8Array may be a view into a larger backing buffer -- slicing to its own byteOffset/byteLength before handing it to emitMessage is what every other adapter test here already does (see websocket-transport.integration.test.ts's identical helper), since FakeWebSocket.emitMessage takes the raw buffer, not a view onto it. */
@@ -466,5 +494,122 @@ describe("App", () => {
     await vi.waitFor(() => {
       expect(publishedSelfNames(rootSocket, sentBefore)).toEqual(["Grace"]);
     });
+  });
+
+  describe("certificate trust", () => {
+    const NODE = "192.0.2.5:4433";
+    const pinned = (digit: string): string =>
+      formatPinnedAddress(NODE, [digit.repeat(SHA256_HEX_LENGTH)]);
+    const hashBytes = (digit: string): Uint8Array<ArrayBuffer> =>
+      bytesFromHex(digit.repeat(SHA256_HEX_LENGTH));
+
+    function submitAddress(address: string): void {
+      fireEvent.change(screen.getByLabelText(/^Node/), {
+        target: { value: address },
+      });
+      submitConnectForm();
+    }
+
+    it("asks before first connecting to a pinned node and dials nothing until the user trusts it", async () => {
+      const certificateMemory = createCertificateMemory(createMemoryStorage());
+      renderApp({ certificateMemory });
+
+      submitAddress(pinned("a"));
+
+      const prompt = await screen.findByTestId("certificate-prompt");
+      expect(
+        within(prompt).getByText(`First connection to ${NODE}`),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/connecting|closed/)).toBeNull();
+      expect(await certificateMemory.recall(NODE)).toEqual([]);
+
+      fireEvent.click(
+        within(prompt).getByRole("button", { name: "Trust and connect" }),
+      );
+
+      await screen.findByText(/^closed|connecting/);
+      expect(await certificateMemory.recall(NODE)).toEqual([hashBytes("a")]);
+      expect(screen.queryByTestId("certificate-prompt")).toBeNull();
+    });
+
+    it("connects to nothing and remembers nothing when the first-use prompt is cancelled", async () => {
+      const certificateMemory = createCertificateMemory(createMemoryStorage());
+      renderApp({ certificateMemory });
+
+      submitAddress(pinned("a"));
+      const prompt = await screen.findByTestId("certificate-prompt");
+      fireEvent.click(within(prompt).getByRole("button", { name: "Cancel" }));
+
+      await vi.waitFor(() => {
+        expect(screen.queryByTestId("certificate-prompt")).toBeNull();
+      });
+      expect(screen.queryByText(/connecting|closed/)).toBeNull();
+      expect(await certificateMemory.recall(NODE)).toEqual([]);
+    });
+
+    it("connects without asking when the address presents a remembered certificate", async () => {
+      const certificateMemory = createCertificateMemory(createMemoryStorage());
+      await certificateMemory.remember(NODE, [hashBytes("a")]);
+      renderApp({ certificateMemory });
+
+      submitAddress(pinned("a"));
+
+      await screen.findByText(/^closed|connecting/);
+      expect(screen.queryByTestId("certificate-prompt")).toBeNull();
+    });
+
+    it("warns, and dials nothing, when an address presents a different certificate than the remembered one", async () => {
+      const certificateMemory = createCertificateMemory(createMemoryStorage());
+      await certificateMemory.remember(NODE, [hashBytes("a")]);
+      renderApp({ certificateMemory });
+
+      submitAddress(pinned("b"));
+
+      const prompt = await screen.findByTestId("certificate-prompt");
+      expect(
+        within(prompt).getByText(`Certificate changed for ${NODE}`),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/connecting|closed/)).toBeNull();
+      expect(await certificateMemory.recall(NODE)).toEqual([hashBytes("a")]);
+
+      fireEvent.click(
+        within(prompt).getByRole("button", {
+          name: "Trust the new certificate",
+        }),
+      );
+
+      await screen.findByText(/^closed|connecting/);
+      expect(await certificateMemory.recall(NODE)).toEqual([hashBytes("b")]);
+    });
+  });
+
+  it("asks about a gossiped node's certificate after the user connects to it, before dialling", async () => {
+    renderApp();
+
+    const rootSocket = await connectRoot();
+    rootSocket.emitMessage(arrayBuffer(messageFromFrame(pinnedGossipFrame)));
+    await screen.findByTestId("discovered-peers");
+    fireEvent.click(
+      within(discoveredRow(pinnedGossipDeviceHex)).getByRole("button", {
+        name: "Connect",
+      }),
+    );
+
+    const prompt = await screen.findByTestId("certificate-prompt");
+    expect(
+      within(prompt).getByText(`First connection to ${PINNED_GOSSIP_NODE}`),
+    ).toBeInTheDocument();
+  });
+
+  it("names the connection a discovered peer was gossiped over", async () => {
+    renderApp({ defaultAddress: "ws://hub.example:8787" });
+
+    const rootSocket = await connectRoot();
+    rootSocket.emitMessage(arrayBuffer(messageFromFrame(gossipedFrame)));
+
+    const panel = await screen.findByTestId("discovered-peers");
+    expect(
+      within(panel).getByText("over ws://hub.example:8787"),
+    ).toBeInTheDocument();
   });
 });
