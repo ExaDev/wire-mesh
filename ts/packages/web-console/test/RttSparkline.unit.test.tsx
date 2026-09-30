@@ -48,6 +48,13 @@ describe("RttSparkline", () => {
     );
     const points = chart.querySelector("polyline")?.getAttribute("points");
     expect(points?.split(" ")).toHaveLength(SAMPLE_COUNT);
+    expect(chart.querySelectorAll("circle")).toHaveLength(SAMPLE_COUNT);
+  });
+
+  it("draws a dot for a lone first sample, which is too few points for a line", () => {
+    const chart = renderSparkline([FAST_RTT_MS]);
+
+    expect(chart.querySelectorAll("circle")).toHaveLength(1);
   });
 
   it("marks a probe with no pong as a tick, apart from the line", () => {
@@ -57,6 +64,7 @@ describe("RttSparkline", () => {
       "Last ping got no pong",
     );
     expect(chart.querySelectorAll("line")).toHaveLength(1);
+    expect(chart.querySelectorAll("circle")).toHaveLength(1);
     const points = chart.querySelector("polyline")?.getAttribute("points");
     expect(points?.split(" ")).toHaveLength(1);
   });
