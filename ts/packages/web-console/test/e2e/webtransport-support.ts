@@ -138,6 +138,8 @@ export async function converse(
 
 /** How many times this console has sent its handshake, which it does once for every connection it makes, so the count rises by one for each reconnect that succeeds. */
 export async function handshakesSent(page: Readonly<Page>): Promise<number> {
+  // The handshakes are counted in the raw frame log, which the connection panel keeps behind a toggle.
+  await page.getByRole("switch", { name: "Show raw frames" }).check();
   return page
     .locator("table tbody tr", { hasText: /^sent\{"type":"handshake"/ })
     .count();
