@@ -7,12 +7,16 @@ import type {
   SessionEvent,
 } from "wire-mesh-core/domain/mesh-session";
 import type { DeviceId } from "wire-mesh-core/generated/protocol";
+import { useEffect } from "react";
 import { useMeshSessionEvents } from "../hooks/use-mesh-session-events.js";
 import {
   browserPermissions,
   explainLocalNetworkBlock,
   type PermissionQuerier,
 } from "../local-network.js";
+import { usePeerNames } from "../hooks/use-peer-names.js";
+import { selfNameExtension } from "../peer-names.js";
+import { PeerLabel } from "./PeerLabel.js";
 
 const HEX_RADIX = 16;
 
@@ -108,6 +112,21 @@ export function ConnectionPanel({
   }, [failing, address, pageHost, permissions]);
   const blocked =
     failing && explained?.address === address ? explained.message : undefined;
+  const { observeDirectory, selfName } = usePeerNames();
+  const connected = event?.state.status === "connected";
+  useEffect(() => {
+    if (event !== undefined) {
+      observeDirectory(event.directory);
+    }
+  }, [event, observeDirectory]);
+  // A session's initial self-advert carries no extensions, so this console's own display name is published by re-sending it once the link is up, and again whenever the name changes.
+  useEffect(() => {
+    if (connected && selfName !== undefined) {
+      session.sendGossipUpdate(selfNameExtension(selfName)).catch(() => {
+        // The link dropped between the status read and the send; this effect runs again when the session reconnects, which republishes the name.
+      });
+    }
+  }, [connected, selfName, session]);
   const status = event === undefined ? "idle" : describeStatus(event);
   const directory = event?.directory ?? [];
   const frameLog = event?.frameLog ?? [];
@@ -160,7 +179,9 @@ export function ConnectionPanel({
           <Table.Tbody>
             {directory.map((entry) => (
               <Table.Tr key={deviceHex(entry.device)}>
-                <Table.Td>{deviceHex(entry.device)}</Table.Td>
+                <Table.Td>
+                  <PeerLabel deviceHex={deviceHex(entry.device)} />
+                </Table.Td>
                 <Table.Td>{entry.advert.addresses.join(", ")}</Table.Td>
                 <Table.Td>{entry.advert["snapshot-seconds"]}</Table.Td>
                 <Table.Td>

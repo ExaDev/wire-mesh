@@ -35,6 +35,10 @@ import type { WebrtcNegotiator } from "./webrtc-negotiation.js";
 import { ConnectionPanel, deviceHex } from "./components/ConnectionPanel.js";
 import { DiscoveredPeersPanel } from "./components/DiscoveredPeersPanel.js";
 import type { DiscoveredPeerRow } from "./components/DiscoveredPeersPanel.js";
+import { PeerNamesProvider } from "./components/PeerNamesProvider.js";
+import { PeerName } from "./components/PeerName.js";
+import { SelfNameField } from "./components/SelfNameField.js";
+import type { NameStore } from "./name-store.js";
 import { ConversationList } from "./components/ConversationList.js";
 import { RoomPanel } from "./components/RoomPanel.js";
 import { useRoomMessaging } from "./hooks/use-room-messaging.js";
@@ -54,6 +58,8 @@ export interface AppProps {
   roomStorage: KeyValueStorage;
   /** What each node last announced about the certificates it serves, so a node's address keeps working as its certificates change. */
   certificateMemory: CertificateMemory;
+  /** The petnames this viewer has given peers and this console's own display name, kept in the console's own storage. */
+  nameStore: NameStore;
   /** Attempts same-device node auto-discovery once, on mount. Defaults to the real `discoverLocalNode` (a no-op when this console is served from a loopback origin, a real localhost probe otherwise); tests inject a fake to avoid depending on `location`/`fetch`. */
   discoverLocalNode?: () => Promise<string | undefined>;
   // Seeds the Node field. Left as a prop (rather than App reading location/import.meta.env itself) so App stays the plain, testable component its own header comment describes; main.tsx computes the real value via default-hub-address.ts.
@@ -105,6 +111,7 @@ export function App({
   messageStore,
   roomStorage,
   certificateMemory,
+  nameStore,
   discoverLocalNode = discoverLocalNodeDefault,
   defaultAddress = DEFAULT_ADDRESS,
 }: Readonly<AppProps>): React.JSX.Element {
@@ -319,93 +326,100 @@ export function App({
   }
 
   return (
-    <Stack className={appShell} p="md" gap="lg">
-      <Title order={1}>wire-mesh console</Title>
-      <form onSubmit={handleSubmit}>
-        <Group align="flex-end" wrap="wrap">
-          <TextInput
-            label="Node"
-            value={address}
-            onChange={(event) => {
-              setAddress(event.currentTarget.value);
-            }}
-            required
-            style={{ flex: 1, minWidth: "16rem" }}
-          />
-          <Button type="submit">Connect</Button>
-        </Group>
-        <Checkbox.Group
-          label="Domains offered"
-          value={domains}
-          onChange={setDomains}
-        >
-          <Group mt="xs">
-            {AVAILABLE_DOMAINS.map((domain) => (
-              <Checkbox key={domain} value={domain} label={domain} />
-            ))}
+    <PeerNamesProvider store={nameStore}>
+      <Stack className={appShell} p="md" gap="lg">
+        <Title order={1}>wire-mesh console</Title>
+        <SelfNameField />
+        <form onSubmit={handleSubmit}>
+          <Group align="flex-end" wrap="wrap">
+            <TextInput
+              label="Node"
+              value={address}
+              onChange={(event) => {
+                setAddress(event.currentTarget.value);
+              }}
+              required
+              style={{ flex: 1, minWidth: "16rem" }}
+            />
+            <Button type="submit">Connect</Button>
           </Group>
-        </Checkbox.Group>
-      </form>
-      <DiscoveredPeersPanel
-        peers={discovered}
-        onConnect={(key) => {
-          resolveDiscovered(key, true);
-        }}
-        onDismiss={(key) => {
-          resolveDiscovered(key, false);
-        }}
-      />
-      {connections.map((entry) => (
-        <ConnectionPanel
-          key={entry.address}
-          address={entry.address}
-          session={entry.session}
-          onClose={() => {
-            handleClose(entry);
+          <Checkbox.Group
+            label="Domains offered"
+            value={domains}
+            onChange={setDomains}
+          >
+            <Group mt="xs">
+              {AVAILABLE_DOMAINS.map((domain) => (
+                <Checkbox key={domain} value={domain} label={domain} />
+              ))}
+            </Group>
+          </Checkbox.Group>
+        </form>
+        <DiscoveredPeersPanel
+          peers={discovered}
+          onConnect={(key) => {
+            resolveDiscovered(key, true);
           }}
-          onMessagePeer={(device) => {
-            handleMessagePeer(entry, device);
+          onDismiss={(key) => {
+            resolveDiscovered(key, false);
           }}
         />
-      ))}
-      {failures.map((failure) => (
-        <Alert
-          key={failure.key}
-          color="yellow"
-          title={`No direct connection to ${failure.peer}`}
-          withCloseButton
-          onClose={() => {
-            setFailures((current) =>
-              current.filter((entry) => entry.key !== failure.key),
-            );
-          }}
-        >
-          {failure.reason}. Messages go through the hub instead.
-        </Alert>
-      ))}
-      <ConversationList
-        conversations={roomMessaging.conversations}
-        selected={selectedConversation?.roomPath}
-        onSelect={setSelectedPath}
-      />
-      {selectedConversation !== undefined && (
-        <RoomPanel
-          key={selectedConversation.roomPath}
-          view={selectedConversation}
-          onSend={async (text) =>
-            roomMessaging.send(selectedConversation.roomPath, text)
-          }
-          onPostNotice={async (text) =>
-            roomMessaging.postNotice(selectedConversation.roomPath, text)
-          }
-          onRetry={(localId) => {
-            void roomMessaging.retry(selectedConversation.roomPath, localId);
-          }}
-          onDiscard={(localId) => {
-            roomMessaging.discard(selectedConversation.roomPath, localId);
-          }}
+        {connections.map((entry) => (
+          <ConnectionPanel
+            key={entry.address}
+            address={entry.address}
+            session={entry.session}
+            onClose={() => {
+              handleClose(entry);
+            }}
+            onMessagePeer={(device) => {
+              handleMessagePeer(entry, device);
+            }}
+          />
+        ))}
+        {failures.map((failure) => (
+          <Alert
+            key={failure.key}
+            color="yellow"
+            title={
+              <>
+                No direct connection to <PeerName deviceHex={failure.peer} />
+              </>
+            }
+            withCloseButton
+            onClose={() => {
+              setFailures((current) =>
+                current.filter((entry) => entry.key !== failure.key),
+              );
+            }}
+          >
+            {failure.reason}. Messages go through the hub instead.
+          </Alert>
+        ))}
+        <ConversationList
+          conversations={roomMessaging.conversations}
+          selected={selectedConversation?.roomPath}
+          onSelect={setSelectedPath}
         />
-      )}
-    </Stack>
+        {selectedConversation !== undefined && (
+          <RoomPanel
+            key={selectedConversation.roomPath}
+            view={selectedConversation}
+            onSend={async (text) =>
+              roomMessaging.send(selectedConversation.roomPath, text)
+            }
+            onPostNotice={async (text) =>
+              roomMessaging.postNotice(selectedConversation.roomPath, text)
+            }
+            onRetry={(localId) => {
+              void roomMessaging.retry(selectedConversation.roomPath, localId);
+            }}
+            onDiscard={(localId) => {
+              roomMessaging.discard(selectedConversation.roomPath, localId);
+            }}
+          />
+        )}
+      </Stack>
+    </PeerNamesProvider>
   );
 }
