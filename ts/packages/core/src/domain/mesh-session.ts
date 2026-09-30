@@ -483,9 +483,15 @@ function createSessionCore(
     address: string,
     localDomains: readonly string[],
   ): Promise<void> {
+    let heardFromPeer = false;
     for await (const frame of link.receive()) {
       if (feedCancelled) {
         return;
+      }
+      if (!heardFromPeer) {
+        // A peer that has answered is alive, so the reconnect that got here succeeded and its attempts are over; counted on across connections instead, a long-lived session would exhaust its attempts one reconnect at a time and never reconnect again, and its backoff would grow with every earlier one. A peer that accepts a connection and drops it without a word is not alive, so those attempts still add up.
+        heardFromPeer = true;
+        attempt = 0;
       }
       await applyFrame(frame);
       await onFrame?.(link, frame);
