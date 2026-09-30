@@ -428,6 +428,14 @@ export function App({
             </Button>
           )}
         </Group>
+        {intro.error !== undefined && (
+          <Alert
+            color="red"
+            title="The first-run intro's setting is unavailable"
+          >
+            {intro.error}
+          </Alert>
+        )}
         {intro.visible && <OnboardingIntro onDismiss={intro.dismiss} />}
         <SelfNameField />
         <form onSubmit={handleSubmit}>

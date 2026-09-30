@@ -8,21 +8,37 @@ export interface Intro {
   visible: boolean;
   /** True once the stored answer has loaded, so the control that reopens the intro is not offered before then. */
   ready: boolean;
+  /** Why the stored answer could not be read or saved, for the person to see: the intro then follows this session's choice only, and reappears next load if the dismissal was not saved. */
+  error: string | undefined;
   dismiss: () => void;
   show: () => void;
 }
 
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export function useIntro(store: Readonly<PreferencesStore>): Intro {
   const [dismissed, setDismissed] = useState<boolean | undefined>(undefined);
+  const [error, setError] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    void store.introDismissed().then(setDismissed);
+    store.introDismissed().then(setDismissed, (reason: unknown) => {
+      setError(describe(reason));
+    });
   }, [store]);
 
   const remember = useCallback(
     (value: boolean): void => {
       setDismissed(value);
-      void store.setIntroDismissed(value);
+      store.setIntroDismissed(value).then(
+        () => {
+          setError(undefined);
+        },
+        (reason: unknown) => {
+          setError(describe(reason));
+        },
+      );
     },
     [store],
   );
@@ -36,6 +52,7 @@ export function useIntro(store: Readonly<PreferencesStore>): Intro {
   return {
     visible: dismissed === false,
     ready: dismissed !== undefined,
+    error,
     dismiss,
     show,
   };
