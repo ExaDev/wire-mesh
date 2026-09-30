@@ -153,12 +153,17 @@ export function App({
   // Addresses of this console's own connect attempts still waiting on a certificate decision, and the device a gossiping node claimed for each address this console has offered to dial and not yet dialled or given up on.
   const confirmingRef = useRef(new Set<string>());
   const claimedDevices = useRef(new Map<string, string>());
-  // Set once the console is closed, so a certificate decision or dial that settles afterwards opens nothing.
+  // Set once the console is closed, so a certificate decision or dial that settles afterwards opens nothing. Closing the console also closes every open session: a session's own reconnect timer would otherwise keep dialling for a console that is gone.
   const closedRef = useRef(false);
+  // A function rather than a bare read so that a check after an await is not narrowed to the answer it got before it.
+  const isClosed = (): boolean => closedRef.current;
   useEffect(() => {
     closedRef.current = false;
     return () => {
       closedRef.current = true;
+      for (const entry of connectionsRef.current) {
+        void entry.session.close();
+      }
     };
   }, []);
   const domainsRef = useRef(domains);
@@ -267,7 +272,7 @@ export function App({
     if (dialAddress === undefined) {
       throw new Error(`the certificate of ${gossipedAddress} was not trusted`);
     }
-    if (closedRef.current) {
+    if (isClosed()) {
       throw new Error("the console was closed before the dial began");
     }
     const claimedDevice = claimedDevices.current.get(gossipedAddress);
@@ -276,7 +281,12 @@ export function App({
       address: gossipedAddress,
       claimedDevice,
     });
-    return session.connect(dialAddress, domainsRef.current).then(() => session);
+    await session.connect(dialAddress, domainsRef.current);
+    if (isClosed()) {
+      await session.close();
+      throw new Error("the console was closed while the dial was connecting");
+    }
+    return session;
   }
 
   function connectTo(targetAddress: string): void {
@@ -294,7 +304,7 @@ export function App({
     void trust
       .confirmAddress(toDialAddress(targetAddress))
       .then((dialAddress) => {
-        if (dialAddress === undefined || closedRef.current) {
+        if (dialAddress === undefined || isClosed()) {
           return;
         }
         const session = createExpandableSession({

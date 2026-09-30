@@ -127,6 +127,8 @@ function submitConnectForm(): void {
 
 const DEVICE_ID_HEX_LENGTH = 64;
 const SHA256_HEX_LENGTH = 64;
+/** Longer than the longest backoff the console's reconnect policy waits (it caps each delay at 30 s). */
+const PAST_ANY_RECONNECT_DELAY_MS = 60_000;
 const GOSSIPED_ADDRESS = "203.0.113.5:4433";
 
 /** The frame a remote peer gossips, carrying that peer's own signed advert, and the hex of the device it names as the UI renders it. Built once for the suite because signing is asynchronous. */
@@ -651,6 +653,22 @@ describe("App", () => {
       await screen.findByText(/^closed|connecting/);
       expect(await certificateMemory.recall(NODE)).toEqual([hashBytes("b")]);
     });
+  });
+
+  it("stops a connection's reconnect attempts when the console is closed", async () => {
+    const { unmount } = renderApp();
+    const rootSocket = await connectRoot();
+    vi.useFakeTimers();
+    try {
+      rootSocket.close();
+      unmount();
+
+      await vi.advanceTimersByTimeAsync(PAST_ANY_RECONNECT_DELAY_MS);
+
+      expect(sockets).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("asks about a gossiped node's certificate after the user connects to it, before dialling", async () => {
