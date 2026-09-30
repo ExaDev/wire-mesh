@@ -24,14 +24,14 @@ describe("assessCertificates", () => {
     });
   });
 
-  it("is known when any presented certificate is remembered, as a rotation looks", () => {
+  it("is known when any presented certificate is remembered, as a rotation looks, trusting only the remembered ones", () => {
     expect(
       assessCertificates(
         NODE,
         [hashHex("b"), hashHex("c")],
         [hashHex("a"), hashHex("b")],
       ),
-    ).toEqual({ kind: "known", node: NODE });
+    ).toEqual({ kind: "known", node: NODE, trusted: [hashHex("b")] });
   });
 
   it("is changed when something is remembered and none of it is presented", () => {
