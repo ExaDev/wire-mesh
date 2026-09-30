@@ -27,6 +27,7 @@ import type { DeviceId } from "wire-mesh-core/generated/protocol";
 import { deviceIdToHex } from "wire-mesh-core/domain/device-id";
 import { dmRoomPath } from "wire-mesh-core/domain/room-path";
 import { createDialTransport } from "./adapters/dial-transport.js";
+import type { CertificateMemory } from "./certificate-memory.js";
 import { DEFAULT_ICE_SERVERS } from "./ice-servers.js";
 import { createWebrtcNegotiator } from "./webrtc-negotiation.js";
 import type { WebrtcNegotiator } from "./webrtc-negotiation.js";
@@ -48,6 +49,8 @@ export interface AppProps {
   identity: IdentityPort;
   clock: Clock;
   messageStore: MessageStore;
+  /** What each node last announced about the certificates it serves, so a node's address keeps working as its certificates change. */
+  certificateMemory: CertificateMemory;
   /** Attempts same-device node auto-discovery once, on mount. Defaults to the real `discoverLocalNode` (a no-op when this console is served from a loopback origin, a real localhost probe otherwise); tests inject a fake to avoid depending on `location`/`fetch`. */
   discoverLocalNode?: () => Promise<string | undefined>;
   // Seeds the Node field. Left as a prop (rather than App reading location/import.meta.env itself) so App stays the plain, testable component its own header comment describes; main.tsx computes the real value via default-hub-address.ts.
@@ -97,6 +100,7 @@ export function App({
   identity,
   clock,
   messageStore,
+  certificateMemory,
   discoverLocalNode = discoverLocalNodeDefault,
   defaultAddress = DEFAULT_ADDRESS,
 }: Readonly<AppProps>): React.JSX.Element {
@@ -204,7 +208,7 @@ export function App({
       current: null,
     };
     const session = createMeshSession(
-      createDialTransport(),
+      createDialTransport(certificateMemory),
       identity,
       clock,
       reconnectPolicy,
