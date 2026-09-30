@@ -1,61 +1,43 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "tsdown";
 
 // Every real module gets its own build entry rather than a re-exporting index.ts -- the barrel-policy lint rule requires importing straight from the module that owns each export. src/generated/protocol.ts is committed, machine-generated output (see generate.ts); it's built here like any other module (real code that needs to compile and bundle correctly) but excluded from eslint's own strict authored-code rules (see eslint.config.ts's ignores) since rules like no-use-before-define don't make sense for its z.lazy()-wrapped mutually-recursive schemas.
+//
+// The entry list is derived from package.json's exports map rather than hand-kept alongside it. The exports map is the package's public surface and has to be written out explicitly anyway (npm resolves subpaths from it, and tsdown's own exports handling does not rewrite it), so a second, independent list of the same modules here was one more thing to forget: adding a module to one list and not the other leaves the exports map pointing at files no build produced, which CI's attw step only catches after a full build. Deriving here makes the exports map the single source of truth and turns drift into an immediate, loud failure at config-load time: an exports key with no corresponding src/<path>.ts throws below, before anything builds. Internal modules consumed only from within other modules (relay-channels, secure-channel, the threshold internals, and their siblings) simply have no exports-map key, and therefore no entry, exactly as before.
+
+const packageDir = dirname(fileURLToPath(import.meta.url));
+const parsed: unknown = JSON.parse(
+  readFileSync(join(packageDir, "package.json"), "utf8"),
+);
+if (
+  typeof parsed !== "object" ||
+  parsed === null ||
+  !("exports" in parsed) ||
+  typeof parsed.exports !== "object" ||
+  parsed.exports === null
+) {
+  throw new Error(
+    "package.json has no exports map to derive build entries from",
+  );
+}
+const exportsMap: Record<string, unknown> = parsed.exports;
+
+const entry = Object.keys(exportsMap)
+  .filter((exportedPath) => exportedPath !== "./package.json")
+  .map((exportedPath) => {
+    const source = `src/${exportedPath.slice(2)}.ts`;
+    if (!existsSync(join(packageDir, source))) {
+      throw new Error(
+        `package.json exports "${exportedPath}" but no source file exists at ${source}: every exported subpath must be a real module`,
+      );
+    }
+    return source;
+  });
+
 export default defineConfig({
-  entry: [
-    "src/generated/protocol.ts",
-    "src/generated/runtime.ts",
-    "src/ports/transport.ts",
-    "src/ports/storage.ts",
-    "src/ports/identity.ts",
-    "src/ports/clock.ts",
-    "src/domain/advert-extension-policy.ts",
-    "src/domain/coordinator-election.ts",
-    "src/domain/hub-mailbox.ts",
-    "src/domain/bulk.ts",
-    "src/domain/capability-grant.ts",
-    "src/domain/capability-request.ts",
-    "src/domain/data-sync.ts",
-    "src/domain/direct-manage-request.ts",
-    "src/domain/erasure-coding.ts",
-    "src/domain/device-id.ts",
-    "src/domain/gossip-expansion.ts",
-    "src/domain/grant-candidates.ts",
-    "src/domain/group-key.ts",
-    "src/domain/handshake.ts",
-    "src/domain/notice-board.ts",
-    "src/domain/mesh-session.ts",
-    "src/domain/peer-advert.ts",
-    "src/domain/pinned-address.ts",
-    "src/domain/relay-hub.ts",
-    "src/domain/relay-advert.ts",
-    "src/domain/relay-use-gate.ts",
-    "src/domain/room.ts",
-    "src/domain/room-path.ts",
-    "src/domain/room-rekey.ts",
-    "src/domain/room-token-verification.ts",
-    "src/domain/shard-manifest.ts",
-    "src/domain/tokens.ts",
-    "src/domain/threshold-subject.ts",
-    "src/domain/revocation-view.ts",
-    "src/domain/topology.ts",
-    "src/domain/topology-snapshot.ts",
-    "src/domain/gossip-extensions.ts",
-    "src/domain/async-queue.ts",
-    "src/domain/path-trace.ts",
-    "src/domain/ping-round-trips.ts",
-    "src/domain/webrtc-signaling.ts",
-    "src/adapters/frame-codec.ts",
-    "src/adapters/threshold-wasm.ts",
-    "src/adapters/threshold-identity.ts",
-    "src/adapters/byte-stream-connection.ts",
-    "src/adapters/tcp-transport.ts",
-    "src/adapters/tls-transport.ts",
-    "src/adapters/memory-storage.ts",
-    "src/adapters/node-fs-storage.ts",
-    "src/adapters/node-identity.ts",
-    "src/adapters/system-clock.ts",
-  ],
+  entry,
   format: ["esm", "cjs"],
   dts: true,
   exports: true,
