@@ -1,3 +1,15 @@
+## [1.0.33](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-sfu%401.0.32...wire-mesh-sfu%401.0.33) (2026-09-30)
+
+### Tests
+
+* **sfu:** implement the coordinator members on the fake MeshSession ([7460b42](https://github.com/ExaDev/wire-mesh/commit/7460b42eaf7067639b38f91d3f060bdc1313ee62))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.5.0
+- Updated wire-mesh to 3.5.4
+
 ## [1.0.32](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-sfu%401.0.31...wire-mesh-sfu%401.0.32) (2026-09-30)
 
 

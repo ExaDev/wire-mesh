@@ -1,3 +1,24 @@
+## [3.5.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.4.0...wire-mesh-core%403.5.0) (2026-09-30)
+
+### Features
+
+* **core:** carry relay offers in peer-advert's extension tail ([2e64322](https://github.com/ExaDev/wire-mesh/commit/2e643223fb0186cabca86ef9fa4c9a7900f8261f)), closes [#292](https://github.com/ExaDev/wire-mesh/issues/292)
+* **core:** implement the gossiped coordinator election over coordinator-frame ([efdb099](https://github.com/ExaDev/wire-mesh/commit/efdb0996d880367f32074d839a2bc24a1e6e13d5)), closes [#291](https://github.com/ExaDev/wire-mesh/issues/291)
+
+### Bug Fixes
+
+* **core:** generate the exports map from globbed entries and fail CI on a dirty build ([87ee5fa](https://github.com/ExaDev/wire-mesh/commit/87ee5fabc97c686ec9998af3acb187f4917d434f))
+* **core:** narrow the exports map with a type predicate, not an object check ([e07f375](https://github.com/ExaDev/wire-mesh/commit/e07f3751e9024b8a6b7864177aebd85755148094))
+
+### Code Refactoring
+
+* **core:** derive tsdown build entries from the package exports map ([dd0b4e7](https://github.com/ExaDev/wire-mesh/commit/dd0b4e7ad911358f48c652eca437420ce26f8bee))
+
+### Build System
+
+* **core:** build coordinator-election as its own package entry ([ecd2057](https://github.com/ExaDev/wire-mesh/commit/ecd2057b68e98ce88839f0a80f96e2abddb8db4f))
+* **core:** build relay-advert as its own package entry ([ac51782](https://github.com/ExaDev/wire-mesh/commit/ac5178252bdede8bdc0eaa8ff2e54e433f5e79da))
+
 ## [3.4.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.3.1...wire-mesh-core%403.4.0) (2026-09-30)
 
 ### Features

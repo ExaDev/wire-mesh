@@ -1,3 +1,14 @@
+## [2.10.2](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.10.1...%40exadev%2Fwire-mesh-web-console%402.10.2) (2026-09-30)
+
+### Tests
+
+* **web-console:** implement the coordinator members on the notices session double ([1a6637d](https://github.com/ExaDev/wire-mesh/commit/1a6637d47e0925a811a3465bca31fbc2ad4fe401))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.5.0
+
 ## [2.10.1](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.10.0...%40exadev%2Fwire-mesh-web-console%402.10.1) (2026-09-30)
 
 ### Bug Fixes
