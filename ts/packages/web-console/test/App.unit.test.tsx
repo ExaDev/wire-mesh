@@ -197,6 +197,19 @@ function publishedSelfNames(
   });
 }
 
+/** The display-name claim of each advert in every gossip frame a socket sent after `from` sends, with undefined for an advert that asserts none. */
+function gossipedClaims(
+  socket: Readonly<FakeWebSocket>,
+  from: number,
+): (string | undefined)[] {
+  return socket.sent.slice(from).flatMap((data) => {
+    const frame = decodeMessage(data);
+    return frame.type === "gossip"
+      ? frame.peers.map((advert) => selfAssertedName(advert))
+      : [];
+  });
+}
+
 describe("App", () => {
   beforeEach(() => {
     sockets = [];
@@ -466,6 +479,28 @@ describe("App", () => {
 
     await vi.waitFor(() => {
       expect(publishedSelfNames(rootSocket, sentBefore)).toEqual(["Grace"]);
+    });
+  });
+
+  it("retracts a published display name with an advert that carries none once the name is cleared", async () => {
+    renderApp();
+    const rootSocket = await connectRoot();
+    fireEvent.change(screen.getByLabelText(/^Your display name/), {
+      target: { value: "Grace" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save name" }));
+    await vi.waitFor(() => {
+      expect(publishedSelfNames(rootSocket, 0)).toEqual(["Grace"]);
+    });
+    const sentBefore = rootSocket.sent.length;
+
+    fireEvent.change(screen.getByLabelText(/^Your display name/), {
+      target: { value: "" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save name" }));
+
+    await vi.waitFor(() => {
+      expect(gossipedClaims(rootSocket, sentBefore)).toEqual([undefined]);
     });
   });
 });
