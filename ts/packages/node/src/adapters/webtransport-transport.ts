@@ -5,7 +5,10 @@ import {
   connectionFromByteStream,
   type ByteStream,
 } from "wire-mesh-core/adapters/byte-stream-connection";
-import { formatPinnedAddress } from "wire-mesh-core/domain/pinned-address";
+import {
+  encodeCertificateHashes,
+  formatPinnedAddress,
+} from "wire-mesh-core/domain/pinned-address";
 import type {
   Connection,
   Listener,
@@ -22,6 +25,8 @@ import {
 export const WEBTRANSPORT_PATH = "/wire-mesh";
 
 const SECRET_BYTES = 32;
+/** How long to wait before trying a failed rotation again: the port may still be held by the server just stopped. */
+const ROTATION_RETRY_MS = 1000;
 /** The application close code and reason sent when a certificate rotation ends a session; the code is arbitrary, and 0 is what a normal close carries. */
 const SESSION_CLOSE_CODE = 0;
 const ROTATION_CLOSE_REASON = "certificate rotated";
@@ -91,6 +96,9 @@ async function loadHttp3Server(): Promise<typeof Http3Server> {
 
 /** A session as the server hands it out, narrowed to what this adapter uses; the package's own session type does not resolve under this project's compiler settings. */
 interface IncomingSession {
+  readonly createUnidirectionalStream: () => Promise<
+    WritableStream<Uint8Array>
+  >;
   readonly ready: Promise<unknown>;
   readonly closed: Promise<unknown>;
   readonly close: (
@@ -109,6 +117,8 @@ function isIncomingSession(value: unknown): value is IncomingSession {
     value.closed instanceof Promise &&
     "close" in value &&
     typeof value.close === "function" &&
+    "createUnidirectionalStream" in value &&
+    typeof value.createUnidirectionalStream === "function" &&
     "incomingBidirectionalStreams" in value &&
     value.incomingBidirectionalStreams instanceof ReadableStream
   );
@@ -203,6 +213,17 @@ export function createWebTransportTransport(
                 .finally(() => {
                   liveSessions.delete(session);
                 });
+              // Tell the client which certificates this node serves now and will serve next, on a stream of its own, so an address it was given long ago keeps working: it pins these on its next dial. The session is the pinned one, so the message needs no signature.
+              const announce = await session.createUnidirectionalStream();
+              const announcer = announce.getWriter();
+              await announcer.write(
+                encodeCertificateHashes(
+                  schedule.advertised.map(
+                    (certificate) => certificate.sha256Hex,
+                  ),
+                ),
+              );
+              await announcer.close();
               // Take the first stream and release the reader without cancelling: leaving a for-await loop early cancels the stream, and the package then closes the cancelled stream again when the session ends, which throws in its own UDP handler and takes the process down.
               const reader = session.incomingBidirectionalStreams.getReader();
               const first = await reader.read();
@@ -228,7 +249,7 @@ export function createWebTransportTransport(
         };
       };
 
-      let running = await startServer();
+      let running: RunningServer | undefined = await startServer();
       const advertise = (): readonly string[] =>
         reachableHosts(host).map((reachable) =>
           formatPinnedAddress(
@@ -237,37 +258,54 @@ export function createWebTransportTransport(
           ),
         );
 
+      /** Drains and stops the running server, if there is one: cleared first, so a rotation that failed after this point is retried by starting a server rather than by retiring one that is already gone. */
       const retire = async (): Promise<void> => {
-        await running.drain();
-        running.server.stopServer();
-        await running.server.closed;
+        const current = running;
+        running = undefined;
+        if (current === undefined) {
+          return;
+        }
+        await current.drain();
+        current.server.stopServer();
+        await current.server.closed;
       };
 
       let rotation: NodeJS.Timeout | undefined;
       let closed = false;
-      const armRotation = (): void => {
-        rotation = setTimeout(
-          () => {
-            void (async () => {
-              schedule = await advanceCertificateSchedule(
-                storage,
-                now(),
-                scheduleOptions,
-              );
-              await retire();
-              if (closed) {
-                return;
+      const untilRotation = (): number =>
+        Math.max(schedule.rotatesAt.getTime() - now().getTime(), 0);
+      const armRotation = (delayMs: number): void => {
+        rotation = setTimeout(() => {
+          void (async () => {
+            schedule = await advanceCertificateSchedule(
+              storage,
+              now(),
+              scheduleOptions,
+            );
+            await retire();
+            if (closed) {
+              return;
+            }
+            running = await startServer();
+            options.onCertificateRenewed?.(advertise());
+          })().then(
+            () => {
+              if (!closed) {
+                armRotation(untilRotation());
               }
-              running = await startServer();
-              options.onCertificateRenewed?.(advertise());
-              armRotation();
-            })().catch(reportError);
-          },
-          Math.max(schedule.rotatesAt.getTime() - now().getTime(), 0),
-        );
+            },
+            (error: unknown) => {
+              // A rotation that fails leaves no server running, so it is retried rather than abandoned.
+              reportError(error);
+              if (!closed) {
+                armRotation(ROTATION_RETRY_MS);
+              }
+            },
+          );
+        }, delayMs);
         rotation.unref();
       };
-      armRotation();
+      armRotation(untilRotation());
 
       return {
         get address() {
