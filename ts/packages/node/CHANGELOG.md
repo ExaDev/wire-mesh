@@ -1,3 +1,19 @@
+## [3.5.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.4.0...wire-mesh%403.5.0) (2026-09-30)
+
+### Features
+
+* **node:** announce the serving certificates to each session and retry a failed rotation ([4e79250](https://github.com/ExaDev/wire-mesh/commit/4e792505dd86545d2dfc445671d7333292443254))
+
+### Documentation
+
+* specify the WebTransport binding and describe how an address is refreshed ([964dae6](https://github.com/ExaDev/wire-mesh/commit/964dae634f50e8390d0fe073e8911429f68b9561))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.4.0
+- Updated @exadev/wire-mesh-web-console to 2.10.0
+
 ## [3.4.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.3.0...wire-mesh%403.4.0) (2026-09-29)
 
 ### Features

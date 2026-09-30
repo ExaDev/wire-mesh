@@ -1,3 +1,14 @@
+## [3.4.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.3.1...wire-mesh-core%403.4.0) (2026-09-30)
+
+### Features
+
+* **core:** encode, decode and merge the certificate hashes a node announces ([20f6f50](https://github.com/ExaDev/wire-mesh/commit/20f6f5097ba6e2fbccb95286eb3715dfa8fb3a4e))
+* **core:** let a connection say which address reaches its peer now, and redial with it ([6a7afec](https://github.com/ExaDev/wire-mesh/commit/6a7afecf211cc3c27fbbaabfbef3dea1fb6f6a93))
+
+### Bug Fixes
+
+* **core:** count a session's reconnect attempts afresh once the peer answers ([d4dfc2d](https://github.com/ExaDev/wire-mesh/commit/d4dfc2dd5aed6d7ca3d3563f42173223501794eb))
+
 ## [3.3.1](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.3.0...wire-mesh-core%403.3.1) (2026-09-29)
 
 ### Bug Fixes

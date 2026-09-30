@@ -1,3 +1,14 @@
+## [2.10.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.9.1...%40exadev%2Fwire-mesh-web-console%402.10.0) (2026-09-30)
+
+### Features
+
+* **web-console:** pin what a node announced, remember it, and redial with it ([142eeba](https://github.com/ExaDev/wire-mesh/commit/142eebae5991140cd10e058151a1039b07563079))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.4.0
+
 ## [2.9.1](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.9.0...%40exadev%2Fwire-mesh-web-console%402.9.1) (2026-09-29)
 
 ### Bug Fixes
