@@ -52,6 +52,14 @@ The console's own UI was driven through a whole conversation (connect with a pin
 - **The console now says why instead of hanging.** A browser whose stream does not open within a fixed wait closes the session and reports that it cannot open a stream to this node, naming the upstream issue, so Safari users see a reason and the wss route as the alternative rather than "connecting" for ever.
 - **Real desktop Safari** shares the engine and was not driven: the harness opens a URL in the application itself and needs an unlocked screen.
 
+## Without the internet, on real devices
+
+Two real Chrome browsers on separate machines loaded the live console from the service worker cache and conversed through a node on a third machine on the same LAN, over the pinned-hash WebTransport address and with Chrome's local network access prompt granted. Each browser had been opened on the live site beforehand so the console was cached, and every hostname was then made unresolvable in the browser (Chrome's host resolver rules), so the console could only come from the cache and the only reachable address was the node's. The CI container scenario runs the same route between containers on networks with no route out.
+
+What this does not show is a network with its uplink physically cut. The devices kept their internet connection and only the browsers were prevented from resolving names, so a dependency on an internet route that does not go through DNS would not have been caught. A run with a real cut was not done: the test machines run other work and are reached over Tailscale, which a cut would drop.
+
+Real desktop Safari was driven through the same conversation and is not a result. Safari opened the page in a window that was not visible, macOS throttled the hidden tab's timers, and the page never reported progress, so the runs stalled for reasons that say nothing about the console. iOS Safari, which has the same engine and was driven in a simulator that keeps the page in the foreground, is the evidence for Safari above.
+
 ## Certificate renewal
 
 A pinned hash goes stale when its certificate does, and a browser refuses any certificate valid for two weeks or more, so an address cannot simply be long-lived. The node keeps a rolling schedule instead (`certificate-schedule.ts`): the certificate serving now and the next ones, each valid for under two weeks and each taking over half a lifetime after its predecessor, so every successor is already valid, and its hash already listed, before it is served. An address lists the hashes of the serving certificate and the next two, and a browser accepts whichever the node presents. An address copied at any moment therefore keeps working until the last certificate it lists has finished serving, which is three serving periods later. Checked in Chromium: an address copied before any rotation connected after the first and second rotation and was refused after the third.
