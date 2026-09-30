@@ -4,6 +4,7 @@ import { Alert, Button, Divider, Group, Stack, Text } from "@mantine/core";
 import { SubmitRow } from "web-ui-primitives";
 import { participantLabel, type ConversationView } from "../conversations.js";
 import { usePeerNames } from "../hooks/use-peer-names.js";
+import { PeerName } from "./PeerName.js";
 import { MessageList } from "./MessageList.js";
 import { NoticesView } from "./NoticesView.js";
 
@@ -41,7 +42,9 @@ export function RoomPanel({
   return (
     <Stack gap="xs">
       <Group justify="space-between">
-        <Text fw={600}>{view.participants.join(", ")}</Text>
+        <Text fw={600}>
+          {participantLabel(view, (hex) => names.labelOf(hex).primary)}
+        </Text>
         <Text size="sm" c={view.status === "connected" ? "green" : "dimmed"}>
           {routeLabel(view.via)}
         </Text>
@@ -51,7 +54,8 @@ export function RoomPanel({
         <Alert color="blue" title="Message request">
           <Group justify="space-between">
             <Text size="sm">
-              {view.pendingJoinRequest.requesterHex} wants to message you
+              <PeerName deviceHex={view.pendingJoinRequest.requesterHex} />{" "}
+              wants to message you
             </Text>
             <Group>
               <Button
