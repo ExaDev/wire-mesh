@@ -66,7 +66,7 @@ function hexOf(deviceId: DeviceId): string {
     .join("");
 }
 
-/** A resolved AsyncIterable yielding nothing, for a fake MeshSession's own events/revocationAnnouncements streams: neither is exercised by these tests. An object literal implementing Symbol.asyncIterator directly, not an async generator function, since this workspace's own lint rules forbid an empty generator body. */
+/** A resolved AsyncIterable yielding nothing, for a fake MeshSession's own events/revocationAnnouncements/coordinatorFrames streams: none is exercised by these tests. An object literal implementing Symbol.asyncIterator directly, not an async generator function, since this workspace's own lint rules forbid an empty generator body. */
 function emptyAsyncIterable<T>(): AsyncIterable<T> {
   return {
     [Symbol.asyncIterator]() {
@@ -142,6 +142,7 @@ function createFakeSession(): FakeSession {
     events: emptyAsyncIterable(),
     incomingManageRequests,
     revocationAnnouncements: emptyAsyncIterable(),
+    coordinatorFrames: emptyAsyncIterable(),
     connect: async (): Promise<void> =>
       Promise.reject(new Error("not used in these tests")),
     sendPing: async (): Promise<void> => Promise.resolve(),
@@ -149,6 +150,7 @@ function createFakeSession(): FakeSession {
       Promise.reject(new Error("not used in these tests")),
     setToken: () => undefined,
     sendRevocationAnnounce: async (): Promise<void> => Promise.resolve(),
+    sendCoordinatorClaim: async (): Promise<void> => Promise.resolve(),
     sendGossipUpdate: async (): Promise<void> => Promise.resolve(),
     getTopologyPeers: () => ({ direct: [], relayed: [] }),
     sendDataFrame: async (): Promise<void> => Promise.resolve(),
