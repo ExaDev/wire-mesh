@@ -53,9 +53,10 @@ What a rotation does to a conversation was measured with two Chromium consoles o
 
 With those fixed a message sent after a rotation is delivered. The console reconnects over the address it was given, which keeps working for as many rotations as the address lists; a console that outlasts them cannot reconnect until it is given a fresh address.
 
+An address that outlasts its window is refreshed by the node rather than by the user. When it accepts a session the node opens a stream to the client and announces the hashes it serves now and next; the console remembers the latest per node, pins them together with the address's own hashes on its next dial, and redials with them (`Connection.redialAddress`). It is authentic because it arrives on the session the client pinned, so it needs no signature and no node identity, and a peer on the mesh has no way to forge it, which a gossiped advert listing the node's addresses could not promise. Checked in Chromium: two consoles kept reconnecting through more rotations than the address ever listed certificates for. The format is in `spec/webtransport-binding.md`. A console that is away for longer than the schedule spans, and has no announcement stored from before, still needs a fresh address.
+
 The schedule is kept in a state directory (`--state-dir`, readable by its owner only, since it holds the private keys), so a node that restarts resumes the same certificates and the addresses it already handed out keep working. Without a state directory the schedule is in memory and a restart starts a new one. A node that was down past every stored certificate starts a new schedule, and any address from before is stale.
 
 ## Open questions
 
-- A console learns the current hash list only from the address it was given. A console that stays connected across rotations could be told the new list over the session, and one that reconnects could store the latest, so an address is only stale for a console that is away for longer than the window. That needs the node's own signed advert (the relay hub has no identity of its own today) or a new frame, so it is a protocol decision, tracked separately.
 - Where an out-of-band handle record carries the address, so a node that never reached the hub can still be found.

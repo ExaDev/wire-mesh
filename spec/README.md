@@ -10,6 +10,8 @@ Source files are discovered automatically, not hand-listed — adding a new `*.c
 
 Two sockets (`$frame-variant`, `$manage-command-params`) are the deliberate extension seams a later file — or a downstream project's own schema, such as Cascade's own excluded `core/content` domain — plugs into without editing the core files. Ordinary rule names must stay globally unique across every file — no tool catches a collision before the concatenated file is parsed, so each file's rules share a prefix matching its own filename; CI checks this on every push.
 
+`webtransport-binding.md` specifies how a client reaches a node over WebTransport with pinned certificate hashes and how frames travel on it; the frames themselves are the CDDL structures here.
+
 `registry/` holds the append-only core domain and capability name lists referenced from `handshake.cddl` and `tokens.cddl`.
 
 `CONVENTIONS.md` collects spec-wide idioms (deterministic tiebreaks, a canonical correlation-id, the facilitator role, verifier obligations, open `tstr` discriminators) that have been independently reinvented more than once — check it before inventing a new one for a domain that needs the same underlying property.
