@@ -5,10 +5,19 @@ import type { DeviceId } from "wire-mesh-core/generated/protocol";
 import { deviceHex } from "./ConnectionPanel.js";
 import { PeerLabel } from "./PeerLabel.js";
 
+/** Where a discovered peer was learned of: the connection whose directory gossiped it, and, when that connection was itself reached by gossip, the device that vouched for it. */
+export interface DiscoveredVia {
+  /** The address the gossiping connection was dialled at. */
+  address: string;
+  /** Hex device-id of the node on that connection, when it is known. */
+  device: string | undefined;
+}
+
 export interface DiscoveredPeerRow {
   key: string;
   device: DeviceId;
   addresses: readonly string[];
+  via: DiscoveredVia;
 }
 
 export interface DiscoveredPeersPanelProps {
@@ -30,11 +39,17 @@ export function DiscoveredPeersPanel({
       <Text fw={600} size="sm" mb="xs">
         Discovered peers
       </Text>
+      <Text size="sm" c="dimmed" mb="xs">
+        Each node below was listed in the directory of a node you are connected
+        to, which is the only thing vouching for it: the address it lists may
+        not be a wire-mesh node at all. Nothing is dialled until you connect.
+      </Text>
       <Table striped>
         <Table.Thead>
           <Table.Tr>
             <Table.Th>device</Table.Th>
             <Table.Th>addresses</Table.Th>
+            <Table.Th>gossiped by</Table.Th>
             <Table.Th />
           </Table.Tr>
         </Table.Thead>
@@ -45,6 +60,14 @@ export function DiscoveredPeersPanel({
                 <PeerLabel deviceHex={deviceHex(peer.device)} />
               </Table.Td>
               <Table.Td>{peer.addresses.join(", ")}</Table.Td>
+              <Table.Td>
+                {peer.via.device !== undefined && (
+                  <PeerLabel deviceHex={peer.via.device} />
+                )}
+                <Text size="xs" c="dimmed">
+                  over {peer.via.address}
+                </Text>
+              </Table.Td>
               <Table.Td>
                 <Group gap="xs">
                   <Button
