@@ -41,6 +41,14 @@ A Node server built on `@fails-components/webtransport` (a pinned-hash ECDSA P-2
 - **Several hashes are accepted, and rotation replaces the server.** `serverCertificateHashes` takes a list and the browser accepts a certificate that matches any entry: checked in Chromium, Safari 27.0 and Firefox 157, with the served certificate last in a list of three, and a list with no match is refused. The server package's `updateCert` does not change the certificate a running HTTP/3 server presents to new sessions (a connection opened before the call keeps working, and new ones still see the old certificate), so a node rotates by replacing its server on the same port, which ends the sessions open on it.
 - **A Node process cannot dial a pinned hash.** The package's Node client verifies against the system's trust and has no way to pin, so Node peers reach each other over WebSocket and only a browser is the client of this transport.
 
+## Full console conversation in real browsers
+
+The console's own UI was driven through a whole conversation (connect with a pinned address, find the peer, request, allow, message, reply, allow the reply) with the published package, the other user played by Chrome, and the browser under test as both initiator and responder:
+
+- **Firefox 157** passes in both roles.
+- **Playwright's WebKit build** (the Safari engine, version 26.6) cannot stand in for Safari: its page process crashes as soon as a bidirectional WebTransport stream is written, with a minimal echo server that has nothing to do with wire-mesh, where Chrome echoes the bytes. Datagrams, which the earlier connection check used, work.
+- **Real Safari and iOS Safari** need a session with an unlocked screen, because they are driven by opening a URL in the browser itself. The harness (the console served with its conversation injected and the result posted back, so it needs no WebDriver setting) is written; these two remain to be run.
+
 ## Certificate renewal
 
 A pinned hash goes stale when its certificate does, and a browser refuses any certificate valid for two weeks or more, so an address cannot simply be long-lived. The node keeps a rolling schedule instead (`certificate-schedule.ts`): the certificate serving now and the next ones, each valid for under two weeks and each taking over half a lifetime after its predecessor, so every successor is already valid, and its hash already listed, before it is served. An address lists the hashes of the serving certificate and the next two, and a browser accepts whichever the node presents. An address copied at any moment therefore keeps working until the last certificate it lists has finished serving, which is three serving periods later. Checked in Chromium: an address copied before any rotation connected after the first and second rotation and was refused after the third.
