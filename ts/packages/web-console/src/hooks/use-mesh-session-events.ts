@@ -1,4 +1,4 @@
-// Bridges a MeshSession's own events AsyncIterable onto React's push-based re-render model -- the one place this console adapts the domain layer's pull-based iterator to a hook, so every consuming component just reads plain state. The session's event stream has a single reader, so the human-readable activity is accumulated here from the same events rather than by a second consumer.
+// Bridges a MeshSession's own events AsyncIterable onto React's push-based re-render model, the one place this console adapts the domain layer's pull-based iterator to a hook, so every consuming component just reads plain state. The session's event stream has a single reader, so the human-readable activity is accumulated here from the same events rather than by a second consumer.
 
 import { useEffect, useState } from "react";
 import type {
