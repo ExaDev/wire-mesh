@@ -24,6 +24,7 @@ import { formatAgo } from "../format-duration.js";
 import { presentedCertificates } from "../certificate-trust.js";
 import { toDialAddress } from "../dial-address.js";
 import type { NodeCertificateChange } from "../hooks/use-certificate-trust.js";
+import { stackedTable } from "../App.css.js";
 import { ActivityLog } from "./ActivityLog.js";
 import { ConnectionHealth } from "./ConnectionHealth.js";
 import { PeerLabel } from "./PeerLabel.js";
@@ -229,7 +230,7 @@ export function ConnectionPanel({
           No gossip received yet.
         </Text>
       ) : (
-        <Table striped>
+        <Table striped className={stackedTable}>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>device</Table.Th>
@@ -241,11 +242,13 @@ export function ConnectionPanel({
           <Table.Tbody>
             {directory.map((entry) => (
               <Table.Tr key={deviceHex(entry.device)}>
-                <Table.Td>
+                <Table.Td data-label="device">
                   <PeerLabel deviceHex={deviceHex(entry.device)} />
                 </Table.Td>
-                <Table.Td>{entry.advert.addresses.join(", ")}</Table.Td>
-                <Table.Td>
+                <Table.Td data-label="addresses">
+                  {entry.advert.addresses.join(", ")}
+                </Table.Td>
+                <Table.Td data-label="last seen">
                   <Tooltip label="As the peer advertised it, by its own clock">
                     <span>
                       {formatAgo(
@@ -254,7 +257,7 @@ export function ConnectionPanel({
                     </span>
                   </Tooltip>
                 </Table.Td>
-                <Table.Td>
+                <Table.Td data-label="actions">
                   <Button
                     size="xs"
                     onClick={() => {
