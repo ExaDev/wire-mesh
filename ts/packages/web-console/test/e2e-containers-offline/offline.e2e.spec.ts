@@ -92,8 +92,15 @@ if (phase === "warm") {
     await expect(page.getByLabel("Node")).toBeVisible({
       timeout: STEP_TIMEOUT_MS,
     });
-    await page.getByLabel("Node").fill(requiredEnvironment("NODE_ADDRESS"));
+    const nodeAddress = requiredEnvironment("NODE_ADDRESS");
+    await page.getByLabel("Node").fill(nodeAddress);
     await page.getByRole("button", { name: "Connect", exact: true }).click();
+    // A pinned address is a first connection to that node, so the console asks whether to trust its certificate before it dials.
+    if (nodeAddress.includes("#sha256=")) {
+      await page.getByRole("button", { name: "Trust and connect" }).click({
+        timeout: STEP_TIMEOUT_MS,
+      });
+    }
 
     try {
       if (role === "initiator") {
