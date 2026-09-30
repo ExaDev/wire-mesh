@@ -210,7 +210,6 @@ export function ConnectionPanel({
         <Alert color="red" title="Could not publish your display name" mb="sm">
           {publishFailure}
         </Alert>
-        </Alert>
       )}
       {event !== undefined && (
         <ConnectionHealth
