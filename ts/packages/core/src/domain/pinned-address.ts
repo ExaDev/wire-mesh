@@ -1,6 +1,9 @@
+import { cdeDecodeOptions, cdeEncodeOptions, decode, encode } from "cbor2";
+
 const PIN_FRAGMENT = "#sha256=";
 const HASH_SEPARATOR = ",";
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
+const HEX_RADIX = 16;
 
 /** A WebTransport address and the SHA-256 hashes of the certificates it may serve. */
 export interface PinnedAddress {
@@ -55,4 +58,83 @@ export function parsePinnedAddress(address: string): PinnedAddress {
   }
   url.hash = "";
   return { url: url.toString(), sha256: hashes.map(hexToBytes) };
+}
+
+/** The bytes in a SHA-256 hash. */
+const SHA256_BYTES = 32;
+
+/** The most hashes a node may announce at once. A browser is asked to accept any of them, and a longer list is a node misbehaving rather than one advertising a schedule. */
+export const MAX_ANNOUNCED_HASHES = 8;
+
+/**
+ * The message a node sends a client, on a stream it opens to that client, to say which certificates it serves now and will serve next: a CBOR map with one key, `sha256`, holding an array of 32-byte hashes in the order they take over. It is authentic because it arrives on the session the client pinned, so no signature is needed.
+ */
+export function encodeCertificateHashes(
+  sha256Hex: readonly string[],
+): Uint8Array {
+  return encode({ sha256: sha256Hex.map(hexToBytes) }, cdeEncodeOptions);
+}
+
+/**
+ * Reads a message made by `encodeCertificateHashes`.
+ * @throws Error when it is not a map with a `sha256` array of one to MAX_ANNOUNCED_HASHES byte strings of 32 bytes each.
+ */
+export function decodeCertificateHashes(
+  bytes: Readonly<Uint8Array>,
+): Uint8Array<ArrayBuffer>[] {
+  const decoded: unknown = decode(bytes, cdeDecodeOptions);
+  if (
+    typeof decoded !== "object" ||
+    decoded === null ||
+    !("sha256" in decoded) ||
+    !Array.isArray(decoded.sha256)
+  ) {
+    throw new Error("expected a map with a sha256 array");
+  }
+  const announced: unknown[] = decoded.sha256;
+  if (announced.length === 0 || announced.length > MAX_ANNOUNCED_HASHES) {
+    throw new Error(
+      `expected 1 to ${String(MAX_ANNOUNCED_HASHES)} hashes, got ${String(announced.length)}`,
+    );
+  }
+  const hashes: Uint8Array<ArrayBuffer>[] = [];
+  for (const hash of announced) {
+    if (!(hash instanceof Uint8Array) || hash.length !== SHA256_BYTES) {
+      throw new Error(`each hash must be ${String(SHA256_BYTES)} bytes`);
+    }
+    hashes.push(new Uint8Array(hash));
+  }
+  return hashes;
+}
+
+/** `hashes` followed by those of `more` that are not already in it, so a client can pin what it was given and what it has learned since. */
+export function mergeHashes(
+  hashes: readonly Uint8Array<ArrayBuffer>[],
+  more: readonly Uint8Array<ArrayBuffer>[],
+): Uint8Array<ArrayBuffer>[] {
+  const known = new Set(hashes.map(bytesToHex));
+  const merged = [...hashes];
+  for (const hash of more) {
+    if (!known.has(bytesToHex(hash))) {
+      known.add(bytesToHex(hash));
+      merged.push(hash);
+    }
+  }
+  return merged;
+}
+
+function bytesToHex(bytes: Readonly<Uint8Array>): string {
+  return Array.from(bytes, (byte) =>
+    byte.toString(HEX_RADIX).padStart(2, "0"),
+  ).join("");
+}
+
+/** `address` with its pinned hashes replaced by `sha256`. */
+export function withPinnedHashes(
+  address: string,
+  sha256: readonly Uint8Array<ArrayBuffer>[],
+): string {
+  const { url } = parsePinnedAddress(address);
+  const parsed = new URL(url);
+  return formatPinnedAddress(parsed.host, sha256.map(bytesToHex));
 }
