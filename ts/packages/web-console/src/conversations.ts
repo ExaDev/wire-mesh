@@ -277,14 +277,11 @@ export function participantsOf(
   return parsed.owner === ownDeviceHex ? [] : [parsed.owner];
 }
 
-/** How a conversation's other members are named in the UI. A device-id is long, so this shows enough leading hex to tell devices apart at a glance; a conversation with no other members is named by its room path. */
-const DEVICE_LABEL_LENGTH = 12;
-
+/** How a conversation's other members are named in the UI: each by `nameOf`, which applies the console's naming convention to a device-id. A conversation with no other members is named by its room path. */
 export function participantLabel(
   view: Readonly<Pick<ConversationView, "participants" | "roomPath">>,
+  nameOf: (deviceHex: string) => string,
 ): string {
   if (view.participants.length === 0) return view.roomPath;
-  return view.participants
-    .map((hex) => hex.slice(0, DEVICE_LABEL_LENGTH))
-    .join(", ");
+  return view.participants.map(nameOf).join(", ");
 }

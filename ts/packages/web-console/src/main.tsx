@@ -7,6 +7,7 @@ import { MantineProvider } from "@mantine/core";
 import { createIndexedDbStorage } from "./adapters/indexeddb-storage.js";
 import { createPersistedWebCryptoIdentity } from "./adapters/web-crypto-identity.js";
 import { createCertificateMemory } from "./certificate-memory.js";
+import { createNameStore } from "./name-store.js";
 import { createMessageStore } from "./message-store.js";
 import { App } from "./App.js";
 import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt.js";
@@ -20,6 +21,7 @@ const messageStore = createMessageStore(await createIndexedDbStorage());
 const certificateMemory = createCertificateMemory(
   await createIndexedDbStorage(),
 );
+const nameStore = createNameStore(await createIndexedDbStorage());
 const address = defaultHubAddress(import.meta.env.DEV, window.location);
 
 const container = document.getElementById("root");
@@ -35,6 +37,7 @@ createRoot(container).render(
         clock={clock}
         messageStore={messageStore}
         certificateMemory={certificateMemory}
+        nameStore={nameStore}
         defaultAddress={address}
       />
       <PwaUpdatePrompt />

@@ -18,6 +18,7 @@ import {
   type RelayRoute,
 } from "../src/conversations.js";
 import type { CapabilityToken } from "wire-mesh-core/generated/protocol";
+import { shortId } from "../src/peer-names.js";
 import type { StoredMessage } from "../src/message-store.js";
 
 const DEVICE_ID_HEX_LENGTH = 64;
@@ -432,11 +433,16 @@ describe("participantsOf", () => {
 describe("participantLabel", () => {
   it("shortens each participant's device-id and joins them", () => {
     expect(
-      participantLabel({ roomPath: DM, participants: [PEER, OTHER_PEER] }),
+      participantLabel(
+        { roomPath: DM, participants: [PEER, OTHER_PEER] },
+        shortId,
+      ),
     ).toBe("222222222222, 333333333333");
   });
 
   it("falls back to the room path when nobody else is in the room", () => {
-    expect(participantLabel({ roomPath: DM, participants: [] })).toBe(DM);
+    expect(participantLabel({ roomPath: DM, participants: [] }, shortId)).toBe(
+      DM,
+    );
   });
 });

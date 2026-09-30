@@ -19,14 +19,24 @@ import {
 } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
+import type { KeyValueStorage } from "wire-mesh-core/ports/storage";
 import type { Clock } from "wire-mesh-core/ports/clock";
 import type { GossipFrame } from "wire-mesh-core/generated/protocol";
-import { messageFromFrame } from "wire-mesh-core/adapters/frame-codec";
+import {
+  decodeMessage,
+  messageFromFrame,
+} from "wire-mesh-core/adapters/frame-codec";
 import { deviceIdToHex } from "wire-mesh-core/domain/device-id";
 import { dmRoomPath } from "wire-mesh-core/domain/room-path";
 import { signPeerAdvert } from "wire-mesh-core/domain/peer-advert";
 import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
 import { createMemoryStorage } from "wire-mesh-core/adapters/memory-storage";
+import { createNameStore } from "../src/name-store.js";
+import {
+  selfAssertedName,
+  selfNameExtension,
+  shortId,
+} from "../src/peer-names.js";
 import { createCertificateMemory } from "../src/certificate-memory.js";
 import { App } from "../src/App.js";
 import type { MessageStore, StoredMessage } from "../src/message-store.js";
@@ -70,12 +80,14 @@ function renderApp(
     discoverLocalNode?: () => Promise<string | undefined>;
     defaultAddress?: string;
     messageStore?: MessageStore;
+    nameStorage?: KeyValueStorage;
   }> = {},
 ): ReturnType<typeof render> {
   const {
     discoverLocalNode,
     defaultAddress,
     messageStore = fakeMessageStore(),
+    nameStorage = createMemoryStorage(),
   } = options;
   return render(
     <MantineProvider>
@@ -84,6 +96,7 @@ function renderApp(
         clock={fixedClock}
         messageStore={messageStore}
         certificateMemory={createCertificateMemory(createMemoryStorage())}
+        nameStore={createNameStore(nameStorage)}
         {...(discoverLocalNode === undefined ? {} : { discoverLocalNode })}
         {...(defaultAddress === undefined ? {} : { defaultAddress })}
       />
@@ -102,6 +115,11 @@ const GOSSIPED_ADDRESS = "203.0.113.5:4433";
 let gossipedFrame: GossipFrame;
 let gossipedDeviceHex: string;
 
+/** A second remote whose advert carries a self display name, and the hex of the device it names. */
+const SELF_ASSERTED_NAME = "Ada's laptop";
+let namedFrame: GossipFrame;
+let namedDeviceHex: string;
+
 beforeAll(async () => {
   appIdentity = await createWebCryptoIdentity();
   const remote = await createWebCryptoIdentity();
@@ -113,6 +131,20 @@ beforeAll(async () => {
   });
   gossipedFrame = { type: "gossip", peers: [advert] };
   gossipedDeviceHex = deviceIdToHex(remote.deviceId);
+  const named = await createWebCryptoIdentity();
+  namedFrame = {
+    type: "gossip",
+    peers: [
+      await signPeerAdvert(named, {
+        ...selfNameExtension(SELF_ASSERTED_NAME),
+        device: named.deviceId,
+        addresses: [GOSSIPED_ADDRESS],
+        "snapshot-seconds": 0,
+        "identity-key": named.identityKey,
+      }),
+    ],
+  };
+  namedDeviceHex = deviceIdToHex(named.deviceId);
 });
 
 /** messageFromFrame's own Uint8Array may be a view into a larger backing buffer -- slicing to its own byteOffset/byteLength before handing it to emitMessage is what every other adapter test here already does (see websocket-transport.integration.test.ts's identical helper), since FakeWebSocket.emitMessage takes the raw buffer, not a view onto it. */
@@ -126,12 +158,42 @@ function arrayBuffer(bytes: Uint8Array): ArrayBuffer {
 /** The discovered-peer table row for a given device within an already-confirmed-present discovered-peers panel -- scoped lookup so its own "Connect" button can be found distinctly from both the connect form's identically-labelled submit button and the identical device hex rendered elsewhere (a device's own hex also renders inside its originating ConnectionPanel's unrelated "Peer directory" table). Callers must await screen.findByTestId("discovered-peers") first: the panel itself never mounts at all while no peer is pending, so this cannot also do that initial wait. */
 function discoveredRow(deviceHex: string): HTMLElement {
   const row = within(screen.getByTestId("discovered-peers"))
-    .getByText(deviceHex)
+    .getByText(shortId(deviceHex))
     .closest("tr");
   if (row === null) {
     throw new Error(`expected a table row for device ${deviceHex}`);
   }
   return row;
+}
+
+/** Connects the form's address and opens its socket, resolving once the session reports connected, which is when its frame listener is registered. */
+async function connectRoot(): Promise<FakeWebSocket> {
+  submitConnectForm();
+  await vi.waitFor(() => {
+    expect(sockets).toHaveLength(1);
+  });
+  const rootSocket = sockets[0];
+  if (rootSocket === undefined) {
+    throw new Error("expected the root socket to exist");
+  }
+  rootSocket.emitOpen();
+  await screen.findByText(/^connected/);
+  return rootSocket;
+}
+
+/** The display names carried by the gossip frames a socket sent after `from` sends. */
+function publishedSelfNames(
+  socket: Readonly<FakeWebSocket>,
+  from: number,
+): unknown[] {
+  return socket.sent.slice(from).flatMap((data) => {
+    const frame = decodeMessage(data);
+    if (frame.type !== "gossip") return [];
+    return frame.peers.flatMap((advert) => {
+      const name = selfAssertedName(advert);
+      return name === undefined ? [] : [name];
+    });
+  });
 }
 
 describe("App", () => {
@@ -274,7 +336,9 @@ describe("App", () => {
     rootSocket.emitMessage(arrayBuffer(messageFromFrame(gossipedFrame)));
 
     const panel = await screen.findByTestId("discovered-peers");
-    expect(within(panel).getByText(gossipedDeviceHex)).toBeInTheDocument();
+    expect(
+      within(panel).getByText(shortId(gossipedDeviceHex)),
+    ).toBeInTheDocument();
     expect(within(panel).getByText(GOSSIPED_ADDRESS)).toBeInTheDocument();
 
     fireEvent.click(
@@ -307,9 +371,15 @@ describe("App", () => {
     rootSocket.emitMessage(arrayBuffer(messageFromFrame(gossipedFrame)));
 
     // jsdom has no RTCPeerConnection, so the negotiation fails as soon as it starts.
-    const directoryRow = (await screen.findAllByText(gossipedDeviceHex))
+    const directoryRow = (
+      await screen.findAllByText(shortId(gossipedDeviceHex))
+    )
       .map((cell) => cell.closest("tr"))
-      .find((row) => row?.querySelector("button")?.textContent === "Message");
+      .find(
+        (row) =>
+          row !== null &&
+          within(row).queryByRole("button", { name: "Message" }) !== null,
+      );
     if (directoryRow === null || directoryRow === undefined) {
       throw new Error("expected a directory row with a Message button");
     }
@@ -320,7 +390,7 @@ describe("App", () => {
     // The conversation is open over the hub at once, and only the direct connection failed.
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(
-      `No direct connection to ${gossipedDeviceHex}`,
+      `No direct connection to ${shortId(gossipedDeviceHex)}`,
     );
     expect(alert).toHaveTextContent(/RTCPeerConnection/);
     expect(alert).toHaveTextContent("Messages go through the hub instead");
@@ -355,5 +425,46 @@ describe("App", () => {
 
     expect(screen.queryByTestId("discovered-peers")).toBeNull();
     expect(sockets).toHaveLength(1);
+  });
+
+  it("names a gossiped peer by the display name its signed advert asserts, with its short id beside it", async () => {
+    renderApp();
+
+    const rootSocket = await connectRoot();
+    rootSocket.emitMessage(arrayBuffer(messageFromFrame(namedFrame)));
+
+    const panel = await screen.findByTestId("discovered-peers");
+    expect(within(panel).getByText(SELF_ASSERTED_NAME)).toBeInTheDocument();
+    expect(
+      within(panel).getByText(shortId(namedDeviceHex)),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a petname from the console's own storage ahead of the name the peer asserts", async () => {
+    const nameStorage = createMemoryStorage();
+    await createNameStore(nameStorage).setPetname(namedDeviceHex, "Ada");
+    renderApp({ nameStorage });
+
+    const rootSocket = await connectRoot();
+    rootSocket.emitMessage(arrayBuffer(messageFromFrame(namedFrame)));
+
+    const panel = await screen.findByTestId("discovered-peers");
+    expect(within(panel).getByText("Ada")).toBeInTheDocument();
+    expect(within(panel).getByText(SELF_ASSERTED_NAME)).toBeInTheDocument();
+  });
+
+  it("publishes this console's own display name in a signed gossip advert once it is saved on a connected session", async () => {
+    renderApp();
+    const rootSocket = await connectRoot();
+    const sentBefore = rootSocket.sent.length;
+
+    fireEvent.change(screen.getByLabelText(/^Your display name/), {
+      target: { value: "Grace" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save name" }));
+
+    await vi.waitFor(() => {
+      expect(publishedSelfNames(rootSocket, sentBefore)).toEqual(["Grace"]);
+    });
   });
 });
