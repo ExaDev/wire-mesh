@@ -89,7 +89,8 @@ export function CertificateTrustPanel({
   changes,
   onDismissChange,
 }: Readonly<CertificateTrustPanelProps>): React.JSX.Element | null {
-  if (prompts.length === 0 && changes.length === 0) {
+  const undismissed = changes.filter((change) => !change.dismissed);
+  if (prompts.length === 0 && undismissed.length === 0) {
     return null;
   }
   return (
@@ -97,7 +98,7 @@ export function CertificateTrustPanel({
       {prompts.map((prompt) => (
         <PromptAlert key={prompt.key} prompt={prompt} />
       ))}
-      {changes.map((change) => (
+      {undismissed.map((change) => (
         <Alert
           key={change.key}
           color="red"

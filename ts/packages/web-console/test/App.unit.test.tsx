@@ -637,6 +637,49 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
+  it("tells what happened on a connection in words, with the raw frames behind a toggle", async () => {
+    renderApp({ defaultAddress: "ws://hub.example:8787" });
+
+    const rootSocket = await connectRoot();
+    rootSocket.emitMessage(arrayBuffer(messageFromFrame(namedFrame)));
+
+    const log = await screen.findByTestId("activity-log");
+    expect(
+      within(log).getByText(/^Connected to ws:\/\/hub\.example:8787/),
+    ).toBeInTheDocument();
+    await within(log).findByText(/^Peer seen:/);
+    expect(screen.queryByTestId("frame-log")).toBeNull();
+
+    fireEvent.click(screen.getByRole("switch", { name: "Show raw frames" }));
+
+    const raw = screen.getByTestId("frame-log");
+    expect(within(raw).getAllByText("received").length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("activity-log")).toBeNull();
+  });
+
+  it("shows when the next reconnect attempt is due after a connection drops", async () => {
+    renderApp();
+
+    const rootSocket = await connectRoot();
+    rootSocket.close();
+
+    const status = await screen.findByTestId("reconnect-status");
+    expect(status).toHaveTextContent(
+      /Retrying (in \d+ s|now) \(attempt 1 of 5\)/,
+    );
+  });
+
+  it("shows when a peer in the directory was last seen", async () => {
+    renderApp();
+
+    const rootSocket = await connectRoot();
+    rootSocket.emitMessage(arrayBuffer(messageFromFrame(gossipedFrame)));
+
+    await screen.findByTestId("discovered-peers");
+    // The advert's snapshot and the fixed test clock are both zero.
+    expect(screen.getAllByText("just now").length).toBeGreaterThan(0);
+  });
+
   it("names the connection a discovered peer was gossiped over", async () => {
     renderApp({ defaultAddress: "ws://hub.example:8787" });
 

@@ -109,6 +109,8 @@ describe("CertificateTrustPanel", () => {
       node: NODE,
       remembered: [hashHex("a")],
       presented: [hashHex("b")],
+      at: 0,
+      dismissed: false,
     };
     renderPanel({ changes: [change], onDismissChange });
 
@@ -119,5 +121,22 @@ describe("CertificateTrustPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
 
     expect(onDismissChange).toHaveBeenCalledWith("c1");
+  });
+
+  it("hides a dismissed change", () => {
+    renderPanel({
+      changes: [
+        {
+          key: "c1",
+          node: NODE,
+          remembered: [hashHex("a")],
+          presented: [hashHex("b")],
+          at: 0,
+          dismissed: true,
+        },
+      ],
+    });
+
+    expect(screen.queryByTestId("certificate-trust")).not.toBeInTheDocument();
   });
 });

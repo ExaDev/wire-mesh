@@ -1,6 +1,7 @@
 // The trust moments for WebTransport nodes: a first-use confirmation before a node's certificate is pinned, a warning before an address that presents a different certificate than the remembered one is dialled, and a notice when a connected node announces certificates unrelated to the remembered ones. Each confirmation is a promise the dialling code awaits, settled by the user's click.
 
 import { useCallback, useMemo, useState } from "react";
+import type { Clock } from "wire-mesh-core/ports/clock";
 import type { CertificateMemory } from "../certificate-memory.js";
 import { bytesToHex } from "wire-mesh-core/domain/device-id";
 import {
@@ -22,6 +23,10 @@ export interface TrustPrompt {
 
 export interface NodeCertificateChange extends CertificateChange {
   key: string;
+  /** When the change was announced, from the injected clock. */
+  at: number;
+  /** Whether the user has dismissed the alert. The change stays in the connection's activity. */
+  dismissed: boolean;
 }
 
 export interface CertificateTrust {
@@ -38,6 +43,7 @@ export interface CertificateTrust {
 
 export function useCertificateTrust(
   memory: Readonly<CertificateMemory>,
+  clock: Readonly<Clock>,
 ): CertificateTrust {
   const [prompts, setPrompts] = useState<readonly TrustPrompt[]>([]);
   const [changes, setChanges] = useState<readonly NodeCertificateChange[]>([]);
@@ -47,10 +53,15 @@ export function useCertificateTrust(
       observeCertificateChanges(memory, (change) => {
         setChanges((current) => [
           ...current,
-          { ...change, key: crypto.randomUUID() },
+          {
+            ...change,
+            key: crypto.randomUUID(),
+            at: clock.now(),
+            dismissed: false,
+          },
         ]);
       }),
-    [memory],
+    [memory, clock],
   );
 
   const confirmAddress = useCallback(
@@ -92,7 +103,11 @@ export function useCertificateTrust(
   );
 
   const dismissChange = useCallback((key: string): void => {
-    setChanges((current) => current.filter((change) => change.key !== key));
+    setChanges((current) =>
+      current.map((change) =>
+        change.key === key ? { ...change, dismissed: true } : change,
+      ),
+    );
   }, []);
 
   return {
