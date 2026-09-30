@@ -442,6 +442,11 @@ function createSessionCore(
     }
   }
 
+  /** The address to dial after `link` ended: the one the adapter says reaches the same peer now, if it says anything, else the one this session dialled. */
+  function redialAddress(link: Readonly<Connection>, dialled: string): string {
+    return link.redialAddress?.() ?? dialled;
+  }
+
   function handleDisconnect(
     reason: string,
     address: string,
@@ -499,7 +504,11 @@ function createSessionCore(
     }
     onSessionEnd?.(link);
     if (state.status === "connected") {
-      handleDisconnect("node closed the connection", address, localDomains);
+      handleDisconnect(
+        "node closed the connection",
+        redialAddress(link, address),
+        localDomains,
+      );
     }
   }
 
@@ -557,7 +566,7 @@ function createSessionCore(
       if (state.status === "connected") {
         handleDisconnect(
           error instanceof Error ? error.message : String(error),
-          address,
+          redialAddress(link, address),
           localDomains,
         );
       }
