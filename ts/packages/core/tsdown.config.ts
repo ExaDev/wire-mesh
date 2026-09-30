@@ -7,22 +7,22 @@ import { defineConfig } from "tsdown";
 //
 // The entry list is derived from package.json's exports map rather than hand-kept alongside it. The exports map is the package's public surface and has to be written out explicitly anyway (npm resolves subpaths from it, and tsdown's own exports handling does not rewrite it), so a second, independent list of the same modules here was one more thing to forget: adding a module to one list and not the other leaves the exports map pointing at files no build produced, which CI's attw step only catches after a full build. Deriving here makes the exports map the single source of truth and turns drift into an immediate, loud failure at config-load time: an exports key with no corresponding src/<path>.ts throws below, before anything builds. Internal modules consumed only from within other modules (relay-channels, secure-channel, the threshold internals, and their siblings) simply have no exports-map key, and therefore no entry, exactly as before.
 
+/** Narrows an unknown JSON value to a string-keyed record, the shape an exports map is: an object, not null, not an array. A type predicate rather than inline typeof checks because TypeScript's own `typeof x === "object"` narrows only to `object`, never to Record. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 const packageDir = dirname(fileURLToPath(import.meta.url));
 const parsed: unknown = JSON.parse(
   readFileSync(join(packageDir, "package.json"), "utf8"),
 );
-if (
-  typeof parsed !== "object" ||
-  parsed === null ||
-  !("exports" in parsed) ||
-  typeof parsed.exports !== "object" ||
-  parsed.exports === null
-) {
+const exportsMap: Record<string, unknown> | undefined =
+  isRecord(parsed) && isRecord(parsed.exports) ? parsed.exports : undefined;
+if (exportsMap === undefined) {
   throw new Error(
     "package.json has no exports map to derive build entries from",
   );
 }
-const exportsMap: Record<string, unknown> = parsed.exports;
 
 const entry = Object.keys(exportsMap)
   .filter((exportedPath) => exportedPath !== "./package.json")
