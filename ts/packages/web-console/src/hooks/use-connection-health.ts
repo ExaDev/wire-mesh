@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MeshSession } from "wire-mesh-core/domain/mesh-session";
+import { PingTimeoutError } from "wire-mesh-core/domain/ping-round-trips";
 
 /** When probes are sent and when one is given up on. */
 export interface ProbeTiming {
@@ -40,11 +41,6 @@ export function useConnectionHealth(
   const [unresponsive, setUnresponsive] = useState(false);
   // Whether any pong has ever come back, kept beside the state because the probe callback must read the latest value when its promise settles.
   const answered = useRef(false);
-  // Whether the connection is still up when a probe settles: a probe that failed because the connection dropped says nothing about the node's answers, so it is not recorded.
-  const stillConnected = useRef(connected);
-  useEffect(() => {
-    stillConnected.current = connected;
-  }, [connected]);
 
   const probe = useCallback((): void => {
     session.sendPingMeasureRtt(timing.pongTimeoutMs).then(
@@ -53,8 +49,9 @@ export function useConnectionHealth(
         setUnresponsive(false);
         setSamples((current) => [...current, rtt].slice(-MAX_SAMPLES));
       },
-      () => {
-        if (!stillConnected.current) {
+      (error: unknown) => {
+        // Only a probe the node left unanswered says anything about the node. One that failed because the connection dropped (the session rejects it before it announces the new state, so this hook cannot yet know) is not recorded.
+        if (!(error instanceof PingTimeoutError)) {
           return;
         }
         setUnresponsive(!answered.current);
