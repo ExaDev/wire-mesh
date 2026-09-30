@@ -1,3 +1,9 @@
+## [2.10.1](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.10.0...%40exadev%2Fwire-mesh-web-console%402.10.1) (2026-09-30)
+
+### Bug Fixes
+
+* **web-console:** say why a browser that cannot open a WebTransport stream fails to connect ([20c6fcd](https://github.com/ExaDev/wire-mesh/commit/20c6fcd0058c6e551b50d6746b99e8c1bf1083de))
+
 ## [2.10.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.9.1...%40exadev%2Fwire-mesh-web-console%402.10.0) (2026-09-30)
 
 ### Features

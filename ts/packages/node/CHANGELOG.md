@@ -1,3 +1,14 @@
+## [3.5.2](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.5.1...wire-mesh%403.5.2) (2026-09-30)
+
+### Bug Fixes
+
+* **node:** announce certificates alongside accepting the client's stream, and record the Safari findings ([bba9241](https://github.com/ExaDev/wire-mesh/commit/bba9241e067c20887c3177d5d61f5428baa03138))
+
+
+### Dependencies
+
+- Updated @exadev/wire-mesh-web-console to 2.10.1
+
 ## [3.5.1](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.5.0...wire-mesh%403.5.1) (2026-09-30)
 
 ### Documentation
