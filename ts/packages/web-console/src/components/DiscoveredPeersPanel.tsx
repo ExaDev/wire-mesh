@@ -3,6 +3,7 @@
 import { Button, Card, Group, Table, Text } from "@mantine/core";
 import type { DeviceId } from "wire-mesh-core/generated/protocol";
 import { deviceHex } from "./ConnectionPanel.js";
+import { PeerLabel } from "./PeerLabel.js";
 
 export interface DiscoveredPeerRow {
   key: string;
@@ -40,7 +41,9 @@ export function DiscoveredPeersPanel({
         <Table.Tbody>
           {peers.map((peer) => (
             <Table.Tr key={peer.key}>
-              <Table.Td>{deviceHex(peer.device)}</Table.Td>
+              <Table.Td>
+                <PeerLabel deviceHex={deviceHex(peer.device)} />
+              </Table.Td>
               <Table.Td>{peer.addresses.join(", ")}</Table.Td>
               <Table.Td>
                 <Group gap="xs">
