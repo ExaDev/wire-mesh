@@ -157,6 +157,15 @@ jobs:
         working-directory: ts
         run: pnpm turbo run _build
 
+      - name: Confirm building changed no committed file
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --short
+            git diff
+            echo "::error::Building rewrote committed files, most often a package.json exports map (tsdown regenerates it from each package's entries, sorted). Run the build locally and commit the result; the release job refuses a dirty tree."
+            exit 1
+          fi
+
       - name: Confirm generate.ts's output matches the committed generated schema
         working-directory: ts/packages/core
         run: |
