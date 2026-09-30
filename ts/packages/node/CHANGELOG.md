@@ -1,3 +1,9 @@
+## [3.5.3](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.5.2...wire-mesh%403.5.3) (2026-09-30)
+
+### Documentation
+
+* **node:** record that iOS Safari completes the conversation once stream credit is granted ([b56872a](https://github.com/ExaDev/wire-mesh/commit/b56872a8e85230155a22fee6aeadd9d05ebf344e))
+
 ## [3.5.2](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.5.1...wire-mesh%403.5.2) (2026-09-30)
 
 ### Bug Fixes
