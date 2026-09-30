@@ -78,6 +78,33 @@ describe("reconnect policy", () => {
     }
   });
 
+  it("counts a reconnect's attempts afresh once the peer answers, so a long-lived session does not run out of attempts one reconnect at a time", async () => {
+    const { transport, connections } = multiConnectionTransport();
+    const session = createMeshSession(transport, testIdentity, testClock, {
+      maxAttempts: 2,
+      delayMs: () => 1,
+    });
+    await session.connect("ws://node", ["core/data"]);
+    // More drops than the policy allows attempts in all, each after the peer has answered.
+    const drops = 4;
+    for (let drop = 0; drop < drops; drop++) {
+      await vi.waitFor(() => {
+        expect(connections).toHaveLength(drop + 1);
+      });
+      connections[drop]?.push({ type: "pong" });
+      // Let the session take the frame in before the connection drops.
+      await vi.waitFor(async () => {
+        await session.sendPing();
+        expect(connections[drop]?.sent.length).toBeGreaterThan(1);
+      });
+      connections[drop]?.fail(new Error("dropped"));
+    }
+    await vi.waitFor(() => {
+      expect(connections).toHaveLength(drops + 1);
+    });
+    await session.close();
+  });
+
   it("clears the handshake timeout on reconnect, so a stale timer from the previous attempt cannot corrupt the new one", async () => {
     vi.useFakeTimers();
     try {
