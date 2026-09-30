@@ -9,9 +9,9 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { MantineProvider } from "@mantine/core";
 import { RoomPanel } from "../src/components/RoomPanel.js";
 import type { ConversationView } from "../src/conversations.js";
+import { WithNames } from "./names-harness.js";
 import { stubMantineJsdomGlobals } from "./jsdom-mantine-polyfills.js";
 
 const DEVICE_ID_HEX_LENGTH = 64;
@@ -35,7 +35,7 @@ function renderPanel(
   props: Partial<React.ComponentProps<typeof RoomPanel>> = {},
 ): ReturnType<typeof render> {
   return render(
-    <MantineProvider>
+    <WithNames>
       <RoomPanel
         view={view()}
         onSend={async () => Promise.resolve()}
@@ -44,7 +44,7 @@ function renderPanel(
         onDiscard={() => undefined}
         {...props}
       />
-    </MantineProvider>,
+    </WithNames>,
   );
 }
 

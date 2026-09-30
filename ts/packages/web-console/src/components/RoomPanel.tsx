@@ -3,6 +3,7 @@
 import { Alert, Button, Divider, Group, Stack, Text } from "@mantine/core";
 import { SubmitRow } from "web-ui-primitives";
 import { participantLabel, type ConversationView } from "../conversations.js";
+import { usePeerNames } from "../hooks/use-peer-names.js";
 import { MessageList } from "./MessageList.js";
 import { NoticesView } from "./NoticesView.js";
 
@@ -36,6 +37,7 @@ export function RoomPanel({
   onRetry,
   onDiscard,
 }: Readonly<RoomPanelProps>): React.JSX.Element {
+  const names = usePeerNames();
   return (
     <Stack gap="xs">
       <Group justify="space-between">
@@ -82,7 +84,7 @@ export function RoomPanel({
       <MessageList
         messages={view.messages}
         outgoing={view.outgoing}
-        peerLabel={participantLabel(view)}
+        peerLabel={participantLabel(view, (hex) => names.labelOf(hex).primary)}
         onRetry={onRetry}
         onDiscard={onDiscard}
       />
