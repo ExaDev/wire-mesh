@@ -27,6 +27,8 @@ export interface ActivityTracker {
   handshake: string | undefined;
   /** Sequence for entry keys. */
   issued: number;
+  /** Hex device-ids already reported as seen. A directory is gossiped again and again with the same peers, so each is reported the first time only; otherwise a busy directory would push every other entry out of the capped activity view. */
+  seen: ReadonlySet<string>;
 }
 
 export const initialTracker: ActivityTracker = {
@@ -34,6 +36,7 @@ export const initialTracker: ActivityTracker = {
   stage: undefined,
   handshake: undefined,
   issued: 0,
+  seen: new Set(),
 };
 
 type Described = Pick<ActivityEntry, "kind" | "summary" | "peer">;
@@ -169,11 +172,22 @@ export function advanceActivity(
   at: number,
 ): { tracker: ActivityTracker; entries: ActivityEntry[] } {
   const handshake = handshakeStage(event.state);
+  const seen = new Set(tracker.seen);
   const described: Described[] = [
     ...describeState(tracker, event.state, handshake),
     ...event.frameLog
       .slice(tracker.frames)
-      .flatMap((entry) => describeFrame(entry.direction, entry.frame)),
+      .flatMap((entry) => describeFrame(entry.direction, entry.frame))
+      .filter((entry) => {
+        if (entry.kind !== "peer" || entry.peer === undefined) {
+          return true;
+        }
+        if (seen.has(entry.peer)) {
+          return false;
+        }
+        seen.add(entry.peer);
+        return true;
+      }),
   ];
   const entries = described.map((entry, index): ActivityEntry => ({
     ...entry,
@@ -186,6 +200,7 @@ export function advanceActivity(
       stage: connectionStage(event.state),
       handshake,
       issued: tracker.issued + entries.length,
+      seen,
     },
     entries,
   };
