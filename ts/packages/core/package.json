@@ -158,6 +158,10 @@
       "import": "./dist/domain/relay-hub.mjs",
       "require": "./dist/domain/relay-hub.cjs"
     },
+    "./domain/relay-advert": {
+      "import": "./dist/domain/relay-advert.mjs",
+      "require": "./dist/domain/relay-advert.cjs"
+    },
     "./domain/relay-use-gate": {
       "import": "./dist/domain/relay-use-gate.mjs",
       "require": "./dist/domain/relay-use-gate.cjs"
