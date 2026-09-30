@@ -1,43 +1,42 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "tsdown";
 
 // Every real module gets its own build entry rather than a re-exporting index.ts -- the barrel-policy lint rule requires importing straight from the module that owns each export. src/generated/protocol.ts is committed, machine-generated output (see generate.ts); it's built here like any other module (real code that needs to compile and bundle correctly) but excluded from eslint's own strict authored-code rules (see eslint.config.ts's ignores) since rules like no-use-before-define don't make sense for its z.lazy()-wrapped mutually-recursive schemas.
 //
-// The entry list is derived from package.json's exports map rather than hand-kept alongside it. The exports map is the package's public surface and has to be written out explicitly anyway (npm resolves subpaths from it, and tsdown's own exports handling does not rewrite it), so a second, independent list of the same modules here was one more thing to forget: adding a module to one list and not the other leaves the exports map pointing at files no build produced, which CI's attw step only catches after a full build. Deriving here makes the exports map the single source of truth and turns drift into an immediate, loud failure at config-load time: an exports key with no corresponding src/<path>.ts throws below, before anything builds. Internal modules consumed only from within other modules (relay-channels, secure-channel, the threshold internals, and their siblings) simply have no exports-map key, and therefore no entry, exactly as before.
-
-/** Narrows an unknown JSON value to a string-keyed record, the shape an exports map is: an object, not null, not an array. A type predicate rather than inline typeof checks because TypeScript's own `typeof x === "object"` narrows only to `object`, never to Record. */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+// Entries are discovered by glob rather than listed, so adding a module to src/ needs no edit here: it is built, and tsdown generates its package.json exports entry (`exports: true` below rewrites the exports map from the entries, alphabetically sorted, on every build). The committed map is that output, and CI fails any change whose build leaves the working tree dirty, so an entry that was added, removed or moved without regenerating the map is caught on the pull request instead of at release time.
+//
+// The public surface is everything under src/ except the modules named here. These are internal: each is consumed only by other modules in this package, is bundled into the entries that use it, and is deliberately not a subpath consumers can import. Naming the private ones (rather than the public ones) makes public the default, which is what the barrel policy above already assumes, and turns a stale name into a config-load error below instead of a silent gap.
+const INTERNAL_MODULES = [
+  "src/adapters/memory-nonce-store.ts",
+  "src/adapters/threshold-dkg.ts",
+  "src/adapters/threshold-network-coordinator.ts",
+  "src/adapters/threshold-participant.ts",
+  "src/domain/own-version.ts",
+  "src/domain/relay-channels.ts",
+  "src/domain/relay-pairing.ts",
+  "src/domain/secure-channel.ts",
+  "src/domain/sharded-delivery.ts",
+  "src/domain/threshold-network.ts",
+  "src/domain/threshold-share-envelope.ts",
+  "src/domain/threshold-share-wire.ts",
+  "src/domain/token-predicates.ts",
+  "src/domain/token-scope.ts",
+  "src/ports/nonce-store.ts",
+];
 
 const packageDir = dirname(fileURLToPath(import.meta.url));
-const parsed: unknown = JSON.parse(
-  readFileSync(join(packageDir, "package.json"), "utf8"),
-);
-const exportsMap: Record<string, unknown> | undefined =
-  isRecord(parsed) && isRecord(parsed.exports) ? parsed.exports : undefined;
-if (exportsMap === undefined) {
-  throw new Error(
-    "package.json has no exports map to derive build entries from",
-  );
+for (const internal of INTERNAL_MODULES) {
+  if (!existsSync(join(packageDir, internal))) {
+    throw new Error(
+      `INTERNAL_MODULES names ${internal}, but no such file exists: remove the stale entry`,
+    );
+  }
 }
 
-const entry = Object.keys(exportsMap)
-  .filter((exportedPath) => exportedPath !== "./package.json")
-  .map((exportedPath) => {
-    const source = `src/${exportedPath.slice(2)}.ts`;
-    if (!existsSync(join(packageDir, source))) {
-      throw new Error(
-        `package.json exports "${exportedPath}" but no source file exists at ${source}: every exported subpath must be a real module`,
-      );
-    }
-    return source;
-  });
-
 export default defineConfig({
-  entry,
+  entry: ["src/**/*.ts", ...INTERNAL_MODULES.map((internal) => `!${internal}`)],
   format: ["esm", "cjs"],
   dts: true,
   exports: true,
