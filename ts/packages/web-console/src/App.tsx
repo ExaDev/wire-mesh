@@ -40,6 +40,10 @@ import { useCertificateTrust } from "./hooks/use-certificate-trust.js";
 import { PeerNamesProvider } from "./components/PeerNamesProvider.js";
 import { PeerName } from "./components/PeerName.js";
 import { SelfNameField } from "./components/SelfNameField.js";
+import { OnboardingIntro } from "./components/OnboardingIntro.js";
+import { SearchPanel } from "./components/SearchPanel.js";
+import { useIntro } from "./hooks/use-intro.js";
+import type { PreferencesStore } from "./preferences-store.js";
 import type { NameStore } from "./name-store.js";
 import { ConversationList } from "./components/ConversationList.js";
 import { RoomPanel } from "./components/RoomPanel.js";
@@ -60,6 +64,8 @@ export interface AppProps {
   certificateMemory: CertificateMemory;
   /** The petnames this viewer has given peers and this console's own display name, kept in the console's own storage. */
   nameStore: NameStore;
+  /** Interface preferences kept in the console's own storage, such as whether the first-run intro has been dismissed. */
+  preferences: PreferencesStore;
   /** Attempts same-device node auto-discovery once, on mount. Defaults to the real `discoverLocalNode` (a no-op when this console is served from a loopback origin, a real localhost probe otherwise); tests inject a fake to avoid depending on `location`/`fetch`. */
   discoverLocalNode?: () => Promise<string | undefined>;
   // Seeds the Node field. Left as a prop (rather than App reading location/import.meta.env itself) so App stays the plain, testable component its own header comment describes; main.tsx computes the real value via default-hub-address.ts.
@@ -97,6 +103,7 @@ export function App({
   messageStore,
   certificateMemory,
   nameStore,
+  preferences,
   discoverLocalNode = discoverLocalNodeDefault,
   defaultAddress = DEFAULT_ADDRESS,
 }: Readonly<AppProps>): React.JSX.Element {
@@ -105,6 +112,7 @@ export function App({
   const [connections, setConnections] = useState<ConnectionEntry[]>([]);
   const [discovered, setDiscovered] = useState<PendingExpansion[]>([]);
   const [failures, setFailures] = useState<ConnectionFailure[]>([]);
+  const intro = useIntro(preferences);
   const trust = useCertificateTrust(certificateMemory, clock);
   const roomMessaging = useRoomMessaging(identity, clock, messageStore);
   const [selectedPath, setSelectedPath] = useState<string | undefined>();
@@ -343,7 +351,15 @@ export function App({
   return (
     <PeerNamesProvider store={nameStore}>
       <Stack className={appShell} p="md" gap="lg">
-        <Title order={1}>wire-mesh console</Title>
+        <Group justify="space-between">
+          <Title order={1}>wire-mesh console</Title>
+          {intro.ready && !intro.visible && (
+            <Button size="xs" variant="subtle" onClick={intro.show}>
+              How this works
+            </Button>
+          )}
+        </Group>
+        {intro.visible && <OnboardingIntro onDismiss={intro.dismiss} />}
         <SelfNameField />
         <form onSubmit={handleSubmit}>
           <Group align="flex-end" wrap="wrap">
@@ -419,6 +435,10 @@ export function App({
             {failure.reason}. Messages go through the hub instead.
           </Alert>
         ))}
+        <SearchPanel
+          conversations={roomMessaging.conversations}
+          onSelect={setSelectedPath}
+        />
         <ConversationList
           conversations={roomMessaging.conversations}
           selected={selectedConversation?.roomPath}
