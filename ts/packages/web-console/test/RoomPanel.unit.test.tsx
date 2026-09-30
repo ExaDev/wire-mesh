@@ -11,7 +11,7 @@ import {
 } from "@testing-library/react";
 import { RoomPanel } from "../src/components/RoomPanel.js";
 import type { ConversationView } from "../src/conversations.js";
-import { WithNames } from "./names-harness.js";
+import { WithNames, memoryNameStore } from "./names-harness.js";
 import { stubMantineJsdomGlobals } from "./jsdom-mantine-polyfills.js";
 
 const DEVICE_ID_HEX_LENGTH = 64;
@@ -33,9 +33,10 @@ function view(overrides: Partial<ConversationView> = {}): ConversationView {
 
 function renderPanel(
   props: Partial<React.ComponentProps<typeof RoomPanel>> = {},
+  store = memoryNameStore(),
 ): ReturnType<typeof render> {
   return render(
-    <WithNames>
+    <WithNames store={store}>
       <RoomPanel
         view={view()}
         onSend={async () => Promise.resolve()}
@@ -179,5 +180,26 @@ describe("RoomPanel", () => {
     renderPanel();
 
     expect(screen.queryByText(/wants to message you/)).toBeNull();
+  });
+
+  it("names the peer by the petname held for it, in the header and in a message request", async () => {
+    const store = memoryNameStore();
+    const peer = "2".repeat(DEVICE_ID_HEX_LENGTH);
+    await store.setPetname(peer, "Ada");
+    renderPanel(
+      {
+        view: view({
+          participants: [peer],
+          pendingJoinRequest: { requesterHex: peer, decide: vi.fn() },
+        }),
+      },
+      store,
+    );
+
+    await screen.findAllByText("Ada");
+    expect(screen.getByText(/wants to message you/)).toHaveTextContent(
+      "Ada wants to message you",
+    );
+    expect(screen.queryByText(peer)).toBeNull();
   });
 });
