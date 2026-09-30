@@ -14,6 +14,8 @@ Two sockets (`$frame-variant`, `$manage-command-params`) are the deliberate exte
 
 `registry/` holds the append-only core domain and capability name lists referenced from `handshake.cddl` and `tokens.cddl`.
 
+`PATTERNS.md` collects recommended compositions of mechanisms this spec already defines (the replicated issuer grant ledger first); check it before designing a new mechanism for an outcome an existing one covers.
+
 `CONVENTIONS.md` collects spec-wide idioms (deterministic tiebreaks, a canonical correlation-id, the facilitator role, verifier obligations, open `tstr` discriminators) that have been independently reinvented more than once — check it before inventing a new one for a domain that needs the same underlying property.
 
 A schema alone never proves interop, only shared vectors do -- see `../conformance/` for the golden test vectors every implementation's CI round-trips against, one per structure defined here.
