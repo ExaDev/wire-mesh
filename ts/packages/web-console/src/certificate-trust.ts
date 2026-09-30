@@ -10,12 +10,12 @@ import type { CertificateMemory } from "./certificate-memory.js";
 /**
  * What an address's certificate pins say about the node, against what is remembered for it.
  * - `first-use`: nothing is remembered, so the user decides whether to trust these certificates.
- * - `known`: at least one presented certificate is one already remembered, which is how a rotation looks, since a node always announces the certificate it serves now beside the ones it will serve next.
+ * - `known`: at least one presented certificate is one already remembered, which is how a rotation looks, since a node always announces the certificate it serves now beside the ones it will serve next. `trusted` is the presented certificates that are remembered: the only ones the address may be dialled with, since a presented certificate that is not remembered has not been approved by anyone.
  * - `changed`: something is remembered and none of it is presented, which is what a different node behind the same address, or a replaced certificate, looks like.
  */
 export type CertificateAssessment =
   | { kind: "first-use"; node: string; presented: readonly string[] }
-  | { kind: "known"; node: string }
+  | { kind: "known"; node: string; trusted: readonly string[] }
   | {
       kind: "changed";
       node: string;
@@ -32,8 +32,9 @@ export function assessCertificates(
     return { kind: "first-use", node, presented };
   }
   const known = new Set(remembered);
-  if (presented.some((hash) => known.has(hash))) {
-    return { kind: "known", node };
+  const trusted = presented.filter((hash) => known.has(hash));
+  if (trusted.length > 0) {
+    return { kind: "known", node, trusted };
   }
   return { kind: "changed", node, remembered, presented };
 }

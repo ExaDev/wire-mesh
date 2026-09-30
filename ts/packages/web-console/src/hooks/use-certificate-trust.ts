@@ -1,8 +1,9 @@
 // The trust moments for WebTransport nodes: a first-use confirmation before a node's certificate is pinned, a warning before an address that presents a different certificate than the remembered one is dialled, and a notice when a connected node announces certificates unrelated to the remembered ones. Each confirmation is a promise the dialling code awaits, settled by the user's click.
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CertificateMemory } from "../certificate-memory.js";
 import { bytesToHex } from "wire-mesh-core/domain/device-id";
+import { withPinnedHashes } from "wire-mesh-core/domain/pinned-address";
 import {
   assessCertificates,
   observeCertificateChanges,
@@ -30,9 +31,9 @@ export interface CertificateTrust {
   /** The memory the dial transport must use, so a change a node announces is reported. */
   memory: CertificateMemory;
   /**
-   * Whether the console may dial `address`. An address with no usable certificate pins, or one whose certificates are already remembered, is allowed at once. Otherwise this waits for the user: trusting records the presented certificates as the ones to expect.
+   * The address the console may dial in place of `address`, or undefined when the user refused it. An address with no usable certificate pins is dialled as it is. One that presents a remembered certificate is dialled with only the presented certificates that are remembered, so an address cannot add a pin of its own beside one the console already trusts. Otherwise this waits for the user: trusting records the presented certificates as the ones to expect. A second request presenting the same certificates for a node whose decision is already pending shares that decision instead of asking again, and every pending decision is refused when the console closes.
    */
-  confirmAddress: (address: string) => Promise<boolean>;
+  confirmAddress: (address: string) => Promise<string | undefined>;
   dismissChange: (key: string) => void;
 }
 
@@ -53,11 +54,53 @@ export function useCertificateTrust(
     [memory],
   );
 
+  // One pending decision per node and presented certificate set, shared by every request for exactly that until the user answers. A request presenting other certificates for the node is a different question and gets its own prompt.
+  const pending = useRef(new Map<string, Promise<boolean>>());
+  const refusals = useRef(new Map<string, () => void>());
+  useEffect(() => {
+    const open = refusals.current;
+    return () => {
+      for (const refuse of [...open.values()]) {
+        refuse();
+      }
+    };
+  }, []);
+
+  const askUser = useCallback(
+    async (
+      assessment: Exclude<CertificateAssessment, { kind: "known" }>,
+    ): Promise<boolean> => {
+      const question = `${assessment.node} ${[...assessment.presented].sort().join(",")}`;
+      const existing = pending.current.get(question);
+      if (existing !== undefined) {
+        return existing;
+      }
+      const decision = new Promise<boolean>((resolve) => {
+        const key = crypto.randomUUID();
+        const decide = (answer: boolean): void => {
+          refusals.current.delete(question);
+          pending.current.delete(question);
+          setPrompts((current) =>
+            current.filter((prompt) => prompt.key !== key),
+          );
+          resolve(answer);
+        };
+        refusals.current.set(question, () => {
+          decide(false);
+        });
+        setPrompts((current) => [...current, { key, assessment, decide }]);
+      });
+      pending.current.set(question, decision);
+      return decision;
+    },
+    [],
+  );
+
   const confirmAddress = useCallback(
-    async (address: string): Promise<boolean> => {
+    async (address: string): Promise<string | undefined> => {
       const presented = presentedCertificates(address);
       if (presented === undefined) {
-        return true;
+        return address;
       }
       const assessment = assessCertificates(
         presented.node,
@@ -65,30 +108,20 @@ export function useCertificateTrust(
         (await memory.recall(presented.node)).map((hash) => bytesToHex(hash)),
       );
       if (assessment.kind === "known") {
-        return true;
+        return withPinnedHashes(
+          address,
+          presented.sha256.filter((hash) =>
+            assessment.trusted.includes(bytesToHex(hash)),
+          ),
+        );
       }
-      const trusted = await new Promise<boolean>((resolve) => {
-        const key = crypto.randomUUID();
-        setPrompts((current) => [
-          ...current,
-          {
-            key,
-            assessment,
-            decide: (answer) => {
-              setPrompts((pending) =>
-                pending.filter((prompt) => prompt.key !== key),
-              );
-              resolve(answer);
-            },
-          },
-        ]);
-      });
-      if (trusted) {
-        await memory.remember(presented.node, presented.sha256);
+      if (!(await askUser(assessment))) {
+        return undefined;
       }
-      return trusted;
+      await memory.remember(presented.node, presented.sha256);
+      return address;
     },
-    [memory],
+    [memory, askUser],
   );
 
   const dismissChange = useCallback((key: string): void => {

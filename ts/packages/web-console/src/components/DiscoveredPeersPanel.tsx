@@ -5,12 +5,12 @@ import type { DeviceId } from "wire-mesh-core/generated/protocol";
 import { deviceHex } from "./ConnectionPanel.js";
 import { PeerLabel } from "./PeerLabel.js";
 
-/** Where a discovered peer was learned of: the connection whose directory gossiped it, and, when that connection was itself reached by gossip, the device that vouched for it. */
+/** Where a discovered peer was learned of: the connection whose directory gossiped it, and, when that connection was itself reached by gossip, the device the gossip claimed lives at its address. */
 export interface DiscoveredVia {
   /** The address the gossiping connection was dialled at. */
   address: string;
-  /** Hex device-id of the node on that connection, when it is known. */
-  device: string | undefined;
+  /** Hex device-id a gossiping node claimed for the address that connection was dialled at. Nothing on the connection authenticates it, so it is shown as a claim, never as who answered. */
+  claimedDevice: string | undefined;
 }
 
 export interface DiscoveredPeerRow {
@@ -61,8 +61,13 @@ export function DiscoveredPeersPanel({
               </Table.Td>
               <Table.Td>{peer.addresses.join(", ")}</Table.Td>
               <Table.Td>
-                {peer.via.device !== undefined && (
-                  <PeerLabel deviceHex={peer.via.device} />
+                {peer.via.claimedDevice !== undefined && (
+                  <>
+                    <Text size="xs" c="dimmed">
+                      claimed to be
+                    </Text>
+                    <PeerLabel deviceHex={peer.via.claimedDevice} />
+                  </>
                 )}
                 <Text size="xs" c="dimmed">
                   over {peer.via.address}

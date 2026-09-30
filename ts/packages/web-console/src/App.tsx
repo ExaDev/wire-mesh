@@ -158,9 +158,17 @@ export function App({
   }, [connections]);
 
   // The current domains value, read from a ref rather than closed over directly -- dialExpanded/createExpandableSession are invoked from callbacks createGossipExpansion holds onto for as long as a given session's own gossip directory keeps discovering new peers, well outliving any single render, and must still dial with whatever domains the connect form currently offers, not whichever were selected when that session's own expansion was first wired up.
-  // Addresses of this console's own connect attempts still waiting on a certificate decision, and which node gossiped each address this console has been offered.
+  // Addresses of this console's own connect attempts still waiting on a certificate decision, and the device a gossiping node claimed for each address this console has offered to dial and not yet dialled or given up on.
   const confirmingRef = useRef(new Set<string>());
-  const vouchedBy = useRef(new Map<string, string>());
+  const claimedDevices = useRef(new Map<string, string>());
+  // Set once the console is closed, so a certificate decision or dial that settles afterwards opens nothing.
+  const closedRef = useRef(false);
+  useEffect(() => {
+    closedRef.current = false;
+    return () => {
+      closedRef.current = true;
+    };
+  }, []);
   const domainsRef = useRef(domains);
   useEffect(() => {
     domainsRef.current = domains;
@@ -200,9 +208,9 @@ export function App({
     via: Readonly<DiscoveredVia>,
   ): Promise<boolean> {
     const key = deviceHex(candidate.device);
-    // A gossiped address is dialled as the vouching node's own peer, so a connection made through it can name who vouched for what it gossips in turn.
+    // The connection made through a gossiped address authenticates nothing about which device answers, so the device the gossip named is kept only to show as a claim beside what that connection gossips in turn.
     for (const candidateAddress of candidate.addresses) {
-      vouchedBy.current.set(candidateAddress, key);
+      claimedDevices.current.set(candidateAddress, key);
     }
     return new Promise<boolean>((resolve) => {
       setDiscovered((current) => [
@@ -247,19 +255,34 @@ export function App({
       onExpanded: (_candidate, expandedAddress, expandedSession) => {
         attachConnection(expandedAddress, expandedSession);
       },
-      // A dial that never got user approval (onExpansionDeclined) or that failed against every one of its addresses (onExpansionFailed) simply never produces a session -- there is no panel to remove and nothing further for this console to do, matching how a manually-typed address that fails to connect leaves no panel behind either.
+      // A dial that never got user approval (onExpansionDeclined) or that failed against every one of its addresses (onExpansionFailed) simply never produces a session -- there is no panel to remove and nothing further for this console to do, matching how a manually-typed address that fails to connect leaves no panel behind either. Either way the claims kept for its addresses are no longer needed.
+      onExpansionDeclined: forgetClaims,
+      onExpansionFailed: forgetClaims,
     });
     return session;
   }
 
+  function forgetClaims(candidate: Readonly<GossipExpansionCandidate>): void {
+    for (const candidateAddress of candidate.addresses) {
+      claimedDevices.current.delete(candidateAddress);
+    }
+  }
+
   async function dialExpanded(gossipedAddress: string): Promise<MeshSession> {
-    const dialAddress = toDialAddress(gossipedAddress);
-    if (!(await trust.confirmAddress(dialAddress))) {
+    const dialAddress = await trust.confirmAddress(
+      toDialAddress(gossipedAddress),
+    );
+    if (dialAddress === undefined) {
       throw new Error(`the certificate of ${gossipedAddress} was not trusted`);
     }
+    if (closedRef.current) {
+      throw new Error("the console was closed before the dial began");
+    }
+    const claimedDevice = claimedDevices.current.get(gossipedAddress);
+    claimedDevices.current.delete(gossipedAddress);
     const session = createExpandableSession({
       address: gossipedAddress,
-      device: vouchedBy.current.get(gossipedAddress),
+      claimedDevice,
     });
     return session.connect(dialAddress, domainsRef.current).then(() => session);
   }
@@ -271,21 +294,20 @@ export function App({
     ) {
       return;
     }
-    const dialAddress = toDialAddress(targetAddress);
     // The same address submitted again while its certificate is awaiting a decision is the same attempt, not a second one.
     if (confirmingRef.current.has(targetAddress)) {
       return;
     }
     confirmingRef.current.add(targetAddress);
     void trust
-      .confirmAddress(dialAddress)
-      .then((trusted) => {
-        if (!trusted) {
+      .confirmAddress(toDialAddress(targetAddress))
+      .then((dialAddress) => {
+        if (dialAddress === undefined || closedRef.current) {
           return;
         }
         const session = createExpandableSession({
           address: targetAddress,
-          device: undefined,
+          claimedDevice: undefined,
         });
         attachConnection(targetAddress, session);
         void session.connect(dialAddress, domains).catch(() => {
