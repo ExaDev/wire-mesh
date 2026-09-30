@@ -11,10 +11,7 @@ import {
   Title,
 } from "@mantine/core";
 import { createMeshSession } from "wire-mesh-core/domain/mesh-session";
-import type {
-  MeshSession,
-  ReconnectPolicy,
-} from "wire-mesh-core/domain/mesh-session";
+import type { MeshSession } from "wire-mesh-core/domain/mesh-session";
 import { createGossipExpansion } from "wire-mesh-core/domain/gossip-expansion";
 import type {
   GossipExpansion,
@@ -26,6 +23,7 @@ import type { Connection } from "wire-mesh-core/ports/transport";
 import type { DeviceId } from "wire-mesh-core/generated/protocol";
 import { deviceIdToHex } from "wire-mesh-core/domain/device-id";
 import { dmRoomPath } from "wire-mesh-core/domain/room-path";
+import { reconnectPolicy } from "./reconnect-policy.js";
 import { createDialTransport } from "./adapters/dial-transport.js";
 import type { CertificateMemory } from "./certificate-memory.js";
 import { DEFAULT_ICE_SERVERS } from "./ice-servers.js";
@@ -72,20 +70,6 @@ const DEFAULT_ADDRESS = "ws://localhost:8787";
 const AVAILABLE_DOMAINS = ["core/management", "core/exec", "core/data"];
 const DEFAULT_DOMAINS = ["core/management", "core/data"];
 
-// Exponential backoff, capped at 30s, giving up after 5 attempts -- reasonable defaults for a browser console reconnecting to a relay that may just be restarting, without retrying forever against one that is genuinely gone.
-const RECONNECT_MAX_ATTEMPTS = 5;
-const RECONNECT_BASE_DELAY_MS = 1000;
-const RECONNECT_MAX_DELAY_MS = 30_000;
-const RECONNECT_BACKOFF_BASE = 2;
-const reconnectPolicy: ReconnectPolicy = {
-  maxAttempts: RECONNECT_MAX_ATTEMPTS,
-  delayMs: (attempt) =>
-    Math.min(
-      RECONNECT_BASE_DELAY_MS * RECONNECT_BACKOFF_BASE ** (attempt - 1),
-      RECONNECT_MAX_DELAY_MS,
-    ),
-};
-
 /** A direct connection attempt that did not open, kept on screen until dismissed so a refusal or a failure to negotiate is never silent. The conversation itself carries on through the hub. */
 interface ConnectionFailure {
   key: string;
@@ -121,7 +105,7 @@ export function App({
   const [connections, setConnections] = useState<ConnectionEntry[]>([]);
   const [discovered, setDiscovered] = useState<PendingExpansion[]>([]);
   const [failures, setFailures] = useState<ConnectionFailure[]>([]);
-  const trust = useCertificateTrust(certificateMemory);
+  const trust = useCertificateTrust(certificateMemory, clock);
   const roomMessaging = useRoomMessaging(identity, clock, messageStore);
   const [selectedPath, setSelectedPath] = useState<string | undefined>();
   // The conversation shown is the one the user picked, falling back to the first while nothing is picked or the picked one no longer exists.
@@ -405,6 +389,9 @@ export function App({
             key={entry.address}
             address={entry.address}
             session={entry.session}
+            clock={clock}
+            reconnectPolicy={reconnectPolicy}
+            certificateChanges={trust.changes}
             onClose={() => {
               handleClose(entry);
             }}
