@@ -4,6 +4,7 @@ import { Alert, Button, Divider, Group, Stack, Text } from "@mantine/core";
 import { SubmitRow } from "web-ui-primitives";
 import { participantLabel, type ConversationView } from "../conversations.js";
 import { usePeerNames } from "../hooks/use-peer-names.js";
+import { labelText } from "../peer-names.js";
 import { MessageList } from "./MessageList.js";
 import { NoticesView } from "./NoticesView.js";
 
@@ -84,7 +85,9 @@ export function RoomPanel({
       <MessageList
         messages={view.messages}
         outgoing={view.outgoing}
-        peerLabel={participantLabel(view, (hex) => names.labelOf(hex).primary)}
+        peerLabel={participantLabel(view, (hex) =>
+          labelText(names.labelOf(hex)),
+        )}
         onRetry={onRetry}
         onDiscard={onDiscard}
       />
