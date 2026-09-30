@@ -86,6 +86,10 @@
       "import": "./dist/domain/capability-request.mjs",
       "require": "./dist/domain/capability-request.cjs"
     },
+    "./domain/coordinator-election": {
+      "import": "./dist/domain/coordinator-election.mjs",
+      "require": "./dist/domain/coordinator-election.cjs"
+    },
     "./domain/data-sync": {
       "import": "./dist/domain/data-sync.mjs",
       "require": "./dist/domain/data-sync.cjs"
