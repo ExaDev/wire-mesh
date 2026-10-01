@@ -25,11 +25,19 @@ const REVOKE_CAPABILITY: &str = "manage:revoke";
 pub const MAX_CHAIN_DEPTH: usize = 64;
 
 /// Why a token was rejected.
+/// The capability verb of a grant-capability (wire-mesh#323), kept in sync with
+/// `spec/registry/core-capabilities.md` and the TS core's own constant.
+pub const MANAGE_GRANT_CAPABILITY: &str = "manage:grant";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenRejection {
     /// Not a well-formed COSE_Sign1 over token-claims, or the chain is
     /// malformed somewhere.
     Malformed(String),
+    /// The authorised-by link's obligations failed: the cited grant-capability
+    /// did not fully verify, or the bearer/verb/scope/expiry/depth rules of the
+    /// link, or its subject-mode conditions against the minted child.
+    AuthorisationInvalid(&'static str),
     /// The issuer-key's COSE algorithm is not one this verifier implements.
     UnsupportedAlgorithm(i64),
     /// The signature over the Sig_structure does not verify against the
@@ -90,6 +98,9 @@ impl core::fmt::Display for TokenRejection {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             TokenRejection::Malformed(m) => write!(f, "malformed token: {m}"),
+            TokenRejection::AuthorisationInvalid(why) => {
+                write!(f, "authorised-by link invalid: {why}")
+            }
             TokenRejection::UnsupportedAlgorithm(alg) => {
                 write!(f, "unsupported COSE algorithm {alg}")
             }
@@ -267,6 +278,15 @@ async fn revocation_entry_grants_revoke(
     }
 }
 
+/// Which claim links the token below to the one above it (wire-mesh#323): a `parent`
+/// link narrows authority, an `authorised-by` link permits a mint. One token carries at
+/// most one of them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LinkKind {
+    Parent,
+    Authorisation,
+}
+
 /// Verify a capability token, walking its whole delegation chain.
 ///
 /// For every link from the presented token up to its root:
@@ -283,10 +303,16 @@ async fn revocation_entry_grants_revoke(
 ///    ([`revocation_entry_grants_revoke`], wire-mesh#84),
 /// 4. the link's expiry, not-before, and valid-until windows hold at
 ///    `clock.now()`,
-/// 5. against the link *below* it: the parent's bearer is the child's
-///    issuer, the capability verb is unchanged, the child's scope lies
-///    within the parent's, and the child's expiry does not exceed the
-///    parent's — narrowing only, never widening.
+/// 5. against the link *below* it, per that link's own kind ([`LinkKind`]):
+///    a parent link narrows (the parent's bearer is the child's issuer, the
+///    verb is unchanged, the child's scope and expiry stay within the
+///    parent's, and delegations-remaining consumes a hop), and an
+///    authorised-by link upholds the mint's authorisation (the authoriser's
+///    bearer is the child's issuer, its verb is manage:grant and matches its
+///    grants-capability, the child's scope and expiry stay within the
+///    authoriser's, delegations-remaining consumes a hop, and its
+///    conditions hold against the child's claims) — narrowing only, never
+///    widening, on either link.
 pub async fn verify_capability_token(
     identity: &dyn Identity,
     clock: &dyn Clock,
@@ -298,6 +324,7 @@ pub async fn verify_capability_token(
     let now = clock.now_unix_ms();
     let mut current = token.clone();
     let mut child: Option<TokenClaims> = None;
+    let mut child_link: Option<LinkKind> = None;
     let mut leaf: Option<TokenClaims> = None;
     let mut effective_expires = u64::MAX;
     let mut seen: Vec<Vec<u8>> = Vec::new();
@@ -387,40 +414,120 @@ pub async fn verify_capability_token(
                 });
             }
         }
+        // The two link kinds are mutually exclusive, and a manage:grant token is minted only
+        // through authorised-by, so an issuer's subject-mode bars can never be sidestepped by
+        // minting the next grant-capability through a parent link instead.
+        match (claims.parent.is_some(), claims.authorised_by.is_some()) {
+            (true, true) => {
+                return TokenVerdict::Invalid(TokenRejection::Malformed(
+                    "a token carries both parent and authorised-by".to_owned(),
+                ));
+            }
+            (true, false) if claims.capability.0 == MANAGE_GRANT_CAPABILITY => {
+                return TokenVerdict::Invalid(TokenRejection::AuthorisationInvalid(
+                    "a manage:grant token carries a parent link",
+                ));
+            }
+            _ => {}
+        }
+
         if let Some(conditions_bytes) = &claims.conditions {
             let nodes = match crate::domain::predicates::decode_conditions(conditions_bytes) {
                 Ok(nodes) => nodes,
                 Err(e) => return TokenVerdict::Invalid(TokenRejection::Malformed(e.to_string())),
             };
-            if !crate::domain::predicates::evaluate_conditions(&nodes) {
+            // Subject mode (wire-mesh#323): a token reached through an authorised-by link has
+            // its conditions evaluated against the child it authorised, the minted token below
+            // it; every other link (and the leaf itself) evaluates against its own claims,
+            // where the subject systems are indeterminate and fail closed.
+            let subject = match (&child, child_link) {
+                (Some(child_claims), Some(LinkKind::Authorisation)) => {
+                    Some(crate::domain::predicates::GrantSubject {
+                        capability: &child_claims.capability.0,
+                        bearer: &child_claims.bearer,
+                    })
+                }
+                _ => None,
+            };
+            if !crate::domain::predicates::evaluate_conditions(&nodes, subject.as_ref()) {
                 return TokenVerdict::Invalid(TokenRejection::ConditionsNotSatisfied {
                     token_id: claims.token_id,
                 });
             }
         }
 
-        // Narrowing against the link below, checked from the parent's
-        // side of the relationship.
+        // The link obligations, checked from the upper token's side of the relationship.
         if let Some(child_claims) = &child {
-            if child_claims.issuer != claims.bearer {
-                return TokenVerdict::Invalid(TokenRejection::NotNarrowed(
-                    "the parent's bearer is not the child's issuer",
-                ));
-            }
-            if child_claims.capability != claims.capability {
-                return TokenVerdict::Invalid(TokenRejection::NotNarrowed(
-                    "the delegated capability verb differs from the parent's",
-                ));
-            }
-            if !child_claims.scope.is_within(&claims.scope) {
-                return TokenVerdict::Invalid(TokenRejection::NotNarrowed(
-                    "the delegated scope is not within the parent's subtree",
-                ));
-            }
-            if child_claims.expires > claims.expires {
-                return TokenVerdict::Invalid(TokenRejection::NotNarrowed(
-                    "the delegated expiry is later than the parent's",
-                ));
+            match child_link {
+                Some(LinkKind::Parent) => {
+                    if child_claims.issuer != claims.bearer {
+                        return TokenVerdict::Invalid(TokenRejection::NotNarrowed(
+                            "the parent's bearer is not the child's issuer",
+                        ));
+                    }
+                    if child_claims.capability != claims.capability {
+                        return TokenVerdict::Invalid(TokenRejection::NotNarrowed(
+                            "the delegated capability verb differs from the parent's",
+                        ));
+                    }
+                    if !child_claims.scope.is_within(&claims.scope) {
+                        return TokenVerdict::Invalid(TokenRejection::NotNarrowed(
+                            "the delegated scope is not within the parent's subtree",
+                        ));
+                    }
+                    if child_claims.expires > claims.expires {
+                        return TokenVerdict::Invalid(TokenRejection::NotNarrowed(
+                            "the delegated expiry is later than the parent's",
+                        ));
+                    }
+                    // delegations-remaining consumes a hop down a parent link too: a bounded
+                    // parent must not be re-delegated into an unbounded or equal child.
+                    if let Some(remaining) = claims.delegations_remaining {
+                        if child_claims
+                            .delegations_remaining
+                            .map_or(true, |child_value| child_value >= remaining)
+                        {
+                            return TokenVerdict::Invalid(TokenRejection::NotNarrowed(
+                                "the child's delegations-remaining is not strictly less",
+                            ));
+                        }
+                    }
+                }
+                Some(LinkKind::Authorisation) => {
+                    let invalid = |why: &'static str| {
+                        TokenVerdict::Invalid(TokenRejection::AuthorisationInvalid(why))
+                    };
+                    if claims.bearer != child_claims.issuer {
+                        return invalid("the authoriser's bearer is not the minted token's issuer");
+                    }
+                    if claims.capability.0 != MANAGE_GRANT_CAPABILITY {
+                        return invalid("the authorising capability is not manage:grant");
+                    }
+                    if let Some(grants) = &claims.grants_capability {
+                        if *grants != child_claims.capability {
+                            return invalid(
+                                "the minted verb differs from the authoriser's grants-capability",
+                            );
+                        }
+                    }
+                    if !child_claims.scope.is_within(&claims.scope) {
+                        return invalid("the minted scope is not within the authoriser's");
+                    }
+                    if child_claims.expires > claims.expires {
+                        return invalid("the minted expiry is later than the authoriser's");
+                    }
+                    if let Some(remaining) = claims.delegations_remaining {
+                        if child_claims
+                            .delegations_remaining
+                            .map_or(true, |child_value| child_value >= remaining)
+                        {
+                            return invalid(
+                                "the minted delegations-remaining is not strictly less",
+                            );
+                        }
+                    }
+                }
+                None => {}
             }
         }
 
@@ -429,8 +536,9 @@ pub async fn verify_capability_token(
             leaf = Some(claims.clone());
         }
 
-        match claims.parent.clone() {
-            Some(parent) => {
+        match (claims.parent.clone(), claims.authorised_by.clone()) {
+            (Some(parent), _) => {
+                child_link = Some(LinkKind::Parent);
                 child = Some(claims);
                 match CoseSign1::decode_bytes(&parent) {
                     Ok(next) => current = next,
@@ -439,7 +547,17 @@ pub async fn verify_capability_token(
                     }
                 }
             }
-            None => {
+            (None, Some(authoriser)) => {
+                child_link = Some(LinkKind::Authorisation);
+                child = Some(claims);
+                match CoseSign1::decode_bytes(&authoriser) {
+                    Ok(next) => current = next,
+                    Err(e) => {
+                        return TokenVerdict::Invalid(TokenRejection::Malformed(e.to_string()))
+                    }
+                }
+            }
+            (None, None) => {
                 let root_issuer = claims.issuer;
                 let root_issuer_key = claims.issuer_key.clone();
                 return match leaf {
@@ -496,6 +614,7 @@ mod tests {
     use super::*;
     use crate::adapters::node_identity::NodeIdentity;
     use crate::domain::revocation::RevocationView;
+    use crate::domain::room_path::device_id_to_hex;
     use wire_mesh_wire::management::{RevocationClaims, RevocationEntry};
     use wire_mesh_wire::tokens::{CapabilityScope, CapabilityVerb};
     use wire_mesh_wire::value::CanonicalMap;
@@ -526,6 +645,9 @@ mod tests {
             valid_until: None,
             conditions: None,
             parent: None,
+            delegations_remaining: None,
+            authorised_by: None,
+            grants_capability: None,
             extra: CanonicalMap::new(),
         }
     }
@@ -550,6 +672,9 @@ mod tests {
             valid_until: None,
             conditions: None,
             parent: None,
+            delegations_remaining: None,
+            authorised_by: None,
+            grants_capability: None,
             extra: CanonicalMap::new(),
         }
     }
@@ -1572,5 +1697,367 @@ mod tests {
         assert!(verdict_authorises(&verdict, "pin:write", &inside));
         assert!(!verdict_authorises(&verdict, "pin:write", &outside));
         assert!(!verdict_authorises(&verdict, "pin:read", &inside));
+    }
+
+    // wire-mesh#323: the authorised-by link. A grant-capability (manage:grant) held by a
+    // deputy authorises the deputy to mint other capability tokens; the minted token cites
+    // the authoriser, whose conditions are evaluated against the minted child's claims.
+
+    const GRANT_TOKEN_ID: [u8; 16] = [0x51; 16];
+    const MINTED_TOKEN_ID: [u8; 16] = [0x52; 16];
+
+    /// The CBOR bytes of a no-self-grant bar: not(and(granted-capability-is verb,
+    /// grantee-is bearer-hex)), the exact node shape the TS side's noSelfGrantBar builds.
+    fn bar_conditions(verb: &str, bearer_hex: &str) -> Vec<u8> {
+        fn delegate_compare(e: &mut minicbor::Encoder<&mut Vec<u8>>, system: &str, payload: &str) {
+            e.map(3).unwrap();
+            e.str("kind").unwrap().str("delegate").unwrap();
+            e.str("system").unwrap().str(system).unwrap();
+            e.str("payload").unwrap().str(payload).unwrap();
+        }
+        fn boolean_true(e: &mut minicbor::Encoder<&mut Vec<u8>>) {
+            e.map(2).unwrap();
+            e.str("kind").unwrap().str("booleanLiteral").unwrap();
+            e.str("value").unwrap().bool(true).unwrap();
+        }
+        let mut buf = Vec::new();
+        let mut e = minicbor::Encoder::new(&mut buf);
+        e.array(1).unwrap();
+        e.map(2).unwrap();
+        e.str("kind").unwrap().str("not").unwrap();
+        e.str("operand").unwrap();
+        e.map(3).unwrap();
+        e.str("kind").unwrap().str("and").unwrap();
+        e.str("left").unwrap();
+        e.map(4).unwrap();
+        e.str("op").unwrap().str("eq").unwrap();
+        e.str("kind").unwrap().str("compare").unwrap();
+        e.str("left").unwrap();
+        delegate_compare(&mut e, "granted-capability-is", verb);
+        e.str("right").unwrap();
+        boolean_true(&mut e);
+        e.str("right").unwrap();
+        e.map(4).unwrap();
+        e.str("op").unwrap().str("eq").unwrap();
+        e.str("kind").unwrap().str("compare").unwrap();
+        e.str("left").unwrap();
+        delegate_compare(&mut e, "grantee-is", bearer_hex);
+        e.str("right").unwrap();
+        boolean_true(&mut e);
+        buf
+    }
+
+    /// A root manage:grant (signed by owner, naming exec:pty) plus an exec:pty token the
+    /// deputy minted under it, with the mutations applied before each signature.
+    async fn mint_under_grant(
+        owner: &NodeIdentity,
+        mutate_grant: impl FnOnce(&mut TokenClaims),
+        mutate_child: impl FnOnce(&mut TokenClaims),
+    ) -> (NodeIdentity, CoseSign1, CoseSign1) {
+        let deputy = NodeIdentity::generate_ed25519();
+        let mut grant_claims = claims_for(owner, *deputy.device_id());
+        grant_claims.token_id = GRANT_TOKEN_ID.to_vec();
+        grant_claims.capability = CapabilityVerb(MANAGE_GRANT_CAPABILITY.to_owned());
+        grant_claims.grants_capability = Some(CapabilityVerb("exec:pty".to_owned()));
+        mutate_grant(&mut grant_claims);
+        let grant = mint(owner, &grant_claims).await;
+
+        let mut child_claims = claims_for(&deputy, DeviceId([0xCC; 32]));
+        child_claims.token_id = MINTED_TOKEN_ID.to_vec();
+        child_claims.capability = CapabilityVerb("exec:pty".to_owned());
+        child_claims.scope = CapabilityScope {
+            kind: "folder".to_owned(),
+            path: Some("/work/subdir".to_owned()),
+        };
+        child_claims.expires = NOW + 30_000;
+        child_claims.authorised_by = Some(grant.encode_to_vec());
+        mutate_child(&mut child_claims);
+        let child = mint(&deputy, &child_claims).await;
+        (deputy, grant, child)
+    }
+
+    #[tokio::test]
+    async fn a_token_minted_under_a_grant_capability_verifies_with_the_owners_root() {
+        let owner = NodeIdentity::generate_ed25519();
+        let (_, _, child) = mint_under_grant(&owner, |_| {}, |_| {}).await;
+        match verify(&owner, &RevocationView::new(), &child).await {
+            TokenVerdict::Valid { root_issuer, .. } => {
+                assert_eq!(root_issuer, *owner.device_id());
+            }
+            other => panic!("expected Valid, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_minted_verb_the_authoriser_does_not_name_is_refused() {
+        let owner = NodeIdentity::generate_ed25519();
+        let (_, _, child) = mint_under_grant(
+            &owner,
+            |_| {},
+            |child| {
+                child.capability = CapabilityVerb("pin:write".to_owned());
+            },
+        )
+        .await;
+        assert!(matches!(
+            verify(&owner, &RevocationView::new(), &child).await,
+            TokenVerdict::Invalid(TokenRejection::AuthorisationInvalid(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn an_absent_grants_capability_means_any_verb_within_scope() {
+        let owner = NodeIdentity::generate_ed25519();
+        let (_, _, child) = mint_under_grant(
+            &owner,
+            |grant| {
+                grant.grants_capability = None;
+            },
+            |child| {
+                child.capability = CapabilityVerb("pin:write".to_owned());
+            },
+        )
+        .await;
+        assert!(matches!(
+            verify(&owner, &RevocationView::new(), &child).await,
+            TokenVerdict::Valid { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_mint_by_someone_other_than_the_authorisers_bearer_is_refused() {
+        let owner = NodeIdentity::generate_ed25519();
+        let (_, grant, _) = mint_under_grant(&owner, |_| {}, |_| {}).await;
+        let impostor = NodeIdentity::generate_ed25519();
+        let mut child_claims = claims_for(&impostor, DeviceId([0xCC; 32]));
+        child_claims.token_id = MINTED_TOKEN_ID.to_vec();
+        child_claims.capability = CapabilityVerb("exec:pty".to_owned());
+        child_claims.scope = CapabilityScope {
+            kind: "folder".to_owned(),
+            path: Some("/work/subdir".to_owned()),
+        };
+        child_claims.expires = NOW + 30_000;
+        child_claims.authorised_by = Some(grant.encode_to_vec());
+        let child = mint(&impostor, &child_claims).await;
+        assert!(matches!(
+            verify(&owner, &RevocationView::new(), &child).await,
+            TokenVerdict::Invalid(TokenRejection::AuthorisationInvalid(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_mint_whose_scope_or_expiry_widens_the_authoriser_is_refused() {
+        let owner = NodeIdentity::generate_ed25519();
+        let (_, _, widened_scope) = mint_under_grant(
+            &owner,
+            |_| {},
+            |child| {
+                child.scope = CapabilityScope {
+                    kind: "folder".to_owned(),
+                    path: Some("/other".to_owned()),
+                };
+            },
+        )
+        .await;
+        assert!(matches!(
+            verify(&owner, &RevocationView::new(), &widened_scope).await,
+            TokenVerdict::Invalid(TokenRejection::AuthorisationInvalid(_))
+        ));
+
+        let (_, _, outlives) = mint_under_grant(
+            &owner,
+            |_| {},
+            |child| {
+                child.expires = NOW + 90_000;
+            },
+        )
+        .await;
+        assert!(matches!(
+            verify(&owner, &RevocationView::new(), &outlives).await,
+            TokenVerdict::Invalid(TokenRejection::AuthorisationInvalid(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn delegations_remaining_consumes_a_hop_across_either_link() {
+        let owner = NodeIdentity::generate_ed25519();
+        let (_, _, ok_child) = mint_under_grant(
+            &owner,
+            |grant| {
+                grant.delegations_remaining = Some(1);
+            },
+            |child| {
+                child.delegations_remaining = Some(0);
+            },
+        )
+        .await;
+        assert!(matches!(
+            verify(&owner, &RevocationView::new(), &ok_child).await,
+            TokenVerdict::Valid { .. }
+        ));
+
+        let (_, _, absent_child) = mint_under_grant(
+            &owner,
+            |grant| {
+                grant.delegations_remaining = Some(1);
+            },
+            |_| {},
+        )
+        .await;
+        assert!(matches!(
+            verify(&owner, &RevocationView::new(), &absent_child).await,
+            TokenVerdict::Invalid(TokenRejection::AuthorisationInvalid(_))
+        ));
+
+        // The parent-link rule, previously unenforced in this implementation: a bounded
+        // parent must not be re-delegated into an unbounded child.
+        let parent = NodeIdentity::generate_ed25519();
+        let delegate = NodeIdentity::generate_ed25519();
+        let mut parent_claims = claims_for(&parent, *delegate.device_id());
+        parent_claims.delegations_remaining = Some(1);
+        let parent_token = mint(&parent, &parent_claims).await;
+        let mut child_claims = claims_for(&delegate, DeviceId([0xDD; 32]));
+        // A distinct token-id from the parent's: the cycle guard keys on it.
+        child_claims.token_id = vec![0x53; 16];
+        child_claims.scope = CapabilityScope {
+            kind: "folder".to_owned(),
+            path: Some("/work/subdir".to_owned()),
+        };
+        child_claims.expires = NOW + 30_000;
+        child_claims.parent = Some(parent_token.encode_to_vec());
+        let child = mint(&delegate, &child_claims).await;
+        assert!(matches!(
+            verify(&parent, &RevocationView::new(), &child).await,
+            TokenVerdict::Invalid(TokenRejection::NotNarrowed(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn the_delegate_without_use_bar_binds_the_minted_childs_claims() {
+        let owner = NodeIdentity::generate_ed25519();
+        // The bar names the grant's own bearer (the deputy), computed from the grant claims
+        // the mutation runs against.
+        let (_, _, third_partys) = mint_under_grant(
+            &owner,
+            |grant| {
+                grant.conditions =
+                    Some(bar_conditions("exec:pty", &device_id_to_hex(&grant.bearer)));
+            },
+            |child| {
+                child.bearer = DeviceId([0xEE; 32]);
+            },
+        )
+        .await;
+        assert!(matches!(
+            verify(&owner, &RevocationView::new(), &third_partys).await,
+            TokenVerdict::Valid { .. }
+        ));
+
+        let (deputy, _, self_borne) = mint_under_grant(
+            &owner,
+            |grant| {
+                grant.conditions =
+                    Some(bar_conditions("exec:pty", &device_id_to_hex(&grant.bearer)));
+            },
+            |child| {
+                child.bearer = deputy_bearer(child);
+            },
+        )
+        .await;
+        drop(deputy);
+        assert!(matches!(
+            verify(&owner, &RevocationView::new(), &self_borne).await,
+            TokenVerdict::Invalid(TokenRejection::ConditionsNotSatisfied { .. })
+        ));
+    }
+
+    /// The deputy's own device-id for a self-borne child: reads it back out of the child's
+    /// authoriser link, which names the grant whose bearer the bar pinned.
+    fn deputy_bearer(child: &TokenClaims) -> DeviceId {
+        let authoriser = child
+            .authorised_by
+            .as_ref()
+            .expect("child cites an authoriser");
+        let authoriser_claims = CoseSign1::decode_bytes(authoriser).expect("authoriser decodes");
+        authoriser_claims
+            .decode_claims()
+            .expect("authoriser claims decode")
+            .bearer
+    }
+
+    #[tokio::test]
+    async fn both_links_at_once_and_a_manage_grant_with_a_parent_are_refused() {
+        let owner = NodeIdentity::generate_ed25519();
+        let (_, grant, _) = mint_under_grant(&owner, |_| {}, |_| {}).await;
+        let deputy = NodeIdentity::generate_ed25519();
+        let root = mint(&owner, &claims_for(&owner, *deputy.device_id())).await;
+        let mut both = claims_for(&deputy, DeviceId([0xCC; 32]));
+        both.token_id = MINTED_TOKEN_ID.to_vec();
+        both.parent = Some(root.encode_to_vec());
+        both.authorised_by = Some(grant.encode_to_vec());
+        let both_token = mint(&deputy, &both).await;
+        assert!(matches!(
+            verify(&owner, &RevocationView::new(), &both_token).await,
+            TokenVerdict::Invalid(TokenRejection::Malformed(_))
+        ));
+
+        let mut grant_via_parent = claims_for(&deputy, DeviceId([0xCC; 32]));
+        grant_via_parent.token_id = MINTED_TOKEN_ID.to_vec();
+        grant_via_parent.capability = CapabilityVerb(MANAGE_GRANT_CAPABILITY.to_owned());
+        grant_via_parent.parent = Some(root.encode_to_vec());
+        let grant_via_parent_token = mint(&deputy, &grant_via_parent).await;
+        assert!(matches!(
+            verify(&owner, &RevocationView::new(), &grant_via_parent_token).await,
+            TokenVerdict::Invalid(TokenRejection::AuthorisationInvalid(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn revoking_the_grant_capability_revokes_every_grant_minted_under_it() {
+        let owner = NodeIdentity::generate_ed25519();
+        let (_, grant, child) = mint_under_grant(&owner, |_| {}, |_| {}).await;
+        drop(grant);
+        let mut view = RevocationView::new();
+        view.verify_and_insert(
+            &mint_revocation(&owner, GRANT_TOKEN_ID.to_vec()).await,
+            &owner,
+        )
+        .await
+        .expect("entry verifies");
+        assert!(matches!(
+            verify(&owner, &view, &child).await,
+            TokenVerdict::Invalid(TokenRejection::Revoked { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn nested_grant_capabilities_walk_to_the_topmost_issuer() {
+        let owner = NodeIdentity::generate_ed25519();
+        let (deputy, _, _) = mint_under_grant(&owner, |_| {}, |_| {}).await;
+        // g1 names manage:grant, so the deputy may mint a second grant-capability under it.
+        let mut g1_claims = claims_for(&owner, *deputy.device_id());
+        g1_claims.token_id = GRANT_TOKEN_ID.to_vec();
+        g1_claims.capability = CapabilityVerb(MANAGE_GRANT_CAPABILITY.to_owned());
+        g1_claims.grants_capability = Some(CapabilityVerb(MANAGE_GRANT_CAPABILITY.to_owned()));
+        let g1_token = mint(&owner, &g1_claims).await;
+        let third = NodeIdentity::generate_ed25519();
+        let mut g2_claims = claims_for(&deputy, *third.device_id());
+        g2_claims.token_id = MINTED_TOKEN_ID.to_vec();
+        g2_claims.capability = CapabilityVerb(MANAGE_GRANT_CAPABILITY.to_owned());
+        g2_claims.expires = NOW + 30_000;
+        g2_claims.authorised_by = Some(g1_token.encode_to_vec());
+        let g2 = mint(&deputy, &g2_claims).await;
+        let mut leaf = claims_for(&third, DeviceId([0xBB; 32]));
+        leaf.token_id = vec![0x53; 16];
+        leaf.capability = CapabilityVerb("exec:pty".to_owned());
+        leaf.expires = NOW + 20_000;
+        leaf.authorised_by = Some(g2.encode_to_vec());
+        let leaf_token = mint(&third, &leaf).await;
+        match verify(&owner, &RevocationView::new(), &leaf_token).await {
+            TokenVerdict::Valid { root_issuer, .. } => {
+                assert_eq!(root_issuer, *owner.device_id());
+            }
+            other => panic!("expected Valid, got {other:?}"),
+        }
     }
 }
