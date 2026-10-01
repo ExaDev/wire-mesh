@@ -89,6 +89,18 @@ export async function mintGrant(
   if (!Number.isFinite(input.lifetimeHours) || input.lifetimeHours <= 0) {
     return { ok: false, error: "the lifetime must be more than zero hours" };
   }
+  if (
+    input.delegationsRemaining !== undefined &&
+    !(
+      Number.isSafeInteger(input.delegationsRemaining) &&
+      input.delegationsRemaining >= 0
+    )
+  ) {
+    return {
+      ok: false,
+      error: "further delegations must be a whole number, zero or more",
+    };
+  }
   const scopePath = input.scopePath.trim();
   const verdict = await mintCapabilityToken({
     identity: context.identity,
@@ -100,7 +112,10 @@ export async function mintGrant(
       kind: input.scopeKind.trim(),
       ...(scopePath === "" ? {} : { path: scopePath }),
     },
-    expires: context.clock.now() + input.lifetimeHours * MS_PER_HOUR,
+    // The token schema requires a whole number of milliseconds, which a fractional number of hours would not give.
+    expires: Math.round(
+      context.clock.now() + input.lifetimeHours * MS_PER_HOUR,
+    ),
     ...(input.delegationsRemaining === undefined
       ? {}
       : { delegationsRemaining: input.delegationsRemaining }),
