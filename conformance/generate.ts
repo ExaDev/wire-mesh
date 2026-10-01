@@ -10,6 +10,7 @@ import {
   type Vector,
 } from "@exadev/wire-mesh-conformance";
 import { advertVectors } from "./adverts.ts";
+import { grantTokenVectors, roomMemberTokens } from "./token-vectors.ts";
 import { writeVectorFiles } from "./vector-files.ts";
 
 function wireHex(message: JsonWire): string {
@@ -127,152 +128,25 @@ const deviceAHex = "11".repeat(SHA256_BYTE_LENGTH);
 const deviceBHex = "22".repeat(SHA256_BYTE_LENGTH);
 const deviceCHex = "33".repeat(SHA256_BYTE_LENGTH);
 
-// wire-mesh#323: the grant permission. A manage:grant root (deviceA grants deviceB the
-// right to mint, any verb within /work since grants-capability is absent, one hop deep)
-// carrying the named no-self-grant bar in its conditions -- not(and(granted-capability-is
-// "exec:pty", grantee-is <deviceB-hex>)) -- then an exec:pty token deviceB minted under it
-// (citing it via authorised-by, granted to deviceC so the bar holds), and a second-level
-// manage:grant deviceB minted onward to deviceC, itself naming exec:pty.
-const noSelfGrantBar = {
-  kind: "not",
-  operand: {
-    kind: "and",
-    left: {
-      kind: "compare",
-      op: "eq",
-      left: {
-        kind: "delegate",
-        system: "granted-capability-is",
-        payload: "exec:pty",
-      },
-      right: { kind: "booleanLiteral", value: true },
-    },
-    right: {
-      kind: "compare",
-      op: "eq",
-      left: { kind: "delegate", system: "grantee-is", payload: deviceBHex },
-      right: { kind: "booleanLiteral", value: true },
-    },
-  },
-};
-const noSelfGrantBarBytes = Buffer.from(
-  encode([noSelfGrantBar], cdeEncodeOptions),
-).toString("hex");
-
-const manageGrantRootTokenClaims: JsonWire = {
-  "token-id": hex("05".repeat(TOKEN_ID_BYTE_LENGTH)),
-  issuer: deviceA,
-  "issuer-key": { alg: -7, "public-key": publicKeyEs256A },
-  bearer: deviceB,
-  capability: "manage:grant",
-  scope: { kind: "folder", path: "/work" },
-  expires: 1893456000000,
-  "delegations-remaining": 1,
-  conditions: hex(noSelfGrantBarBytes),
-};
-const manageGrantRootToken: JsonWire = [
-  hex(wireHex({ 1: -7, 4: deviceA })),
-  {},
-  hex(wireHex(manageGrantRootTokenClaims)),
+// wire-mesh#323's grant-permission vectors, and the room:member chain the noticeboard and manage-request vectors below embed, live in token-vectors.ts (this file is at the max-lines cap); everything they share with the vectors below is handed over explicitly. (this file is at the max-lines cap); everything they share with the vectors below is handed to them explicitly.
+const grantVectorContext = {
+  deviceA,
+  deviceB,
+  deviceC,
+  deviceAHex,
+  deviceBHex,
+  publicKeyEs256A,
+  publicKeyEs256B,
   signatureFiller,
-];
-const manageGrantRootTokenVector = vector(
-  "capability_token_v1_manage_grant_root",
-  manageGrantRootToken,
-);
-
-const grantAuthorisedTokenClaims: JsonWire = {
-  "token-id": hex("06".repeat(TOKEN_ID_BYTE_LENGTH)),
-  issuer: deviceB,
-  "issuer-key": { alg: -7, "public-key": publicKeyEs256B },
-  bearer: deviceC,
-  capability: "exec:pty",
-  scope: { kind: "folder", path: "/work/subdir" },
-  expires: 1861920000000,
-  "authorised-by": hex(manageGrantRootTokenVector.wire_hex),
-  "delegations-remaining": 0,
+  wireHex,
+  protectedHeaderHex: (device: JsonWire) => wireHex({ 1: -7, 4: device }),
+  tokenIdByteLength: TOKEN_ID_BYTE_LENGTH,
 };
-const grantAuthorisedToken: JsonWire = [
-  hex(wireHex({ 1: -7, 4: deviceB })),
-  {},
-  hex(wireHex(grantAuthorisedTokenClaims)),
-  signatureFiller,
-];
-const grantAuthorisedTokenVector = vector(
-  "capability_token_v1_grant_authorised_exec_pty",
-  grantAuthorisedToken,
-);
-
-const manageGrantDelegatedTokenClaims: JsonWire = {
-  "token-id": hex("07".repeat(TOKEN_ID_BYTE_LENGTH)),
-  issuer: deviceB,
-  "issuer-key": { alg: -7, "public-key": publicKeyEs256B },
-  bearer: deviceC,
-  capability: "manage:grant",
-  scope: { kind: "folder", path: "/work" },
-  expires: 1861920000000,
-  "grants-capability": "exec:pty",
-  "authorised-by": hex(manageGrantRootTokenVector.wire_hex),
-  "delegations-remaining": 0,
-};
-const manageGrantDelegatedToken: JsonWire = [
-  hex(wireHex({ 1: -7, 4: deviceB })),
-  {},
-  hex(wireHex(manageGrantDelegatedTokenClaims)),
-  signatureFiller,
-];
-const manageGrantDelegatedTokenVector = vector(
-  "capability_token_v1_manage_grant_delegated",
-  manageGrantDelegatedToken,
-);
+const grantVectors: Vector[] = grantTokenVectors(grantVectorContext);
+const roomMember = roomMemberTokens(grantVectorContext);
+const roomMemberVectors: Vector[] = roomMember.vectors;
 
 // A room:member grant chain demonstrating this session's own delegations-remaining fix: the owner (deviceA) issues a root grant to deviceB capped at one further re-delegation, and deviceB narrows it (a strictly lower value, 0) when re-delegating to deviceC -- deviceC's own token therefore bears no further-delegation authority at all, closing the unbounded-admission gap the claim exists to fix.
-const roomMemberRootTokenClaims: JsonWire = {
-  "token-id": hex("03".repeat(TOKEN_ID_BYTE_LENGTH)),
-  issuer: deviceA,
-  "issuer-key": { alg: -7, "public-key": publicKeyEs256A },
-  bearer: deviceB,
-  capability: "room:member",
-  scope: { kind: "room", path: `${deviceAHex}/general` },
-  expires: 1893456000000,
-  "delegations-remaining": 1,
-};
-
-const roomMemberRootToken: JsonWire = [
-  hex(wireHex({ 1: -7, 4: deviceA })),
-  {},
-  hex(wireHex(roomMemberRootTokenClaims)),
-  signatureFiller,
-];
-
-const roomMemberRootTokenVector = vector(
-  "capability_token_v1_room_member_root_grant",
-  roomMemberRootToken,
-);
-
-const roomMemberDelegatedTokenClaims: JsonWire = {
-  "token-id": hex("04".repeat(TOKEN_ID_BYTE_LENGTH)),
-  issuer: deviceB,
-  "issuer-key": { alg: -7, "public-key": publicKeyEs256B },
-  bearer: deviceC,
-  capability: "room:member",
-  scope: { kind: "room", path: `${deviceAHex}/general` },
-  expires: 1861920000000,
-  parent: hex(roomMemberRootTokenVector.wire_hex),
-  "delegations-remaining": 0,
-};
-
-const roomMemberDelegatedToken: JsonWire = [
-  hex(wireHex({ 1: -7, 4: deviceB })),
-  {},
-  hex(wireHex(roomMemberDelegatedTokenClaims)),
-  signatureFiller,
-];
-
-const roomMemberDelegatedTokenVector = vector(
-  "capability_token_v1_room_member_delegated_no_further_delegation",
-  roomMemberDelegatedToken,
-);
 
 // core/room's own noticeboard entry (room.cddl's room-notice), self-certifying the same way capability-token and handle-record already are. deviceB posts to the same general room its roomMemberRootToken already grants it membership in, embedding that exact token in full so a reader with no other context can verify posting authority from the notice alone.
 const NOTICE_ID_BYTE_LENGTH = 16; // opaque notice-id, arbitrarily sized like token-id
@@ -281,7 +155,7 @@ const roomNoticeClaims: JsonWire = {
   room: `${deviceAHex}/general`,
   poster: deviceB,
   "poster-key": { alg: -7, "public-key": publicKeyEs256B },
-  token: roomMemberRootToken,
+  token: roomMember.rootToken,
   "notice-id": hex("a1".repeat(NOTICE_ID_BYTE_LENGTH)),
   "posted-at": 1861920000000,
   "content-type": "text/plain",
@@ -302,7 +176,7 @@ const roomNoticeForwardClaims: JsonWire = {
   room: `${deviceAHex}/general`,
   poster: deviceC,
   "poster-key": { alg: -7, "public-key": publicKeyEs256B }, // reusing B's synthetic key bytes for C is fine here -- this file freezes envelope shape, not real per-device key material
-  token: roomMemberDelegatedToken,
+  token: roomMember.delegatedToken,
   "notice-id": hex("a2".repeat(NOTICE_ID_BYTE_LENGTH)),
   "posted-at": 1861920100000,
   "content-type": "application/x-room-notice",
@@ -327,7 +201,7 @@ const roomNoticeEncryptedClaims: JsonWire = {
   room: `${deviceAHex}/general`,
   poster: deviceB,
   "poster-key": { alg: -7, "public-key": publicKeyEs256B },
-  token: roomMemberRootToken,
+  token: roomMember.rootToken,
   "notice-id": hex("a3".repeat(NOTICE_ID_BYTE_LENGTH)),
   "posted-at": 1861920200000,
   "content-type": "text/plain+aes256gcm",
@@ -367,11 +241,8 @@ const handleRecordVector = vector("handle_record_v1_dns_anchored", [
 const tokenVectors: Vector[] = [
   rootTokenVector,
   delegatedTokenVector,
-  manageGrantRootTokenVector,
-  grantAuthorisedTokenVector,
-  manageGrantDelegatedTokenVector,
-  roomMemberRootTokenVector,
-  roomMemberDelegatedTokenVector,
+  ...grantVectors,
+  ...roomMemberVectors,
   roomNoticeVector,
   roomNoticeForwardVector,
   roomNoticeEncryptedVector,
@@ -611,7 +482,7 @@ const frameVectors: Vector[] = [
       },
     },
     scope: { kind: "room", path: `${deviceAHex}/general` },
-    token: roomMemberRootToken,
+    token: roomMember.rootToken,
   }),
   // room.read is batched -- an agent typically drains and marks read several messages in one pass, and a one-message-per-round-trip receipt verb would turn one drain into N round trips per peer.
   vector("manage_request_v1_room_read", {
@@ -626,7 +497,7 @@ const frameVectors: Vector[] = [
       },
     },
     scope: { kind: "room", path: `${deviceAHex}/general` },
-    token: roomMemberRootToken,
+    token: roomMember.rootToken,
   }),
   vector("manage_request_v1_room_leave", {
     type: "manage-request",
@@ -636,7 +507,7 @@ const frameVectors: Vector[] = [
       params: { verb: "room.leave" },
     },
     scope: { kind: "room", path: `${deviceAHex}/general` },
-    token: roomMemberRootToken,
+    token: roomMember.rootToken,
   }),
   vector("manage_request_v1_room_members", {
     type: "manage-request",
@@ -646,7 +517,7 @@ const frameVectors: Vector[] = [
       params: { verb: "room.members" },
     },
     scope: { kind: "room", path: `${deviceAHex}/general` },
-    token: roomMemberRootToken,
+    token: roomMember.rootToken,
   }),
   // room.join and room.invite are deliberately ungated (no token field) -- access control is a human's explicit approval in the receiving UI, not a pre-shared token, the first verbs in this spec to work that way. This join vector uses a DM room path (the sorted device-id pair), the shape a first, tokenless contact actually needs.
   vector("manage_request_v1_room_join_dm", {
@@ -667,7 +538,7 @@ const frameVectors: Vector[] = [
       params: {
         verb: "room.invite",
         invitee: deviceC,
-        token: roomMemberDelegatedToken,
+        token: roomMember.delegatedToken,
       },
     },
     scope: { kind: "room", path: `${deviceAHex}/general` },
@@ -685,7 +556,7 @@ const frameVectors: Vector[] = [
       },
     },
     scope: { kind: "room", path: `${deviceAHex}/general` },
-    token: roomMemberRootToken,
+    token: roomMember.rootToken,
   }),
   // room.rekey under the "full history" policy: wrapped-key is an array, one entry per historical epoch being granted to a newly admitted member.
   vector("manage_request_v1_room_rekey_full_history", {
@@ -700,7 +571,7 @@ const frameVectors: Vector[] = [
       },
     },
     scope: { kind: "room", path: `${deviceAHex}/general` },
-    token: roomMemberRootToken,
+    token: roomMember.rootToken,
   }),
   // room-join-ok: the approval response to room.join, carrying the freshly minted grant AND the room's current membership so a joiner learns who else is there on the same round trip that grants it membership.
   vector("manage_response_v1_room_join_ok", {
@@ -708,7 +579,7 @@ const frameVectors: Vector[] = [
     "request-id": 11,
     outcome: {
       result: "ok",
-      "granted-token": roomMemberDelegatedToken,
+      "granted-token": roomMember.delegatedToken,
       members: [{ device: deviceA }, { device: deviceB }],
     },
   }),
@@ -835,7 +706,7 @@ const frameVectors: Vector[] = [
       },
     },
     scope: { kind: "group" },
-    token: roomMemberRootToken,
+    token: roomMember.rootToken,
   }),
   // manage-ok extended per threshold-commit's own comment: "manage-ok extended with: participant: device-id, hiding: bstr, binding: bstr" -- returning a commitment IS the participant's act of authorisation.
   vector("manage_response_v1_threshold_commit_ok", {
@@ -863,7 +734,7 @@ const frameVectors: Vector[] = [
       },
     },
     scope: { kind: "group" },
-    token: roomMemberRootToken,
+    token: roomMember.rootToken,
   }),
   // manage-ok extended per threshold-sign's own comment: "manage-ok extended with: share: bstr .cbor threshold-share-envelope" -- the released share, self-certifying under the releasing participant's own PERSONAL key (never the group's).
   vector("manage_response_v1_threshold_sign_ok", {
@@ -901,7 +772,7 @@ const frameVectors: Vector[] = [
       },
     },
     scope: { kind: "group" },
-    token: roomMemberRootToken,
+    token: roomMember.rootToken,
   }),
   vector("manage_request_v1_threshold_abort_without_reason", {
     type: "manage-request",
@@ -911,7 +782,7 @@ const frameVectors: Vector[] = [
       params: { verb: "threshold.abort", "session-id": 1 },
     },
     scope: { kind: "group" },
-    token: roomMemberRootToken,
+    token: roomMember.rootToken,
   }),
   // Fresh DKG: existing-group-key absent, proof-of-knowledge REQUIRED and present.
   vector("manage_request_v1_threshold_keygen_round1_fresh_dkg", {
