@@ -67,6 +67,43 @@ async function heldRow(): Promise<GrantRow> {
   };
 }
 
+/** A valid manage:grant this device holds, which a mint can cite as its authoriser. */
+async function heldGrantRow(): Promise<GrantRow> {
+  const minted = await mintGrant(
+    {
+      bearerHex: deviceIdToHex(holder.deviceId),
+      capability: "manage:grant",
+      scopeKind: "folder",
+      scopePath: "/work",
+      lifetimeHours: DAY_HOURS,
+      delegationsRemaining: undefined,
+      parent: undefined,
+    },
+    { identity: issuer, clock },
+  );
+  if (!minted.ok) throw new Error(minted.error);
+  const claims = decodeGrantClaims(minted.token);
+  if (claims === undefined) throw new Error("minted token has no claims");
+  return {
+    tokenId: "held-grant-1",
+    direction: "held",
+    token: minted.token,
+    claims,
+    recordedAt: NOW,
+    status: { kind: "valid" },
+  };
+}
+
+type OnMint = React.ComponentProps<typeof MintGrantForm>["onMint"];
+
+function recordingMint(): ReturnType<
+  typeof vi.fn<(input: Readonly<MintGrantInput>) => ReturnType<OnMint>>
+> {
+  return vi.fn<(input: Readonly<MintGrantInput>) => ReturnType<OnMint>>(
+    async () => Promise.resolve({ ok: true, code: "wm-grant1.x" }),
+  );
+}
+
 function renderForm(
   delegable: readonly GrantRow[],
   onMint: React.ComponentProps<typeof MintGrantForm>["onMint"],
@@ -157,5 +194,79 @@ describe("MintGrantForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Mint grant" }));
 
     expect(await screen.findByText(STORAGE_FAILURE)).toBeInTheDocument();
+  });
+
+  it("offers the covered verb and the self-grant bars for a manage:grant, and passes them on", async () => {
+    const onMint = recordingMint();
+    renderForm([], onMint);
+    fillRequiredFields();
+    fireEvent.change(screen.getByRole("combobox", { name: /^Capability/ }), {
+      target: { value: "manage:grant" },
+    });
+    fireEvent.change(screen.getByLabelText(/^Covered verb/), {
+      target: { value: "exec:pty" },
+    });
+    fireEvent.change(screen.getByLabelText(/^Barred from granting to itself/), {
+      target: { value: "exec:pty, manage:grant" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Mint grant" }));
+
+    await waitFor(() => {
+      expect(onMint).toHaveBeenCalledTimes(1);
+    });
+    expect(onMint.mock.calls[0]?.[0]).toMatchObject({
+      targetVerb: "exec:pty",
+      selfGrantBars: ["exec:pty", "manage:grant"],
+    });
+  });
+
+  it("offers neither field for a capability that names no verb", () => {
+    renderForm([], recordingMint());
+    fillRequiredFields();
+
+    expect(screen.queryByLabelText(/^Covered verb/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(/^Barred from granting to itself/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("passes a chosen authorising manage:grant to the mint", async () => {
+    const authoriser = await heldGrantRow();
+    const onMint = recordingMint();
+    renderForm([authoriser], onMint);
+    fillRequiredFields();
+    fireEvent.click(screen.getByRole("combobox", { name: /^Authorised by/ }));
+    fireEvent.click(
+      await screen.findByRole("option", { name: /^manage:grant from/ }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Mint grant" }));
+
+    await waitFor(() => {
+      expect(onMint).toHaveBeenCalledTimes(1);
+    });
+    expect(onMint.mock.calls[0]?.[0].authorisedBy).toEqual(authoriser.token);
+  });
+
+  it("refuses to mint when the authorising grant is no longer offered, rather than dropping its bars", async () => {
+    const authoriser = await heldGrantRow();
+    const onMint = recordingMint();
+    const { rerender } = renderForm([authoriser], onMint);
+    fillRequiredFields();
+    fireEvent.click(screen.getByRole("combobox", { name: /^Authorised by/ }));
+    fireEvent.click(
+      await screen.findByRole("option", { name: /^manage:grant from/ }),
+    );
+
+    rerender(
+      <MantineProvider>
+        <MintGrantForm delegable={[]} onMint={onMint} />
+      </MantineProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Mint grant" }));
+
+    expect(await screen.findByText(/no longer valid/)).toBeInTheDocument();
+    expect(onMint).not.toHaveBeenCalled();
   });
 });

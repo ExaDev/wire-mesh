@@ -1,4 +1,4 @@
-// The form for minting a grant: who it is for, what it allows and over what, how long it lasts, and optionally a held grant to delegate from, in which case core refuses anything that would widen it.
+// The form for minting a grant: who it is for, what it allows and over what, how long it lasts, and optionally a held grant to delegate from or a held manage:grant that authorises the mint, in which case core refuses anything that would widen it or that the authorising grant bars. A manage:grant or manage:request also names the one verb it covers, and a manage:grant can bar its holder from granting chosen verbs to itself.
 
 import { useState } from "react";
 import {
@@ -12,6 +12,8 @@ import {
   TextInput,
 } from "@mantine/core";
 import { deviceIdToHex } from "wire-mesh-core/domain/device-id";
+import { MANAGE_REQUEST_CAPABILITY } from "wire-mesh-core/domain/capability-request";
+import { MANAGE_GRANT_CAPABILITY } from "wire-mesh-core/domain/tokens";
 import { shortId } from "../peer-names.js";
 import { KNOWN_CAPABILITIES } from "../mint-grant.js";
 import type { MintGrantInput } from "../mint-grant.js";
@@ -19,6 +21,15 @@ import type { GrantActionResult, GrantRow } from "../hooks/use-grants.js";
 
 const DEFAULT_LIFETIME_HOURS = 24;
 const NO_PARENT = "root";
+const NO_AUTHORISER = "none";
+
+/** Splits a comma-separated list of verbs, dropping blanks. */
+function verbList(text: string): string[] {
+  return text
+    .split(",")
+    .map((verb) => verb.trim())
+    .filter((verb) => verb !== "");
+}
 
 export interface MintGrantFormProps {
   /** Grants this device holds and so can delegate from. */
@@ -41,11 +52,21 @@ export function MintGrantForm({
   );
   const [delegations, setDelegations] = useState<number | "">("");
   const [parentId, setParentId] = useState<string>(NO_PARENT);
+  const [authoriserId, setAuthoriserId] = useState<string>(NO_AUTHORISER);
+  const [targetVerb, setTargetVerb] = useState("");
+  const [barredVerbs, setBarredVerbs] = useState("");
   const [outcome, setOutcome] = useState<
     GrantActionResult<{ code: string }> | undefined
   >(undefined);
 
   const parent = delegable.find((row) => row.tokenId === parentId);
+  const authoriser = delegable.find((row) => row.tokenId === authoriserId);
+  const authorisers = delegable.filter(
+    (row) => row.claims.capability === MANAGE_GRANT_CAPABILITY,
+  );
+  const namesVerb =
+    capability === MANAGE_GRANT_CAPABILITY ||
+    capability === MANAGE_REQUEST_CAPABILITY;
 
   function submit(): void {
     // A chosen parent that has expired or been revoked since it was picked no longer appears in `delegable`. Minting anyway would issue a root grant, which is wider than the delegation asked for.
@@ -57,6 +78,15 @@ export function MintGrantForm({
       });
       return;
     }
+    // Same reasoning for an authorising grant that has lapsed since it was picked: minting without it would drop the bars it carried.
+    if (authoriserId !== NO_AUTHORISER && authoriser === undefined) {
+      setOutcome({
+        ok: false,
+        error:
+          "the grant you chose to authorise this is no longer valid; choose another, or choose None to mint without one",
+      });
+      return;
+    }
     onMint({
       bearerHex,
       capability,
@@ -65,6 +95,10 @@ export function MintGrantForm({
       lifetimeHours,
       delegationsRemaining: delegations === "" ? undefined : delegations,
       parent: parent?.token,
+      authorisedBy: authoriser?.token,
+      targetVerb: namesVerb ? targetVerb : "",
+      selfGrantBars:
+        capability === MANAGE_GRANT_CAPABILITY ? verbList(barredVerbs) : [],
     }).then(setOutcome, (error: unknown) => {
       setOutcome({
         ok: false,
@@ -125,6 +159,30 @@ export function MintGrantForm({
             setScopePath(event.currentTarget.value);
           }}
         />
+        {namesVerb && (
+          <TextInput
+            label="Covered verb"
+            description={
+              capability === MANAGE_GRANT_CAPABILITY
+                ? "The one verb the holder may grant, as subsystem:action. Empty means any verb within the scope."
+                : "The one verb the holder may request, as subsystem:action. Empty means any verb within the scope."
+            }
+            value={targetVerb}
+            onChange={(event) => {
+              setTargetVerb(event.currentTarget.value);
+            }}
+          />
+        )}
+        {capability === MANAGE_GRANT_CAPABILITY && (
+          <TextInput
+            label="Barred from granting to itself"
+            description="Comma-separated verbs the holder may not grant to its own device, for example manage:grant to stop it passing on the right to grant."
+            value={barredVerbs}
+            onChange={(event) => {
+              setBarredVerbs(event.currentTarget.value);
+            }}
+          />
+        )}
         <NumberInput
           label="Lasts (hours)"
           min={0}
@@ -157,6 +215,22 @@ export function MintGrantForm({
           value={parentId}
           onChange={(value) => {
             setParentId(value ?? NO_PARENT);
+          }}
+        />
+        <Select
+          label="Authorised by"
+          description="A manage:grant you hold that permits this mint; it may bar what you can grant. None means this grant is minted on your own authority."
+          allowDeselect={false}
+          data={[
+            { value: NO_AUTHORISER, label: "None" },
+            ...authorisers.map((row) => ({
+              value: row.tokenId,
+              label: `manage:grant from ${shortId(deviceIdToHex(row.claims.issuer))}`,
+            })),
+          ]}
+          value={authoriserId}
+          onChange={(value) => {
+            setAuthoriserId(value ?? NO_AUTHORISER);
           }}
         />
         <Button type="submit" size="xs" w="fit-content">
