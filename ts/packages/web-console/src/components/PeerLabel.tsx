@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   ActionIcon,
   CopyButton,
+  Badge,
   Group,
   Text,
   TextInput,
@@ -68,13 +69,24 @@ export function PeerLabel({
   return (
     <Group gap="xs" wrap="nowrap">
       <div>
+        {label.source === "self" && (
+          <Text size="xs" c="dimmed">
+            calls itself
+          </Text>
+        )}
         <Text
           size="sm"
-          fw={label.source === "id" ? "normal" : "bold"}
+          fw={label.source === "petname" ? "bold" : "normal"}
+          fs={label.source === "self" ? "italic" : "normal"}
           ff={label.source === "id" ? "monospace" : "text"}
         >
           {label.primary}
         </Text>
+        {label.matchesPetname && (
+          <Badge size="xs" color="orange" variant="light">
+            same as a name you set
+          </Badge>
+        )}
         {label.secondary !== undefined && (
           <Text
             size="xs"
