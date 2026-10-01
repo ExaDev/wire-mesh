@@ -119,7 +119,9 @@ describe("useCertificateTrust", () => {
 
   it("keeps a newer prompt for the same question intact when an older one is decided again", async () => {
     const memory = await memoryRemembering();
-    const { result, unmount } = renderHook(() => useCertificateTrust(memory));
+    const { result, unmount } = renderHook(() =>
+      useCertificateTrust(memory, CLOCK),
+    );
     const first = result.current.confirmAddress(pinnedTo("a"));
     await waitFor(() => {
       expect(result.current.prompts).toHaveLength(1);
