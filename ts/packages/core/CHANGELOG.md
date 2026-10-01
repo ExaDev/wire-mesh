@@ -1,3 +1,9 @@
+## [3.7.2](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.7.1...wire-mesh-core%403.7.2) (2026-10-01)
+
+### Documentation
+
+* **spec:** record the grant and request permissions as open design again ([46a3955](https://github.com/ExaDev/wire-mesh/commit/46a3955eea070a4d734caa2b709e72563ebccee1))
+
 ## [3.7.1](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.7.0...wire-mesh-core%403.7.1) (2026-10-01)
 
 ### Tests
