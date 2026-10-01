@@ -14,6 +14,7 @@ Append-only. A bare `subsystem:action` capability verb is spec-owned and matched
 | `relay:use` | `node` | `core/management` | active |
 | `manage:revoke` | any — narrows to the target token's own scope kind | `core/management` | active |
 | `manage:grant` | any — must narrow the minted token's own scope; `grants-capability` names the verb it may mint (absent: any) | `core/management` | active |
+| `manage:request` | any — must cover the requested capability's own scope; `requests-capability` names the verb it may ask for (absent: any) | `core/management` | active |
 | `bulk:write` | any — left open to the calling domain (e.g. `folder` for a `core/exec` stdout capture) | `core/bulk` | active |
 | `bulk:read` | any — left open to the calling domain | `core/bulk` | active |
 | `group:member` | `group` | `core/management` | active |
