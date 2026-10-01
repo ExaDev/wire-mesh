@@ -31,7 +31,9 @@
 ; Two shapes, two different trust roots, for a real security reason:
 ;
 ; - `<owner-hex>/<local-name>` (a named, persistent room): the acceptable
-;   root is the owner named in the path. A member honours another member's
+;   root is the owner named in the path. These two shapes are the room
+;   instances of the general chain-root rule tokens.cddl states, which also
+;   governs tokens minted under a grant-capability's authorised-by link. A member honours another member's
 ;   token because that token's own chain terminates at the owner, and the
 ;   verifying member already accepted that owner's authority the moment it
 ;   accepted its own membership token.

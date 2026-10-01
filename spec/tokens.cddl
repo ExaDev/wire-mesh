@@ -81,7 +81,27 @@ capability-token = cose-sign1
 ; `0` on every grant it issues directly, so every member's token was issued
 ; by the owner and is therefore directly revocable with zero collateral,
 ; rather than only revocable by tearing down an entire invited subtree.
-; Today's behaviour, pending the grant-permission design (wire-mesh#323): a delegation's bearer is unconstrained, so whoever may mint a child of a token may mint one naming themselves as bearer; the right to delegate a capability, as the model stands, includes the right to use it. `conditions` on a token are evaluated against that token's own claims and deliberately do not inherit, so nothing today constrains who a minted child may name as bearer. Whether a grant-capability (grantability as a permission of its own, rooted at the resource's owner) whose trilean conditions bind the grants it authorises, letting an issuer bar its holder from granting to itself among other constraints, should close that is the open design in #323.
+; The right to delegate is itself a capability (wire-mesh#323): `manage:grant`.
+; A grant-capability token authorises its bearer to mint other capability
+; tokens; the minted token cites the grant-capability that authorised it via
+; `authorised-by`, whose verifier obligations (below) include evaluating the
+; authoriser's `conditions` against the MINTED child's own claims. That
+; child-binding evaluation is what makes "may grant but may not grant to
+; itself" expressible: the pre-#323 argument ("a delegator can always name
+; itself as bearer, so delegating includes using") held only while conditions
+; could not see the child, and subject-mode evaluation closes exactly that
+; gap. `delegations-remaining` remains as the hard depth cap, counting hops
+; across BOTH link kinds: a child's value MUST be strictly less than the value
+; on the token above it, whichever link joins them.
+;
+; Delegation chains terminate at the resource's owner. For a scope kind whose
+; path encodes an owner (room's owner-named paths, room.cddl) the acceptable
+; root is that owner. For a scope kind with no owner in the path (node,
+; folder, group) the acceptable root is the verifying device itself, mirroring
+; the DM rule: the verifier's own acceptance of the root is what makes a
+; grant over a verifier-local resource meaningful. A domain needing a broader
+; root for its own kind defines its own rule, the way core/room did; nothing
+; here requires every kind to have one before the rule applies where it can.
 token-claims = {
   token-id: bstr,
   issuer: device-id,
@@ -92,11 +112,35 @@ token-claims = {
   expires: uint,               ; Unix ms
   ? not-before: uint,
   ? parent: bstr,               ; bstr .cbor capability-token — a fully self-contained, nested COSE_Sign1 of the parent token; the recursive delegation chain. A verifier walking this chain MUST also check every ancestor's own token-id against the revocation view (management.cddl's revocation-entry) -- revoking one ancestor revokes everything delegated beneath it, not just a leaf's own token-id.
+  ? "authorised-by": bstr,      ; bstr .cbor capability-token -- the grant-capability that authorised this token's MINT (wire-mesh#323), a different link from `parent`: parent means "this token narrows that one" (same verb, narrower authority), authorised-by means "that token permitted this one to exist". Verifier obligations: decode and independently verify the authorising token as an ordinary capability-token -- signature, self-certification, expiry/not-before/valid-until, and the revocation sweep of its WHOLE chain, so revoking a grant-capability revokes every grant minted under it -- then all of: the authoriser's bearer MUST equal this token's issuer (the holder minted it, the authorised-by analogue of parent's bearer rule); the authoriser's capability MUST be manage:grant; the authoriser's grants-capability, when present, MUST equal this token's capability; this token's scope MUST narrow the authoriser's; this token's expires MUST NOT exceed the authoriser's; delegations-remaining consumes one hop (when the authoriser carries it, this token's own value MUST be present and strictly less). The authoriser's conditions are evaluated against THIS token's claims (subject mode), the one place conditions bind a token other than their carrier. A token MUST NOT carry both parent and authorised-by; a token whose capability is manage:grant MUST NOT carry parent at all -- conditions bind only across the authorised-by link, so a parent-mint of a grant-capability would sidestep the issuer's bars.
   ? "delegations-remaining": uint,
   ? "valid-until": uint,        ; Unix ms; bounds the lifetime of the authorised CONTENT/ACTION, distinct from `expires` (authorisation to present the token itself). A verifier MUST additionally reject when now > valid-until, independent of expires/revocation. Absent means unbounded, matching delegations-remaining's own absent-means-unbounded precedent -- no migration needed for existing tokens.
   ? conditions: bstr,           ; bstr .cbor of a trilean predicate-node array (see https://github.com/ExaDev/trilean), opaque at this CDDL layer the same way `parent` nests another capability-token opaquely -- trilean's own Zod schemas are the shape's source of truth, not a parallel CDDL redefinition of an evolving node-kind vocabulary. A verifier obligation, not a CDDL constraint: every entry MUST evaluate to a definite `true` via trilean's evaluatePredicate, with a registered resolver for the mandatory `bearer-is`/`expires-at`/`scope-narrows`/`capability-is`/`depth-remaining` delegate systems; an indeterminate or false result for ANY entry refuses the whole token, the same "can't resolve it, refuse it" fail-closed convention already applied to an unrecognised discriminator elsewhere in this spec. This field is strictly additive: those five narrowing checks are evaluated structurally from a delegated token's own claims and its parent's, regardless of this field's contents, and no entry here can disable, relax, or override them -- `conditions` only ever adds further, issuer-chosen restrictions on top. Absent means no further restrictions beyond narrowing, exactly today's behaviour -- no migration needed for existing tokens.
+  ? "grants-capability": capability-verb,  ; on a manage:grant token: the single verb it authorises its bearer to mint. Absent means any capability verb within the token's own scope (the absent-means-unbounded convention). Combined with subject-mode conditions this is the spelling of "an admin who may hand out room:member but hold none themselves": grant manage:grant scoped to the room, grants-capability room:member, and a grantee-is condition barring the bearer itself.
   * tstr => any,                ; forward-compatible extension claims
 }
+
+; Subject-mode condition evaluation and the grant-capability's registered
+; delegate systems (wire-mesh#323). Ordinarily a token's conditions are
+; evaluated against that token's own claims (the rule on the conditions field
+; above). When a verifier walks an authorised-by link, the AUTHORISER's
+; conditions are instead evaluated exactly once, against the MINTED child's
+; claims; the recursive verification of the authoriser never re-evaluates them
+; in ordinary mode, or no child could ever verify past a child-named entry.
+; Two delegate systems are registered whenever a subject is present, and are
+; indeterminate (fail-closed) whenever one is not:
+;   grantee-is               payload: 64-char lowercase hex device-id;
+;                            true iff the subject's bearer is that device
+;   granted-capability-is    payload: capability-verb;
+;                            true iff the subject's capability is that verb
+; With trilean's not/and (strict Kleene: not of an indeterminate stays
+; indeterminate, and any indeterminate refuses) these express the two named
+; bars, each one entry in the grant-capability's conditions array:
+;   no self-perpetuation:  not(and(granted-capability-is "manage:grant",
+;                                  grantee-is <bearer-hex>))
+;   delegate-without-use:  the identical node with the underlying verb
+; Recipient restrictions generally ("only to these principals") live here
+; too, in the issuer's conditions, rather than in new structural fields.
 
 ; Signing convention (a verifier obligation, not expressible as a CDDL
 ; constraint): `signature` is computed per RFC 9052 §4.4's Sig_structure,
