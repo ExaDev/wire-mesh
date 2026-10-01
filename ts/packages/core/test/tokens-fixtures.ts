@@ -127,6 +127,12 @@ export interface TokenSeed {
   validUntil?: number;
   /** Defaults to "exec:pty", the value every pre-existing test relies on implicitly. Overridable so a test can mint a manage:revoke-capability authorization token without needing a second signing helper. */
   capability?: CapabilityVerb;
+  /** Encoded verbatim as authorised-by: the grant-capability authorising this mint (wire-mesh#323). */
+  authorisedBy?: Uint8Array<ArrayBuffer>;
+  /** Encoded verbatim as grants-capability, on a manage:grant token. */
+  grantsCapability?: CapabilityVerb;
+  /** Encoded verbatim as conditions, already CBOR bytes of a trilean predicate-node array. */
+  conditions?: Uint8Array<ArrayBuffer>;
 }
 
 /** Builds and signs one capability token as `identity` -- explicit field-by-field construction rather than spreading a partial claims object, since TokenClaims' own `.catchall(z.unknown())` index signature (the spec's forward-compatible extension-field pattern) makes a spread-based `Omit<TokenClaims, ...>` lose the specific field types. Deliberately does none of mintCapabilityToken's own narrowing checks -- tests exercising verifyCapabilityToken's own enforcement need to construct chains mint would refuse to produce. */
@@ -149,6 +155,13 @@ export async function signToken(
     ...(seed.validUntil !== undefined
       ? { "valid-until": seed.validUntil }
       : {}),
+    ...(seed.authorisedBy !== undefined
+      ? { "authorised-by": seed.authorisedBy }
+      : {}),
+    ...(seed.grantsCapability !== undefined
+      ? { "grants-capability": seed.grantsCapability }
+      : {}),
+    ...(seed.conditions !== undefined ? { conditions: seed.conditions } : {}),
   };
 
   const payload = encodeBuf(claims);

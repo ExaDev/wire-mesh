@@ -9,6 +9,7 @@ import {
 import { z } from "zod";
 import type { DeviceId, TokenClaims } from "../generated/protocol.js";
 import type { Clock } from "../ports/clock.js";
+import { deviceIdToHex } from "./device-id.js";
 import { bytesEqual, scopeNarrows } from "./token-scope.js";
 
 /** The wire shape of `token-claims.conditions` once CBOR-decoded: trilean's own PredicateNodeSchema is the single source of truth for what a condition entry may contain, re-validated here rather than trusted from a CDDL-generated shadow schema (see tokens.cddl's own comment on why `conditions` is an opaque bstr, not a native CDDL type) -- a token from an untrusted peer must pass trilean's real schema before any of its conditions are evaluated. Explicitly annotated: trilean's PredicateNodeSchema is a deeply recursive z.lazy() type whose inferred shape is too large for tsdown's declaration-file generator to serialise (TS7056) without this. */
@@ -70,6 +71,58 @@ export interface TokenPredicateContext {
 export interface ConditionsContext {
   readonly clock: Clock;
   readonly claims: Readonly<TokenClaims>;
+  /** The minted child a grant-capability's conditions are being evaluated against (wire-mesh#323 subject mode): present only inside an authorised-by verification walk or a mint-time authorisation check, never when a token's conditions are evaluated against its own claims. */
+  readonly subject?: Readonly<GrantSubject>;
+}
+
+/** The child half of a subject-mode conditions evaluation: the claims of the token a grant-capability authorises, structurally what NarrowingCandidate already is plus the bearer the mint named. Satisfied by a full TokenClaims, so the verifier passes the child's decoded claims directly. */
+export interface GrantSubject {
+  capability: TokenClaims["capability"];
+  scope: TokenClaims["scope"];
+  bearer: DeviceId;
+  expires: number;
+  delegationsRemaining?: number;
+}
+
+/** The two subject-mode delegate systems (wire-mesh#323), registered only when a ConditionsContext carries a subject, and indeterminate (fail-closed) whenever one does not. */
+export const GRANTEE_IS = "grantee-is";
+export const GRANTED_CAPABILITY_IS = "granted-capability-is";
+
+export type SubjectSystem = typeof GRANTEE_IS | typeof GRANTED_CAPABILITY_IS;
+
+function isSubjectSystem(system: string): system is SubjectSystem {
+  return system === GRANTEE_IS || system === GRANTED_CAPABILITY_IS;
+}
+
+const subjectHandlers: Record<
+  SubjectSystem,
+  TokenDelegateHandler<ConditionsContext>
+> = {
+  [GRANTEE_IS]: (payload, context) => {
+    if (context.subject === undefined) return { found: false };
+    if (typeof payload !== "string") return { found: false };
+    return booleanFound(deviceIdToHex(context.subject.bearer) === payload);
+  },
+  [GRANTED_CAPABILITY_IS]: (payload, context) => {
+    if (context.subject === undefined) return { found: false };
+    if (typeof payload !== "string") return { found: false };
+    return booleanFound(context.subject.capability === payload);
+  },
+};
+
+/** The named no-self-grant bar (wire-mesh#323): one conditions entry an issuer puts on a grant-capability so its bearer may not mint a `capability` token naming itself as bearer. `not(and(...))` under strict Kleene: a child granted to anyone else passes, a child granted to the bearer fails, and any unresolvable leg stays indeterminate and refuses. */
+export function noSelfGrantBar(
+  capability: TokenClaims["capability"],
+  bearer: DeviceId,
+): PredicateNode {
+  return {
+    kind: "not",
+    operand: {
+      kind: "and",
+      left: delegateIsTrue(GRANTED_CAPABILITY_IS, capability),
+      right: delegateIsTrue(GRANTEE_IS, deviceIdToHex(bearer)),
+    },
+  };
 }
 
 /** One delegate system's own handler: given the delegate node's payload and the concrete context it was invoked with, resolves to a boolean-valued Resolution. Handlers never throw for a data-quality problem -- an op that cannot make sense of its own payload/context returns `{found: false}`, which the evaluator turns into a fail-closed `indeterminate`. */
@@ -123,12 +176,15 @@ const narrowingHandlers: Record<
   },
 };
 
-/** `{kind:"compare", op:"eq", left:{kind:"delegate", system, payload:null}, right:{kind:"booleanLiteral", value:true}}` -- delegate is an ExpressionNode, not itself a PredicateNode (trilean's PredicateNodeSchema has no `delegate` member), so every predicate op is expressed this way: resolve the delegate to a boolean ComputedValue, then compare it against the literal `true`. */
-function delegateIsTrue(system: string): PredicateNode {
+/** `{kind:"compare", op:"eq", left:{kind:"delegate", system, payload}, right:{kind:"booleanLiteral", value:true}}` -- delegate is an ExpressionNode, not itself a PredicateNode (trilean's PredicateNodeSchema has no `delegate` member), so every predicate op is expressed this way: resolve the delegate to a boolean ComputedValue, then compare it against the literal `true`. The narrowing checks pass no payload (every fact they need arrives via context); the subject-mode systems take their comparison value as the payload. */
+function delegateIsTrue(
+  system: string,
+  payload: JsonValue = null,
+): PredicateNode {
   return {
     kind: "compare",
     op: "eq",
-    left: { kind: "delegate", system, payload: null },
+    left: { kind: "delegate", system, payload },
     right: { kind: "booleanLiteral", value: true },
   };
 }
@@ -190,13 +246,24 @@ export async function evaluateConditions(
   extraHandlers: Readonly<
     Record<string, TokenDelegateHandler<ConditionsContext>>
   > = {},
+  /** Subject mode (wire-mesh#323): the minted child the carrying grant-capability's conditions bind to. Absent evaluates against the carrying token's own claims, exactly as before; present additionally registers the two subject systems, whose handlers read the subject rather than `claims`. */
+  subject?: Readonly<GrantSubject>,
 ): Promise<ConditionsVerdict> {
-  const context: ConditionsContext = { clock, claims };
+  const context: ConditionsContext =
+    subject === undefined ? { clock, claims } : { clock, claims, subject };
   const resolvers: Readonly<Resolvers> = {
     resolveValue: unusedResolveValue,
     resolveLookup: unusedResolveLookup,
     resolveCollection: unusedResolveCollection,
     resolveDelegate: async (system, payload) => {
+      // Subject-mode systems resolve before extraHandlers so a peer cannot shadow a mandatory system with a more permissive app-registered one of the same name; the narrowing systems stay deliberately unreachable here, exactly as documented on the conditions field itself.
+      if (subject !== undefined && isSubjectSystem(system)) {
+        try {
+          return await subjectHandlers[system](payload, context);
+        } catch {
+          return { found: false };
+        }
+      }
       // Object.hasOwn guards against a peer-chosen system name (e.g. "__proto__", "constructor", "toString") resolving to an inherited Object.prototype member instead of undefined -- a bare extraHandlers[system] lookup on a plain object would treat that inherited value as a real handler, and "__proto__" specifically isn't even callable, so invoking it throws rather than producing a verdict. The try/catch below is defence in depth for the same fail-closed requirement, covering a genuinely registered handler that throws for its own reasons -- hostile or malformed input to a condition evaluator must always produce a verdict, never propagate an exception, matching verifyTokenChain's own documented convention.
       const handler = Object.hasOwn(extraHandlers, system)
         ? extraHandlers[system]
