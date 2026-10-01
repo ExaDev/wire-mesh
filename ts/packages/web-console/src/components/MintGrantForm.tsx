@@ -47,19 +47,37 @@ export function MintGrantForm({
 
   const parent = delegable.find((row) => row.tokenId === parentId);
 
+  function submit(): void {
+    // A chosen parent that has expired or been revoked since it was picked no longer appears in `delegable`. Minting anyway would issue a root grant, which is wider than the delegation asked for.
+    if (parentId !== NO_PARENT && parent === undefined) {
+      setOutcome({
+        ok: false,
+        error:
+          "the grant you chose to delegate from is no longer valid; choose another, or choose Root grant to mint without one",
+      });
+      return;
+    }
+    onMint({
+      bearerHex,
+      capability,
+      scopeKind,
+      scopePath,
+      lifetimeHours,
+      delegationsRemaining: delegations === "" ? undefined : delegations,
+      parent: parent?.token,
+    }).then(setOutcome, (error: unknown) => {
+      setOutcome({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  }
+
   return (
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        void onMint({
-          bearerHex,
-          capability,
-          scopeKind,
-          scopePath,
-          lifetimeHours,
-          delegationsRemaining: delegations === "" ? undefined : delegations,
-          parent: parent?.token,
-        }).then(setOutcome);
+        submit();
       }}
     >
       <Stack gap="xs">
@@ -119,6 +137,7 @@ export function MintGrantForm({
           label="Further delegations"
           description="How many times the bearer may pass it on. Empty leaves it unset."
           min={0}
+          allowDecimal={false}
           value={delegations}
           onChange={(value) => {
             setDelegations(typeof value === "number" ? value : "");

@@ -100,6 +100,42 @@ describe("mintGrant", () => {
     ).toContain("more than zero hours");
   });
 
+  it("mints a whole number of milliseconds for a fractional number of hours, so the token still decodes", async () => {
+    const FRACTIONAL_HOURS = 0.123456;
+    const result = await mintGrant(input({ lifetimeHours: FRACTIONAL_HOURS }), {
+      identity: own,
+      clock,
+    });
+
+    if (!result.ok) throw new Error(result.error);
+    const expires = decodeGrantClaims(result.token)?.expires;
+    expect(expires).toBe(Math.round(NOW + FRACTIONAL_HOURS * HOUR_MS));
+    expect(Number.isInteger(expires)).toBe(true);
+  });
+
+  it("refuses a delegation count that is fractional or negative, which no token can carry", async () => {
+    const context = { identity: own, clock };
+    const FRACTIONAL_DELEGATIONS = 1.5;
+    const NEGATIVE_DELEGATIONS = -1;
+
+    expect(
+      errorOf(
+        await mintGrant(
+          input({ delegationsRemaining: FRACTIONAL_DELEGATIONS }),
+          context,
+        ),
+      ),
+    ).toContain("whole number");
+    expect(
+      errorOf(
+        await mintGrant(
+          input({ delegationsRemaining: NEGATIVE_DELEGATIONS }),
+          context,
+        ),
+      ),
+    ).toContain("whole number");
+  });
+
   describe("delegating", () => {
     async function parentGrant(
       overrides: Partial<MintGrantInput> = {},
