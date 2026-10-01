@@ -1,3 +1,9 @@
+## [3.7.1](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.7.0...wire-mesh-core%403.7.1) (2026-10-01)
+
+### Tests
+
+* pin that a delegator may name itself as its delegation's bearer ([02f9684](https://github.com/ExaDev/wire-mesh/commit/02f9684e6a6455cf4beaf5c7410e921203c46dbb))
+
 ## [3.7.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.6.1...wire-mesh-core%403.7.0) (2026-10-01)
 
 ### Features
