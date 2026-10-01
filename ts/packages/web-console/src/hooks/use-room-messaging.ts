@@ -1,6 +1,6 @@
 // Owns every conversation this console holds, keyed by room path. A conversation reaches its peer by up to two routes at once: a direct WebRTC connection, when one has been negotiated, and a hub, through a relay pairing and a secure channel, which needs nothing but a connection both sides already have. This module attaches each route as it appears, restores persisted conversations that have no route yet, tracks each one's message history, unread count and any pending join request, and exposes send and respond actions the UI calls into. Kept as one reducer-backed hook rather than one useState per conversation, since a message arriving in one conversation must never re-render (or lose) another's own independently-evolving state.
 
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { acceptMeshSession } from "wire-mesh-core/domain/mesh-session";
 import type {
   IncomingManageRequest,
@@ -33,7 +33,11 @@ import {
   type ConversationView,
   type RelaySender,
 } from "../conversations.js";
-import { createMemoryStorage } from "wire-mesh-core/adapters/memory-storage";
+import type { KeyValueStorage } from "wire-mesh-core/ports/storage";
+import {
+  createPersistentRoomKeyStore,
+  createPersistentRoomTokenStore,
+} from "../persistent-room-state.js";
 import type { RoomKeyStore } from "wire-mesh-core/domain/notice-board";
 import { createRoomRekeyHandler } from "wire-mesh-core/domain/room-rekey";
 import { bootstrapDmEpoch1, createNoticeWiring } from "../notices.js";
@@ -95,6 +99,7 @@ export function useRoomMessaging(
   identity: IdentityPort,
   clock: Readonly<Clock>,
   messageStore: Readonly<MessageStore>,
+  roomStorage: Readonly<KeyValueStorage>,
 ): RoomMessaging {
   const [sessions, dispatch] = useReducer(
     reduceConversations,
@@ -133,6 +138,32 @@ export function useRoomMessaging(
   );
   /** The latest held token per session, for the lazily-built rekey handler -- a ref, not reducer state, because the handler closes over it at dispatch time and must see the current value. */
   const tokenRef = useRef(new Map<string, CapabilityToken>());
+  const roomKeyStore = useMemo(
+    () => createPersistentRoomKeyStore(roomStorage),
+    [roomStorage],
+  );
+  const tokenStore = useMemo(
+    () => createPersistentRoomTokenStore(roomStorage, identity, clock),
+    [roomStorage, identity, clock],
+  );
+  /** Holds a token for the session and keeps it across reloads. */
+  async function rememberToken(
+    roomPath: string,
+    token: CapabilityToken,
+  ): Promise<void> {
+    tokenRef.current.set(roomPath, token);
+    await tokenStore.set(roomPath, token);
+  }
+  /** The token held for a room: the one from this session, otherwise one kept from an earlier session that still verifies. */
+  async function heldToken(
+    roomPath: string,
+  ): Promise<CapabilityToken | undefined> {
+    const current = tokenRef.current.get(roomPath);
+    if (current !== undefined) return current;
+    const restored = await tokenStore.get(roomPath);
+    if (restored !== undefined) tokenRef.current.set(roomPath, restored);
+    return restored;
+  }
 
   function makeNoticeLifecycle(
     session: MeshSession,
@@ -142,19 +173,6 @@ export function useRoomMessaging(
     roomKeys: RoomKeyStore;
     refresh: () => void;
   } {
-    const keys = new Map<string, Map<number, Uint8Array>>();
-    const roomKeys: RoomKeyStore = {
-      get: async (room, epoch) => Promise.resolve(keys.get(room)?.get(epoch)),
-      set: (room, epoch, key) => {
-        const perRoom = keys.get(room) ?? new Map<number, Uint8Array>();
-        perRoom.set(epoch, key);
-        keys.set(room, perRoom);
-      },
-      currentEpoch: async (room) =>
-        Promise.resolve(
-          [...(keys.get(room)?.keys() ?? [])].sort((a, b) => b - a)[0],
-        ),
-    };
     // The wiring's onChange needs refresh; refresh needs the wiring. An
     // object holder breaks the cycle without a let-reassignment: refresh
     // reads lifecycle.wiring, which is populated immediately after
@@ -174,17 +192,17 @@ export function useRoomMessaging(
     };
     const wiring = createNoticeWiring({
       session,
-      storage: createMemoryStorage(),
+      storage: roomStorage,
       identity,
       clock,
       revocation: noRevocationCheck,
-      roomKeys,
+      roomKeys: roomKeyStore,
       onChange: () => {
         refresh();
       },
     });
     lifecycle.wiring = wiring;
-    return { wiring, roomKeys, refresh };
+    return { wiring, roomKeys: roomKeyStore, refresh };
   }
 
   /** What to do with each room request that arrives for a conversation, whichever route it came over. `notice` is the conversation's notice board, which only a direct connection has: a rekey that arrives without one is refused, since there is nowhere to keep the key. */
@@ -230,7 +248,7 @@ export function useRoomMessaging(
           });
           return;
         }
-        const ownToken = tokenRef.current.get(roomPath);
+        const ownToken = await heldToken(roomPath);
         if (ownToken === undefined) {
           await incoming.respond({
             result: "error",
@@ -243,14 +261,14 @@ export function useRoomMessaging(
           clock,
           revocation: noRevocationCheck,
           ownRoomMemberToken: ownToken,
-          onRekey: (event) => {
-            event.contentKeys.forEach((key, i) => {
-              notice.roomKeys.set(
+          onRekey: async (event) => {
+            for (const [i, key] of event.contentKeys.entries()) {
+              await notice.roomKeys.set(
                 roomPath,
                 event.keyEpoch - event.contentKeys.length + 1 + i,
                 key,
               );
-            });
+            }
             notice.refresh();
           },
         });
@@ -345,7 +363,7 @@ export function useRoomMessaging(
         const joined = await requestToJoin(session, roomPath, target);
         onPhase("sending");
         token = joined.token;
-        tokenRef.current.set(roomPath, token);
+        await rememberToken(roomPath, token);
         dispatch({ type: "token", roomPath, token });
         // Opportunistic DM bootstrap: once this side holds its join-grant,
         // the lower participant mints epoch 1 for the noticeboard. Fire-and-
@@ -449,11 +467,11 @@ export function useRoomMessaging(
       if (session === undefined || notice === undefined) {
         throw new Error("durable notices need a direct connection");
       }
-      let token = entry?.token ?? tokenRef.current.get(roomPath);
+      let token = entry?.token ?? (await heldToken(roomPath));
       if (token === undefined) {
         const joined = await requestToJoin(session, roomPath);
         token = joined.token;
-        tokenRef.current.set(roomPath, token);
+        await rememberToken(roomPath, token);
         dispatch({ type: "token", roomPath, token });
       }
       // Awaited here (unlike send()'s opportunistic trigger): posting

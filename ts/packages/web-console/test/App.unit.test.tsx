@@ -83,6 +83,7 @@ function renderApp(
         identity={appIdentity}
         clock={fixedClock}
         messageStore={messageStore}
+        roomStorage={createMemoryStorage()}
         certificateMemory={createCertificateMemory(createMemoryStorage())}
         {...(discoverLocalNode === undefined ? {} : { discoverLocalNode })}
         {...(defaultAddress === undefined ? {} : { defaultAddress })}

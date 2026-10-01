@@ -70,7 +70,9 @@ function render(): ReturnType<
   typeof renderHook<ReturnType<typeof useRoomMessaging>, unknown>
 > {
   const store = createMessageStore(createMemoryStorage());
-  return renderHook(() => useRoomMessaging(own, clock, store));
+  return renderHook(() =>
+    useRoomMessaging(own, clock, store, createMemoryStorage()),
+  );
 }
 
 function incomingFromPeer(

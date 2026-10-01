@@ -33,7 +33,9 @@ async function renderRestoredConversation(): Promise<
     messageId: new Uint8Array([1]),
     sentAt: 1,
   });
-  const rendered = renderHook(() => useRoomMessaging(identity, clock, store));
+  const rendered = renderHook(() =>
+    useRoomMessaging(identity, clock, store, createMemoryStorage()),
+  );
   await waitFor(() => {
     expect(rendered.result.current.conversations).toHaveLength(1);
   });

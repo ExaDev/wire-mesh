@@ -202,6 +202,6 @@ export async function bootstrapDmEpoch1(
     keyEpoch: FIRST_EPOCH,
   });
   const wrapped = await wrapContentKey(wrappingKey, contentKey);
-  roomKeys.set(roomPath, FIRST_EPOCH, contentKey);
+  await roomKeys.set(roomPath, FIRST_EPOCH, contentKey);
   await sendRoomRekey(session, roomPath, FIRST_EPOCH, wrapped);
 }
