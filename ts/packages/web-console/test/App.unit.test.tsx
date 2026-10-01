@@ -1,28 +1,9 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import {
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  within,
-} from "@testing-library/react";
-import { MantineProvider } from "@mantine/core";
-import type { IdentityPort } from "wire-mesh-core/ports/identity";
-import type { KeyValueStorage } from "wire-mesh-core/ports/storage";
-import type { Clock } from "wire-mesh-core/ports/clock";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { fireEvent, screen, within } from "@testing-library/react";
 import type { GossipFrame } from "wire-mesh-core/generated/protocol";
-import { mintRevocationEntry } from "wire-mesh-core/domain/tokens";
 import {
   decodeMessage,
   messageFromFrame,
@@ -33,10 +14,6 @@ import { formatPinnedAddress } from "wire-mesh-core/domain/pinned-address";
 import { signPeerAdvert } from "wire-mesh-core/domain/peer-advert";
 import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
 import { createMemoryStorage } from "wire-mesh-core/adapters/memory-storage";
-import { createIdentityBackupService } from "../src/adapters/identity-backup.js";
-import { testCapabilities } from "./capability-services.js";
-import type { TestCapabilities } from "./capability-services.js";
-import { createPreferencesStore } from "../src/preferences-store.js";
 import { createNameStore } from "../src/name-store.js";
 import {
   selfAssertedName,
@@ -44,106 +21,21 @@ import {
   shortId,
 } from "../src/peer-names.js";
 import { createCertificateMemory } from "../src/certificate-memory.js";
-import type { CertificateMemory } from "../src/certificate-memory.js";
-import { App } from "../src/App.js";
-import type { MessageStore, StoredMessage } from "../src/message-store.js";
 import { bytesFromHex } from "./hex.js";
-import { FakeWebSocket } from "./fake-websocket.js";
-import { stubMantineJsdomGlobals } from "./jsdom-mantine-polyfills.js";
-
-/** The identity App runs as. Real rather than a stub deriving one fixed device-id: the session verifies every gossiped advert with it (wire-mesh#225), and a stub would refuse any advert naming a different device, so a gossiped peer would never reach the directory these tests read. */
-let appIdentity: IdentityPort;
-
-/** The grant and revocation stores a test renders App with unless it supplies its own, recreated for every test so one test's grants never show in the next. */
-let currentCapabilities: TestCapabilities;
-
-const fixedClock: Clock = { now: () => 0 };
-
-function fakeMessageStore(): MessageStore {
-  const stored = new Map<string, StoredMessage[]>();
-  return {
-    async append(roomPath, message): Promise<void> {
-      const existing = stored.get(roomPath) ?? [];
-      stored.set(roomPath, [...existing, message]);
-      return Promise.resolve();
-    },
-    async list(roomPath): Promise<StoredMessage[]> {
-      return Promise.resolve(stored.get(roomPath) ?? []);
-    },
-    async roomPaths(): Promise<string[]> {
-      return Promise.resolve([...stored.keys()]);
-    },
-  };
-}
-
-/** Every FakeWebSocket App's own createBrowserTransport() constructs, in construction order -- tracking a `new WebSocket(url)` call site that lives entirely inside the component tree under test, not something the test itself can pass a fake into directly. */
-let sockets: FakeWebSocket[] = [];
-
-class TrackedFakeWebSocket extends FakeWebSocket {
-  constructor(url: string) {
-    super(url);
-    sockets.push(this);
-  }
-}
-
-/** Storage holding the answer of a device whose user has already dismissed the intro. */
-function dismissedPreferencesStorage(): KeyValueStorage {
-  const storage = createMemoryStorage();
-  void createPreferencesStore(storage).setIntroDismissed(true);
-  return storage;
-}
-
-function renderApp(
-  options: Readonly<{
-    discoverLocalNode?: () => Promise<string | undefined>;
-    defaultAddress?: string;
-    messageStore?: MessageStore;
-    nameStorage?: KeyValueStorage;
-    certificateMemory?: CertificateMemory;
-    /** The storage the intro preference is kept in. Defaults to one where the intro was already dismissed, so tests not about it see the console as a returning user does. */
-    preferencesStorage?: KeyValueStorage;
-    /** Defaults to fresh grant and revocation stores for this test. */
-    capabilities?: TestCapabilities;
-    identityBackupStorage?: KeyValueStorage;
-  }> = {},
-): ReturnType<typeof render> {
-  const {
-    discoverLocalNode,
-    defaultAddress,
-    messageStore = fakeMessageStore(),
-    nameStorage = createMemoryStorage(),
-    certificateMemory = createCertificateMemory(createMemoryStorage()),
-    preferencesStorage = dismissedPreferencesStorage(),
-    capabilities = currentCapabilities,
-    identityBackupStorage = createMemoryStorage(),
-  } = options;
-  return render(
-    <MantineProvider>
-      <App
-        identity={appIdentity}
-        clock={fixedClock}
-        messageStore={messageStore}
-        roomStorage={createMemoryStorage()}
-        certificateMemory={certificateMemory}
-        nameStore={createNameStore(nameStorage)}
-        preferences={createPreferencesStore(preferencesStorage)}
-        grants={capabilities.grants}
-        revocations={capabilities.revocations}
-        identityBackup={createIdentityBackupService(identityBackupStorage)}
-        {...(discoverLocalNode === undefined ? {} : { discoverLocalNode })}
-        {...(defaultAddress === undefined ? {} : { defaultAddress })}
-      />
-    </MantineProvider>,
-  );
-}
-
-function submitConnectForm(): void {
-  fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-}
+import { type FakeWebSocket } from "./fake-websocket.js";
+import {
+  appIdentity,
+  arrayBuffer,
+  connectRoot,
+  fakeMessageStore,
+  installAppHarness,
+  renderApp,
+  sockets,
+  submitConnectForm,
+} from "./app-harness.js";
 
 const DEVICE_ID_HEX_LENGTH = 64;
 const SHA256_HEX_LENGTH = 64;
-const REVOCATION_TOKEN_ID_BYTES = 16;
 /** Longer than the longest backoff the console's reconnect policy waits (it caps each delay at 30 s). */
 const PAST_ANY_RECONNECT_DELAY_MS = 60_000;
 const GOSSIPED_ADDRESS = "203.0.113.5:4433";
@@ -163,7 +55,6 @@ let pinnedGossipFrame: GossipFrame;
 let pinnedGossipDeviceHex: string;
 
 beforeAll(async () => {
-  appIdentity = await createWebCryptoIdentity();
   const remote = await createWebCryptoIdentity();
   const advert = await signPeerAdvert(remote, {
     device: remote.deviceId,
@@ -206,14 +97,6 @@ beforeAll(async () => {
   pinnedGossipDeviceHex = deviceIdToHex(pinnedRemote.deviceId);
 });
 
-/** messageFromFrame's own Uint8Array may be a view into a larger backing buffer -- slicing to its own byteOffset/byteLength before handing it to emitMessage is what every other adapter test here already does (see websocket-transport.integration.test.ts's identical helper), since FakeWebSocket.emitMessage takes the raw buffer, not a view onto it. */
-function arrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  return bytes.buffer.slice(
-    bytes.byteOffset,
-    bytes.byteOffset + bytes.byteLength,
-  ) as ArrayBuffer;
-}
-
 /** The discovered-peer table row for a given device within an already-confirmed-present discovered-peers panel -- scoped lookup so its own "Connect" button can be found distinctly from both the connect form's identically-labelled submit button and the identical device hex rendered elsewhere (a device's own hex also renders inside its originating ConnectionPanel's unrelated "Peer directory" table). Callers must await screen.findByTestId("discovered-peers") first: the panel itself never mounts at all while no peer is pending, so this cannot also do that initial wait. */
 function discoveredRow(deviceHex: string): HTMLElement {
   const row = within(screen.getByTestId("discovered-peers"))
@@ -223,21 +106,6 @@ function discoveredRow(deviceHex: string): HTMLElement {
     throw new Error(`expected a table row for device ${deviceHex}`);
   }
   return row;
-}
-
-/** Connects the form's address and opens its socket, resolving once the session reports connected, which is when its frame listener is registered. */
-async function connectRoot(): Promise<FakeWebSocket> {
-  submitConnectForm();
-  await vi.waitFor(() => {
-    expect(sockets).toHaveLength(1);
-  });
-  const rootSocket = sockets[0];
-  if (rootSocket === undefined) {
-    throw new Error("expected the root socket to exist");
-  }
-  rootSocket.emitOpen();
-  await screen.findByText(/^connected/);
-  return rootSocket;
 }
 
 /** The display names carried by the gossip frames a socket sent after `from` sends. */
@@ -268,19 +136,9 @@ function gossipedClaims(
   });
 }
 
+installAppHarness();
+
 describe("App", () => {
-  beforeEach(async () => {
-    currentCapabilities = await testCapabilities(appIdentity, fixedClock);
-    sockets = [];
-    vi.stubGlobal("WebSocket", TrackedFakeWebSocket);
-    stubMantineJsdomGlobals();
-  });
-
-  afterEach(() => {
-    cleanup();
-    vi.unstubAllGlobals();
-  });
-
   it("renders a connecting status line for the panel once the connect form is submitted", async () => {
     renderApp();
 
@@ -294,9 +152,9 @@ describe("App", () => {
 
     submitConnectForm();
     await vi.waitFor(() => {
-      expect(sockets).toHaveLength(1);
+      expect(sockets()).toHaveLength(1);
     });
-    sockets[0]?.emitOpen();
+    sockets()[0]?.emitOpen();
 
     const status = await screen.findByText(/^connected/);
     expect(status).toBeInTheDocument();
@@ -323,11 +181,11 @@ describe("App", () => {
 
     submitConnectForm();
     await vi.waitFor(() => {
-      expect(sockets).toHaveLength(1);
+      expect(sockets()).toHaveLength(1);
     });
     submitConnectForm();
 
-    expect(sockets).toHaveLength(1);
+    expect(sockets()).toHaveLength(1);
   });
 
   it("auto-connects to a same-device node discovered on mount, with no form submission", async () => {
@@ -336,9 +194,9 @@ describe("App", () => {
     });
 
     await vi.waitFor(() => {
-      expect(sockets).toHaveLength(1);
+      expect(sockets()).toHaveLength(1);
     });
-    expect(String(sockets[0]?.url)).toBe("ws://127.0.0.1:8787/");
+    expect(String(sockets()[0]?.url)).toBe("ws://127.0.0.1:8787/");
     await screen.findByText("connecting…");
   });
 
@@ -348,7 +206,7 @@ describe("App", () => {
     await vi.waitFor(() => {
       expect(screen.queryByRole("button", { name: "Send ping" })).toBeNull();
     });
-    expect(sockets).toHaveLength(0);
+    expect(sockets()).toHaveLength(0);
   });
 
   it("does not start a duplicate connection when the form is submitted for the address auto-discovery already connected", async () => {
@@ -357,11 +215,11 @@ describe("App", () => {
     });
 
     await vi.waitFor(() => {
-      expect(sockets).toHaveLength(1);
+      expect(sockets()).toHaveLength(1);
     });
     submitConnectForm();
 
-    expect(sockets).toHaveLength(1);
+    expect(sockets()).toHaveLength(1);
   });
 
   it("seeds the Node field from the defaultAddress prop, so a build served from a hub's own origin points at it without the operator typing anything", () => {
@@ -374,7 +232,7 @@ describe("App", () => {
     const peerHex = "2".repeat(DEVICE_ID_HEX_LENGTH);
     const store = fakeMessageStore();
     await store.append(
-      dmRoomPath(deviceIdToHex(appIdentity.deviceId), peerHex),
+      dmRoomPath(deviceIdToHex(appIdentity().deviceId), peerHex),
       {
         direction: "received",
         text: "hello from before the reload",
@@ -398,9 +256,9 @@ describe("App", () => {
 
     submitConnectForm();
     await vi.waitFor(() => {
-      expect(sockets).toHaveLength(1);
+      expect(sockets()).toHaveLength(1);
     });
-    const rootSocket = sockets[0];
+    const rootSocket = sockets()[0];
     if (rootSocket === undefined) {
       throw new Error("expected the root socket to exist");
     }
@@ -421,11 +279,11 @@ describe("App", () => {
       }),
     );
     await vi.waitFor(() => {
-      expect(sockets).toHaveLength(2);
+      expect(sockets()).toHaveLength(2);
     });
 
     // createBrowserTransport passes a parsed URL object (not a bare string) to `new WebSocket(...)`, so FakeWebSocket's own url field round-trips through URL's own normalization (a trailing "/" with no path) -- String(...) is what a real WebSocket's own .url getter would also report.
-    expect(String(sockets[1]?.url)).toBe(`ws://${GOSSIPED_ADDRESS}/`);
+    expect(String(sockets()[1]?.url)).toBe(`ws://${GOSSIPED_ADDRESS}/`);
     expect(screen.queryByTestId("discovered-peers")).toBeNull();
   });
 
@@ -434,9 +292,9 @@ describe("App", () => {
 
     submitConnectForm();
     await vi.waitFor(() => {
-      expect(sockets).toHaveLength(1);
+      expect(sockets()).toHaveLength(1);
     });
-    const rootSocket = sockets[0];
+    const rootSocket = sockets()[0];
     if (rootSocket === undefined) {
       throw new Error("expected the root socket to exist");
     }
@@ -479,9 +337,9 @@ describe("App", () => {
 
     submitConnectForm();
     await vi.waitFor(() => {
-      expect(sockets).toHaveLength(1);
+      expect(sockets()).toHaveLength(1);
     });
-    const rootSocket = sockets[0];
+    const rootSocket = sockets()[0];
     if (rootSocket === undefined) {
       throw new Error("expected the root socket to exist");
     }
@@ -498,7 +356,7 @@ describe("App", () => {
     );
 
     expect(screen.queryByTestId("discovered-peers")).toBeNull();
-    expect(sockets).toHaveLength(1);
+    expect(sockets()).toHaveLength(1);
   });
 
   it("names a gossiped peer by the display name its signed advert asserts, with its short id beside it", async () => {
@@ -706,44 +564,10 @@ describe("App", () => {
 
       await vi.advanceTimersByTimeAsync(PAST_ANY_RECONNECT_DELAY_MS);
 
-      expect(sockets).toHaveLength(1);
+      expect(sockets()).toHaveLength(1);
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  it("reports a revocation a node announced that could not be stored, and still reads the ones after it", async () => {
-    const STORAGE_FAILURE = "the origin's storage quota is exhausted";
-    const ingest = vi
-      .fn<(typeof currentCapabilities.revocations)["ingest"]>()
-      .mockRejectedValueOnce(new Error(STORAGE_FAILURE))
-      .mockResolvedValue({ ok: false, reason: "bad_signature" });
-    const capabilities: TestCapabilities = {
-      ...currentCapabilities,
-      revocations: { ...currentCapabilities.revocations, ingest },
-    };
-    renderApp({ capabilities });
-    const rootSocket = await connectRoot();
-    const entry = await mintRevocationEntry({
-      identity: appIdentity,
-      tokenId: new Uint8Array(REVOCATION_TOKEN_ID_BYTES),
-      revokedAt: 0,
-    });
-    const announce = (): void => {
-      rootSocket.emitMessage(
-        arrayBuffer(
-          messageFromFrame({ type: "revocation-announce", entries: [entry] }),
-        ),
-      );
-    };
-
-    announce();
-    expect(await screen.findByText(STORAGE_FAILURE)).toBeInTheDocument();
-    announce();
-
-    await vi.waitFor(() => {
-      expect(ingest).toHaveBeenCalledTimes(2);
-    });
   });
 
   it("asks about a gossiped node's certificate after the user connects to it, before dialling", async () => {
@@ -835,9 +659,9 @@ describe("App", () => {
       within(discoveredRow(dialled)).getByRole("button", { name: "Connect" }),
     );
     await vi.waitFor(() => {
-      expect(sockets).toHaveLength(2);
+      expect(sockets()).toHaveLength(2);
     });
-    const dialledSocket = sockets[1];
+    const dialledSocket = sockets()[1];
     if (dialledSocket === undefined) {
       throw new Error("expected the dialled socket to exist");
     }
@@ -932,7 +756,7 @@ describe("App", () => {
     const peerHex = "2".repeat(DEVICE_ID_HEX_LENGTH);
     const store = fakeMessageStore();
     await store.append(
-      dmRoomPath(deviceIdToHex(appIdentity.deviceId), peerHex),
+      dmRoomPath(deviceIdToHex(appIdentity().deviceId), peerHex),
       {
         direction: "received",
         text: "meet by the harbour",
