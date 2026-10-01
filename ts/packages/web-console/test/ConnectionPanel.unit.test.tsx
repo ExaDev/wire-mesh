@@ -3,13 +3,13 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { MantineProvider } from "@mantine/core";
 import {
   createMeshSession,
   type MeshSession,
 } from "wire-mesh-core/domain/mesh-session";
 import type { Transport } from "wire-mesh-core/ports/transport";
 import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
+import { WithNames } from "./names-harness.js";
 import { ConnectionPanel } from "../src/components/ConnectionPanel.js";
 import type { PermissionQuerier } from "../src/local-network.js";
 import { stubMantineJsdomGlobals } from "./jsdom-mantine-polyfills.js";
@@ -44,7 +44,7 @@ async function renderPanel(
 ): Promise<void> {
   const session = await failingSession();
   render(
-    <MantineProvider>
+    <WithNames>
       <ConnectionPanel
         address={LOCAL_ADDRESS}
         session={session}
@@ -53,7 +53,7 @@ async function renderPanel(
         pageHost={pageHost}
         permissions={permissions}
       />
-    </MantineProvider>,
+    </WithNames>,
   );
 }
 
