@@ -92,6 +92,7 @@ export function renderApp(
         identity={appIdentity()}
         clock={fixedClock}
         messageStore={messageStore}
+        roomStorage={createMemoryStorage()}
         certificateMemory={certificateMemory}
         nameStore={createNameStore(nameStorage)}
         preferences={createPreferencesStore(preferencesStorage)}

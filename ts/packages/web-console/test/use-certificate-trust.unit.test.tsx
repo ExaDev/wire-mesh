@@ -15,6 +15,9 @@ import {
 import { useCertificateTrust } from "../src/hooks/use-certificate-trust.js";
 import { bytesFromHex } from "./hex.js";
 
+/** A fixed clock: the hook only reads it to stamp when a changed certificate was noticed. */
+const CLOCK = { now: () => 0 };
+
 const NODE = "192.0.2.5:4433";
 const SHA256_HEX_LENGTH = 64;
 const hashHex = (digit: string): string => digit.repeat(SHA256_HEX_LENGTH);
@@ -47,7 +50,10 @@ describe("useCertificateTrust", () => {
 
   it("dials an address without pins as it is", async () => {
     const { result } = renderHook(() =>
-      useCertificateTrust(createCertificateMemory(createMemoryStorage())),
+      useCertificateTrust(
+        createCertificateMemory(createMemoryStorage()),
+        CLOCK,
+      ),
     );
 
     await expect(result.current.confirmAddress("ws://hub:1")).resolves.toBe(
@@ -57,7 +63,7 @@ describe("useCertificateTrust", () => {
 
   it("dials a known address with only the presented pins that are remembered", async () => {
     const memory = await memoryRemembering("a");
-    const { result } = renderHook(() => useCertificateTrust(memory));
+    const { result } = renderHook(() => useCertificateTrust(memory, CLOCK));
 
     const dial = await result.current.confirmAddress(pinnedTo("a", "b"));
 
@@ -68,7 +74,7 @@ describe("useCertificateTrust", () => {
 
   it("asks once for the same node and certificates requested twice, and dials as presented once trusted", async () => {
     const memory = await memoryRemembering();
-    const { result } = renderHook(() => useCertificateTrust(memory));
+    const { result } = renderHook(() => useCertificateTrust(memory, CLOCK));
 
     const first = result.current.confirmAddress(pinnedTo("a"));
     const second = result.current.confirmAddress(pinnedTo("a"));
@@ -86,7 +92,7 @@ describe("useCertificateTrust", () => {
 
   it("asks separately when the same node presents other certificates", async () => {
     const memory = await memoryRemembering();
-    const { result } = renderHook(() => useCertificateTrust(memory));
+    const { result } = renderHook(() => useCertificateTrust(memory, CLOCK));
 
     void result.current.confirmAddress(pinnedTo("a"));
     void result.current.confirmAddress(pinnedTo("b"));
@@ -98,7 +104,9 @@ describe("useCertificateTrust", () => {
 
   it("refuses every pending decision when the console closes", async () => {
     const memory = await memoryRemembering();
-    const { result, unmount } = renderHook(() => useCertificateTrust(memory));
+    const { result, unmount } = renderHook(() =>
+      useCertificateTrust(memory, CLOCK),
+    );
 
     const pending = result.current.confirmAddress(pinnedTo("a"));
     await waitFor(() => {

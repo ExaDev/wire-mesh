@@ -21,7 +21,6 @@ import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import type { Clock } from "wire-mesh-core/ports/clock";
 import type { Connection } from "wire-mesh-core/ports/transport";
 import type { KeyValueStorage } from "wire-mesh-core/ports/storage";
-import type { DeviceId } from "wire-mesh-core/generated/protocol";
 import type {
   DeviceId,
   RevocationEntry,
