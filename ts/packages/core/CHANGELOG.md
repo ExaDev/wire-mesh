@@ -1,3 +1,13 @@
+## [3.7.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.6.1...wire-mesh-core%403.7.0) (2026-10-01)
+
+### Features
+
+* **core:** let a dialled session report the frames it receives ([874dfb6](https://github.com/ExaDev/wire-mesh/commit/874dfb6c41edfd7d5d18765671c8acf49a66cdf8))
+
+### Bug Fixes
+
+* **core:** verify a device's own notices in a DM under the either-participant root policy ([6d2822a](https://github.com/ExaDev/wire-mesh/commit/6d2822a3df374aad3ab26b4453206ff863c4eb5d))
+
 ## [3.6.1](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.6.0...wire-mesh-core%403.6.1) (2026-10-01)
 
 ### Bug Fixes

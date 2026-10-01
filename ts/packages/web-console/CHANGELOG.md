@@ -1,3 +1,23 @@
+## [2.14.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.13.0...%40exadev%2Fwire-mesh-web-console%402.14.0) (2026-10-01)
+
+### Features
+
+* **web-console:** exchange notice logs with every connected route ([73e5de3](https://github.com/ExaDev/wire-mesh/commit/73e5de35d7e1306f29e2d2b77428a14241397476))
+* **web-console:** offer the notice composer over a hub route ([93f3ff5](https://github.com/ExaDev/wire-mesh/commit/93f3ff5ff00257dfe14a414630fe17f490bb50b6))
+
+### Documentation
+
+* **web-console:** describe notice persistence and replication through a hub ([ce6e8f5](https://github.com/ExaDev/wire-mesh/commit/ce6e8f5a0b2af6776677f520c369cdc358a61fb8))
+
+### Tests
+
+* **web-console:** read a notice written while the peer was offline ([dee23f0](https://github.com/ExaDev/wire-mesh/commit/dee23f08846e2b1b8ef3e5f5f4be6d9e374495df))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.7.0
+
 ## [2.13.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.12.0...%40exadev%2Fwire-mesh-web-console%402.13.0) (2026-10-01)
 
 ### Features
