@@ -661,4 +661,31 @@ describe("verifyCapabilityToken - delegation narrowing", () => {
 
     expect(verdict.ok).toBe(true);
   });
+
+  it("accepts a delegation whose bearer is the delegator itself, so the right to delegate a capability always includes using it", async () => {
+    const root = await signToken(issuer, {
+      tokenId: nextTokenId(),
+      bearer: bearerDeviceId,
+      scope: workScope,
+      expires: now + 2 * HOUR_MS,
+      delegationsRemaining: 1,
+    });
+    const selfDelegated = await signDelegated(bearerIdentity, {
+      tokenId: nextTokenId(),
+      bearer: bearerDeviceId,
+      scope: workScope,
+      expires: now + HOUR_MS,
+      parent: root,
+      delegationsRemaining: 0,
+    });
+
+    const verdict = await verifyCapabilityToken(selfDelegated, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+      expectedBearer: bearerDeviceId,
+    });
+
+    expect(verdict.ok).toBe(true);
+  });
 });
