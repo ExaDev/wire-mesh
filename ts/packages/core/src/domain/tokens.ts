@@ -18,11 +18,19 @@ import {
   evaluateConditions,
   evaluateNarrowing,
   type ConditionsContext,
+  type GrantSubject,
   type NarrowingCandidate,
   type NarrowingSystem,
   type TokenDelegateHandler,
 } from "./token-predicates.js";
+import { bytesToHex } from "./device-id.js";
 import { bytesEqual, scopeNarrows } from "./token-scope.js";
+
+/** The capability verb of a grant-capability (wire-mesh#323): authority to mint other capability tokens, the same register manage:revoke already established for authority over tokens. */
+export const MANAGE_GRANT_CAPABILITY = "manage:grant";
+
+/** Both link kinds walk at most this many hops before the verifier gives up, mirroring Rust's own MAX_CHAIN_DEPTH. Two colluding issuers can construct a mutually-bearing parent cycle that would otherwise recurse forever, and the authorised-by link makes the attack cheaper to mount, so TS gains the bound rather than relying on JS recursion limits. */
+const MAX_CHAIN_DEPTH = 64;
 
 /**
  * The revocation view a verifier consults. Returns every recorded, already-signature-verified revocation-claims for tokenId, across every issuer that has ever submitted one -- unfiltered by the store itself. The actual verifier obligation (an entry counts against a token when its own issuer matches the token's own issuer, OR its optional `authorization` grants delegated revoke authority -- management.cddl) is checked by the caller (verifyTokenChain), not here, since that check needs the target token's own scope plus identity/clock to verify a nested authorization token, none of which a store constructed ahead of time has access to. Implementations ingest gossiped revocation-announce frames via verifyRevocationEntry (which enforces each entry's own signature and self-certification) and key the resulting claims by token-id alone -- a token-id can legitimately carry multiple recorded entries from different issuers.
@@ -42,6 +50,12 @@ export type TokenVerdictReason =
   | "revoked"
   | "delegation_exceeds_parent"
   | "parent_invalid"
+  /** The authorised-by link's own obligations failed: the cited grant-capability did not decode or fully verify, its bearer is not this token's issuer, its capability is not manage:grant, its grants-capability does not match, the scope or expiry widened, the depth bound was exceeded, or its conditions (evaluated against THIS token's claims) did not hold. Collapsed to one reason the same way every narrowing failure already collapses to delegation_exceeds_parent. */
+  | "authorisation_invalid"
+  /** The parent/authorised-by walk exceeded MAX_CHAIN_DEPTH. */
+  | "chain_too_deep"
+  /** The walk revisited a payload already on the current path: a cycle two colluding issuers constructed. */
+  | "chain_cycle"
   /** claims.conditions is present but its bstr fails CBOR decode, or decodes to something that is not a JSON array of valid trilean PredicateNodes -- fail-closed per CONVENTIONS.md's verifier-obligations glossary, the same treatment "malformed" already gives an undecodable payload. */
   | "conditions_invalid"
   /** claims.conditions decoded and validated, but at least one entry did not evaluate to a definite `true` (indeterminate or false) -- the issuer's own additional restriction was not met. */
@@ -178,11 +192,23 @@ async function revocationEntryGrantsRevoke(
 async function verifyTokenChain(
   token: CapabilityToken,
   options: Omit<VerifyCapabilityTokenOptions, "expectedBearer">,
+  /** Subject mode (wire-mesh#323): when this token is being verified as the AUTHORISER of another token, that other token's claims, against which this token's own conditions are evaluated instead of its own. Undefined for a standalone (leaf) verification, which is every existing call. */
+  subjectClaims?: Readonly<GrantSubject>,
+  depth = 0,
+  seen: ReadonlySet<string> = new Set(),
 ): Promise<TokenVerdict> {
   const [protectedHeader, , payload, signature] = token;
   if (payload === null) {
     return { ok: false, reason: "malformed" };
   }
+  if (depth >= MAX_CHAIN_DEPTH) {
+    return { ok: false, reason: "chain_too_deep" };
+  }
+  const payloadHex = bytesToHex(payload);
+  if (seen.has(payloadHex)) {
+    return { ok: false, reason: "chain_cycle" };
+  }
+  const deeperSeen: ReadonlySet<string> = new Set(seen).add(payloadHex);
 
   let decodedClaims: unknown;
   try {
@@ -250,16 +276,30 @@ async function verifyTokenChain(
       claims,
       options.clock,
       options.extraPredicateResolvers,
+      subjectClaims,
     );
     if (!conditionsVerdict.ok) {
       return { ok: false, reason: "conditions_not_satisfied" };
     }
   }
 
-  if (claims.parent !== undefined) {
+  const parentBytes = claims.parent;
+  const authorisationBytes = claims["authorised-by"];
+  if (
+    claims.capability === MANAGE_GRANT_CAPABILITY &&
+    parentBytes !== undefined
+  ) {
+    // A manage:grant token is minted only through authorised-by, never a parent link, so an issuer's bars can never be sidestepped by choosing the other link kind.
+    return { ok: false, reason: "authorisation_invalid" };
+  }
+  if (parentBytes !== undefined && authorisationBytes !== undefined) {
+    // The two link kinds are mutually exclusive by construction: parent means "this token narrows that one", authorised-by means "that token permitted this one to exist". Both present is a malformed token, not a policy judgement.
+    return { ok: false, reason: "malformed" };
+  }
+  if (parentBytes !== undefined) {
     let decodedParent: unknown;
     try {
-      decodedParent = decode(claims.parent, cdeDecodeOptions);
+      decodedParent = decode(parentBytes, cdeDecodeOptions);
     } catch {
       return { ok: false, reason: "parent_invalid" };
     }
@@ -267,8 +307,21 @@ async function verifyTokenChain(
     if (!parentResult.success) {
       return { ok: false, reason: "parent_invalid" };
     }
-    const parentVerdict = await verifyTokenChain(parentResult.data, options);
+    const parentVerdict = await verifyTokenChain(
+      parentResult.data,
+      options,
+      undefined,
+      depth + 1,
+      deeperSeen,
+    );
     if (!parentVerdict.ok) {
+      // Walker-level conditions (too deep, cyclic) are properties of the whole chain, not of this one link, so they surface as themselves rather than hiding behind parent_invalid.
+      if (
+        parentVerdict.reason === "chain_too_deep" ||
+        parentVerdict.reason === "chain_cycle"
+      ) {
+        return { ok: false, reason: parentVerdict.reason };
+      }
       return { ok: false, reason: "parent_invalid" };
     }
     const candidate: NarrowingCandidate = {
@@ -293,6 +346,58 @@ async function verifyTokenChain(
       rootIssuer: parentVerdict.rootIssuer,
       rootIssuerKey: parentVerdict.rootIssuerKey,
       depth: parentVerdict.depth + 1,
+    };
+  }
+  if (authorisationBytes !== undefined) {
+    let decodedAuthoriser: unknown;
+    try {
+      decodedAuthoriser = decode(authorisationBytes, cdeDecodeOptions);
+    } catch {
+      return { ok: false, reason: "authorisation_invalid" };
+    }
+    const authoriserResult = capabilityTokenSchema.safeParse(decodedAuthoriser);
+    if (!authoriserResult.success) {
+      return { ok: false, reason: "authorisation_invalid" };
+    }
+    // Verified with THIS token's claims as the subject, so the authoriser's conditions bind the mint it authorised: the one place conditions evaluate against a token other than their carrier. The recursive call performs that subject-mode evaluation exactly once; the authoriser's conditions are never re-evaluated in ordinary mode anywhere in this walk.
+    const authoriserVerdict = await verifyTokenChain(
+      authoriserResult.data,
+      options,
+      claims,
+      depth + 1,
+      deeperSeen,
+    );
+    if (!authoriserVerdict.ok) {
+      if (
+        authoriserVerdict.reason === "chain_too_deep" ||
+        authoriserVerdict.reason === "chain_cycle"
+      ) {
+        return { ok: false, reason: authoriserVerdict.reason };
+      }
+      return { ok: false, reason: "authorisation_invalid" };
+    }
+    const authoriser = authoriserVerdict.claims;
+    const grantsCapability = authoriser["grants-capability"];
+    const linkOk =
+      bytesEqual(authoriser.bearer, claims.issuer) &&
+      authoriser.capability === MANAGE_GRANT_CAPABILITY &&
+      (grantsCapability === undefined ||
+        grantsCapability === claims.capability) &&
+      scopeNarrows(authoriser.scope, claims.scope) &&
+      claims.expires <= authoriser.expires &&
+      (authoriser["delegations-remaining"] === undefined ||
+        (claims["delegations-remaining"] !== undefined &&
+          claims["delegations-remaining"] <
+            authoriser["delegations-remaining"]));
+    if (!linkOk) {
+      return { ok: false, reason: "authorisation_invalid" };
+    }
+    return {
+      ok: true,
+      claims,
+      rootIssuer: authoriserVerdict.rootIssuer,
+      rootIssuerKey: authoriserVerdict.rootIssuerKey,
+      depth: authoriserVerdict.depth + 1,
     };
   }
 
@@ -367,7 +472,19 @@ export type MintRefusalReason =
   | "expires_exceeds_parent"
   | "scope_does_not_narrow"
   | "capability_mismatch"
-  | "delegation_exceeds_parent";
+  | "delegation_exceeds_parent"
+  /** parent and authorised-by are mutually exclusive link kinds; a manage:grant capability must be minted through authorised-by only. */
+  | "links_exclusive"
+  /** The cited grant-capability did not decode, or its own conditions bytes did not. */
+  | "authorisation_malformed"
+  | "authorisation_parent_forbidden"
+  | "authorisation_bearer_mismatch"
+  | "authorisation_capability_mismatch"
+  | "authorisation_scope_does_not_narrow"
+  | "authorisation_exceeds_authoriser"
+  | "authorisation_delegation_exceeds"
+  /** The authoriser's conditions, evaluated against the candidate being minted, did not all hold (wire-mesh#323 subject mode). */
+  | "authorisation_conditions_not_satisfied";
 
 export type MintVerdict =
   | { ok: true; token: CapabilityToken }
@@ -401,8 +518,70 @@ async function checkNarrowing(
     : NARROWING_SYSTEM_TO_MINT_REFUSAL[failedSystem];
 }
 
+/** The authorised-by link's own arithmetic (wire-mesh#323), the analogue checkNarrowing already is for the parent link: everything tokens.cddl's authorised-by obligations require, checked against a not-yet-minted candidate, shared between mintCapabilityToken and canGrantVia so the two can never drift. The authoriser's conditions are evaluated in subject mode against the candidate, the same evaluation the verifier performs against the minted child. Returns the specific refusal reason, or undefined when the authorisation holds. */
+async function checkAuthorisation(
+  authorisingClaims: Readonly<TokenClaims>,
+  minterDeviceId: DeviceId,
+  candidate: Readonly<GrantSubject>,
+): Promise<MintRefusalReason | undefined> {
+  if (authorisingClaims.parent !== undefined) {
+    return "authorisation_parent_forbidden";
+  }
+  if (!bytesEqual(authorisingClaims.bearer, minterDeviceId)) {
+    return "authorisation_bearer_mismatch";
+  }
+  const grantsCapability = authorisingClaims["grants-capability"];
+  if (
+    authorisingClaims.capability !== MANAGE_GRANT_CAPABILITY ||
+    (grantsCapability !== undefined &&
+      grantsCapability !== candidate.capability)
+  ) {
+    return "authorisation_capability_mismatch";
+  }
+  if (!scopeNarrows(authorisingClaims.scope, candidate.scope)) {
+    return "authorisation_scope_does_not_narrow";
+  }
+  if (candidate.expires > authorisingClaims.expires) {
+    return "authorisation_exceeds_authoriser";
+  }
+  const remaining = authorisingClaims["delegations-remaining"];
+  if (
+    remaining !== undefined &&
+    (candidate.delegationsRemaining === undefined ||
+      candidate.delegationsRemaining >= remaining)
+  ) {
+    return "authorisation_delegation_exceeds";
+  }
+  if (authorisingClaims.conditions !== undefined) {
+    let decodedConditions: unknown;
+    try {
+      decodedConditions = decode(
+        authorisingClaims.conditions,
+        cdeDecodeOptions,
+      );
+    } catch {
+      return "authorisation_malformed";
+    }
+    const conditionsResult = conditionsListSchema.safeParse(decodedConditions);
+    if (!conditionsResult.success) {
+      return "authorisation_malformed";
+    }
+    const verdict = await evaluateConditions(
+      conditionsResult.data,
+      authorisingClaims,
+      { now: () => 0 },
+      {},
+      candidate,
+    );
+    if (!verdict.ok) {
+      return "authorisation_conditions_not_satisfied";
+    }
+  }
+  return undefined;
+}
+
 /**
- * A pure query: could deviceId, presenting heldToken as its own delegation authority, successfully mint a delegation matching candidate right now -- without attempting (and potentially failing) a real mint just to find out. Reuses mintCapabilityToken's own narrowing arithmetic via checkNarrowing, so the two can never silently drift into different ideas of what "narrows" means.
+ * A pure query: could deviceId, presenting heldToken as its own delegation authority," successfully mint a delegation matching candidate right now -- without attempting (and potentially failing) a real mint just to find out. Reuses mintCapabilityToken's own narrowing arithmetic via checkNarrowing, so the two can never silently drift into different ideas of what "narrows" means.
  *
  * Deliberately narrower than a full mint attempt in one respect: this checks only the narrowing rules tokens.cddl's own delegation obligations require (bearer match, expiry, scope, capability, delegations-remaining), the same scope mintCapabilityToken itself checks a *parent* against -- it does not verify heldToken's own signature or revocation status, exactly as mintCapabilityToken never re-verifies its own parent's signature either. A caller that also needs heldToken's cryptographic validity confirmed calls verifyCapabilityToken separately.
  *
@@ -424,6 +603,25 @@ export async function canGrant(
   return (await checkNarrowing(heldClaims, deviceId, candidate)) === undefined;
 }
 
+/** A pure query: could deviceId, presenting heldGrantCapability as its minting authority, mint a token matching candidate right now (wire-mesh#323) -- canGrant's authorised-by analogue, with the same deliberately-narrower-than-verify caveat canGrant's own doc comment states: the held token's signature and revocation status are not checked here; a caller needing those confirmed calls verifyCapabilityToken separately. The candidate carries a bearer because the authoriser's subject-mode conditions read it (the no-self-grant bar). */
+export async function canGrantVia(
+  heldGrantCapability: CapabilityToken,
+  deviceId: DeviceId,
+  candidate: Readonly<GrantSubject>,
+  now: number,
+): Promise<boolean> {
+  if (candidate.expires <= now) {
+    return false;
+  }
+  const heldClaims = decodeTokenClaims(heldGrantCapability);
+  if (heldClaims === undefined) {
+    return false;
+  }
+  return (
+    (await checkAuthorisation(heldClaims, deviceId, candidate)) === undefined
+  );
+}
+
 export interface MintCapabilityTokenOptions {
   /** The issuer -- signs the token, and supplies the self-certifying issuer/issuer-key claims. */
   identity: IdentityPort;
@@ -440,6 +638,10 @@ export interface MintCapabilityTokenOptions {
   parent?: CapabilityToken;
   /** Additional, issuer-chosen restrictions beyond the five mandatory narrowing checks (issue #85) -- CBOR-encoded into claims.conditions verbatim, evaluated by every verifier via evaluateConditions. Strictly additive: has no bearing on narrowing, which mint enforces separately above regardless of what's given here. Not re-validated against trilean's own schema before encoding -- the TS type already guarantees a well-formed PredicateNode[] at this call site, unlike the bytes a verifier decodes from an untrusted wire token, which always are. */
   conditions?: PredicateNode[];
+  /** The grant-capability authorising this mint (wire-mesh#323): the resulting token carries it as authorised-by, and every link obligation (bearer match, manage:grant verb, grants-capability match, scope and expiry narrowing, depth consumption, and the authoriser's subject-mode conditions against this very candidate) is enforced here, at issuance, rather than left for the far end as a bare authorisation_invalid. Mutually exclusive with parent. */
+  authorisedBy?: CapabilityToken;
+  /** On a manage:grant token: the single verb it authorises minting. Absent means any verb within scope. */
+  grantsCapability?: TokenClaims["capability"];
 }
 
 /**
@@ -452,6 +654,16 @@ export async function mintCapabilityToken(
 ): Promise<MintVerdict> {
   if (options.expires <= options.clock.now()) {
     return { ok: false, reason: "already_expired" };
+  }
+
+  if (options.parent !== undefined && options.authorisedBy !== undefined) {
+    return { ok: false, reason: "links_exclusive" };
+  }
+  if (
+    options.capability === MANAGE_GRANT_CAPABILITY &&
+    options.parent !== undefined
+  ) {
+    return { ok: false, reason: "authorisation_parent_forbidden" };
   }
 
   let parentBytes: Uint8Array<ArrayBuffer> | undefined;
@@ -478,6 +690,31 @@ export async function mintCapabilityToken(
     parentBytes = encodeBuf(options.parent);
   }
 
+  let authorisationBytes: Uint8Array<ArrayBuffer> | undefined;
+  if (options.authorisedBy !== undefined) {
+    const authorisingClaims = decodeTokenClaims(options.authorisedBy);
+    if (authorisingClaims === undefined) {
+      return { ok: false, reason: "authorisation_malformed" };
+    }
+    const refusal = await checkAuthorisation(
+      authorisingClaims,
+      options.identity.deviceId,
+      {
+        capability: options.capability,
+        scope: options.scope,
+        bearer: options.bearer,
+        expires: options.expires,
+        ...(options.delegationsRemaining !== undefined
+          ? { delegationsRemaining: options.delegationsRemaining }
+          : {}),
+      },
+    );
+    if (refusal !== undefined) {
+      return { ok: false, reason: refusal };
+    }
+    authorisationBytes = encodeBuf(options.authorisedBy);
+  }
+
   const claims: TokenClaims = {
     "token-id": options.tokenId,
     issuer: options.identity.deviceId,
@@ -495,6 +732,12 @@ export async function mintCapabilityToken(
       : {}),
     ...(options.conditions !== undefined
       ? { conditions: encodeBuf(options.conditions) }
+      : {}),
+    ...(authorisationBytes !== undefined
+      ? { "authorised-by": authorisationBytes }
+      : {}),
+    ...(options.grantsCapability !== undefined
+      ? { "grants-capability": options.grantsCapability }
       : {}),
   };
 
