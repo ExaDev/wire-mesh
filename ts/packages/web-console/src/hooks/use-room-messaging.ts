@@ -23,7 +23,10 @@ import type {
   DeviceId,
   Frame,
 } from "wire-mesh-core/generated/protocol";
-import { deviceIdToHex } from "wire-mesh-core/domain/device-id";
+import {
+  deviceIdFromHex,
+  deviceIdToHex,
+} from "wire-mesh-core/domain/device-id";
 import { dmRoomPath } from "wire-mesh-core/domain/room-path";
 import {
   createRoomRouter,
@@ -42,10 +45,10 @@ import {
 } from "../conversations.js";
 import type { KeyValueStorage } from "wire-mesh-core/ports/storage";
 import {
+  createPersistentRoomKeyDelivery,
   createPersistentRoomKeyStore,
   createPersistentRoomTokenStore,
 } from "../persistent-room-state.js";
-import type { RoomKeyStore } from "wire-mesh-core/domain/notice-board";
 import { createRoomRekeyHandler } from "wire-mesh-core/domain/room-rekey";
 import { bootstrapDmEpoch1, createNoticeWiring } from "../notices.js";
 
@@ -73,6 +76,12 @@ export interface RoomMessaging {
   watchHub: (hub: Readonly<HubEndpoint>) => void;
   /** Forgets a hub as a route, as when its connection is closed. */
   dropHub: (hub: Readonly<RelaySender>) => void;
+  /** Feeds one frame received on a hub connection. The first frame on a connection, which is also the first after a reconnect, announces this side's notice log to the hub and asks it for the logs of every peer this console talks to. */
+  onHubFrame: (
+    hub: Readonly<RelaySender>,
+    connection: Readonly<Connection>,
+    frame: Frame,
+  ) => void;
   /** Wires a WebRTC-negotiated Connection up as the direct route of the peer's DM conversation -- either side: this console's own initiate() (knownPeerDevice supplied), or an incoming offer accepted via onIncomingConnection (peer device discovered from AcceptedMeshSession's own peerDeviceId). A no-op if that conversation already has a live session; a conversation restored from storage, or whose session has closed, takes the new one. */
   attach: (
     connection: Readonly<Connection>,
@@ -84,7 +93,7 @@ export interface RoomMessaging {
   retry: (roomPath: string, localId: string) => Promise<void>;
   /** Dismisses an outgoing message without sending it. */
   discard: (roomPath: string, localId: string) => void;
-  /** Posts one durable encrypted notice to the DM room, over the direct connection only (the notice board syncs with data frames, which a hub route does not carry): joins if no token yet, bootstraps epoch 1 when this side is the lower participant and no epoch exists, then posts and announces via the notice wiring. */
+  /** Posts one durable encrypted notice to the DM room, over whichever route the conversation has: joins if no token yet, bootstraps epoch 1 when this side is the lower participant and no epoch exists, then posts. The notice is announced to every connected route, and a hub that holds it delivers it to a peer that was offline. */
   postNotice: (roomPath: string, text: string) => Promise<void>;
   /** Acknowledges a conversation's unread messages. */
   markRead: (roomPath: string) => void;
@@ -129,39 +138,75 @@ export function useRoomMessaging(
     });
   }, []);
 
+  /** The latest conversations and hubs, for callbacks that outlive the render that created them. */
+  const sessionsRef = useRef(sessions);
   useEffect(() => {
-    const unmounted = new AbortController();
-    void (async (): Promise<void> => {
-      for (const roomPath of await messageStore.roomPaths()) {
-        const messages = await messageStore.list(roomPath);
-        if (unmounted.signal.aborted) return;
-        dispatch({
-          type: "restored",
-          roomPath,
-          participants: participantsOf(roomPath, ownDeviceHex),
-          messages,
-        });
-      }
-    })();
-    return () => {
-      unmounted.abort();
-    };
-  }, [messageStore, ownDeviceHex]);
-  /** Per-session notice machinery, outside the reducer: mutable wiring state the frame flow drives directly, with reducer-visible changes surfaced through "notices" actions. */
-  const noticeState = useRef(
-    new Map<
-      string,
-      {
-        wiring: ReturnType<typeof createNoticeWiring>;
-        roomKeys: RoomKeyStore;
-        refresh: () => void;
-      }
-    >(),
-  );
-  /** The latest held token per session, for the lazily-built rekey handler -- a ref, not reducer state, because the handler closes over it at dispatch time and must see the current value. */
-  const tokenRef = useRef(new Map<string, CapabilityToken>());
+    sessionsRef.current = sessions;
+  }, [sessions]);
+  const hubsRef = useRef(new Set<Readonly<RelaySender>>());
+  const seenConnectionsRef = useRef(new WeakSet<object>());
   const roomKeyStore = useMemo(
     () => createPersistentRoomKeyStore(roomStorage),
+    [roomStorage],
+  );
+
+  /** The other members of every conversation this console holds. */
+  function knownPeers(): DeviceId[] {
+    return [...sessionsRef.current.values()].flatMap((entry) =>
+      entry.participants.map((hex) => deviceIdFromHex(hex)),
+    );
+  }
+
+  const refreshAllRef = useRef<() => void>(() => undefined);
+  const noticeWiring = useMemo(
+    () =>
+      createNoticeWiring({
+        senders: () => [
+          ...new Set([
+            ...[...sessionsRef.current.values()].flatMap((entry) => [
+              ...(entry.direct === undefined ? [] : [entry.direct]),
+              ...(entry.relay === undefined ? [] : [entry.relay.hub]),
+            ]),
+            ...hubsRef.current,
+          ]),
+        ],
+        storage: roomStorage,
+        identity,
+        clock,
+        revocation,
+        roomKeys: roomKeyStore,
+        onChange: () => {
+          refreshAllRef.current();
+        },
+      }),
+    [identity, clock, roomStorage, roomKeyStore, revocation],
+  );
+
+  /** Re-reads one conversation's notices into its state. */
+  function refreshRoom(roomPath: string): void {
+    const participants = sessionsRef.current.get(roomPath)?.participants;
+    if (participants === undefined) return;
+    void noticeWiring
+      .readRoom(
+        roomPath,
+        participants.map((hex) => deviceIdFromHex(hex)),
+      )
+      .then((notices) => {
+        dispatch({ type: "notices", roomPath, notices: [...notices] });
+      });
+  }
+  useEffect(() => {
+    refreshAllRef.current = (): void => {
+      for (const roomPath of sessionsRef.current.keys()) {
+        refreshRoom(roomPath);
+      }
+    };
+  });
+
+  /** The latest held token per session, for the lazily-built rekey handler -- a ref, not reducer state, because the handler closes over it at dispatch time and must see the current value. */
+  const tokenRef = useRef(new Map<string, CapabilityToken>());
+  const keyDelivery = useMemo(
+    () => createPersistentRoomKeyDelivery(roomStorage),
     [roomStorage],
   );
   const tokenStore = useMemo(
@@ -188,51 +233,64 @@ export function useRoomMessaging(
     return restored;
   }
 
-  function makeNoticeLifecycle(
-    session: MeshSession,
-    roomPath: string,
-  ): {
-    wiring: ReturnType<typeof createNoticeWiring>;
-    roomKeys: RoomKeyStore;
-    refresh: () => void;
-  } {
-    // The wiring's onChange needs refresh; refresh needs the wiring. An
-    // object holder breaks the cycle without a let-reassignment: refresh
-    // reads lifecycle.wiring, which is populated immediately after
-    // construction and can only be called from the wiring's own events (or
-    // externally, after construction) -- never before it exists.
-    const lifecycle: {
-      wiring?: ReturnType<typeof createNoticeWiring>;
-    } = {};
-    const refresh = (): void => {
-      const wiring = lifecycle.wiring;
-      if (wiring === undefined) {
-        return;
+  useEffect(() => {
+    const unmounted = new AbortController();
+    void (async (): Promise<void> => {
+      const roomPaths = new Set([
+        ...(await messageStore.roomPaths()),
+        ...(await tokenStore.rooms()),
+      ]);
+      for (const roomPath of roomPaths) {
+        const messages = await messageStore.list(roomPath);
+        if (unmounted.signal.aborted) return;
+        const participants = participantsOf(roomPath, ownDeviceHex);
+        dispatch({ type: "restored", roomPath, participants, messages });
+        // The reducer has not applied the action yet, so the notices are read for the participants directly.
+        void noticeWiring
+          .readRoom(
+            roomPath,
+            participants.map((hex) => deviceIdFromHex(hex)),
+          )
+          .then((notices) => {
+            dispatch({ type: "notices", roomPath, notices: [...notices] });
+          });
       }
-      void wiring.readRoom(roomPath).then((notices) => {
-        dispatch({ type: "notices", roomPath, notices: [...notices] });
-      });
+    })();
+    return () => {
+      unmounted.abort();
     };
-    const wiring = createNoticeWiring({
-      session,
-      storage: roomStorage,
+  }, [messageStore, tokenStore, noticeWiring, ownDeviceHex]);
+
+  /** The first-epoch deliveries under way, by room: a second call for a room joins the first instead of starting its own, because two that both found no key would each mint one and leave the two sides holding different keys. */
+  const firstEpochInFlight = useRef(new Map<string, Promise<void>>());
+
+  /** Hands the peer the DM's first epoch key if this side is the one that mints it and the peer has not yet acknowledged it. Rejects when the peer cannot take it yet. */
+  async function deliverFirstEpoch(
+    roomPath: string,
+    token: CapabilityToken,
+    route: { session: RelaySender; target: DeviceId | undefined },
+  ): Promise<void> {
+    const running = firstEpochInFlight.current.get(roomPath);
+    if (running !== undefined) return running;
+    const delivery = bootstrapDmEpoch1({
+      session: route.session,
+      target: route.target,
       identity,
       clock,
       revocation,
+      ownRoomMemberToken: token,
+      roomPath,
       roomKeys: roomKeyStore,
-      onChange: () => {
-        refresh();
-      },
+      delivery: keyDelivery,
+    }).finally(() => {
+      firstEpochInFlight.current.delete(roomPath);
     });
-    lifecycle.wiring = wiring;
-    return { wiring, roomKeys: roomKeyStore, refresh };
+    firstEpochInFlight.current.set(roomPath, delivery);
+    return delivery;
   }
 
-  /** What to do with each room request that arrives for a conversation, whichever route it came over. `notice` is the conversation's notice board, which only a direct connection has: a rekey that arrives without one is refused, since there is nowhere to keep the key. */
-  function roomHandlers(
-    roomPath: string,
-    notice: ReturnType<typeof makeNoticeLifecycle> | undefined,
-  ): RoomRouterHandlers {
+  /** What to do with each room request that arrives for a conversation, whichever route it came over. */
+  function roomHandlers(roomPath: string): RoomRouterHandlers {
     return {
       onMessage: (message) => {
         const stored: StoredMessage = {
@@ -243,6 +301,12 @@ export function useRoomMessaging(
         };
         persist(messageStore.append(roomPath, stored));
         dispatch({ type: "message", roomPath, message: stored });
+        // A peer that is writing may have written notices too, and a hub does not announce them to the other side.
+        void noticeWiring.pull(
+          (sessionsRef.current.get(roomPath)?.participants ?? []).map((hex) =>
+            deviceIdFromHex(hex),
+          ),
+        );
       },
       onGrantIssued: (token) => {
         persist(grants.record("issued", token, clock.now()));
@@ -256,6 +320,13 @@ export function useRoomMessaging(
             async decide(decision): Promise<void> {
               dispatch({ type: "join-request-settled", roomPath });
               await event.decide(decision);
+              // Once the peer holds its token it can take the first epoch key, which a rekey sent before then could not.
+              void (async (): Promise<void> => {
+                const token = await heldToken(roomPath);
+                const entry = sessionsRef.current.get(roomPath);
+                if (token === undefined || entry === undefined) return;
+                await deliverFirstEpoch(roomPath, token, routeOf(entry));
+              })().catch(() => undefined);
             },
           },
         });
@@ -267,13 +338,6 @@ export function useRoomMessaging(
       // the peer retries, which the DM bootstrap's lower-mints ordering
       // makes the steady state anyway.
       onRekey: async (incoming) => {
-        if (notice === undefined) {
-          await incoming.respond({
-            result: "error",
-            code: "unsupported_route",
-          });
-          return;
-        }
         const ownToken = await heldToken(roomPath);
         if (ownToken === undefined) {
           await incoming.respond({
@@ -289,13 +353,13 @@ export function useRoomMessaging(
           ownRoomMemberToken: ownToken,
           onRekey: async (event) => {
             for (const [i, key] of event.contentKeys.entries()) {
-              await notice.roomKeys.set(
+              await roomKeyStore.set(
                 roomPath,
                 event.keyEpoch - event.contentKeys.length + 1 + i,
                 key,
               );
             }
-            notice.refresh();
+            refreshRoom(roomPath);
           },
         });
         await handler(incoming);
@@ -308,11 +372,11 @@ export function useRoomMessaging(
       connection: Readonly<Connection>,
       knownPeerDevice?: DeviceId,
     ): Promise<void> => {
-      // The wiring needs the session (sendDataFrame) and the session's own
-      // onFrame hook needs the wiring -- but the peer's device-id (and with
-      // it the DM room path) only resolves after the handshake. A late-bound
-      // hook bridges the gap: early frames (handshake/gossip) find nothing
-      // to observe; once the lifecycle exists every frame reaches it.
+      // The peer's device-id (and with it the DM room path) only resolves
+      // after the handshake, but the session's onFrame hook exists from the
+      // start; a late-bound sink bridges the gap: early frames (handshake,
+      // gossip) find nothing to observe, and once the sink is set every frame
+      // reaches the notice wiring.
       const frameSink: { current?: (frame: Frame) => void } = {};
       const accepted = await acceptMeshSession(
         connection,
@@ -333,10 +397,8 @@ export function useRoomMessaging(
         await accepted.close();
         return;
       }
-      const notice = makeNoticeLifecycle(accepted, roomPath);
-      noticeState.current.set(roomPath, notice);
       frameSink.current = (frame) => {
-        notice.wiring.handleFrame(frame);
+        noticeWiring.handleFrame(frame, accepted);
       };
       dispatch({
         type: "direct-opened",
@@ -350,6 +412,7 @@ export function useRoomMessaging(
         participants: [peerHex],
         messages: await messageStore.list(roomPath),
       });
+      void noticeWiring.sync(accepted, [peerDevice]).catch(() => undefined);
 
       createRoomRouter(
         accepted,
@@ -360,7 +423,7 @@ export function useRoomMessaging(
           peerDevice,
           currentMembers: () => [identity.deviceId, peerDevice],
         },
-        roomHandlers(roomPath, notice),
+        roomHandlers(roomPath),
       );
 
       void (async (): Promise<void> => {
@@ -371,7 +434,7 @@ export function useRoomMessaging(
         }
       })();
     },
-    [identity, clock, ownDeviceHex, sessions, messageStore],
+    [identity, clock, ownDeviceHex, sessions, messageStore, noticeWiring],
   );
 
   /** One delivery attempt: joins the room if this side holds no token yet, sends, and persists the message. Reports each phase it is in through onPhase, since the join waits on the other side's consent. Throws on any failure; the caller decides how that is surfaced. */
@@ -394,20 +457,10 @@ export function useRoomMessaging(
         dispatch({ type: "token", roomPath, token });
         // Opportunistic DM bootstrap: once this side holds its join-grant,
         // the lower participant mints epoch 1 for the noticeboard. Fire-and-
-        // observe rather than awaited -- messaging must not block on it. Only
-        // a direct connection has a notice board to bootstrap.
-        const notice = noticeState.current.get(roomPath);
-        if (entry?.direct !== undefined && notice !== undefined) {
-          void bootstrapDmEpoch1({
-            session: entry.direct,
-            identity,
-            clock,
-            revocation: revocation,
-            ownRoomMemberToken: token,
-            roomPath,
-            roomKeys: notice.roomKeys,
-          }).catch(() => undefined);
-        }
+        // observe rather than awaited -- messaging must not block on it.
+        void deliverFirstEpoch(roomPath, token, { session, target }).catch(
+          () => undefined,
+        );
       }
       const outcome = await sendRoomMessage(
         session,
@@ -428,7 +481,7 @@ export function useRoomMessaging(
       await messageStore.append(roomPath, stored);
       return stored;
     },
-    [sessions, clock, messageStore, identity],
+    [sessions, clock, messageStore, identity, roomKeyStore],
   );
 
   /** Runs one delivery attempt for a pending outgoing message. Success moves it into the history; failure keeps it in the list as failed, with the reason, so the user can retry or dismiss it instead of losing the text. */
@@ -489,14 +542,10 @@ export function useRoomMessaging(
   const postNotice = useCallback(
     async (roomPath: string, text: string): Promise<void> => {
       const entry = sessions.get(roomPath);
-      const session = entry?.direct;
-      const notice = noticeState.current.get(roomPath);
-      if (session === undefined || notice === undefined) {
-        throw new Error("durable notices need a direct connection");
-      }
+      const { session, target } = routeOf(entry);
       let token = entry?.token ?? (await heldToken(roomPath));
       if (token === undefined) {
-        const joined = await requestToJoin(session, roomPath);
+        const joined = await requestToJoin(session, roomPath, target);
         token = joined.token;
         await rememberToken(roomPath, token);
         persist(grants.record("held", token, clock.now()));
@@ -506,24 +555,16 @@ export function useRoomMessaging(
       // without a key would throw inside the wiring -- the bootstrap must
       // complete first, and for the lower participant it is exactly one
       // wrap + one send.
-      await bootstrapDmEpoch1({
-        session,
-        identity,
-        clock,
-        revocation: revocation,
-        ownRoomMemberToken: token,
-        roomPath,
-        roomKeys: notice.roomKeys,
-      });
-      await notice.wiring.post({
+      await deliverFirstEpoch(roomPath, token, { session, target });
+      await noticeWiring.post({
         room: roomPath,
         token,
         contentType: "text/plain",
         plaintext: new TextEncoder().encode(text),
       });
-      notice.refresh();
+      refreshRoom(roomPath);
     },
-    [sessions, identity, clock],
+    [sessions, identity, clock, roomKeyStore, noticeWiring],
   );
 
   const markRead = useCallback((roomPath: string): void => {
@@ -543,14 +584,16 @@ export function useRoomMessaging(
       void messageStore.list(roomPath).then((messages) => {
         dispatch({ type: "restored", roomPath, participants, messages });
       });
+      void noticeWiring.sync(hub, [peer]).catch(() => undefined);
     },
-    [ownDeviceHex, messageStore],
+    [ownDeviceHex, messageStore, noticeWiring],
   );
 
   const watchHub = useCallback(
     (hub: Readonly<HubEndpoint>): void => {
       // One reader for the hub's room requests, splitting them by the device each channel authenticated: a conversation's router reads only its own peer's, and the first request from a peer opens that peer's conversation.
       const perPeer = new Map<string, AsyncQueue<IncomingManageRequest>>();
+      hubsRef.current.add(hub);
       void (async (): Promise<void> => {
         for await (const incoming of hub.incomingManageRequests) {
           const peer = incoming.fromDevice;
@@ -571,7 +614,7 @@ export function useRoomMessaging(
                 peerDevice: peer,
                 currentMembers: () => [identity.deviceId, peer],
               },
-              roomHandlers(roomPath, undefined),
+              roomHandlers(roomPath),
             );
           }
           queue.push(incoming);
@@ -582,8 +625,24 @@ export function useRoomMessaging(
   );
 
   const dropHub = useCallback((hub: Readonly<RelaySender>): void => {
+    hubsRef.current.delete(hub);
     dispatch({ type: "hub-closed", hub });
   }, []);
+
+  const onHubFrame = useCallback(
+    (
+      hub: Readonly<RelaySender>,
+      connection: Readonly<Connection>,
+      frame: Frame,
+    ): void => {
+      if (!seenConnectionsRef.current.has(connection)) {
+        seenConnectionsRef.current.add(connection);
+        void noticeWiring.sync(hub, knownPeers()).catch(() => undefined);
+      }
+      noticeWiring.handleFrame(frame, hub);
+    },
+    [noticeWiring],
+  );
 
   return {
     conversations: [...sessions.values()],
@@ -591,6 +650,7 @@ export function useRoomMessaging(
     openRelay,
     watchHub,
     dropHub,
+    onHubFrame,
     attach,
     send,
     retry,

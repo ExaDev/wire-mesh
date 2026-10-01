@@ -27,7 +27,13 @@ import type {
 } from "wire-mesh-core/generated/protocol";
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import type { Clock } from "wire-mesh-core/ports/clock";
-import { bootstrapDmEpoch1, createNoticeWiring } from "../src/notices.js";
+import {
+  bootstrapDmEpoch1,
+  createNoticeWiring,
+  type DataFrameSender,
+  type RoomKeyDelivery,
+  type NoticeWiring,
+} from "../src/notices.js";
 
 const ES256 = -7;
 const HOUR_MS = 3_600_000;
@@ -69,6 +75,17 @@ async function generateEs256Identity(): Promise<IdentityPort> {
   );
 }
 
+function memoryDelivery(delivered: readonly string[] = []): RoomKeyDelivery {
+  const rooms = new Set(delivered);
+  return {
+    isDelivered: async (room) => Promise.resolve(rooms.has(room)),
+    markDelivered: async (room) => {
+      rooms.add(room);
+      return Promise.resolve();
+    },
+  };
+}
+
 function memoryKeyStore(): RoomKeyStore {
   const keys = new Map<string, Map<number, Uint8Array>>();
   return {
@@ -92,7 +109,10 @@ function memoryKeyStore(): RoomKeyStore {
 function fakeSession(): MeshSession & {
   sent: Frame[];
   commands: ManageCommand[];
+  /** Makes every later manage-request come back as an error with this code, or succeed again when undefined. */
+  refuseManageRequests: (code: string | undefined) => void;
 } {
+  let refusal: string | undefined;
   const sent: Frame[] = [];
   const commands: ManageCommand[] = [];
   const emptyStream = <T>(): AsyncIterable<T> => ({
@@ -109,6 +129,9 @@ function fakeSession(): MeshSession & {
   return {
     sent,
     commands,
+    refuseManageRequests: (code) => {
+      refusal = code;
+    },
     events: emptyStream(),
     incomingManageRequests: emptyStream(),
     revocationAnnouncements: emptyStream(),
@@ -128,7 +151,11 @@ function fakeSession(): MeshSession & {
     },
     sendManageRequest: async (command: ManageCommand) => {
       commands.push(command);
-      return Promise.resolve({ result: "ok" } as const);
+      return Promise.resolve(
+        refusal === undefined
+          ? ({ result: "ok" } as const)
+          : ({ result: "error", code: refusal } as const),
+      );
     },
   };
 }
@@ -142,17 +169,17 @@ async function flush(): Promise<void> {
 /** Cross-delivery drain: forward each side's outbound frames to the other wiring, flushing async handlers between hops, until neither side queues anything further -- a bounded stand-in for real transports. */
 async function drain(
   ownerSession: MeshSession & { sent: Frame[] },
-  ownerWiring: Readonly<{ handleFrame: (f: Frame) => void }>,
+  ownerWiring: NoticeWiring,
   memberSession: MeshSession & { sent: Frame[] },
-  memberWiring: Readonly<{ handleFrame: (f: Frame) => void }>,
+  memberWiring: NoticeWiring,
 ): Promise<void> {
   const MAX_DRAIN_ROUNDS = 8;
   for (let round = 0; round < MAX_DRAIN_ROUNDS; round += 1) {
     const ownerFrames = ownerSession.sent.splice(0);
     const memberFrames = memberSession.sent.splice(0);
     if (ownerFrames.length === 0 && memberFrames.length === 0) break;
-    for (const f of ownerFrames) memberWiring.handleFrame(f);
-    for (const f of memberFrames) ownerWiring.handleFrame(f);
+    for (const f of ownerFrames) memberWiring.handleFrame(f, memberSession);
+    for (const f of memberFrames) ownerWiring.handleFrame(f, ownerSession);
     await flush();
   }
 }
@@ -204,6 +231,7 @@ describe("bootstrapDmEpoch1", () => {
       ownRoomMemberToken: lowerToken,
       roomPath,
       roomKeys: lowerKeys,
+      delivery: memoryDelivery(),
     });
 
     // The lower side stored its own epoch-1 key and sent exactly one rekey
@@ -267,11 +295,12 @@ describe("bootstrapDmEpoch1", () => {
       ownRoomMemberToken: higherToken,
       roomPath,
       roomKeys: higherKeys,
+      delivery: memoryDelivery(),
     });
     expect(higherSession.commands).toHaveLength(0);
     expect(await higherKeys.currentEpoch(roomPath)).toBeUndefined();
 
-    // Idempotent for the lower side once an epoch exists.
+    // Idempotent for the lower side once the peer has acknowledged the key.
     const lowerToken = await mintRoomMemberToken(higher, lower, roomPath);
     const lowerSession = fakeSession();
     const lowerKeys = memoryKeyStore();
@@ -284,8 +313,61 @@ describe("bootstrapDmEpoch1", () => {
       ownRoomMemberToken: lowerToken,
       roomPath,
       roomKeys: lowerKeys,
+      delivery: memoryDelivery([roomPath]),
     });
     expect(lowerSession.commands).toHaveLength(0);
+  });
+});
+
+describe("bootstrapDmEpoch1 redelivery", () => {
+  async function dmPair(): Promise<{
+    lower: IdentityPort;
+    lowerToken: CapabilityToken;
+    roomPath: string;
+  }> {
+    const a = await generateEs256Identity();
+    const b = await generateEs256Identity();
+    const aIsLower = deviceIdToHex(a.deviceId) < deviceIdToHex(b.deviceId);
+    const lower = aIsLower ? a : b;
+    const higher = aIsLower ? b : a;
+    const roomPath = `${deviceIdToHex(lower.deviceId)}+${deviceIdToHex(higher.deviceId)}`;
+    return {
+      lower,
+      lowerToken: await mintRoomMemberToken(higher, lower, roomPath),
+      roomPath,
+    };
+  }
+
+  it("sends the same first epoch key again until the peer has taken it", async () => {
+    const { lower, lowerToken, roomPath } = await dmPair();
+    const session = fakeSession();
+    const keys = memoryKeyStore();
+    const delivery = memoryDelivery();
+    const options = {
+      session,
+      identity: lower,
+      clock: fixedClock(NOW_MS),
+      revocation: createRevocationView(),
+      ownRoomMemberToken: lowerToken,
+      roomPath,
+      roomKeys: keys,
+      delivery,
+    };
+
+    session.refuseManageRequests("no_token");
+    await expect(bootstrapDmEpoch1(options)).rejects.toThrow("no_token");
+    const minted = await keys.get(roomPath, 1);
+    expect(await delivery.isDelivered(roomPath)).toBe(false);
+
+    session.refuseManageRequests(undefined);
+    await bootstrapDmEpoch1(options);
+
+    expect(await keys.get(roomPath, 1)).toEqual(minted);
+    expect(session.commands).toHaveLength(2);
+    expect(await delivery.isDelivered(roomPath)).toBe(true);
+
+    await bootstrapDmEpoch1(options);
+    expect(session.commands).toHaveLength(2);
   });
 });
 
@@ -336,7 +418,7 @@ describe("createNoticeWiring", () => {
     const memberSession = fakeSession();
     let memberChanges = 0;
     const ownerWiring = createNoticeWiring({
-      session: ownerSession,
+      senders: () => [ownerSession],
       storage: createMemoryStorage(),
       identity: owner,
       clock: fixedClock(NOW_MS),
@@ -345,7 +427,7 @@ describe("createNoticeWiring", () => {
       onChange: () => undefined,
     });
     const memberWiring = createNoticeWiring({
-      session: memberSession,
+      senders: () => [memberSession],
       storage: createMemoryStorage(),
       identity: member,
       clock: fixedClock(NOW_MS),
@@ -370,7 +452,7 @@ describe("createNoticeWiring", () => {
     // member's received state: its storage holds the owner's entry and its
     // read returns the decrypted notice.
     expect(memberChanges).toBeGreaterThan(0);
-    const memberRead = await memberWiring.readRoom(roomPath);
+    const memberRead = await memberWiring.readRoom(roomPath, [owner.deviceId]);
     const replicated = memberRead.find(
       (n) => n.verified && n.plaintext !== undefined,
     );
@@ -391,7 +473,7 @@ describe("createNoticeWiring", () => {
     await keys.set(roomPath, FIRST_EPOCH, generateContentKey());
     const session = fakeSession();
     const wiring = createNoticeWiring({
-      session,
+      senders: () => [session],
       storage: createMemoryStorage(),
       identity: owner,
       clock: fixedClock(NOW_MS),
@@ -407,7 +489,7 @@ describe("createNoticeWiring", () => {
       plaintext: new TextEncoder().encode("own log only"),
     });
 
-    const read = await wiring.readRoom(roomPath);
+    const read = await wiring.readRoom(roomPath, []);
     expect(read).toHaveLength(1);
     expect(read[0]?.plaintext).toEqual(
       new TextEncoder().encode("own log only"),
@@ -415,12 +497,12 @@ describe("createNoticeWiring", () => {
     expect(session.sent.some((f) => f.type === "data-have")).toBe(true);
   });
 
-  it("an inbound data-have from an unknown peer seeds tracking and triggers a catch-up request", async () => {
+  it("an inbound data-have is answered with a catch-up request through the sender it arrived on", async () => {
     const owner = await generateEs256Identity();
     const peer: DeviceId = Uint8Array.from({ length: 32 }, (_, i) => i);
     const session = fakeSession();
     const wiring = createNoticeWiring({
-      session,
+      senders: () => [session],
       storage: createMemoryStorage(),
       identity: owner,
       clock: fixedClock(NOW_MS),
@@ -434,10 +516,95 @@ describe("createNoticeWiring", () => {
       peer,
       "head-seq": 5,
     };
-    wiring.handleFrame(have);
+    wiring.handleFrame(have, session);
     await flush();
 
     const request = session.sent.find((f) => f.type === "data-request");
     expect(request).toMatchObject({ peer, "from-seq": 0 });
+  });
+
+  it("sync announces the own log to a sender and asks it for each peer's log", async () => {
+    const owner = await generateEs256Identity();
+    const peer: DeviceId = Uint8Array.from({ length: 32 }, (_, i) => i);
+    const roomPath = ownerNamedRoomPath(
+      deviceIdToHex(owner.deviceId),
+      "general",
+    );
+    const keys = memoryKeyStore();
+    await keys.set(roomPath, FIRST_EPOCH, generateContentKey());
+    const hub = fakeSession();
+    const wiring = createNoticeWiring({
+      senders: () => [],
+      storage: createMemoryStorage(),
+      identity: owner,
+      clock: fixedClock(NOW_MS),
+      revocation: createRevocationView(),
+      roomKeys: keys,
+      onChange: () => undefined,
+    });
+    await wiring.post({
+      room: roomPath,
+      token: await mintRoomMemberToken(owner, owner, roomPath),
+      contentType: "text/plain",
+      plaintext: new TextEncoder().encode("written while unconnected"),
+    });
+
+    await wiring.sync(hub, [peer]);
+
+    expect(hub.sent).toEqual([
+      { type: "data-have", peer: owner.deviceId, "head-seq": 1 },
+      { type: "data-request", peer, "from-seq": 0 },
+    ]);
+  });
+
+  it("sync announces nothing for an empty own log", async () => {
+    const owner = await generateEs256Identity();
+    const hub = fakeSession();
+    const wiring = createNoticeWiring({
+      senders: () => [],
+      storage: createMemoryStorage(),
+      identity: owner,
+      clock: fixedClock(NOW_MS),
+      revocation: createRevocationView(),
+      roomKeys: memoryKeyStore(),
+      onChange: () => undefined,
+    });
+
+    await wiring.sync(hub, []);
+
+    expect(hub.sent).toEqual([]);
+  });
+
+  it("a post still succeeds when one sender is not connected, and reaches the others", async () => {
+    const owner = await generateEs256Identity();
+    const roomPath = ownerNamedRoomPath(
+      deviceIdToHex(owner.deviceId),
+      "general",
+    );
+    const keys = memoryKeyStore();
+    await keys.set(roomPath, FIRST_EPOCH, generateContentKey());
+    const connected = fakeSession();
+    const disconnected: DataFrameSender = {
+      sendDataFrame: async () => Promise.reject(new Error("not connected")),
+    };
+    const wiring = createNoticeWiring({
+      senders: () => [disconnected, connected],
+      storage: createMemoryStorage(),
+      identity: owner,
+      clock: fixedClock(NOW_MS),
+      revocation: createRevocationView(),
+      roomKeys: keys,
+      onChange: () => undefined,
+    });
+
+    await wiring.post({
+      room: roomPath,
+      token: await mintRoomMemberToken(owner, owner, roomPath),
+      contentType: "text/plain",
+      plaintext: new TextEncoder().encode("hello"),
+    });
+
+    expect(connected.sent).toHaveLength(1);
+    expect(await wiring.readRoom(roomPath, [])).toHaveLength(1);
   });
 });

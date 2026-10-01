@@ -13,9 +13,11 @@ import {
 import type { Clock } from "wire-mesh-core/ports/clock";
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import type { KeyValueStorage } from "wire-mesh-core/ports/storage";
+import type { RoomKeyDelivery } from "./notices.js";
 
 const KEY_PREFIX = "room-key/";
 const TOKEN_PREFIX = "room-token/";
+const DELIVERED_PREFIX = "room-key-delivered/";
 
 /** Epoch numbers are zero-padded to this width so the storage keys of one room sort in epoch order. */
 const EPOCH_KEY_WIDTH = String(Number.MAX_SAFE_INTEGER).length;
@@ -24,6 +26,8 @@ export interface RoomTokenStore {
   /** The token held for `room` if it is still valid for this device, otherwise undefined (an invalid stored token is removed). */
   get: (room: string) => Promise<CapabilityToken | undefined>;
   set: (room: string, token: Readonly<CapabilityToken>) => Promise<void>;
+  /** Every room a token is stored for, valid or not: the rooms this device has joined. */
+  rooms: () => Promise<string[]>;
 }
 
 function epochKey(room: string, epoch: number): string {
@@ -81,6 +85,23 @@ export function createPersistentRoomTokenStore(
         TOKEN_PREFIX + room,
         new Uint8Array(encode(token, cdeEncodeOptions)),
       );
+    },
+    rooms: async () =>
+      (await storage.keys(TOKEN_PREFIX)).map((key) =>
+        key.slice(TOKEN_PREFIX.length),
+      ),
+  };
+}
+
+/** Which rooms the peer has acknowledged the first epoch key of. */
+export function createPersistentRoomKeyDelivery(
+  storage: Readonly<KeyValueStorage>,
+): RoomKeyDelivery {
+  return {
+    isDelivered: async (room) =>
+      (await storage.get(DELIVERED_PREFIX + room)) !== undefined,
+    markDelivered: async (room) => {
+      await storage.set(DELIVERED_PREFIX + room, new Uint8Array([1]));
     },
   };
 }
