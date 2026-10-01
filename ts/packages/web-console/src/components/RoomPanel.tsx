@@ -107,7 +107,7 @@ export function RoomPanel({
         labelPosition="center"
       />
       <NoticesView notices={view.notices} />
-      {view.via === "direct" ? (
+      {view.via !== undefined ? (
         <Group>
           <SubmitRow
             ariaLabel="Post a durable notice"
@@ -118,7 +118,7 @@ export function RoomPanel({
         </Group>
       ) : (
         <Text size="sm" c="dimmed">
-          Durable notices need a direct connection.
+          Durable notices can be posted while the conversation is connected.
         </Text>
       )}
     </Stack>

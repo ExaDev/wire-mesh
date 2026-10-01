@@ -102,6 +102,17 @@ describe("RoomPanel", () => {
     );
   });
 
+  it("offers the notice composer over a hub as well as a direct connection, and not while there is no route", () => {
+    renderPanel({ view: view({ via: "hub" }) });
+    expect(screen.getByPlaceholderText("Post a durable notice")).toBeVisible();
+    cleanup();
+
+    renderPanel({ view: view({ via: undefined }) });
+    expect(
+      screen.queryByPlaceholderText("Post a durable notice"),
+    ).not.toBeInTheDocument();
+  });
+
   it("renders the session's notices through the notices view", () => {
     renderPanel({
       view: view({
