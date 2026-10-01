@@ -23,6 +23,8 @@ export interface PeerLabel {
   /** What to show beside the primary text, or undefined when the primary is already the short id. A petname is shown with the peer's own claim so a renamed peer can still be recognised; a self name is shown with the short id so two peers claiming one name can be told apart. */
   secondary: string | undefined;
   source: PeerLabelSource;
+  /** True when the primary text is a self-asserted name that equals a petname this viewer holds for some device, so the peer may be passing itself off as someone the viewer already named. Always false for a petname or a short id. */
+  matchesPetname: boolean;
 }
 
 export function shortId(deviceHex: string): string {
@@ -33,11 +35,11 @@ export function shortId(deviceHex: string): string {
 const UNSAFE_NAME_CHARACTERS =
   /[\p{Cc}\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/gu;
 
-/** A name fit to display: free of control and bidirectional formatting characters, trimmed, non-empty, and within MAX_NAME_LENGTH code points (never cutting a surrogate pair in half). */
+/** A name fit to display: free of control and bidirectional formatting characters, non-empty, within MAX_NAME_LENGTH code points (never cutting a surrogate pair in half), and trimmed after that cut so a cut that lands after a space leaves no trailing space. */
 export function cleanName(name: string): string | undefined {
   const trimmed = name.replace(UNSAFE_NAME_CHARACTERS, "").trim();
   if (trimmed === "") return undefined;
-  return Array.from(trimmed).slice(0, MAX_NAME_LENGTH).join("");
+  return Array.from(trimmed).slice(0, MAX_NAME_LENGTH).join("").trimEnd();
 }
 
 /** The display name a peer signed about itself, read from its verified advert, or undefined when it published none or a malformed one. */
@@ -55,10 +57,12 @@ export function selfNameExtension(name: string): Record<string, unknown> {
   return { [SELF_ADVERT_KEY]: { name, harness: CONSOLE_HARNESS } };
 }
 
+/** Labels a peer. `heldPetnames` is every petname this viewer holds, for any device, so a self-asserted name that copies one can be flagged. */
 export function labelPeer(
   deviceHex: string,
   petname: string | undefined,
   selfName: string | undefined,
+  heldPetnames: ReadonlySet<string>,
 ): PeerLabel {
   if (petname !== undefined) {
     return {
@@ -66,12 +70,23 @@ export function labelPeer(
       secondary:
         selfName !== undefined && selfName !== petname ? selfName : undefined,
       source: "petname",
+      matchesPetname: false,
     };
   }
   if (selfName !== undefined) {
-    return { primary: selfName, secondary: shortId(deviceHex), source: "self" };
+    return {
+      primary: selfName,
+      secondary: shortId(deviceHex),
+      source: "self",
+      matchesPetname: heldPetnames.has(selfName),
+    };
   }
-  return { primary: shortId(deviceHex), secondary: undefined, source: "id" };
+  return {
+    primary: shortId(deviceHex),
+    secondary: undefined,
+    source: "id",
+    matchesPetname: false,
+  };
 }
 
 /** A label as one line of plain text. A self-asserted name carries the short id so that two peers claiming the same name still read differently; a petname or a short id stands alone. */
