@@ -20,15 +20,24 @@
 //! CDE, or isn't an array at all) is a hard decode error, mirroring how `parent`'s own nested
 //! `bstr .cbor` is already handled in `tokens.rs`.
 //!
-//! No `delegate` system is registered yet (mirroring `token-predicates.ts`'s own
-//! `extraHandlers: {} ` default), so every `delegate` node currently resolves to
-//! indeterminate -- correct, fail-closed behaviour, not a placeholder to fill in later.
+//! Two `delegate` systems are registered, both subject-mode (wire-mesh#323): they resolve
+//! only when a subject is supplied (an authorised-by walk evaluating the authoriser's
+//! conditions against the minted child's claims) and are indeterminate otherwise.
+//! `not`/`and`/`or` decode and evaluate under strict Kleene semantics, since the named
+//! no-self-grant bars are `not(and(...))` trees; every other boolean connective stays
+//! `Unsupported` (fail-closed) until something actually needs it.
 
 use std::collections::BTreeMap;
 
+use crate::domain::room_path::device_id_to_hex;
 use minicbor::Decoder;
 use wire_mesh_wire::error::DecodeError;
+use wire_mesh_wire::identity::DeviceId;
 use wire_mesh_wire::value::{CanonicalMap, CborValue};
+
+/// The two subject-mode delegate systems (wire-mesh#323), matching token-predicates.ts.
+pub const GRANTEE_IS: &str = "grantee-is";
+pub const GRANTED_CAPABILITY_IS: &str = "granted-capability-is";
 
 /// `compare`'s comparison operator (trilean's `ComparisonOperatorSchema`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,10 +108,33 @@ pub enum PredicateNode {
         left: ExpressionNode,
         right: ExpressionNode,
     },
+    Not {
+        operand: Box<PredicateNode>,
+    },
+    And {
+        left: Box<PredicateNode>,
+        right: Box<PredicateNode>,
+    },
+    Or {
+        left: Box<PredicateNode>,
+        right: Box<PredicateNode>,
+    },
     /// A legal `PredicateNode` kind this module has no support for, or a value that does not
-    /// match the `compare` shape above. Always evaluates to indeterminate.
+    /// match the shapes above. Always evaluates to indeterminate.
     Unsupported,
 }
+
+/// The minted child a grant-capability's conditions are evaluated against (wire-mesh#323
+/// subject mode): exactly the claims the two registered systems read, nothing more.
+pub struct GrantSubject<'a> {
+    pub capability: &'a str,
+    pub bearer: &'a DeviceId,
+}
+
+/// Three-valued (strict Kleene) predicate result: `None` is indeterminate, and an
+/// indeterminate anywhere in a tree refuses the whole conditions list, exactly as trilean's
+/// own evaluator treats it.
+pub type Tri = Option<bool>;
 
 fn field<'a>(map: &'a CanonicalMap<CborValue, CborValue>, key: &str) -> Option<&'a CborValue> {
     map.get(&CborValue::Text(key.to_owned()))
@@ -203,6 +235,27 @@ impl PredicateNode {
                 };
                 PredicateNode::Compare { op, left, right }
             }
+            Some("not") => match field(map, "operand").map(PredicateNode::from_cbor) {
+                Some(operand) => PredicateNode::Not {
+                    operand: Box::new(operand),
+                },
+                None => PredicateNode::Unsupported,
+            },
+            Some(kind @ ("and" | "or")) => {
+                let (Some(left), Some(right)) = (
+                    field(map, "left").map(PredicateNode::from_cbor),
+                    field(map, "right").map(PredicateNode::from_cbor),
+                ) else {
+                    return PredicateNode::Unsupported;
+                };
+                let left = Box::new(left);
+                let right = Box::new(right);
+                if kind == "and" {
+                    PredicateNode::And { left, right }
+                } else {
+                    PredicateNode::Or { left, right }
+                }
+            }
             _ => PredicateNode::Unsupported,
         }
     }
@@ -231,7 +284,10 @@ enum ComputedValue {
     Instant(String),
 }
 
-fn evaluate_expression(node: &ExpressionNode) -> Option<ComputedValue> {
+fn evaluate_expression(
+    node: &ExpressionNode,
+    subject: Option<&GrantSubject<'_>>,
+) -> Option<ComputedValue> {
     match node {
         ExpressionNode::NumberLiteral { value, unit } => Some(ComputedValue::Number {
             value: *value,
@@ -239,10 +295,20 @@ fn evaluate_expression(node: &ExpressionNode) -> Option<ComputedValue> {
         }),
         ExpressionNode::BooleanLiteral { value } => Some(ComputedValue::Boolean(*value)),
         ExpressionNode::InstantLiteral { value } => Some(ComputedValue::Instant(value.clone())),
-        // No delegate system is registered (see the module doc comment): every delegate
-        // resolves to indeterminate, matching `token-predicates.ts`'s own empty
-        // `extraHandlers` default exactly.
-        ExpressionNode::Delegate { .. } | ExpressionNode::Unsupported => None,
+        ExpressionNode::Delegate { system, payload } => {
+            let subject = subject?;
+            let holds = match (system.as_str(), payload) {
+                (GRANTEE_IS, CborValue::Text(expected)) => {
+                    device_id_to_hex(subject.bearer) == *expected
+                }
+                (GRANTED_CAPABILITY_IS, CborValue::Text(expected)) => {
+                    subject.capability == expected
+                }
+                _ => return None,
+            };
+            Some(ComputedValue::Boolean(holds))
+        }
+        ExpressionNode::Unsupported => None,
     }
 }
 
@@ -335,23 +401,62 @@ fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
-fn evaluate_predicate(node: &PredicateNode) -> bool {
-    match node {
-        PredicateNode::Compare { op, left, right } => {
-            let (Some(l), Some(r)) = (evaluate_expression(left), evaluate_expression(right)) else {
-                return false;
-            };
-            compare_values(*op, &l, &r)
-        }
-        PredicateNode::Unsupported => false,
+/// Strict Kleene connectives: an indeterminate operand propagates through `not` (stays
+/// indeterminate, never true), short-circuits `and`/`or` only when the other leg is already
+/// decisive, and refuses the whole tree otherwise.
+fn not(operand: Tri) -> Tri {
+    operand.map(|value| !value)
+}
+
+fn and(left: Tri, right: Tri) -> Tri {
+    match (left, right) {
+        (Some(false), _) | (_, Some(false)) => Some(false),
+        (Some(true), Some(true)) => Some(true),
+        _ => None,
     }
 }
 
-/// Evaluates a `conditions` list as an implicit AND: every entry must hold. An empty list
-/// (no `conditions` field, or one that decoded to zero entries) is trivially satisfied,
-/// matching `token-predicates.ts`'s own `evaluateConditions` exactly.
-pub fn evaluate_conditions(nodes: &[PredicateNode]) -> bool {
-    nodes.iter().all(evaluate_predicate)
+fn or(left: Tri, right: Tri) -> Tri {
+    match (left, right) {
+        (Some(true), _) | (_, Some(true)) => Some(true),
+        (Some(false), Some(false)) => Some(false),
+        _ => None,
+    }
+}
+
+fn evaluate_predicate(node: &PredicateNode, subject: Option<&GrantSubject<'_>>) -> Tri {
+    match node {
+        PredicateNode::Compare { op, left, right } => {
+            let (Some(l), Some(r)) = (
+                evaluate_expression(left, subject),
+                evaluate_expression(right, subject),
+            ) else {
+                return None;
+            };
+            Some(compare_values(*op, &l, &r))
+        }
+        PredicateNode::Not { operand } => not(evaluate_predicate(operand, subject)),
+        PredicateNode::And { left, right } => and(
+            evaluate_predicate(left, subject),
+            evaluate_predicate(right, subject),
+        ),
+        PredicateNode::Or { left, right } => or(
+            evaluate_predicate(left, subject),
+            evaluate_predicate(right, subject),
+        ),
+        PredicateNode::Unsupported => None,
+    }
+}
+
+/// Evaluates a `conditions` list as an implicit AND: every entry must hold definitely. An
+/// empty list (no `conditions` field, or one that decoded to zero entries) is trivially
+/// satisfied, matching `token-predicates.ts`'s own `evaluateConditions` exactly. `subject`
+/// is the minted child in subject mode (wire-mesh#323), and `None` evaluates against the
+/// carrying token's own claims, where the two subject systems are indeterminate.
+pub fn evaluate_conditions(nodes: &[PredicateNode], subject: Option<&GrantSubject<'_>>) -> bool {
+    nodes
+        .iter()
+        .all(|node| evaluate_predicate(node, subject) == Some(true))
 }
 
 #[cfg(test)]
@@ -359,7 +464,7 @@ mod tests {
     use super::*;
 
     fn compare(op: ComparisonOperator, left: ExpressionNode, right: ExpressionNode) -> bool {
-        evaluate_predicate(&PredicateNode::Compare { op, left, right })
+        evaluate_predicate(&PredicateNode::Compare { op, left, right }, None) == Some(true)
     }
 
     fn number(value: f64) -> ExpressionNode {
@@ -425,7 +530,7 @@ mod tests {
 
     #[test]
     fn a_delegate_operand_is_always_indeterminate() {
-        // No system is registered (see the module doc comment): a compare against a delegate
+        // No subject is supplied (see the module doc comment): a compare against a delegate
         // operand can never resolve, regardless of the other operand.
         let delegate = ExpressionNode::Delegate {
             system: "anything".to_owned(),
@@ -456,7 +561,7 @@ mod tests {
         }
         let nodes = decode_conditions(&buf).expect("a well-formed array must still decode");
         assert_eq!(nodes, vec![PredicateNode::Unsupported]);
-        assert!(!evaluate_conditions(&nodes));
+        assert!(!evaluate_conditions(&nodes, None));
     }
 
     #[test]
@@ -490,12 +595,85 @@ mod tests {
                 right: ExpressionNode::BooleanLiteral { value: true },
             }]
         );
-        // No system is registered, so this still fails closed even though it decoded cleanly.
-        assert!(!evaluate_conditions(&nodes));
+        // No subject is supplied, so the delegate stays indeterminate and fails closed even
+        // though it decoded cleanly.
+        assert!(!evaluate_conditions(&nodes, None));
     }
 
     #[test]
     fn empty_conditions_list_is_trivially_satisfied() {
-        assert!(evaluate_conditions(&[]));
+        assert!(evaluate_conditions(&[], None));
+    }
+
+    #[test]
+    fn not_and_or_follow_strict_kleene_semantics() {
+        let t = || PredicateNode::Compare {
+            op: ComparisonOperator::Eq,
+            left: ExpressionNode::BooleanLiteral { value: true },
+            right: ExpressionNode::BooleanLiteral { value: true },
+        };
+        let f = || PredicateNode::Compare {
+            op: ComparisonOperator::Eq,
+            left: ExpressionNode::BooleanLiteral { value: false },
+            right: ExpressionNode::BooleanLiteral { value: true },
+        };
+        let indet = || PredicateNode::Unsupported;
+        let eval = |node: &PredicateNode| evaluate_predicate(node, None);
+        assert_eq!(eval(&t()), Some(true));
+        assert_eq!(not(eval(&f())), Some(true));
+        assert_eq!(not(eval(&indet())), None);
+        assert_eq!(and(eval(&f()), eval(&indet())), Some(false));
+        assert_eq!(and(eval(&t()), eval(&indet())), None);
+        assert_eq!(or(eval(&t()), eval(&indet())), Some(true));
+        assert_eq!(or(eval(&f()), eval(&indet())), None);
+    }
+
+    #[test]
+    fn subject_systems_read_the_subject_and_fail_closed_without_one() {
+        let bearer = DeviceId([0xAB; 32]);
+        let subject = GrantSubject {
+            capability: "exec:pty",
+            bearer: &bearer,
+        };
+        let node = |system: &str, payload: CborValue| PredicateNode::Compare {
+            op: ComparisonOperator::Eq,
+            left: ExpressionNode::Delegate {
+                system: system.to_owned(),
+                payload,
+            },
+            right: ExpressionNode::BooleanLiteral { value: true },
+        };
+        let bearer_hex = device_id_to_hex(&bearer);
+        assert!(
+            evaluate_predicate(
+                &node(GRANTEE_IS, CborValue::Text(bearer_hex.clone())),
+                Some(&subject)
+            ) == Some(true)
+        );
+        assert!(
+            evaluate_predicate(
+                &node(GRANTEE_IS, CborValue::Text("00".to_owned())),
+                Some(&subject)
+            ) == Some(false)
+        );
+        assert!(
+            evaluate_predicate(
+                &node(
+                    GRANTED_CAPABILITY_IS,
+                    CborValue::Text("exec:pty".to_owned())
+                ),
+                Some(&subject)
+            ) == Some(true)
+        );
+        // No subject, a non-text payload, or an unregistered system: indeterminate, fail closed.
+        assert!(evaluate_predicate(&node(GRANTEE_IS, CborValue::Text(bearer_hex)), None).is_none());
+        assert!(
+            evaluate_predicate(&node(GRANTEE_IS, CborValue::UInt(7)), Some(&subject)).is_none()
+        );
+        assert!(evaluate_predicate(
+            &node("other-system", CborValue::Text("x".to_owned())),
+            Some(&subject)
+        )
+        .is_none());
     }
 }
