@@ -112,12 +112,78 @@ describe("revocation store", () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
-  it("fails loudly when a stored revocation is malformed", async () => {
-    const storage = createMemoryStorage();
-    await storage.set("revocation/x/y", new Uint8Array([0]));
+  describe("a stored revocation that cannot be loaded", () => {
+    const MALFORMED_KEY = "revocation/x/y";
+    const NOT_CBOR_KEY = "revocation/x/z";
+    const BREAK_CODE = 0xff;
+    const CBOR_ZERO = 0;
 
-    await expect(
-      createRevocationStore({ storage, identity: own, clock }),
-    ).rejects.toThrow("malformed");
+    it("starts anyway, loading what is readable and listing what is not with the reason", async () => {
+      const storage = createMemoryStorage();
+      await (
+        await createRevocationStore({ storage, identity: own, clock })
+      ).revoke(tokenId());
+      await storage.set(MALFORMED_KEY, new Uint8Array([CBOR_ZERO]));
+      await storage.set(NOT_CBOR_KEY, new Uint8Array([BREAK_CODE]));
+
+      const store = await createRevocationStore({
+        storage,
+        identity: own,
+        clock,
+      });
+
+      expect(await store.view.entriesFor(tokenId())).toHaveLength(1);
+      expect(store.unreadable()).toEqual([
+        { key: MALFORMED_KEY, reason: "it is not a revocation entry" },
+        { key: NOT_CBOR_KEY, reason: "it is not valid CBOR" },
+      ]);
+    });
+
+    it("lists nothing when every stored revocation loads", async () => {
+      const storage = createMemoryStorage();
+      await (
+        await createRevocationStore({ storage, identity: own, clock })
+      ).revoke(tokenId());
+
+      const store = await createRevocationStore({
+        storage,
+        identity: own,
+        clock,
+      });
+
+      expect(store.unreadable()).toEqual([]);
+    });
+
+    it("deletes a discarded entry from storage and the list, and tells listeners", async () => {
+      const storage = createMemoryStorage();
+      await storage.set(MALFORMED_KEY, new Uint8Array([CBOR_ZERO]));
+      const store = await createRevocationStore({
+        storage,
+        identity: own,
+        clock,
+      });
+      const listener = vi.fn<() => void>();
+      store.subscribe(listener);
+      const before = store.unreadable();
+
+      await store.discardUnreadable(MALFORMED_KEY);
+
+      expect(store.unreadable()).toEqual([]);
+      expect(store.unreadable()).not.toBe(before);
+      expect(await storage.get(MALFORMED_KEY)).toBeUndefined();
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns the same list until something is discarded, so it can back a subscription", async () => {
+      const storage = createMemoryStorage();
+      await storage.set(MALFORMED_KEY, new Uint8Array([CBOR_ZERO]));
+      const store = await createRevocationStore({
+        storage,
+        identity: own,
+        clock,
+      });
+
+      expect(store.unreadable()).toBe(store.unreadable());
+    });
   });
 });
