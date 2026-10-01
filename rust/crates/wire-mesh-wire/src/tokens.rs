@@ -491,9 +491,20 @@ pub struct TokenClaims {
     /// silently dropped the way `valid-until` once did before that gap was
     /// found and fixed.
     pub conditions: Option<Vec<u8>>,
-    /// `bstr .cbor capability-token` — a fully self-contained nested
+    /// `bstr .cbor capability-token`: a fully self-contained nested
     /// COSE_Sign1 of the parent token, opaque at this layer.
     pub parent: Option<Vec<u8>>,
+    /// Bounds how many further delegation hops the chain may take below
+    /// this token; absent means unbounded, 0 means none. Typed (never left
+    /// to `extra`) precisely so the verifier can enforce it: an untyped
+    /// field is an unchecked field.
+    pub delegations_remaining: Option<u64>,
+    /// `bstr .cbor capability-token`: the grant-capability that authorised
+    /// this token's mint (wire-mesh#323), opaque at this layer.
+    pub authorised_by: Option<Vec<u8>>,
+    /// On a manage:grant token: the single verb it authorises minting.
+    /// Absent means any verb within the token's own scope.
+    pub grants_capability: Option<CapabilityVerb>,
     pub extra: CanonicalMap<String, CborValue>,
 }
 
@@ -546,6 +557,15 @@ impl Encode<()> for TokenClaims {
         if let Some(parent) = &self.parent {
             builder.push_bytes("parent", parent);
         }
+        if let Some(remaining) = self.delegations_remaining {
+            builder.push("delegations-remaining", &remaining);
+        }
+        if let Some(authorised_by) = &self.authorised_by {
+            builder.push_bytes("authorised-by", authorised_by);
+        }
+        if let Some(grants) = &self.grants_capability {
+            builder.push("grants-capability", &grants.0.as_str());
+        }
         for (key, value) in self.extra.iter() {
             let mut value_buf = Vec::new();
             let mut value_enc = Encoder::new(&mut value_buf);
@@ -577,6 +597,9 @@ pub(crate) fn token_claims_from(d: &mut Decoder<'_>) -> Result<TokenClaims, Deco
     let mut valid_until: Option<u64> = None;
     let mut conditions: Option<Vec<u8>> = None;
     let mut parent: Option<Vec<u8>> = None;
+    let mut delegations_remaining: Option<u64> = None;
+    let mut authorised_by: Option<Vec<u8>> = None;
+    let mut grants_capability: Option<String> = None;
     let mut extra = CanonicalMap::new();
     while let Some(key) = map.next_key(d)? {
         match key {
@@ -593,6 +616,13 @@ pub(crate) fn token_claims_from(d: &mut Decoder<'_>) -> Result<TokenClaims, Deco
             "valid-until" => strict::set_once(&mut valid_until, strict::uint_value(d)?)?,
             "conditions" => strict::set_once(&mut conditions, strict::bytes_value(d)?)?,
             "parent" => strict::set_once(&mut parent, strict::bytes_value(d)?)?,
+            "delegations-remaining" => {
+                strict::set_once(&mut delegations_remaining, strict::uint_value(d)?)?
+            }
+            "authorised-by" => strict::set_once(&mut authorised_by, strict::bytes_value(d)?)?,
+            "grants-capability" => {
+                strict::set_once(&mut grants_capability, strict::text_value(d)?)?
+            }
             other => {
                 let value = CborValue::decode_strict(d)?;
                 extra.insert(other.to_owned(), value)?;
@@ -611,6 +641,9 @@ pub(crate) fn token_claims_from(d: &mut Decoder<'_>) -> Result<TokenClaims, Deco
         valid_until,
         conditions,
         parent,
+        delegations_remaining,
+        authorised_by,
+        grants_capability: grants_capability.map(CapabilityVerb),
         extra,
     })
 }
@@ -862,6 +895,9 @@ mod tests {
             valid_until: None,
             conditions: None,
             parent: None,
+            delegations_remaining: None,
+            authorised_by: None,
+            grants_capability: None,
             extra,
         };
         let bytes = claims.encode_to_vec();
@@ -870,5 +906,39 @@ mod tests {
         // Map arity 8, first key is the 3-byte-encoded "zz".
         assert_eq!(bytes[0], 0xa8);
         assert_eq!(&bytes[1..4], &[0x62, b'z', b'z']);
+    }
+
+    #[test]
+    fn token_claims_round_trips_the_grant_permission_fields() {
+        // Every new wire-mesh#323 field present at once, plus delegations-remaining
+        // newly typed: each must survive encode/decode rather than falling into
+        // `extra` (or out of the struct entirely) the way delegations-remaining
+        // previously did.
+        let claims = TokenClaims {
+            token_id: vec![1; 16],
+            issuer: DeviceId([2; 32]),
+            issuer_key: IdentityKey {
+                alg: -7,
+                public_key: vec![3; 32],
+            },
+            bearer: DeviceId([4; 32]),
+            capability: CapabilityVerb("manage:grant".to_owned()),
+            scope: CapabilityScope {
+                kind: "folder".to_owned(),
+                path: Some("/work".to_owned()),
+            },
+            expires: 42,
+            not_before: None,
+            valid_until: None,
+            conditions: Some(vec![0x81, 0xf6]),
+            parent: None,
+            delegations_remaining: Some(3),
+            authorised_by: Some(vec![5; 48]),
+            grants_capability: Some(CapabilityVerb("exec:pty".to_owned())),
+            extra: CanonicalMap::new(),
+        };
+        let bytes = claims.encode_to_vec();
+        let decoded = TokenClaims::decode_bytes(&bytes).expect("decode");
+        assert_eq!(decoded, claims);
     }
 }
