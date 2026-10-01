@@ -16,6 +16,7 @@ import type {
   MeshSession,
 } from "../src/domain/mesh-session.js";
 import {
+  CapabilityRequestRefusedError,
   MANAGE_REQUEST_CAPABILITY,
   buildCapabilityRequestCommand,
   createCapabilityRequestHandler,
@@ -160,6 +161,26 @@ describe("requestCapability", () => {
     await expect(
       requestCapability(session, TEST_CAPABILITY, TEST_SCOPE),
     ).rejects.toThrow(/denied/);
+  });
+
+  it("carries the receiver's refusal code on the error it throws", async () => {
+    const session = fakeSession();
+    vi.mocked(session.sendManageRequest).mockResolvedValue({
+      result: "error",
+      code: "token_required",
+    } satisfies ManageOutcome);
+
+    const error = await requestCapability(
+      session,
+      TEST_CAPABILITY,
+      TEST_SCOPE,
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(CapabilityRequestRefusedError);
+    expect(error).toMatchObject({
+      code: "token_required",
+      capability: TEST_CAPABILITY,
+    });
   });
 
   it("throws when the grant response is malformed", async () => {

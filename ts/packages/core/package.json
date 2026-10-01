@@ -194,6 +194,10 @@
       "import": "./dist/domain/threshold-subject.mjs",
       "require": "./dist/domain/threshold-subject.cjs"
     },
+    "./domain/token-predicates": {
+      "import": "./dist/domain/token-predicates.mjs",
+      "require": "./dist/domain/token-predicates.cjs"
+    },
     "./domain/tokens": {
       "import": "./dist/domain/tokens.mjs",
       "require": "./dist/domain/tokens.cjs"

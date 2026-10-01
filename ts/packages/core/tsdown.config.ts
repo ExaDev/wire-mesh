@@ -21,7 +21,6 @@ const INTERNAL_MODULES = [
   "src/domain/threshold-network.ts",
   "src/domain/threshold-share-envelope.ts",
   "src/domain/threshold-share-wire.ts",
-  "src/domain/token-predicates.ts",
   "src/domain/token-scope.ts",
   "src/ports/nonce-store.ts",
 ];
