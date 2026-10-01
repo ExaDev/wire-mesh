@@ -275,6 +275,32 @@ describe("a conversation over a hub", () => {
     );
   });
 
+  it("reports a grant it could not save, and keeps the message that was sent", async () => {
+    const STORAGE_FAILURE = "the origin's storage quota is exhausted";
+    const store = createMessageStore(createMemoryStorage());
+    const services = {
+      ...capabilities.services,
+      grants: {
+        ...capabilities.grants,
+        record: async () => Promise.reject(new Error(STORAGE_FAILURE)),
+      },
+    };
+    const { result } = renderHook(() =>
+      useRoomMessaging(own, clock, store, services),
+    );
+    const hub = await answeringHub();
+    act(() => {
+      result.current.openRelay(hub, peer.deviceId);
+    });
+
+    await act(async () => result.current.send(roomPath, "hello"));
+
+    await waitFor(() => {
+      expect(result.current.persistenceFailure).toBe(STORAGE_FAILURE);
+    });
+    expect(result.current.conversations[0]?.messages).toHaveLength(1);
+  });
+
   it("records the grant an accepted join request issues, and refuses the peer's messages once it is revoked", async () => {
     const { result } = render();
     const incoming = createAsyncQueue<IncomingManageRequest>();

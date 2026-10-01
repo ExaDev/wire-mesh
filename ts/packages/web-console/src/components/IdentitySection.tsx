@@ -7,6 +7,7 @@ import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import type { IdentityBackupService } from "../adapters/identity-backup.js";
 import type { GrantStore } from "../grant-store.js";
 import { useGrants } from "../hooks/use-grants.js";
+import type { AnnounceResult } from "../hooks/use-grants.js";
 import type { RevocationStore } from "../revocation-store.js";
 import { GrantsPanel } from "./GrantsPanel.js";
 import { IdentityPanel } from "./IdentityPanel.js";
@@ -18,7 +19,7 @@ export interface IdentitySectionProps {
   revocations: RevocationStore;
   identityBackup: IdentityBackupService;
   /** Tells every connected node about a revocation this device just made. */
-  announceRevocation: (entry: RevocationEntry) => Promise<void>;
+  announceRevocation: (entry: RevocationEntry) => Promise<AnnounceResult>;
 }
 
 export function IdentitySection({

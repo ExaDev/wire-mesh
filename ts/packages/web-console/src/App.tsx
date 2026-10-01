@@ -48,6 +48,8 @@ import { SelfNameField } from "./components/SelfNameField.js";
 import { OnboardingIntro } from "./components/OnboardingIntro.js";
 import { SearchPanel } from "./components/SearchPanel.js";
 import { IdentitySection } from "./components/IdentitySection.js";
+import { UnreadableRevocations } from "./components/UnreadableRevocations.js";
+import type { AnnounceResult } from "./hooks/use-grants.js";
 import type { IdentityBackupService } from "./adapters/identity-backup.js";
 import type { GrantStore } from "./grant-store.js";
 import type { RevocationStore } from "./revocation-store.js";
@@ -133,6 +135,9 @@ export function App({
   const [connections, setConnections] = useState<ConnectionEntry[]>([]);
   const [discovered, setDiscovered] = useState<PendingExpansion[]>([]);
   const [failures, setFailures] = useState<ConnectionFailure[]>([]);
+  const [revocationFailure, setRevocationFailure] = useState<
+    string | undefined
+  >(undefined);
   const intro = useIntro(preferences);
   const trust = useCertificateTrust(certificateMemory, clock);
   const capabilities = useMemo(
@@ -221,10 +226,16 @@ export function App({
         },
       },
     );
-    // Revocations a node announces are verified and recorded by the store, so every token check in the console honours them.
+    // Revocations a node announces are verified and recorded by the store, so every token check in the console honours them. One that cannot be stored is reported and the next is still read, since one storage failure must not end ingestion for the rest of the connection.
     void (async (): Promise<void> => {
       for await (const entry of session.revocationAnnouncements) {
-        await revocations.ingest(entry);
+        try {
+          await revocations.ingest(entry);
+        } catch (error) {
+          setRevocationFailure(
+            error instanceof Error ? error.message : String(error),
+          );
+        }
       }
     })();
     watchHubRef.current({
@@ -387,12 +398,19 @@ export function App({
   }
 
   /** Tells every connected node about a revocation. A connection that is down cannot be told, so it is skipped rather than failing the revocation, which has already been recorded here. */
-  async function announceRevocation(entry: RevocationEntry): Promise<void> {
-    await Promise.allSettled(
+  async function announceRevocation(
+    entry: RevocationEntry,
+  ): Promise<AnnounceResult> {
+    const outcomes = await Promise.allSettled(
       connectionsRef.current.map(async (connection) =>
         connection.session.sendRevocationAnnounce([entry]),
       ),
     );
+    return {
+      attempted: outcomes.length,
+      reached: outcomes.filter((outcome) => outcome.status === "fulfilled")
+        .length,
+    };
   }
 
   function handleClose(target: Readonly<ConnectionEntry>): void {
@@ -522,6 +540,21 @@ export function App({
             {failure.reason}. Messages go through the hub instead.
           </Alert>
         ))}
+        {roomMessaging.persistenceFailure !== undefined && (
+          <Alert color="red" title="Could not save to this console's storage">
+            {roomMessaging.persistenceFailure}. The conversation carries on, but
+            what failed to save will be missing after a reload.
+          </Alert>
+        )}
+        {revocationFailure !== undefined && (
+          <Alert color="red" title="A revocation could not be stored">
+            {revocationFailure}
+          </Alert>
+        )}
+        <UnreadableRevocations
+          revocations={revocations}
+          onFailure={setRevocationFailure}
+        />
         <SearchPanel
           conversations={roomMessaging.conversations}
           onSelect={setSelectedPath}

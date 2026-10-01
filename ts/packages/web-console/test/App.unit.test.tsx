@@ -22,6 +22,7 @@ import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import type { KeyValueStorage } from "wire-mesh-core/ports/storage";
 import type { Clock } from "wire-mesh-core/ports/clock";
 import type { GossipFrame } from "wire-mesh-core/generated/protocol";
+import { mintRevocationEntry } from "wire-mesh-core/domain/tokens";
 import {
   decodeMessage,
   messageFromFrame,
@@ -142,6 +143,7 @@ function submitConnectForm(): void {
 
 const DEVICE_ID_HEX_LENGTH = 64;
 const SHA256_HEX_LENGTH = 64;
+const REVOCATION_TOKEN_ID_BYTES = 16;
 /** Longer than the longest backoff the console's reconnect policy waits (it caps each delay at 30 s). */
 const PAST_ANY_RECONNECT_DELAY_MS = 60_000;
 const GOSSIPED_ADDRESS = "203.0.113.5:4433";
@@ -708,6 +710,40 @@ describe("App", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("reports a revocation a node announced that could not be stored, and still reads the ones after it", async () => {
+    const STORAGE_FAILURE = "the origin's storage quota is exhausted";
+    const ingest = vi
+      .fn<(typeof currentCapabilities.revocations)["ingest"]>()
+      .mockRejectedValueOnce(new Error(STORAGE_FAILURE))
+      .mockResolvedValue({ ok: false, reason: "bad_signature" });
+    const capabilities: TestCapabilities = {
+      ...currentCapabilities,
+      revocations: { ...currentCapabilities.revocations, ingest },
+    };
+    renderApp({ capabilities });
+    const rootSocket = await connectRoot();
+    const entry = await mintRevocationEntry({
+      identity: appIdentity,
+      tokenId: new Uint8Array(REVOCATION_TOKEN_ID_BYTES),
+      revokedAt: 0,
+    });
+    const announce = (): void => {
+      rootSocket.emitMessage(
+        arrayBuffer(
+          messageFromFrame({ type: "revocation-announce", entries: [entry] }),
+        ),
+      );
+    };
+
+    announce();
+    expect(await screen.findByText(STORAGE_FAILURE)).toBeInTheDocument();
+    announce();
+
+    await vi.waitFor(() => {
+      expect(ingest).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("asks about a gossiped node's certificate after the user connects to it, before dialling", async () => {

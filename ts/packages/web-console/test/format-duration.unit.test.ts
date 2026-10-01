@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { formatAgo, formatRemaining } from "../src/format-duration.js";
+import {
+  formatAgo,
+  formatRemaining,
+  formatUntil,
+} from "../src/format-duration.js";
 
 const SECOND = 1000;
 const SECONDS_PER_MINUTE = 60;
@@ -38,5 +42,16 @@ describe("formatRemaining", () => {
     expect(formatRemaining(ONE_AND_A_HALF_SECONDS)).toBe("2 s");
     expect(formatRemaining(0)).toBe("0 s");
     expect(formatRemaining(OVERDUE)).toBe("0 s");
+  });
+});
+
+describe("formatUntil", () => {
+  it("reads a time still to come in the coarsest whole unit", () => {
+    expect(formatUntil(FEW * SECOND)).toBe("in 3 s");
+    expect(formatUntil(TWO * HOUR)).toBe("in 2 h");
+  });
+
+  it("reads under a second as such rather than as just now", () => {
+    expect(formatUntil(JUST_UNDER_A_SECOND)).toBe("in under a second");
   });
 });

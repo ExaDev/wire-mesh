@@ -70,6 +70,20 @@ export function IdentityPanel({
     }
   }
 
+  async function restoreBackup(
+    chosen: Readonly<IdentityBackup>,
+  ): Promise<void> {
+    try {
+      await backup.restore(chosen);
+      setStep({ kind: "restored" });
+    } catch (error) {
+      setStep({
+        kind: "error",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   async function chooseBackup(file: File | null): Promise<void> {
     if (file === null) return;
     try {
@@ -144,9 +158,15 @@ export function IdentityPanel({
       )}
 
       {step.kind === "exported" && (
-        <Alert color="green" title="Backup file saved">
-          Keep it private. Restoring it on another browser makes that browser
-          this device.
+        <Alert color="green" title="Backup file handed to your browser">
+          <Text size="sm">
+            The browser was asked to save it, and may have asked where. Check
+            that the file is there before you rely on it.
+          </Text>
+          <Text size="sm">
+            Keep it private. Restoring it on another browser makes that browser
+            this device.
+          </Text>
         </Alert>
       )}
 
@@ -165,9 +185,7 @@ export function IdentityPanel({
                 size="xs"
                 color="red"
                 onClick={() => {
-                  void backup.restore(step.backup).then(() => {
-                    setStep({ kind: "restored" });
-                  });
+                  void restoreBackup(step.backup);
                 }}
               >
                 Replace this identity
