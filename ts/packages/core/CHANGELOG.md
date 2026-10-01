@@ -1,3 +1,13 @@
+## [3.6.1](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.6.0...wire-mesh-core%403.6.1) (2026-10-01)
+
+### Bug Fixes
+
+* **core:** reject an unanswered ping with a typed PingTimeoutError ([9e9323b](https://github.com/ExaDev/wire-mesh/commit/9e9323bb136880eaa887fd1a8e54e3fc1e18b544))
+
+### Documentation
+
+* **core:** split the sendPingMeasureRtt contract into paragraphs without dash separators ([c3ae016](https://github.com/ExaDev/wire-mesh/commit/c3ae016a389e8fa16c4a3d7d59275662543b78b3))
+
 ## [3.6.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.5.1...wire-mesh-core%403.6.0) (2026-10-01)
 
 ### Features

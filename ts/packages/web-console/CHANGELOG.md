@@ -1,3 +1,67 @@
+## [2.13.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.12.0...%40exadev%2Fwire-mesh-web-console%402.13.0) (2026-10-01)
+
+### Features
+
+* **web-console:** back up and restore the device identity key ([c0b1d73](https://github.com/ExaDev/wire-mesh/commit/c0b1d73029a6050f42250beffef2f9acca883983))
+* **web-console:** confirm first-use certificates, warn on changes, show peer provenance ([75494db](https://github.com/ExaDev/wire-mesh/commit/75494dbd1f2bb4b171fa581b472f3cfdf9c46915))
+* **web-console:** first-run intro, conversation search and phone-width peer tables ([ed6d834](https://github.com/ExaDev/wire-mesh/commit/ed6d8340c36923b879938679be68fdcfb99bf811))
+* **web-console:** humanised activity view and connection health ([9812c8b](https://github.com/ExaDev/wire-mesh/commit/9812c8bb842ad0010f4736b1d7e39ead10fe19b0))
+* **web-console:** identity and grants panels, with revocations honoured across token checks ([a861428](https://github.com/ExaDev/wire-mesh/commit/a8614283d89b650e3d8574333267ee9f4f1ff00f))
+* **web-console:** name peers by petname, self display name or short id ([b979265](https://github.com/ExaDev/wire-mesh/commit/b9792650233acdfc70849d42727f8aa1a9ea97ff))
+
+### Bug Fixes
+
+* **web-console:** apply petname and self-name writes in the order they were made ([aaf1d29](https://github.com/ExaDev/wire-mesh/commit/aaf1d29897b2425d764dae43b6ffd64855816a1e))
+* **web-console:** close every open session when the console unmounts ([47ad383](https://github.com/ExaDev/wire-mesh/commit/47ad383ec4369d880d04ec71fcf5fd09562e4791))
+* **web-console:** count only unanswered pings as lost, not probes cut short by a dropped connection ([ed7b726](https://github.com/ExaDev/wire-mesh/commit/ed7b7264d1d7d15489d254d984dfb7b0689ccca1))
+* **web-console:** dial a known node with only its remembered pins and show gossiped device identity as a claim ([e771b80](https://github.com/ExaDev/wire-mesh/commit/e771b80824b7bb65196b10afecb75a68bbeecbd0))
+* **web-console:** draw a dot for every measured round trip so a lone sample shows ([35e1b50](https://github.com/ExaDev/wire-mesh/commit/35e1b50c335cd69a521a291e69eff7e632fa34ed))
+* **web-console:** drop a peer's name once it stops advertising one and surface name storage failures ([83ac625](https://github.com/ExaDev/wire-mesh/commit/83ac625a040b774221f3adeb6c15264f65c007b4))
+* **web-console:** forget a gossiped candidate's address claims once it connects, and claim no device for a shared address ([22ae5f8](https://github.com/ExaDev/wire-mesh/commit/22ae5f838ffe004be652505b690262a14e92dd9a))
+* **web-console:** honour recorded revocations when restoring a persisted room token ([1d6583a](https://github.com/ExaDev/wire-mesh/commit/1d6583af8366908e22c24aa5843de4d2acd5e458))
+* **web-console:** keep table roles on the stacked phone layout ([fc9e6d5](https://github.com/ExaDev/wire-mesh/commit/fc9e6d594e52314f73f2886e5dedea3211eee924))
+* **web-console:** label the directory time as when the peer advertised itself ([160a072](https://github.com/ExaDev/wire-mesh/commit/160a0726d8c523ecba064aee31cc13a63f3414ef))
+* **web-console:** let only the live prompt for a certificate question clear its pending entries ([71d3429](https://github.com/ExaDev/wire-mesh/commit/71d3429115fc7a99a62caf9db47ea4da4af483da))
+* **web-console:** mark a self-asserted name as the peer's own claim and trim a name after the length cut ([49dd347](https://github.com/ExaDev/wire-mesh/commit/49dd3473d9b7a72348d9ec37ea7d77d0827a4718))
+* **web-console:** mint grants with whole-number expiry and delegation counts and show a failed mint ([9de3a5e](https://github.com/ExaDev/wire-mesh/commit/9de3a5ec964413a7831750060458cf7a9bcd8476))
+* **web-console:** name the peer in the conversation header and message request ([c7731cd](https://github.com/ExaDev/wire-mesh/commit/c7731cd3a24c3eb42fab13b0c0e54c71fd57fbc4))
+* **web-console:** refuse an identity backup whose private key cannot be loaded as the stored key pair ([728ef2e](https://github.com/ExaDev/wire-mesh/commit/728ef2e72939c4974afdcc38f00e6d067991a135))
+* **web-console:** report a first-run intro setting that cannot be read or saved ([6ebc103](https://github.com/ExaDev/wire-mesh/commit/6ebc10347cfb780080de00269b76fe2595eea0ff))
+* **web-console:** report each peer as seen once in the activity view ([21644df](https://github.com/ExaDev/wire-mesh/commit/21644df419b1f50c836368ca6c35dd1dd0aa45c3))
+* **web-console:** report failed restores, revocations and writes, and render grants through the stacked table ([a47a3ea](https://github.com/ExaDev/wire-mesh/commit/a47a3eabb81f9a3b3182442c23c3a14cf752a0ea))
+* **web-console:** retract a published display name when it is cleared and surface publish failures ([595f499](https://github.com/ExaDev/wire-mesh/commit/595f4990baf0330bed9f3447ce4efd8f3573cff3))
+* **web-console:** show the first-run intro when its stored answer cannot be read ([830fb5d](https://github.com/ExaDev/wire-mesh/commit/830fb5d6fc086866f7fbb6c13d18532eecb0ecdb))
+* **web-console:** show the short id beside a self-asserted name and strip control characters from it ([46cff8a](https://github.com/ExaDev/wire-mesh/commit/46cff8a5ff542e939bb4b30deae382a6e212d71a))
+* **web-console:** start with unreadable stored revocations reported and discardable instead of refusing to start ([aa5f28d](https://github.com/ExaDev/wire-mesh/commit/aa5f28d1be31e3d714e660aefe013f0231c37752))
+* **web-console:** store only the defining members of a restored identity key ([8a4be73](https://github.com/ExaDev/wire-mesh/commit/8a4be731fe529e94c913a57227de0a1b35790c83))
+* **web-console:** write a self-asserted name with its short id in the conversation header and search results ([a052ad0](https://github.com/ExaDev/wire-mesh/commit/a052ad01023ea2f84e9d69d8ef53c9c97a42ed59))
+
+### Documentation
+
+* **web-console:** describe all three jsdom stubs in the Mantine polyfills header ([292f534](https://github.com/ExaDev/wire-mesh/commit/292f5346123e089a1b6a90ade3e35c15d61c5fc2))
+* **web-console:** describe certificate pinning and naming as they behave, without dash separators ([2300dfd](https://github.com/ExaDev/wire-mesh/commit/2300dfdd58e782429489640a39bbed0c5c1cf542))
+* **web-console:** describe identity backup, grants and revocation relaying ([97ca77d](https://github.com/ExaDev/wire-mesh/commit/97ca77dbf52d11291a75ef90d6a14b626c296454))
+* **web-console:** describe naming, trust, activity, first run and search ([826e065](https://github.com/ExaDev/wire-mesh/commit/826e065b2a65ab8ab4a97d7fc2034ae8272636f5))
+* **web-console:** reword the session events hook header without a spaced double hyphen ([438ea70](https://github.com/ExaDev/wire-mesh/commit/438ea70bcb621a311a827dab0ad15bc93a9c2746))
+
+### Tests
+
+* **web-console:** accept the first-use certificate prompt in the pinned-address end-to-end specs ([359bfbd](https://github.com/ExaDev/wire-mesh/commit/359bfbda9347b38a1674d1d93f7f9200122de31b))
+* **web-console:** assert the message request names the requester with its short id ([f8b74b0](https://github.com/ExaDev/wire-mesh/commit/f8b74b08f52ff0771328bb9e5b3a47cab095aa32))
+* **web-console:** cover revocation wiring in App and share the App test harness ([06c13ce](https://github.com/ExaDev/wire-mesh/commit/06c13ce9ea300e5f2c3307f0fb1b78554937b1f4))
+* **web-console:** give the shared harness and call sites the props the hooks now take ([bcce54f](https://github.com/ExaDev/wire-mesh/commit/bcce54f4265f2a86978196b38854aef0cd37b45a))
+* **web-console:** list every gossiped candidate before dialling one in the claim tests ([20daac7](https://github.com/ExaDev/wire-mesh/commit/20daac73456504527e6333aa45ea1600fc02e320))
+* **web-console:** make the unresponsive-node probe test independent of interval timing ([2bcdfdd](https://github.com/ExaDev/wire-mesh/commit/2bcdfdd37833a0dc2db7f9edd0f005b7317e8bc1))
+* **web-console:** open the raw frame log before counting handshakes in the reconnect specs ([0b08de6](https://github.com/ExaDev/wire-mesh/commit/0b08de62376d4e6328e253594559b6650747db37))
+* **web-console:** pass the clock to the certificate trust hook in the stale-prompt test ([80687ab](https://github.com/ExaDev/wire-mesh/commit/80687ab43ea663c3ba5214b6a4b1c9cc1a27a5b3))
+* **web-console:** pin the reconnect countdown to the attempt's own backoff delay ([f49808d](https://github.com/ExaDev/wire-mesh/commit/f49808d31499d9392555d856474806268ddfeccb))
+* **web-console:** render the local-network panel test inside the names context ([8017abb](https://github.com/ExaDev/wire-mesh/commit/8017abb49436651c6ee3f2b0f1a94ed13f8939a4))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.6.1
+
 ## [2.12.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.11.0...%40exadev%2Fwire-mesh-web-console%402.12.0) (2026-10-01)
 
 ### Features
