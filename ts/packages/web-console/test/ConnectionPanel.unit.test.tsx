@@ -9,6 +9,7 @@ import {
 } from "wire-mesh-core/domain/mesh-session";
 import type { Transport } from "wire-mesh-core/ports/transport";
 import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
+import { reconnectPolicy } from "../src/reconnect-policy.js";
 import { WithNames } from "./names-harness.js";
 import { ConnectionPanel } from "../src/components/ConnectionPanel.js";
 import type { PermissionQuerier } from "../src/local-network.js";
@@ -48,6 +49,9 @@ async function renderPanel(
       <ConnectionPanel
         address={LOCAL_ADDRESS}
         session={session}
+        clock={{ now: () => 0 }}
+        reconnectPolicy={reconnectPolicy}
+        certificateChanges={[]}
         onClose={() => undefined}
         onMessagePeer={() => undefined}
         pageHost={pageHost}

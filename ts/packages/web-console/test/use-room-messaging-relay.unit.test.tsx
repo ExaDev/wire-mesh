@@ -286,7 +286,7 @@ describe("a conversation over a hub", () => {
       },
     };
     const { result } = renderHook(() =>
-      useRoomMessaging(own, clock, store, services),
+      useRoomMessaging(own, clock, store, createMemoryStorage(), services),
     );
     const hub = await answeringHub();
     act(() => {
