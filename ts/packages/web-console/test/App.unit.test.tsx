@@ -810,6 +810,7 @@ describe("App", () => {
   /** Connects a root, has it gossip `frames`, dials the discovered peer `dialled`, and has the resulting session gossip the pinned peer, so that peer's row shows what the dialled address was claimed to be. */
   async function discoverPinnedPeerOver(
     frames: readonly GossipFrame[],
+    gossiped: readonly string[],
     dialled: string,
   ): Promise<HTMLElement> {
     renderApp();
@@ -817,7 +818,16 @@ describe("App", () => {
     for (const frame of frames) {
       rootSocket.emitMessage(arrayBuffer(messageFromFrame(frame)));
     }
-    await screen.findByTestId("discovered-peers");
+    // Every candidate must be listed before one is dialled: each registers its address claim as it is listed.
+    await vi.waitFor(() => {
+      for (const device of gossiped) {
+        expect(
+          within(screen.getByTestId("discovered-peers")).getByText(
+            shortId(device),
+          ),
+        ).toBeInTheDocument();
+      }
+    });
     fireEvent.click(
       within(discoveredRow(dialled)).getByRole("button", { name: "Connect" }),
     );
@@ -846,6 +856,7 @@ describe("App", () => {
   it("shows the device a dialled address was claimed to belong to beside what it then gossips", async () => {
     const row = await discoverPinnedPeerOver(
       [gossipedFrame],
+      [gossipedDeviceHex],
       gossipedDeviceHex,
     );
 
@@ -858,6 +869,7 @@ describe("App", () => {
   it("claims no device for an address that two gossiped devices both advertise", async () => {
     const row = await discoverPinnedPeerOver(
       [gossipedFrame, namedFrame],
+      [gossipedDeviceHex, namedDeviceHex],
       gossipedDeviceHex,
     );
 
