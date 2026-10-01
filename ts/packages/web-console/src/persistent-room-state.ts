@@ -6,11 +6,13 @@ import {
   type CapabilityToken,
 } from "wire-mesh-core/generated/protocol";
 import type { RoomKeyStore } from "wire-mesh-core/domain/notice-board";
-import { verifyCapabilityToken } from "wire-mesh-core/domain/tokens";
+import {
+  verifyCapabilityToken,
+  type RevocationCheck,
+} from "wire-mesh-core/domain/tokens";
 import type { Clock } from "wire-mesh-core/ports/clock";
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import type { KeyValueStorage } from "wire-mesh-core/ports/storage";
-import { noRevocationCheck } from "./webrtc-negotiation.js";
 
 const KEY_PREFIX = "room-key/";
 const TOKEN_PREFIX = "room-token/";
@@ -47,11 +49,12 @@ export function createPersistentRoomKeyStore(
   };
 }
 
-/** Membership tokens persisted per room, each checked against the clock and this identity's trust when read back. */
+/** Membership tokens persisted per room, each checked against the clock, this identity's trust and the recorded revocations when read back, so a token revoked while the console was closed is dropped on reload. */
 export function createPersistentRoomTokenStore(
   storage: Readonly<KeyValueStorage>,
   identity: IdentityPort,
   clock: Readonly<Clock>,
+  revocation: Readonly<RevocationCheck>,
 ): RoomTokenStore {
   return {
     get: async (room) => {
@@ -65,7 +68,7 @@ export function createPersistentRoomTokenStore(
         const verdict = await verifyCapabilityToken(parsed.data, {
           identity,
           clock,
-          revocation: noRevocationCheck,
+          revocation,
           expectedBearer: identity.deviceId,
         });
         if (verdict.ok) return parsed.data;
