@@ -116,4 +116,48 @@ describe("parseIdentityBackup", () => {
       parseIdentityBackup(JSON.stringify({ ...backup, privateJwk: jwk })),
     ).rejects.toThrow("does not hold a P-256 private key");
   });
+
+  it("refuses a backup whose private scalar belongs to another key, which would stop the console starting after a restore", async () => {
+    const backup = await exported();
+    const other = await exported();
+    const swapped = {
+      ...(backup.privateJwk as object),
+      d: (other.privateJwk as { d: string }).d,
+    };
+
+    await expect(
+      parseIdentityBackup(JSON.stringify({ ...backup, privateJwk: swapped })),
+    ).rejects.toThrow("private key cannot be loaded");
+  });
+
+  it("refuses a backup whose key is limited to operations the console needs to sign with", async () => {
+    const backup = await exported();
+    const verifyOnly = {
+      ...(backup.privateJwk as object),
+      key_ops: ["verify"],
+    };
+
+    await expect(
+      parseIdentityBackup(
+        JSON.stringify({ ...backup, privateJwk: verifyOnly }),
+      ),
+    ).rejects.toThrow("private key cannot be loaded");
+  });
+
+  it("names malformed key encoding rather than surfacing a raw platform error", async () => {
+    const backup = await exported();
+    const garbled = { ...(backup.privateJwk as object), x: "***" };
+
+    await expect(
+      parseIdentityBackup(JSON.stringify({ ...backup, privateJwk: garbled })),
+    ).rejects.toThrow("not valid base64url");
+  });
+
+  it("accepts a backup whose key pair is sound", async () => {
+    const backup = await exported();
+
+    await expect(
+      parseIdentityBackup(JSON.stringify(backup)),
+    ).resolves.toMatchObject({ deviceId: backup.deviceId });
+  });
 });

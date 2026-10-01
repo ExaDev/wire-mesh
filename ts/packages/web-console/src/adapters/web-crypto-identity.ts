@@ -130,7 +130,11 @@ async function generateStoredIdentityEnvelope(): Promise<StoredIdentityEnvelope>
   return { privateJwk, publicKeyRaw };
 }
 
-async function identityFromStoredEnvelope(
+/**
+ * The IdentityPort a stored envelope loads as, through exactly the imports the console performs at startup, so anything that would stop the console starting fails here too.
+ * @throws Error (a DOMException from Web Crypto) when the private key cannot be imported for signing or for ECDH.
+ */
+export async function identityFromStoredEnvelope(
   envelope: StoredIdentityEnvelope,
 ): Promise<IdentityPort> {
   // Re-imported non-extractable: the one-time export in generateStoredIdentityEnvelope is the only point this key's raw material is ever needed outside the CryptoKey -- least privilege for the rest of its in-memory lifetime.
