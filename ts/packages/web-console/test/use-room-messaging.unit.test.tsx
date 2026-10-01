@@ -35,8 +35,9 @@ async function renderRestoredConversation(): Promise<
     sentAt: 1,
   });
   const { services } = await testCapabilities(identity, clock);
+  const roomStorage = createMemoryStorage();
   const rendered = renderHook(() =>
-    useRoomMessaging(identity, clock, store, createMemoryStorage(), services),
+    useRoomMessaging(identity, clock, store, roomStorage, services),
   );
   await waitFor(() => {
     expect(rendered.result.current.conversations).toHaveLength(1);

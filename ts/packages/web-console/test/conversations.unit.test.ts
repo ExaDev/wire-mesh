@@ -39,7 +39,10 @@ let session: MeshSession;
 /** A route through a hub of its own: each call is a different hub, so a test can close one and not another. */
 function relayRoute(): RelayRoute {
   return {
-    hub: { sendManageRequest: async () => Promise.resolve({ result: "ok" }) },
+    hub: {
+      sendManageRequest: async () => Promise.resolve({ result: "ok" }),
+      sendDataFrame: async () => Promise.resolve(),
+    },
     peer: deviceIdFromHex(PEER),
   };
 }

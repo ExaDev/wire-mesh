@@ -32,24 +32,38 @@ import type { KeyValueStorage } from "wire-mesh-core/ports/storage";
 /** How many entries one catch-up data-entries frame may carry -- a bounding constant, not a protocol limit; a larger log simply takes more rounds. */
 const CATCH_UP_BATCH_LIMIT = 32;
 
+/** Where a data frame can be sent: a direct peer session or a hub. */
+export type DataFrameSender = Pick<MeshSession, "sendDataFrame">;
+
 export interface NoticeWiring {
-  /** Observes one inbound frame (pass from the session's own onFrame hook). Data-have, data-entries, and data-request are consumed here; everything else is ignored. */
-  handleFrame: (frame: Frame) => void;
-  /** Posts an encrypted notice and immediately announces it with a data-have on the wire. */
+  /** Observes one inbound frame (pass from a session's own onFrame hook) together with the sender it arrived through, which any reply goes back to. Data-have, data-entries, and data-request are consumed here; everything else is ignored. */
+  handleFrame: (frame: Frame, from: Readonly<DataFrameSender>) => void;
+  /** Posts an encrypted notice and announces it, with a data-have, to every sender connected at that moment. A sender that is not connected is skipped: the notice is in the own log, and `sync` announces it when that sender connects. */
   post: (options: {
     room: string;
     token: CapabilityToken;
     contentType: string;
     plaintext: Uint8Array;
   }) => Promise<void>;
-  /** Verified (and where this side holds the epoch key, decrypted) notices this side holds for one room, across every tracked peer log plus the own log. */
-  readRoom: (room: string) => Promise<NoticeBoardEntry[]>;
+  /** Verified (and where this side holds the epoch key, decrypted) notices this side holds for one room: the own log plus the logs of `peers`, the room's other members. */
+  readRoom: (
+    room: string,
+    peers: readonly DeviceId[],
+  ) => Promise<NoticeBoardEntry[]>;
+  /** Announces the own log to `sender` and asks it for the logs of `peers`, as when a connection opens: whatever was posted or written while the two were apart is exchanged. Rejects when the sender is not connected. */
+  sync: (
+    sender: Readonly<DataFrameSender>,
+    peers: readonly DeviceId[],
+  ) => Promise<void>;
+  /** Asks every connected sender for the logs of `peers`, as when something suggests a peer has written: a message from it arrived. */
+  pull: (peers: readonly DeviceId[]) => Promise<void>;
   /** The key store createRoomRekeyHandler's onRekey feeds -- exposed so the rekey wiring and this module share one store. */
   roomKeys: RoomKeyStore;
 }
 
 export interface CreateNoticeWiringOptions {
-  session: MeshSession;
+  /** Every sender that is connected right now; consulted on each post. */
+  senders: () => readonly DataFrameSender[];
   storage: KeyValueStorage;
   identity: IdentityPort;
   clock: Clock;
@@ -62,7 +76,7 @@ export interface CreateNoticeWiringOptions {
 export function createNoticeWiring(
   options: Readonly<CreateNoticeWiringOptions>,
 ): NoticeWiring {
-  const { session, storage, identity, clock, revocation, roomKeys, onChange } =
+  const { senders, storage, identity, clock, revocation, roomKeys, onChange } =
     options;
   const board = createNoticeBoard({
     identity,
@@ -71,22 +85,32 @@ export function createNoticeWiring(
     revocation,
     roomKeys,
   });
-  /** Logs this side tracks: hex device-id key (bytewise device-ids are reference-compared by Map, so equal bytes from separately decoded frames would duplicate), value the peer's device id. Seeded once the peer's first data-have arrives. */
-  const trackedPeers = new Map<string, DeviceId>();
 
-  async function requestCatchUp(peer: DeviceId): Promise<void> {
+  async function requestCatchUp(
+    from: Readonly<DataFrameSender>,
+    peer: DeviceId,
+  ): Promise<void> {
     const head = await headSeqFor(storage, peer);
-    await session.sendDataFrame({
+    await from.sendDataFrame({
       type: "data-request",
       peer,
       "from-seq": head,
     });
   }
 
-  function handleFrame(frame: Frame): void {
+  async function announceOwnLog(to: Readonly<DataFrameSender>): Promise<void> {
+    const head = await headSeqFor(storage, identity.deviceId);
+    if (head === 0) return;
+    await to.sendDataFrame({
+      type: "data-have",
+      peer: identity.deviceId,
+      "head-seq": head,
+    });
+  }
+
+  function handleFrame(frame: Frame, from: Readonly<DataFrameSender>): void {
     if (frame.type === "data-have") {
-      trackedPeers.set(deviceIdToHex(frame.peer), frame.peer);
-      void requestCatchUp(frame.peer).catch(() => undefined);
+      void requestCatchUp(from, frame.peer).catch(() => undefined);
       return;
     }
     if (frame.type === "data-entries") {
@@ -95,7 +119,7 @@ export function createNoticeWiring(
         if (!result.ok) return;
         // A full batch means the sender may have had more; a short batch means its log ended there. One more round per full batch keeps catch-up bounded without a second bookkeeping mechanism.
         if (frame.entries.length >= CATCH_UP_BATCH_LIMIT) {
-          await requestCatchUp(frame.peer).catch(() => undefined);
+          await requestCatchUp(from, frame.peer).catch(() => undefined);
         }
         onChange();
       })();
@@ -109,7 +133,7 @@ export function createNoticeWiring(
           CATCH_UP_BATCH_LIMIT,
         );
         if (entries !== null) {
-          await session.sendDataFrame(entries);
+          await from.sendDataFrame(entries);
         }
       })().catch(() => undefined);
     }
@@ -119,24 +143,45 @@ export function createNoticeWiring(
     handleFrame,
     async post(postOptions) {
       const { dataHave } = await board.postEncryptedNotice(postOptions);
-      await session.sendDataFrame(dataHave);
+      await Promise.allSettled(
+        senders().map(async (sender) => sender.sendDataFrame(dataHave)),
+      );
       onChange();
     },
-    async readRoom(room) {
+    async readRoom(room, peers) {
       const own = await board.readOwnNotices(room);
       const perPeer = await Promise.all(
-        [...trackedPeers.values()].map(async (peer) =>
-          board.readPeerNotices(peer, room),
-        ),
+        peers.map(async (peer) => board.readPeerNotices(peer, room)),
       );
       return [...own, ...perPeer.flat()];
+    },
+    async sync(sender, peers) {
+      await announceOwnLog(sender);
+      await Promise.all(
+        peers.map(async (peer) => requestCatchUp(sender, peer)),
+      );
+    },
+    async pull(peers) {
+      await Promise.allSettled(
+        senders().flatMap((sender) =>
+          peers.map(async (peer) => requestCatchUp(sender, peer)),
+        ),
+      );
     },
     roomKeys,
   };
 }
 
+/** Whether the peer has been given a room's first epoch key, kept so a rekey that failed (the peer offline, or not yet holding its own token) is sent again by the next call instead of being forgotten. */
+export interface RoomKeyDelivery {
+  isDelivered: (room: string) => Promise<boolean>;
+  markDelivered: (room: string) => Promise<void>;
+}
+
 export interface BootstrapDmEpoch1Options {
-  session: MeshSession;
+  /** Where the rekey is sent: the direct session to the peer, or a hub with `target` naming the peer to reach through it. */
+  session: Pick<MeshSession, "sendManageRequest">;
+  target?: DeviceId | undefined;
   identity: IdentityPort;
   clock: Clock;
   revocation: RevocationCheck;
@@ -144,6 +189,7 @@ export interface BootstrapDmEpoch1Options {
   ownRoomMemberToken: CapabilityToken;
   roomPath: string;
   roomKeys: RoomKeyStore;
+  delivery: RoomKeyDelivery;
 }
 
 /**
@@ -154,29 +200,37 @@ export interface BootstrapDmEpoch1Options {
  * (I approved your join, so my token chains to you; your key wraps my epoch).
  * The higher participant never calls this: it waits to receive room.rekey, per
  * the deterministic lower-mints rule that mirrors dmRoomPath's own sorted-pair
- * convention. A no-op when the store already holds any epoch (idempotent across
- * re-sends) or when this side is the higher participant.
+ * convention. Idempotent once the peer has acknowledged the key; until then each
+ * call sends the same epoch-1 key again, and rejects when the peer cannot take
+ * it yet, so the caller can try again later.
  */
 export async function bootstrapDmEpoch1(
   options: Readonly<BootstrapDmEpoch1Options>,
 ): Promise<void> {
   const {
     session,
+    target,
     identity,
     clock,
     revocation,
     ownRoomMemberToken,
     roomPath,
     roomKeys,
+    delivery,
   } = options;
-  if ((await roomKeys.currentEpoch(roomPath)) !== undefined) {
-    return;
-  }
+  const FIRST_EPOCH = 1;
   // Only the lower participant mints epoch 1: dmRoomPath embeds the sorted
   // pair (lower + "+" + higher), so this side mints iff its own hex sorts
   // strictly below the peer's -- the participant names ARE the path halves.
   const lower = roomPath.split("+")[0] ?? "";
   if (lower === "" || deviceIdToHex(identity.deviceId) !== lower) {
+    return;
+  }
+  const epoch = await roomKeys.currentEpoch(roomPath);
+  if (epoch !== undefined && epoch !== FIRST_EPOCH) {
+    return;
+  }
+  if (await delivery.isDelivered(roomPath)) {
     return;
   }
   const verdict = await verifyRoomToken(ownRoomMemberToken, {
@@ -194,14 +248,34 @@ export async function bootstrapDmEpoch1(
   if (deriveSharedSecret === undefined) {
     throw new Error("this identity cannot derive ECDH shared secrets");
   }
-  const FIRST_EPOCH = 1;
-  const contentKey = generateContentKey();
+  const contentKey =
+    epoch === undefined
+      ? generateContentKey()
+      : await roomKeys.get(roomPath, FIRST_EPOCH);
+  if (contentKey === undefined) {
+    throw new Error(
+      `room ${roomPath} lost its epoch ${String(FIRST_EPOCH)} key`,
+    );
+  }
   const sharedSecret = await deriveSharedSecret(verdict.rootIssuerKey);
   const wrappingKey = await deriveWrappingKey(sharedSecret, {
     room: roomPath,
     keyEpoch: FIRST_EPOCH,
   });
   const wrapped = await wrapContentKey(wrappingKey, contentKey);
-  await roomKeys.set(roomPath, FIRST_EPOCH, contentKey);
-  await sendRoomRekey(session, roomPath, FIRST_EPOCH, wrapped);
+  if (epoch === undefined) {
+    await roomKeys.set(roomPath, FIRST_EPOCH, contentKey);
+  }
+  const outcome = await sendRoomRekey(
+    session,
+    roomPath,
+    FIRST_EPOCH,
+    wrapped,
+    target,
+    ownRoomMemberToken,
+  );
+  if (outcome.result !== "ok") {
+    throw new Error(`room.rekey was refused: ${outcome.code}`);
+  }
+  await delivery.markDelivered(roomPath);
 }

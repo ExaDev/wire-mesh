@@ -57,7 +57,10 @@ import type { PreferencesStore } from "./preferences-store.js";
 import type { NameStore } from "./name-store.js";
 import { ConversationList } from "./components/ConversationList.js";
 import { RoomPanel } from "./components/RoomPanel.js";
-import { useRoomMessaging } from "./hooks/use-room-messaging.js";
+import {
+  useRoomMessaging,
+  type HubEndpoint,
+} from "./hooks/use-room-messaging.js";
 import { createRequestDemux } from "./request-demux.js";
 import { ROOM_MEMBER_CAPABILITY } from "wire-mesh-core/domain/room-token-verification";
 import { WEBRTC_SIGNAL_VERB } from "wire-mesh-core/domain/webrtc-signaling";
@@ -104,6 +107,8 @@ interface ConnectionFailure {
 interface ConnectionEntry {
   address: string;
   session: ReturnType<typeof createMeshSession>;
+  /** The session as the conversations reach it: one stable object per connection, so a conversation's route can be matched when the connection closes. */
+  hub: HubEndpoint;
   negotiator: WebrtcNegotiator;
 }
 
@@ -168,6 +173,11 @@ export function App({
   }, [selectedRoomPath, selectedUnread, markRead]);
 
   // A negotiator's own onIncomingConnection callback is registered once, at construction, and must still call whatever the *latest* attach is -- attach itself is a fresh function every time useRoomMessaging's own session map changes, so a ref (updated every render, read from the callback) is what keeps that call from closing over a stale, since-superseded attach.
+  const hubsBySession = useRef(new Map<MeshSession, HubEndpoint>());
+  const onHubFrameRef = useRef(roomMessaging.onHubFrame);
+  useEffect(() => {
+    onHubFrameRef.current = roomMessaging.onHubFrame;
+  }, [roomMessaging.onHubFrame]);
   const watchHubRef = useRef(roomMessaging.watchHub);
   useEffect(() => {
     watchHubRef.current = roomMessaging.watchHub;
@@ -238,13 +248,16 @@ export function App({
         }
       }
     })();
-    watchHubRef.current({
+    const hub: HubEndpoint = {
       sendManageRequest: async (...args) => session.sendManageRequest(...args),
+      sendDataFrame: async (frame) => session.sendDataFrame(frame),
       incomingManageRequests: demux.stream(ROOM_MEMBER_CAPABILITY),
-    });
+    };
+    hubsBySession.current.set(session, hub);
+    watchHubRef.current(hub);
     setConnections((current) => [
       ...current,
-      { address: entryAddress, session, negotiator },
+      { address: entryAddress, session, hub, negotiator },
     ]);
   }
 
@@ -287,6 +300,7 @@ export function App({
     const expansionRef: { current: GossipExpansion | null } = {
       current: null,
     };
+    const sessionRef: { current: MeshSession | null } = { current: null };
     const session = createMeshSession(
       createDialTransport(trust.memory),
       identity,
@@ -296,7 +310,18 @@ export function App({
       (advert) => {
         expansionRef.current?.considerAdvert(advert);
       },
+      (connection, frame) => {
+        // Frames that arrive before the connection is attached have no hub to go to yet; the notice logs are exchanged on the first frame after it is.
+        const hub =
+          sessionRef.current === null
+            ? undefined
+            : hubsBySession.current.get(sessionRef.current);
+        if (hub !== undefined) {
+          onHubFrameRef.current(hub, connection, frame);
+        }
+      },
     );
+    sessionRef.current = session;
     expansionRef.current = createGossipExpansion({
       selfDeviceId: identity.deviceId,
       shouldExpand: async (candidate) => confirmExpansion(candidate, via),
@@ -425,7 +450,7 @@ export function App({
   }
 
   function handleClose(target: Readonly<ConnectionEntry>): void {
-    roomMessaging.dropHub(target.session);
+    roomMessaging.dropHub(target.hub);
     void target.session.close();
     setConnections((current) =>
       current.filter((entry) => entry.session !== target.session),
@@ -437,7 +462,7 @@ export function App({
     device: DeviceId,
   ): void {
     // The conversation opens at once over the hub the peer was found through, and a direct connection is negotiated in the background: it takes over when it opens, and its failure costs nothing but the direct route.
-    roomMessaging.openRelay(entry.session, device);
+    roomMessaging.openRelay(entry.hub, device);
     setSelectedPath(
       dmRoomPath(deviceIdToHex(identity.deviceId), deviceIdToHex(device)),
     );

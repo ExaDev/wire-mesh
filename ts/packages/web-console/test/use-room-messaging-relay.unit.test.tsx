@@ -12,7 +12,10 @@ import type {
 import { deviceIdToHex } from "wire-mesh-core/domain/device-id";
 import { dmRoomPath } from "wire-mesh-core/domain/room-path";
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
-import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
+import {
+  createPersistedWebCryptoIdentity,
+  createWebCryptoIdentity,
+} from "../src/adapters/web-crypto-identity.js";
 import { useRoomMessaging } from "../src/hooks/use-room-messaging.js";
 import { testCapabilities } from "./capability-services.js";
 import type { TestCapabilities } from "./capability-services.js";
@@ -34,8 +37,14 @@ let roomPath: string;
 let capabilities: TestCapabilities;
 
 beforeAll(async () => {
-  own = await createWebCryptoIdentity();
-  peer = await createWebCryptoIdentity();
+  // Only a persisted identity can derive the ECDH secret the first epoch key is wrapped under.
+  const first = await createPersistedWebCryptoIdentity(createMemoryStorage());
+  const second = await createPersistedWebCryptoIdentity(createMemoryStorage());
+  // The lower device-id mints a DM's first epoch, so `own` is always that side.
+  const ownIsLower =
+    deviceIdToHex(first.deviceId) < deviceIdToHex(second.deviceId);
+  own = ownIsLower ? first : second;
+  peer = ownIsLower ? second : first;
   roomPath = dmRoomPath(
     deviceIdToHex(own.deviceId),
     deviceIdToHex(peer.deviceId),
@@ -48,6 +57,8 @@ type SendManageRequest = MeshSession["sendManageRequest"];
 /** A hub that answers a room.join with a grant from the peer and accepts every room.send. */
 async function answeringHub(): Promise<{
   sendManageRequest: ReturnType<typeof vi.fn<SendManageRequest>>;
+  sentDataFrames: Parameters<MeshSession["sendDataFrame"]>[0][];
+  sendDataFrame: MeshSession["sendDataFrame"];
 }> {
   const grant = await mintRoomInviteGrant(
     peer,
@@ -67,21 +78,24 @@ async function answeringHub(): Promise<{
         : { result: "ok" },
     ),
   );
-  return { sendManageRequest };
+  const sentDataFrames: Parameters<MeshSession["sendDataFrame"]>[0][] = [];
+  return {
+    sendManageRequest,
+    sentDataFrames,
+    sendDataFrame: async (frame) => {
+      sentDataFrames.push(frame);
+      return Promise.resolve();
+    },
+  };
 }
 
 function render(): ReturnType<
   typeof renderHook<ReturnType<typeof useRoomMessaging>, unknown>
 > {
   const store = createMessageStore(createMemoryStorage());
+  const roomStorage = createMemoryStorage();
   return renderHook(() =>
-    useRoomMessaging(
-      own,
-      clock,
-      store,
-      createMemoryStorage(),
-      capabilities.services,
-    ),
+    useRoomMessaging(own, clock, store, roomStorage, capabilities.services),
   );
 }
 
@@ -139,6 +153,7 @@ describe("a conversation over a hub", () => {
     act(() => {
       result.current.watchHub({
         sendManageRequest: async () => Promise.resolve({ result: "ok" }),
+        sendDataFrame: async () => Promise.resolve(),
         incomingManageRequests: incoming.stream,
       });
     });
@@ -177,6 +192,7 @@ describe("a conversation over a hub", () => {
     act(() => {
       result.current.watchHub({
         sendManageRequest: async () => Promise.resolve({ result: "ok" }),
+        sendDataFrame: async () => Promise.resolve(),
         incomingManageRequests: incoming.stream,
       });
     });
@@ -215,6 +231,7 @@ describe("a conversation over a hub", () => {
     act(() => {
       result.current.watchHub({
         sendManageRequest: async () => Promise.resolve({ result: "ok" }),
+        sendDataFrame: async () => Promise.resolve(),
         incomingManageRequests: incoming.stream,
       });
     });
@@ -246,16 +263,27 @@ describe("a conversation over a hub", () => {
     expect(conversation?.messages).toHaveLength(1);
   });
 
-  it("does not post a durable notice, which needs a direct connection", async () => {
+  it("posts a durable notice over the hub: joins, hands the peer the first epoch key and announces the log", async () => {
     const { result } = render();
     const hub = await answeringHub();
     act(() => {
       result.current.openRelay(hub, peer.deviceId);
     });
 
-    await expect(result.current.postNotice(roomPath, "note")).rejects.toThrow(
-      "durable notices need a direct connection",
+    await act(async () => {
+      await result.current.postNotice(roomPath, "note");
+    });
+
+    const rekey = hub.sendManageRequest.mock.calls.find(
+      ([command]) => command.params.verb === "room.rekey",
     );
+    expect(rekey?.[2]).toEqual(peer.deviceId);
+    expect(hub.sentDataFrames.some((frame) => frame.type === "data-have")).toBe(
+      true,
+    );
+    await waitFor(() => {
+      expect(result.current.conversations[0]?.notices).toHaveLength(1);
+    });
   });
 
   it("records the grant a join is answered with as held", async () => {
@@ -285,8 +313,9 @@ describe("a conversation over a hub", () => {
         record: async () => Promise.reject(new Error(STORAGE_FAILURE)),
       },
     };
+    const roomStorage = createMemoryStorage();
     const { result } = renderHook(() =>
-      useRoomMessaging(own, clock, store, createMemoryStorage(), services),
+      useRoomMessaging(own, clock, store, roomStorage, services),
     );
     const hub = await answeringHub();
     act(() => {
@@ -307,6 +336,7 @@ describe("a conversation over a hub", () => {
     act(() => {
       result.current.watchHub({
         sendManageRequest: async () => Promise.resolve({ result: "ok" }),
+        sendDataFrame: async () => Promise.resolve(),
         incomingManageRequests: incoming.stream,
       });
     });

@@ -31,8 +31,11 @@ export type PendingOutgoing = {
     | { status: "failed"; error: string }
   );
 
-/** What a conversation needs from a hub connection to send through it: the relay peer is addressed by device-id on each request. */
-export type RelaySender = Pick<MeshSession, "sendManageRequest">;
+/** What a conversation needs from a hub connection to send through it: the relay peer is addressed by device-id on each request, and notice logs are exchanged with the hub as data frames. */
+export type RelaySender = Pick<
+  MeshSession,
+  "sendManageRequest" | "sendDataFrame"
+>;
 
 /** A conversation's route through a hub, where the peer is reached by a relay pairing and a secure channel instead of a connection of its own. */
 export interface RelayRoute {
