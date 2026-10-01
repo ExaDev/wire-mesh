@@ -31,7 +31,7 @@ describe("useIntro", () => {
     expect(result.current.error).toBeUndefined();
   });
 
-  it("reports why the stored answer could not be read, and stays closed and not ready", async () => {
+  it("reports why the stored answer could not be read, and shows the intro as it would on a first run", async () => {
     const failing = store({
       introDismissed: async () => Promise.reject(new Error(STORAGE_FAILURE)),
     });
@@ -40,8 +40,8 @@ describe("useIntro", () => {
     await waitFor(() => {
       expect(result.current.error).toBe(STORAGE_FAILURE);
     });
-    expect(result.current.visible).toBe(false);
-    expect(result.current.ready).toBe(false);
+    expect(result.current.visible).toBe(true);
+    expect(result.current.ready).toBe(true);
   });
 
   it("reports a dismissal that could not be saved while still closing the intro for this session", async () => {
