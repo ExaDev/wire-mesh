@@ -1,3 +1,9 @@
+## [2.1.6](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%402.1.5...%40exadev%2Fwire-mesh-cloudflare-hub%402.1.6) (2026-10-01)
+
+### Documentation
+
+* **cloudflare-hub:** record that the directory is open to anyone and bring the deferred list up to date ([b45dbb9](https://github.com/ExaDev/wire-mesh/commit/b45dbb995bbbe4a9e5a6b6ba8308eff0a38a62ae))
+
 ## [2.1.5](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%402.1.4...%40exadev%2Fwire-mesh-cloudflare-hub%402.1.5) (2026-09-30)
 
 
