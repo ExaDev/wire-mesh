@@ -139,14 +139,14 @@ async function rekeyMember(
     clock: fixedClock(NOW_MS),
     revocation: createRevocationView(),
     ownRoomMemberToken: memberToken,
-    onRekey: (event: Readonly<RoomRekeyEvent>) => {
-      event.contentKeys.forEach((key, i) => {
-        memberKeys.set(
+    onRekey: async (event: Readonly<RoomRekeyEvent>) => {
+      for (const [i, key] of event.contentKeys.entries()) {
+        await memberKeys.set(
           roomPath,
           event.keyEpoch - event.contentKeys.length + 1 + i,
           key,
         );
-      });
+      }
     },
   });
   await handler(incoming);
@@ -161,7 +161,7 @@ describe("createNoticeBoard", () => {
     );
     const ownerToken = await mintRoomMemberToken(owner, owner, roomPath);
     const keyStore = memoryKeyStore();
-    keyStore.set(roomPath, FIRST_EPOCH, generateContentKey());
+    await keyStore.set(roomPath, FIRST_EPOCH, generateContentKey());
     const board = createNoticeBoard({
       identity: owner,
       storage: createMemoryStorage(),
@@ -196,7 +196,7 @@ describe("createNoticeBoard", () => {
     );
     const ownerToken = await mintRoomMemberToken(owner, owner, roomPath);
     const keyStore = memoryKeyStore();
-    keyStore.set(roomPath, FIRST_EPOCH, generateContentKey());
+    await keyStore.set(roomPath, FIRST_EPOCH, generateContentKey());
     const board = createNoticeBoard({
       identity: owner,
       storage: createMemoryStorage(),
@@ -207,7 +207,7 @@ describe("createNoticeBoard", () => {
 
     // Rotate to epoch 2 in the store (as an owner-side rekey would), then post.
     const secondEpoch = FIRST_EPOCH + 1;
-    keyStore.set(roomPath, secondEpoch, generateContentKey());
+    await keyStore.set(roomPath, secondEpoch, generateContentKey());
     await board.postEncryptedNotice({
       room: roomPath,
       token: ownerToken,
@@ -262,7 +262,7 @@ describe("createNoticeBoard", () => {
 
     // The owner (holding every epoch key by construction) ingests and decrypts.
     const ownerKeyStore = memoryKeyStore();
-    ownerKeyStore.set(roomPath, FIRST_EPOCH, epochKey);
+    await ownerKeyStore.set(roomPath, FIRST_EPOCH, epochKey);
     const ownerBoard = createNoticeBoard({
       identity: owner,
       storage: createMemoryStorage(),
@@ -307,7 +307,7 @@ describe("createNoticeBoard", () => {
       "general",
     );
     const keyStore = memoryKeyStore();
-    keyStore.set(roomPath, FIRST_EPOCH, generateContentKey());
+    await keyStore.set(roomPath, FIRST_EPOCH, generateContentKey());
     const board = createNoticeBoard({
       identity: owner,
       storage: createMemoryStorage(),
@@ -349,7 +349,7 @@ describe("createNoticeBoard", () => {
     );
     const ownerToken = await mintRoomMemberToken(owner, owner, roomPath);
     const keyStore = memoryKeyStore();
-    keyStore.set(roomPath, FIRST_EPOCH, generateContentKey());
+    await keyStore.set(roomPath, FIRST_EPOCH, generateContentKey());
     const storage: KeyValueStorage = createMemoryStorage();
     const board = createNoticeBoard({
       identity: owner,

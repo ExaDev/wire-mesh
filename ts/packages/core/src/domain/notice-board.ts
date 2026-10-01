@@ -46,7 +46,8 @@ const GENERATED_NOTICE_ID_BYTE_LENGTH = 16;
  */
 export interface RoomKeyStore {
   get: (room: string, epoch: number) => Promise<Uint8Array | undefined>;
-  set: (room: string, epoch: number, key: Uint8Array) => void;
+  /** May be asynchronous, as storing a key durably is; callers wait for it before relying on the key being held. */
+  set: (room: string, epoch: number, key: Uint8Array) => Promise<void> | void;
   /** The highest epoch held for a room -- what postEncryptedNotice stamps a new notice with. */
   currentEpoch: (room: string) => Promise<number | undefined>;
 }
