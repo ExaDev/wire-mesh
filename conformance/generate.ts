@@ -127,6 +127,105 @@ const deviceAHex = "11".repeat(SHA256_BYTE_LENGTH);
 const deviceBHex = "22".repeat(SHA256_BYTE_LENGTH);
 const deviceCHex = "33".repeat(SHA256_BYTE_LENGTH);
 
+// wire-mesh#323: the grant permission. A manage:grant root (deviceA grants deviceB the
+// right to mint, any verb within /work since grants-capability is absent, one hop deep)
+// carrying the named no-self-grant bar in its conditions -- not(and(granted-capability-is
+// "exec:pty", grantee-is <deviceB-hex>)) -- then an exec:pty token deviceB minted under it
+// (citing it via authorised-by, granted to deviceC so the bar holds), and a second-level
+// manage:grant deviceB minted onward to deviceC, itself naming exec:pty.
+const noSelfGrantBar = {
+  kind: "not",
+  operand: {
+    kind: "and",
+    left: {
+      kind: "compare",
+      op: "eq",
+      left: {
+        kind: "delegate",
+        system: "granted-capability-is",
+        payload: "exec:pty",
+      },
+      right: { kind: "booleanLiteral", value: true },
+    },
+    right: {
+      kind: "compare",
+      op: "eq",
+      left: { kind: "delegate", system: "grantee-is", payload: deviceBHex },
+      right: { kind: "booleanLiteral", value: true },
+    },
+  },
+};
+const noSelfGrantBarBytes = Buffer.from(
+  encode([noSelfGrantBar], cdeEncodeOptions),
+).toString("hex");
+
+const manageGrantRootTokenClaims: JsonWire = {
+  "token-id": hex("05".repeat(TOKEN_ID_BYTE_LENGTH)),
+  issuer: deviceA,
+  "issuer-key": { alg: -7, "public-key": publicKeyEs256A },
+  bearer: deviceB,
+  capability: "manage:grant",
+  scope: { kind: "folder", path: "/work" },
+  expires: 1893456000000,
+  "delegations-remaining": 1,
+  conditions: hex(noSelfGrantBarBytes),
+};
+const manageGrantRootToken: JsonWire = [
+  hex(wireHex({ 1: -7, 4: deviceA })),
+  {},
+  hex(wireHex(manageGrantRootTokenClaims)),
+  signatureFiller,
+];
+const manageGrantRootTokenVector = vector(
+  "capability_token_v1_manage_grant_root",
+  manageGrantRootToken,
+);
+
+const grantAuthorisedTokenClaims: JsonWire = {
+  "token-id": hex("06".repeat(TOKEN_ID_BYTE_LENGTH)),
+  issuer: deviceB,
+  "issuer-key": { alg: -7, "public-key": publicKeyEs256B },
+  bearer: deviceC,
+  capability: "exec:pty",
+  scope: { kind: "folder", path: "/work/subdir" },
+  expires: 1861920000000,
+  "authorised-by": hex(manageGrantRootTokenVector.wire_hex),
+  "delegations-remaining": 0,
+};
+const grantAuthorisedToken: JsonWire = [
+  hex(wireHex({ 1: -7, 4: deviceB })),
+  {},
+  hex(wireHex(grantAuthorisedTokenClaims)),
+  signatureFiller,
+];
+const grantAuthorisedTokenVector = vector(
+  "capability_token_v1_grant_authorised_exec_pty",
+  grantAuthorisedToken,
+);
+
+const manageGrantDelegatedTokenClaims: JsonWire = {
+  "token-id": hex("07".repeat(TOKEN_ID_BYTE_LENGTH)),
+  issuer: deviceB,
+  "issuer-key": { alg: -7, "public-key": publicKeyEs256B },
+  bearer: deviceC,
+  capability: "manage:grant",
+  scope: { kind: "folder", path: "/work" },
+  expires: 1861920000000,
+  "grants-capability": "exec:pty",
+  "authorised-by": hex(manageGrantRootTokenVector.wire_hex),
+  "delegations-remaining": 0,
+};
+const manageGrantDelegatedToken: JsonWire = [
+  hex(wireHex({ 1: -7, 4: deviceB })),
+  {},
+  hex(wireHex(manageGrantDelegatedTokenClaims)),
+  signatureFiller,
+];
+const manageGrantDelegatedTokenVector = vector(
+  "capability_token_v1_manage_grant_delegated",
+  manageGrantDelegatedToken,
+);
+
 // A room:member grant chain demonstrating this session's own delegations-remaining fix: the owner (deviceA) issues a root grant to deviceB capped at one further re-delegation, and deviceB narrows it (a strictly lower value, 0) when re-delegating to deviceC -- deviceC's own token therefore bears no further-delegation authority at all, closing the unbounded-admission gap the claim exists to fix.
 const roomMemberRootTokenClaims: JsonWire = {
   "token-id": hex("03".repeat(TOKEN_ID_BYTE_LENGTH)),
@@ -268,6 +367,9 @@ const handleRecordVector = vector("handle_record_v1_dns_anchored", [
 const tokenVectors: Vector[] = [
   rootTokenVector,
   delegatedTokenVector,
+  manageGrantRootTokenVector,
+  grantAuthorisedTokenVector,
+  manageGrantDelegatedTokenVector,
   roomMemberRootTokenVector,
   roomMemberDelegatedTokenVector,
   roomNoticeVector,
