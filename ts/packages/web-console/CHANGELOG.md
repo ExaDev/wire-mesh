@@ -1,3 +1,15 @@
+## [2.11.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.10.2...%40exadev%2Fwire-mesh-web-console%402.11.0) (2026-10-01)
+
+### Features
+
+* **web-console:** recognise a local address and read the browser's local network permission ([58c6db7](https://github.com/ExaDev/wire-mesh/commit/58c6db72e95a079d4abd0b4f192ceef71d334cef))
+* **web-console:** say why a connection to a local address failed when the browser denied local network access ([9bb2a06](https://github.com/ExaDev/wire-mesh/commit/9bb2a06362d311c2fac41c05d15d6cf061edbe0d))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.5.1
+
 ## [2.10.2](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.10.1...%40exadev%2Fwire-mesh-web-console%402.10.2) (2026-09-30)
 
 ### Tests

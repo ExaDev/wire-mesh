@@ -1,3 +1,9 @@
+## [3.5.1](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.5.0...wire-mesh-core%403.5.1) (2026-10-01)
+
+### Bug Fixes
+
+* **core:** report a first connect that fails instead of staying connecting ([3d94922](https://github.com/ExaDev/wire-mesh/commit/3d949225bcbd32e28f96733bd647714e5a30a671))
+
 ## [3.5.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.4.0...wire-mesh-core%403.5.0) (2026-09-30)
 
 ### Features
