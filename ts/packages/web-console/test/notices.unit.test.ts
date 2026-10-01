@@ -221,14 +221,14 @@ describe("bootstrapDmEpoch1", () => {
       clock: fixedClock(NOW_MS),
       revocation: createRevocationView(),
       ownRoomMemberToken: higherToken,
-      onRekey: (event: Readonly<RoomRekeyEvent>) => {
-        event.contentKeys.forEach((key, i) => {
-          higherKeys.set(
+      onRekey: async (event: Readonly<RoomRekeyEvent>) => {
+        for (const [i, key] of event.contentKeys.entries()) {
+          await higherKeys.set(
             roomPath,
             event.keyEpoch - event.contentKeys.length + 1 + i,
             key,
           );
-        });
+        }
       },
     });
     await handler({
@@ -275,7 +275,7 @@ describe("bootstrapDmEpoch1", () => {
     const lowerToken = await mintRoomMemberToken(higher, lower, roomPath);
     const lowerSession = fakeSession();
     const lowerKeys = memoryKeyStore();
-    lowerKeys.set(roomPath, 1, generateContentKey());
+    await lowerKeys.set(roomPath, 1, generateContentKey());
     await bootstrapDmEpoch1({
       session: lowerSession,
       identity: lower,
@@ -302,7 +302,7 @@ describe("createNoticeWiring", () => {
     // Both sides share the epoch-1 content key: the owner generated it, the member received it through the real rekey-handler path.
     const epochKey = generateContentKey();
     const ownerKeys = memoryKeyStore();
-    ownerKeys.set(roomPath, FIRST_EPOCH, epochKey);
+    await ownerKeys.set(roomPath, FIRST_EPOCH, epochKey);
     const memberKeys = memoryKeyStore();
     const sharedSecret = await owner.deriveSharedSecret?.(member.identityKey);
     if (sharedSecret === undefined) throw new Error("no ECDH");
@@ -316,14 +316,14 @@ describe("createNoticeWiring", () => {
       clock: fixedClock(NOW_MS),
       revocation: createRevocationView(),
       ownRoomMemberToken: memberToken,
-      onRekey: (event: Readonly<RoomRekeyEvent>) => {
-        event.contentKeys.forEach((key, i) => {
-          memberKeys.set(
+      onRekey: async (event: Readonly<RoomRekeyEvent>) => {
+        for (const [i, key] of event.contentKeys.entries()) {
+          await memberKeys.set(
             roomPath,
             event.keyEpoch - event.contentKeys.length + 1 + i,
             key,
           );
-        });
+        }
       },
     })({
       requestId: 0,
@@ -388,7 +388,7 @@ describe("createNoticeWiring", () => {
     );
     const ownerToken = await mintRoomMemberToken(owner, owner, roomPath);
     const keys = memoryKeyStore();
-    keys.set(roomPath, FIRST_EPOCH, generateContentKey());
+    await keys.set(roomPath, FIRST_EPOCH, generateContentKey());
     const session = fakeSession();
     const wiring = createNoticeWiring({
       session,
