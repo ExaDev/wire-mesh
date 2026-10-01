@@ -182,6 +182,7 @@ mod tests {
             delegations_remaining: None,
             authorised_by: None,
             grants_capability: None,
+            requests_capability: None,
             extra: CanonicalMap::new(),
         };
         issuer
@@ -345,6 +346,7 @@ mod tests {
             delegations_remaining: None,
             authorised_by: None,
             grants_capability: None,
+            requests_capability: None,
             extra: CanonicalMap::new(),
         };
         let token = owner

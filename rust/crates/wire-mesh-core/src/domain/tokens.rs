@@ -648,6 +648,7 @@ mod tests {
             delegations_remaining: None,
             authorised_by: None,
             grants_capability: None,
+            requests_capability: None,
             extra: CanonicalMap::new(),
         }
     }
@@ -675,6 +676,7 @@ mod tests {
             delegations_remaining: None,
             authorised_by: None,
             grants_capability: None,
+            requests_capability: None,
             extra: CanonicalMap::new(),
         }
     }
@@ -2056,6 +2058,33 @@ mod tests {
         match verify(&owner, &RevocationView::new(), &leaf_token).await {
             TokenVerdict::Valid { root_issuer, .. } => {
                 assert_eq!(root_issuer, *owner.device_id());
+            }
+            other => panic!("expected Valid, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_manage_request_token_verifies_as_an_ordinary_capability_token() {
+        // wire-mesh#324: a request-permission is just a capability token carrying the
+        // manage:request verb and optionally naming the verb it may ask for; the generic
+        // verifier treats it like any other, and the receiving-side gate (where it
+        // exists) is the one that reads requests-capability.
+        let issuer = NodeIdentity::generate_ed25519();
+        let bearer = NodeIdentity::generate_ed25519();
+        let mut claims = claims_for(&issuer, *bearer.device_id());
+        claims.capability = CapabilityVerb("manage:request".to_owned());
+        claims.requests_capability = Some(CapabilityVerb("room:member".to_owned()));
+        claims.scope = CapabilityScope {
+            kind: "room".to_owned(),
+            path: None,
+        };
+        let token = mint(&issuer, &claims).await;
+        match verify(&issuer, &RevocationView::new(), &token).await {
+            TokenVerdict::Valid { claims, .. } => {
+                assert_eq!(
+                    claims.requests_capability.map(|v| v.0.clone()),
+                    Some("room:member".to_owned())
+                );
             }
             other => panic!("expected Valid, got {other:?}"),
         }
