@@ -114,7 +114,17 @@ export interface MeshSession {
   readonly coordinatorFrames: AsyncIterable<CoordinatorFrame>;
   connect: (address: string, localDomains: readonly string[]) => Promise<void>;
   sendPing: () => Promise<void>;
-  /** Sends a ping-frame and resolves with the round-trip time in milliseconds once the correlated pong-frame arrives -- FIFO-paired against this call's own ping, since ping-frame carries no correlation id of its own (spec/transport.cddl): the Nth call's own promise resolves against the Nth pong received after it, never matched by any other means. Rejects if the connection closes, or (when timeoutMs is given) if no pong arrives within timeoutMs, in which case it rejects with a PingTimeoutError (from ping-round-trips.ts) so a caller can tell an unanswered ping from a dropped connection, which rejects with a plain Error, rather than resolving a sentinel value the way sendManageRequest's own timeout does -- there is no natural "no answer" value for a bare millisecond count to double as. Unlike sendPing (fire-and-forget, answered by nothing on an ordinary peer connection), this is answered only by a peer that replies to ping with pong -- today, relay-hub's own frame handling (wire-mesh#181) -- so calling this against a connection to a plain peer that never sends pong hangs until timeoutMs (if given) or forever. Exists to isolate the sender-to-hub leg of a relayed path.trace round trip: time this over the same connection a relayed manage-request travelled, then subtract it from path.trace's own end-to-end RTT to recover the hub-to-target leg. */
+  /**
+   * Sends a ping-frame and resolves with the round-trip time in milliseconds once the correlated pong-frame arrives.
+   *
+   * The pairing is FIFO because ping-frame carries no correlation id of its own (spec/transport.cddl): the Nth call's promise resolves against the Nth pong received after it, never matched by any other means.
+   *
+   * Rejects with a plain Error if the connection closes, and with a PingTimeoutError (from ping-round-trips.ts) when `timeoutMs` is given and no pong arrives within it, so a caller can tell an unanswered ping from a dropped connection. It never resolves a sentinel the way sendManageRequest's own timeout does, because there is no natural "no answer" value for a bare millisecond count to double as.
+   *
+   * Unlike sendPing (fire-and-forget, answered by nothing on an ordinary peer connection), this is answered only by a peer that replies to ping with pong, which today means relay-hub's own frame handling (wire-mesh#181). Called against a plain peer that never sends pong it hangs until `timeoutMs` if given, or forever.
+   *
+   * It exists to isolate the sender-to-hub leg of a relayed path.trace round trip: time it over the same connection a relayed manage-request travelled, then subtract it from path.trace's own end-to-end RTT to recover the hub-to-target leg.
+   */
   sendPingMeasureRtt: (timeoutMs?: number) => Promise<number>;
   /** Attaches this token to every `manage-request` sent from now on. */
   setToken: (token: CapabilityToken) => void;
