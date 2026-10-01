@@ -10,6 +10,8 @@ import { bytesToHex } from "wire-mesh-core/domain/device-id";
 import { parseRoomPath } from "wire-mesh-core/domain/room-path";
 import type { RoomJoinDecision } from "./room-client.js";
 import type { StoredMessage } from "./message-store.js";
+import { labelText } from "./peer-names.js";
+import type { PeerLabel } from "./peer-names.js";
 
 export interface PendingJoinRequest {
   requesterHex: string;
@@ -277,11 +279,13 @@ export function participantsOf(
   return parsed.owner === ownDeviceHex ? [] : [parsed.owner];
 }
 
-/** How a conversation's other members are named in the UI: each by `nameOf`, which applies the console's naming convention to a device-id. A conversation with no other members is named by its room path. */
+/** How a conversation's other members are named in the UI: each by the console's naming convention as one line of text, so a self-asserted name always carries the short id beside it. A conversation with no other members is named by its room path. */
 export function participantLabel(
   view: Readonly<Pick<ConversationView, "participants" | "roomPath">>,
-  nameOf: (deviceHex: string) => string,
+  names: Readonly<{ labelOf: (deviceHex: string) => PeerLabel }>,
 ): string {
   if (view.participants.length === 0) return view.roomPath;
-  return view.participants.map(nameOf).join(", ");
+  return view.participants
+    .map((hex) => labelText(names.labelOf(hex)))
+    .join(", ");
 }

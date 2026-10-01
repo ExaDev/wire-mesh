@@ -2,43 +2,19 @@
 
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useEffect } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { deviceIdFromHex } from "wire-mesh-core/domain/device-id";
 import { PeerLabel } from "../src/components/PeerLabel.js";
-import { usePeerNames } from "../src/hooks/use-peer-names.js";
-import { selfNameExtension, shortId } from "../src/peer-names.js";
-import { syntheticAdvertProof } from "./synthetic-advert.js";
-import { WithNames, memoryNameStore } from "./names-harness.js";
+import { shortId } from "../src/peer-names.js";
+import {
+  AssertsSelfName,
+  WithNames,
+  memoryNameStore,
+} from "./names-harness.js";
 import { stubMantineJsdomGlobals } from "./jsdom-mantine-polyfills.js";
 
 const DEVICE_ID_BYTES = 32;
 const DEVICE_HEX = "cd".repeat(DEVICE_ID_BYTES);
 const OTHER_HEX = "ef".repeat(DEVICE_ID_BYTES);
-
-/** Feeds the naming context a directory in which `deviceHex` asserts `selfName` about itself, as a connected node's directory would. */
-function SelfClaim({
-  deviceHex,
-  selfName,
-}: Readonly<{ deviceHex: string; selfName: string }>): null {
-  const { observeDirectory } = usePeerNames();
-  useEffect(() => {
-    const device = deviceIdFromHex(deviceHex);
-    observeDirectory([
-      {
-        device,
-        advert: {
-          device,
-          addresses: [],
-          "snapshot-seconds": 0,
-          ...syntheticAdvertProof(),
-          ...selfNameExtension(selfName),
-        },
-      },
-    ]);
-  }, [deviceHex, selfName, observeDirectory]);
-  return null;
-}
 
 describe("PeerLabel", () => {
   beforeEach(() => {
@@ -129,7 +105,7 @@ describe("PeerLabel", () => {
   it("marks a self-asserted name as the peer's own claim, apart from a petname", async () => {
     render(
       <WithNames>
-        <SelfClaim deviceHex={DEVICE_HEX} selfName="Alice" />
+        <AssertsSelfName deviceHex={DEVICE_HEX} selfName="Alice" />
         <PeerLabel deviceHex={DEVICE_HEX} />
       </WithNames>,
     );
@@ -158,7 +134,7 @@ describe("PeerLabel", () => {
     await store.setPetname(OTHER_HEX, "Alice");
     render(
       <WithNames store={store}>
-        <SelfClaim deviceHex={DEVICE_HEX} selfName="Alice" />
+        <AssertsSelfName deviceHex={DEVICE_HEX} selfName="Alice" />
         <PeerLabel deviceHex={DEVICE_HEX} />
       </WithNames>,
     );
