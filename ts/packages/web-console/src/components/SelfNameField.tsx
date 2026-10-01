@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button, Group, TextInput } from "@mantine/core";
 import { usePeerNames } from "../hooks/use-peer-names.js";
-import { MAX_NAME_LENGTH } from "../peer-names.js";
+import { MAX_NAME_LENGTH, cleanName } from "../peer-names.js";
 
 export function SelfNameField(): React.JSX.Element {
   const { selfName, setSelfName } = usePeerNames();
@@ -33,7 +33,7 @@ export function SelfNameField(): React.JSX.Element {
         <Button
           type="submit"
           variant="light"
-          disabled={draft.trim() === (selfName ?? "")}
+          disabled={(cleanName(draft) ?? "") === (selfName ?? "")}
         >
           Save name
         </Button>
