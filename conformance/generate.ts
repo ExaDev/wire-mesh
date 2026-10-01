@@ -10,7 +10,11 @@ import {
   type Vector,
 } from "@exadev/wire-mesh-conformance";
 import { advertVectors } from "./adverts.ts";
-import { grantTokenVectors, roomMemberTokens } from "./token-vectors.ts";
+import {
+  grantTokenVectors,
+  manageRequestTokenVector,
+  roomMemberTokens,
+} from "./token-vectors.ts";
 import { writeVectorFiles } from "./vector-files.ts";
 
 function wireHex(message: JsonWire): string {
@@ -242,6 +246,7 @@ const tokenVectors: Vector[] = [
   rootTokenVector,
   delegatedTokenVector,
   ...grantVectors,
+  manageRequestTokenVector(grantVectorContext),
   ...roomMemberVectors,
   roomNoticeVector,
   roomNoticeForwardVector,
@@ -520,6 +525,17 @@ const frameVectors: Vector[] = [
     token: roomMember.rootToken,
   }),
   // room.join and room.invite are deliberately ungated (no token field) -- access control is a human's explicit approval in the receiving UI, not a pre-shared token, the first verbs in this spec to work that way. This join vector uses a DM room path (the sorted device-id pair), the shape a first, tokenless contact actually needs.
+  // wire-mesh#324: the same capability.request ask, presented by a requester holding a manage:request permission -- manage-request-frame's own token field carries it, exactly what a receiver that has opted into gating checks.
+  vector("manage_request_v1_capability_request_gated", {
+    type: "manage-request",
+    "request-id": 21,
+    command: {
+      verb: "room:member",
+      params: { verb: "capability.request", capability: "room:member" },
+    },
+    scope: { kind: "room", path: `${deviceAHex}/general` },
+    token: manageRequestTokenVector(grantVectorContext).message,
+  }),
   vector("manage_request_v1_room_join_dm", {
     type: "manage-request",
     "request-id": 11,

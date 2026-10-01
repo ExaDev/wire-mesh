@@ -397,6 +397,7 @@ export const tokenClaimsSchema = z.lazy(() => z.object({
   "valid-until": z.number().int().nonnegative().optional(),
   "conditions": z.instanceof(Uint8Array).optional(),
   "grants-capability": z.lazy(() => capabilityVerbSchema).optional(),
+  "requests-capability": z.lazy(() => capabilityVerbSchema).optional(),
 }).catchall(z.unknown()));
 export const pingFrameSchema = z.lazy(() => z.object({
   "type": z.literal("ping"),

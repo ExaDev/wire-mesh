@@ -190,3 +190,35 @@ export function roomMemberTokens(ctx: Readonly<TokenVectorContext>): {
     delegatedToken: delegated.message,
   };
 }
+
+/// wire-mesh#324's request-permission root: deviceA grants deviceB the right to ASK for
+/// room:member over any room (a path-less room scope is the kind's whole root, so the
+/// token's scope covers any room path a request might carry). Presented in
+/// manage-request-frame's own token field; the gated frame vector below embeds exactly
+/// these wire bytes.
+export function manageRequestTokenVector(
+  ctx: Readonly<TokenVectorContext>,
+): Vector {
+  const vector = (name: string, message: JsonWire): Vector => ({
+    name,
+    message,
+    wire_hex: ctx.wireHex(message),
+  });
+  return vector("capability_token_v1_manage_request_root", [
+    hex(ctx.protectedHeaderHex(ctx.deviceA)),
+    {},
+    hex(
+      ctx.wireHex({
+        "token-id": hex("08".repeat(ctx.tokenIdByteLength)),
+        issuer: ctx.deviceA,
+        "issuer-key": { alg: -7, "public-key": ctx.publicKeyEs256A },
+        bearer: ctx.deviceB,
+        capability: "manage:request",
+        scope: { kind: "room" },
+        expires: 1893456000000,
+        "requests-capability": "room:member",
+      }),
+    ),
+    ctx.signatureFiller,
+  ]);
+}
