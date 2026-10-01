@@ -130,18 +130,39 @@ describe("parseIdentityBackup", () => {
     ).rejects.toThrow("private key cannot be loaded");
   });
 
-  it("refuses a backup whose key is limited to operations the console needs to sign with", async () => {
+  it("keeps only the members that define the key, so a hand-edited file cannot change how it is imported", async () => {
     const backup = await exported();
-    const verifyOnly = {
+    const edited = {
       ...(backup.privateJwk as object),
       key_ops: ["verify"],
+      alg: "none",
+      ext: false,
     };
 
+    const parsed = await parseIdentityBackup(
+      JSON.stringify({ ...backup, privateJwk: edited }),
+    );
+
+    expect(Object.keys(parsed.privateJwk).sort()).toEqual([
+      "crv",
+      "d",
+      "kty",
+      "x",
+      "y",
+    ]);
+    const restored = createMemoryStorage();
+    await createIdentityBackupService(restored).restore(parsed);
+    const identity = await createPersistedWebCryptoIdentity(restored);
+    expect(deviceIdToHex(identity.deviceId)).toBe(backup.deviceId);
+  });
+
+  it("refuses a key whose members are not strings", async () => {
+    const backup = await exported();
+    const numeric = { ...(backup.privateJwk as object), d: 7 };
+
     await expect(
-      parseIdentityBackup(
-        JSON.stringify({ ...backup, privateJwk: verifyOnly }),
-      ),
-    ).rejects.toThrow("private key cannot be loaded");
+      parseIdentityBackup(JSON.stringify({ ...backup, privateJwk: numeric })),
+    ).rejects.toThrow("does not hold a P-256 private key");
   });
 
   it("names malformed key encoding rather than surfacing a raw platform error", async () => {

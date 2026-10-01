@@ -61,17 +61,34 @@ function fromBase64Url(text: string): Uint8Array<ArrayBuffer> {
   }
 }
 
-/** The raw uncompressed public point a P-256 private JWK carries in its x and y. */
-function publicPointOf(jwk: Readonly<JsonWebKey>): Uint8Array<ArrayBuffer> {
+/** A P-256 private key reduced to the five members that define it. Anything else a file carries (`key_ops`, `alg`, `ext`, unknown members) is dropped, so a hand-edited file cannot change how the key is imported once it is stored. */
+interface PrivateP256Jwk {
+  kty: "EC";
+  crv: "P-256";
+  x: string;
+  y: string;
+  d: string;
+}
+
+/** Reads the defining members of a P-256 private JWK out of an untrusted record. */
+function privateP256From(
+  jwk: Readonly<Record<string, unknown>>,
+): PrivateP256Jwk {
+  const { kty, crv, x, y, d } = jwk;
   if (
-    jwk.kty !== "EC" ||
-    jwk.crv !== "P-256" ||
-    jwk.x === undefined ||
-    jwk.y === undefined ||
-    jwk.d === undefined
+    kty !== "EC" ||
+    crv !== "P-256" ||
+    typeof x !== "string" ||
+    typeof y !== "string" ||
+    typeof d !== "string"
   ) {
     throw new Error("the backup does not hold a P-256 private key");
   }
+  return { kty, crv, x, y, d };
+}
+
+/** The raw uncompressed public point a P-256 private JWK carries in its x and y. */
+function publicPointOf(jwk: Readonly<PrivateP256Jwk>): Uint8Array<ArrayBuffer> {
   return Uint8Array.from([
     UNCOMPRESSED_POINT_PREFIX,
     ...fromBase64Url(jwk.x),
@@ -90,7 +107,7 @@ const KEY_PAIR_PROBE = new TextEncoder().encode(
 
 /** Loads the backup's key the way the console does at startup, then proves by a signature that the private scalar belongs to the public key the backup names. */
 async function assertKeyPair(
-  privateJwk: Readonly<JsonWebKey>,
+  privateJwk: Readonly<PrivateP256Jwk>,
   publicKeyRaw: Uint8Array<ArrayBuffer>,
 ): Promise<void> {
   let loaded;
@@ -134,7 +151,7 @@ export async function parseIdentityBackup(
   ) {
     throw new Error("the file is not a wire-mesh console identity backup");
   }
-  const privateJwk: JsonWebKey = parsed.privateJwk;
+  const privateJwk = privateP256From(parsed.privateJwk);
   const point = publicPointOf(privateJwk);
   if (bytesToHex(point) !== parsed.publicKey) {
     throw new Error("the private key does not match the backup's public key");
