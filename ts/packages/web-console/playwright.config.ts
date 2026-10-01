@@ -3,6 +3,10 @@ import { defineConfig } from "@playwright/test";
 // A fixed, dedicated port pair for the e2e run (never the dev-time 8787/5173 pair) so a developer's own `pnpm dev` session never collides with CI or a concurrent local test run.
 export const RELAY_PORT = 8790;
 export const VITE_PORT = 8798;
+// A second hub that also holds other devices' logs while they are offline, for the spec that has one device away while the other writes.
+export const MAILBOX_RELAY_PORT = 8791;
+export const MAILBOX_RELAY_ADDRESS = `ws://127.0.0.1:${String(MAILBOX_RELAY_PORT)}`;
+const MAILBOX_DIR = "test-results/mailbox";
 export const RELAY_ADDRESS = `ws://127.0.0.1:${String(RELAY_PORT)}`;
 const RELAY_HEALTH_URL = `http://127.0.0.1:${String(RELAY_PORT)}/`;
 const HARNESS_URL = `http://localhost:${String(VITE_PORT)}/live-check/harness.html`;
@@ -23,6 +27,12 @@ export default defineConfig({
     {
       command: `node ${nodePackageDist} --bind 127.0.0.1:${String(RELAY_PORT)}`,
       url: RELAY_HEALTH_URL,
+      reuseExistingServer: process.env.CI === undefined,
+      timeout: 10_000,
+    },
+    {
+      command: `node ${nodePackageDist} --bind 127.0.0.1:${String(MAILBOX_RELAY_PORT)} --mailbox-dir ${MAILBOX_DIR}`,
+      port: MAILBOX_RELAY_PORT,
       reuseExistingServer: process.env.CI === undefined,
       timeout: 10_000,
     },
