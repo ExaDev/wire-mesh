@@ -25,6 +25,7 @@ import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import { createIdentityBackupService } from "../src/adapters/identity-backup.js";
 import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
 import { IdentitySection } from "../src/components/IdentitySection.js";
+import type { AnnounceResult } from "../src/hooks/use-grants.js";
 import { encodeGrantCode } from "../src/grants.js";
 import { mintGrant } from "../src/mint-grant.js";
 import { testCapabilities } from "./capability-services.js";
@@ -39,8 +40,8 @@ const clock = { now: () => NOW };
 let own: IdentityPort;
 let other: IdentityPort;
 let capabilities: TestCapabilities;
-const announce = vi.fn<(entry: RevocationEntry) => Promise<void>>(async () =>
-  Promise.resolve(),
+const announce = vi.fn<(entry: RevocationEntry) => Promise<AnnounceResult>>(
+  async () => Promise.resolve({ attempted: 1, reached: 1 }),
 );
 
 beforeAll(async () => {
@@ -51,7 +52,8 @@ beforeAll(async () => {
 beforeEach(async () => {
   stubMantineJsdomGlobals();
   capabilities = await testCapabilities(own, clock);
-  announce.mockClear();
+  announce.mockReset();
+  announce.mockResolvedValue({ attempted: 1, reached: 1 });
 });
 
 afterEach(() => {
@@ -166,6 +168,70 @@ describe("grants", () => {
     await within(issued).findByText("revoked");
     expect(announce).toHaveBeenCalledTimes(1);
     expect(within(issued).queryByRole("button", { name: "Revoke" })).toBeNull();
+  });
+
+  async function revokeOneIssuedGrant(): Promise<void> {
+    renderSection();
+    await openGrants();
+    fillMintForm(deviceIdToHex(other.deviceId));
+    fireEvent.click(screen.getByRole("button", { name: "Mint grant" }));
+    const issued = await screen.findByTestId("grants-issued");
+    await within(issued).findByText("valid");
+    fireEvent.click(within(issued).getByRole("button", { name: "Revoke" }));
+    fireEvent.click(
+      within(issued).getByRole("button", { name: /^Confirm: revoke/ }),
+    );
+  }
+
+  it("says how many nodes a revocation reached", async () => {
+    announce.mockResolvedValue({ attempted: 3, reached: 2 });
+
+    await revokeOneIssuedGrant();
+
+    const report = await screen.findByTestId("revocation-report");
+    expect(report).toHaveTextContent("Revoked, but not every node was told");
+    expect(report).toHaveTextContent("Sent to 2 of 3 connected nodes");
+  });
+
+  it("says when no connection was open to tell, since the revocation is then recorded here only", async () => {
+    announce.mockResolvedValue({ attempted: 0, reached: 0 });
+
+    await revokeOneIssuedGrant();
+
+    const report = await screen.findByTestId("revocation-report");
+    expect(report).toHaveTextContent("Revoked here only");
+    expect(report).toHaveTextContent("No connection was open");
+  });
+
+  it("confirms a revocation that reached every connected node", async () => {
+    await revokeOneIssuedGrant();
+
+    expect(await screen.findByTestId("revocation-report")).toHaveTextContent(
+      "Sent to 1 connected node.",
+    );
+  });
+
+  it("reads a held grant that names another device as invalid, as after an identity restore", async () => {
+    const minted = await mintGrant(
+      {
+        bearerHex: deviceIdToHex(other.deviceId),
+        capability: "room:member",
+        scopeKind: "room",
+        scopePath: "a-room",
+        lifetimeHours: HOURS,
+        delegationsRemaining: undefined,
+        parent: undefined,
+      },
+      { identity: other, clock },
+    );
+    if (!minted.ok) throw new Error(minted.error);
+    await capabilities.grants.record("held", minted.token, NOW);
+    renderSection();
+
+    await openGrants();
+
+    const held = await screen.findByTestId("grants-held");
+    expect(await within(held).findByText(/names another bearer/)).toBeVisible();
   });
 
   it("adds a grant made to this device from its code, listed as held", async () => {

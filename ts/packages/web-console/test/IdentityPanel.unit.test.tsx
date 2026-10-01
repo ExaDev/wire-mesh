@@ -17,6 +17,8 @@ import { stubMantineJsdomGlobals } from "./jsdom-mantine-polyfills.js";
 
 type Save = (filename: string, text: string) => void;
 
+const STORAGE_FAILURE = "the origin's storage quota is exhausted";
+
 interface Rendered {
   storage: ReturnType<typeof createMemoryStorage>;
   identity: IdentityPort;
@@ -94,7 +96,7 @@ describe("IdentityPanel", () => {
     fireEvent.click(screen.getByLabelText(/I understand/));
     fireEvent.click(saveButton);
 
-    await screen.findByText("Backup file saved");
+    await screen.findByText("Backup file handed to your browser");
     expect(save).toHaveBeenCalledTimes(1);
     const [filename, text] = save.mock.calls[0] ?? [];
     expect(filename).toBe("wire-mesh-console-identity.json");
@@ -173,5 +175,40 @@ describe("IdentityPanel", () => {
     chooseFile("not json");
 
     await screen.findByText("the file is not JSON");
+  });
+
+  it("says so, and keeps the identity, when the restore cannot be written", async () => {
+    const storage = createMemoryStorage();
+    const identity = await createPersistedWebCryptoIdentity(storage);
+    const donor = createMemoryStorage();
+    await createPersistedWebCryptoIdentity(donor);
+    const real = createIdentityBackupService(storage);
+    render(
+      <WithNames>
+        <IdentityPanel
+          identity={identity}
+          backup={{
+            ...real,
+            restore: async () => Promise.reject(new Error(STORAGE_FAILURE)),
+          }}
+          save={vi.fn<Save>()}
+          reload={vi.fn<() => void>()}
+        />
+      </WithNames>,
+    );
+    chooseFile(
+      JSON.stringify(await createIdentityBackupService(donor).export()),
+    );
+    await screen.findByText("Replace this device's identity?");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Replace this identity" }),
+    );
+
+    expect(await screen.findByText(STORAGE_FAILURE)).toBeInTheDocument();
+    expect(screen.queryByText("Identity restored")).toBeNull();
+    expect(
+      deviceIdToHex((await createPersistedWebCryptoIdentity(storage)).deviceId),
+    ).toBe(deviceIdToHex(identity.deviceId));
   });
 });

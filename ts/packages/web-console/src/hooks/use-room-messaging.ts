@@ -1,6 +1,13 @@
 // Owns every conversation this console holds, keyed by room path. A conversation reaches its peer by up to two routes at once: a direct WebRTC connection, when one has been negotiated, and a hub, through a relay pairing and a secure channel, which needs nothing but a connection both sides already have. This module attaches each route as it appears, restores persisted conversations that have no route yet, tracks each one's message history, unread count and any pending join request, and exposes send and respond actions the UI calls into. Kept as one reducer-backed hook rather than one useState per conversation, since a message arriving in one conversation must never re-render (or lose) another's own independently-evolving state.
 
-import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { acceptMeshSession } from "wire-mesh-core/domain/mesh-session";
 import type {
   IncomingManageRequest,
@@ -58,6 +65,8 @@ export type HubEndpoint = RelaySender &
 
 export interface RoomMessaging {
   conversations: ConversationView[];
+  /** Why a message or a grant could not be written to this console's storage, for the person to see. The conversation carries on in memory, but what failed to save will be missing after a reload. */
+  persistenceFailure: string | undefined;
   /** Opens the peer's DM conversation over a hub, so it can be used at once with no connection of its own. The direct route is preferred whenever one is attached later. */
   openRelay: (hub: Readonly<RelaySender>, peer: DeviceId) => void;
   /** Starts answering the room requests that arrive on a hub connection, opening a conversation the first time a peer writes. */
@@ -108,6 +117,17 @@ export function useRoomMessaging(
     new Map<string, ConversationInternal>(),
   );
   const ownDeviceHex = deviceIdToHex(identity.deviceId);
+  const [persistenceFailure, setPersistenceFailure] = useState<
+    string | undefined
+  >(undefined);
+  /** Runs a write nothing waits for, reporting its failure instead of leaving an unhandled rejection. */
+  const persist = useCallback((write: Readonly<Promise<unknown>>): void => {
+    write.then(undefined, (error: unknown) => {
+      setPersistenceFailure(
+        error instanceof Error ? error.message : String(error),
+      );
+    });
+  }, []);
 
   useEffect(() => {
     const unmounted = new AbortController();
@@ -220,11 +240,11 @@ export function useRoomMessaging(
           messageId: message.messageId,
           sentAt: message.sentAt,
         };
-        void messageStore.append(roomPath, stored);
+        persist(messageStore.append(roomPath, stored));
         dispatch({ type: "message", roomPath, message: stored });
       },
       onGrantIssued: (token) => {
-        void grants.record("issued", token, clock.now());
+        persist(grants.record("issued", token, clock.now()));
       },
       onJoinRequest: (event) => {
         dispatch({
@@ -369,7 +389,7 @@ export function useRoomMessaging(
         onPhase("sending");
         token = joined.token;
         await rememberToken(roomPath, token);
-        void grants.record("held", token, clock.now());
+        persist(grants.record("held", token, clock.now()));
         dispatch({ type: "token", roomPath, token });
         // Opportunistic DM bootstrap: once this side holds its join-grant,
         // the lower participant mints epoch 1 for the noticeboard. Fire-and-
@@ -478,7 +498,7 @@ export function useRoomMessaging(
         const joined = await requestToJoin(session, roomPath);
         token = joined.token;
         await rememberToken(roomPath, token);
-        void grants.record("held", token, clock.now());
+        persist(grants.record("held", token, clock.now()));
         dispatch({ type: "token", roomPath, token });
       }
       // Awaited here (unlike send()'s opportunistic trigger): posting
@@ -566,6 +586,7 @@ export function useRoomMessaging(
 
   return {
     conversations: [...sessions.values()],
+    persistenceFailure,
     openRelay,
     watchHub,
     dropHub,

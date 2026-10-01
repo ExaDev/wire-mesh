@@ -27,16 +27,26 @@ export interface GrantRow extends GrantRecord {
 export type GrantActionResult<T extends object = object> =
   ({ ok: true } & T) | { ok: false; error: string };
 
+/** How many connected nodes a revocation was sent to, out of how many connections were open. */
+export interface AnnounceResult {
+  attempted: number;
+  reached: number;
+}
+
 export interface GrantsApi {
   rows: readonly GrantRow[];
+  /** Why the recorded grants could not be read, for the person to see; the rows are then the last ones that loaded. */
+  loadError: string | undefined;
   /** Mints a grant, records it as issued, and returns its grant code. */
   mint: (
     input: Readonly<MintGrantInput>,
   ) => Promise<GrantActionResult<{ code: string }>>;
   /** Records a pasted grant code as held, if it names this device and still holds. */
   importCode: (code: string) => Promise<GrantActionResult>;
-  /** Revokes a grant this device issued and announces the revocation. */
-  revoke: (row: Readonly<GrantRow>) => Promise<void>;
+  /** Revokes a grant this device issued and announces the revocation, reporting how many nodes were told. A failure to record the revocation is reported as a refusal; one to announce it is not, since it is recorded here either way. */
+  revoke: (
+    row: Readonly<GrantRow>,
+  ) => Promise<GrantActionResult<{ announced: AnnounceResult }>>;
 }
 
 export interface UseGrantsOptions {
@@ -45,16 +55,20 @@ export interface UseGrantsOptions {
   grants: GrantStore;
   revocations: RevocationStore;
   /** Tells every connected node about a revocation this device just made. */
-  announce: (entry: RevocationEntry) => Promise<void>;
+  announce: (entry: RevocationEntry) => Promise<AnnounceResult>;
 }
 
 export function useGrants(options: Readonly<UseGrantsOptions>): GrantsApi {
   const { identity, clock, grants, revocations, announce } = options;
   const [rows, setRows] = useState<readonly GrantRow[]>([]);
+  const [loadError, setLoadError] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    const lifecycle = { cancelled: false };
+    const lifecycle = { cancelled: false, latestLoad: 0 };
     const load = async (): Promise<void> => {
+      // Loads overlap (store events and the interval), and an older one can settle after a newer one. Only the most recently started may set the rows, or a just-revoked grant could be shown as valid again.
+      lifecycle.latestLoad += 1;
+      const thisLoad = lifecycle.latestLoad;
       const records = await grants.list();
       const judged = await Promise.all(
         records.map(async (record) => ({
@@ -63,15 +77,24 @@ export function useGrants(options: Readonly<UseGrantsOptions>): GrantsApi {
             identity,
             clock,
             revocation: revocations.view,
+            // A held grant is only good for this device. After an identity restore, grants held by the old device read as naming another bearer.
+            ...(record.direction === "held"
+              ? { expectedBearer: identity.deviceId }
+              : {}),
           }),
         })),
       );
-      if (!lifecycle.cancelled) {
+      if (!lifecycle.cancelled && thisLoad === lifecycle.latestLoad) {
         setRows(judged);
+        setLoadError(undefined);
       }
     };
     const reload = (): void => {
-      void load();
+      load().catch((error: unknown) => {
+        if (!lifecycle.cancelled) {
+          setLoadError(error instanceof Error ? error.message : String(error));
+        }
+      });
     };
     reload();
     const stops = [grants.subscribe(reload), revocations.subscribe(reload)];
@@ -125,15 +148,24 @@ export function useGrants(options: Readonly<UseGrantsOptions>): GrantsApi {
   );
 
   const revoke = useCallback(
-    async (row: Readonly<GrantRow>): Promise<void> => {
-      const entry = await revocations.revoke(row.claims["token-id"]);
-      await announce(entry);
+    async (
+      row: Readonly<GrantRow>,
+    ): Promise<GrantActionResult<{ announced: AnnounceResult }>> => {
+      try {
+        const entry = await revocations.revoke(row.claims["token-id"]);
+        return { ok: true, announced: await announce(entry) };
+      } catch (error) {
+        return {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
     },
     [revocations, announce],
   );
 
   return useMemo(
-    () => ({ rows, mint, importCode, revoke }),
-    [rows, mint, importCode, revoke],
+    () => ({ rows, loadError, mint, importCode, revoke }),
+    [rows, loadError, mint, importCode, revoke],
   );
 }
