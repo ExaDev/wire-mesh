@@ -17,6 +17,7 @@ const identity = await createPersistedWebCryptoIdentity(
 );
 const clock = { now: () => Date.now() };
 const messageStore = createMessageStore(await createIndexedDbStorage());
+const roomStorage = await createIndexedDbStorage();
 const certificateMemory = createCertificateMemory(
   await createIndexedDbStorage(),
 );
@@ -34,6 +35,7 @@ createRoot(container).render(
         identity={identity}
         clock={clock}
         messageStore={messageStore}
+        roomStorage={roomStorage}
         certificateMemory={certificateMemory}
         defaultAddress={address}
       />

@@ -23,6 +23,7 @@ import type {
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import type { Clock } from "wire-mesh-core/ports/clock";
 import type { Connection } from "wire-mesh-core/ports/transport";
+import type { KeyValueStorage } from "wire-mesh-core/ports/storage";
 import type { DeviceId } from "wire-mesh-core/generated/protocol";
 import { deviceIdToHex } from "wire-mesh-core/domain/device-id";
 import { dmRoomPath } from "wire-mesh-core/domain/room-path";
@@ -49,6 +50,8 @@ export interface AppProps {
   identity: IdentityPort;
   clock: Clock;
   messageStore: MessageStore;
+  /** Where conversation notice logs, room keys and room tokens are kept so a reload retains them. */
+  roomStorage: KeyValueStorage;
   /** What each node last announced about the certificates it serves, so a node's address keeps working as its certificates change. */
   certificateMemory: CertificateMemory;
   /** Attempts same-device node auto-discovery once, on mount. Defaults to the real `discoverLocalNode` (a no-op when this console is served from a loopback origin, a real localhost probe otherwise); tests inject a fake to avoid depending on `location`/`fetch`. */
@@ -100,6 +103,7 @@ export function App({
   identity,
   clock,
   messageStore,
+  roomStorage,
   certificateMemory,
   discoverLocalNode = discoverLocalNodeDefault,
   defaultAddress = DEFAULT_ADDRESS,
@@ -109,7 +113,12 @@ export function App({
   const [connections, setConnections] = useState<ConnectionEntry[]>([]);
   const [discovered, setDiscovered] = useState<PendingExpansion[]>([]);
   const [failures, setFailures] = useState<ConnectionFailure[]>([]);
-  const roomMessaging = useRoomMessaging(identity, clock, messageStore);
+  const roomMessaging = useRoomMessaging(
+    identity,
+    clock,
+    messageStore,
+    roomStorage,
+  );
   const [selectedPath, setSelectedPath] = useState<string | undefined>();
   // The conversation shown is the one the user picked, falling back to the first while nothing is picked or the picked one no longer exists.
   const selectedConversation =
