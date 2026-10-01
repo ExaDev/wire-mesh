@@ -67,10 +67,7 @@ export function SearchPanel({
                 <Text size="xs" c="dimmed">
                   {conversation === undefined
                     ? result.roomPath
-                    : participantLabel(
-                        conversation,
-                        (hex) => names.labelOf(hex).primary,
-                      )}
+                    : participantLabel(conversation, names)}
                   {" · "}
                   {new Date(result.at).toLocaleString()}
                 </Text>

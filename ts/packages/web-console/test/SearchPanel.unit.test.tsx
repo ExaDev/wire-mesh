@@ -5,7 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { SearchPanel } from "../src/components/SearchPanel.js";
 import type { ConversationView } from "../src/conversations.js";
-import { WithNames, memoryNameStore } from "./names-harness.js";
+import { shortId } from "../src/peer-names.js";
+import {
+  AssertsSelfName,
+  WithNames,
+  memoryNameStore,
+} from "./names-harness.js";
 import { stubMantineJsdomGlobals } from "./jsdom-mantine-polyfills.js";
 
 const DEVICE_ID_HEX_LENGTH = 64;
@@ -89,6 +94,24 @@ describe("SearchPanel", () => {
     fireEvent.click(result);
 
     expect(onSelect).toHaveBeenCalledWith(view.roomPath);
+  });
+
+  it("shows the short id beside a name the peer chose for itself, so a stranger cannot pass as someone else", async () => {
+    render(
+      <WithNames>
+        <AssertsSelfName deviceHex={PEER} selfName="Support" />
+        <SearchPanel
+          conversations={[conversation("lunch at the harbour")]}
+          onSelect={() => undefined}
+        />
+      </WithNames>,
+    );
+
+    search("harbour");
+
+    expect(
+      await screen.findByText(`Support (${shortId(PEER)})`, { exact: false }),
+    ).toBeInTheDocument();
   });
 
   it("says when nothing matches", () => {

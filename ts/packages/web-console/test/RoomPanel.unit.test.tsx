@@ -9,15 +9,15 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { useEffect } from "react";
 import { RoomPanel } from "../src/components/RoomPanel.js";
-import { usePeerNames } from "../src/hooks/use-peer-names.js";
-import { selfNameExtension, shortId } from "../src/peer-names.js";
+import { shortId } from "../src/peer-names.js";
 import type { ConversationView } from "../src/conversations.js";
-import { WithNames, memoryNameStore } from "./names-harness.js";
+import {
+  AssertsSelfName,
+  WithNames,
+  memoryNameStore,
+} from "./names-harness.js";
 import { stubMantineJsdomGlobals } from "./jsdom-mantine-polyfills.js";
-import { deviceIdFromFillHex } from "./hex.js";
-import { syntheticAdvertProof } from "./synthetic-advert.js";
 
 const DEVICE_ID_HEX_LENGTH = 64;
 
@@ -211,29 +211,9 @@ describe("RoomPanel", () => {
   it("shows the requester's short id beside a name it chose for itself, so a stranger cannot pass as someone else", async () => {
     const requester = "ab".repeat(DEVICE_ID_HEX_LENGTH / 2);
 
-    /** Feeds the naming context a directory in which the requester asserts the name "Support", the way a connection panel does. */
-    function AssertsName(): null {
-      const { observeDirectory } = usePeerNames();
-      useEffect(() => {
-        observeDirectory([
-          {
-            device: deviceIdFromFillHex("ab"),
-            advert: {
-              device: deviceIdFromFillHex("ab"),
-              addresses: [],
-              "snapshot-seconds": 0,
-              ...syntheticAdvertProof(),
-              ...selfNameExtension("Support"),
-            },
-          },
-        ]);
-      }, [observeDirectory]);
-      return null;
-    }
-
     render(
       <WithNames>
-        <AssertsName />
+        <AssertsSelfName deviceHex={requester} selfName="Support" />
         <RoomPanel
           view={view({
             participants: [requester],
@@ -252,5 +232,8 @@ describe("RoomPanel", () => {
         `Support (${shortId(requester)}) wants to message you`,
       );
     });
+    expect(screen.getByTestId("conversation-header")).toHaveTextContent(
+      `Support (${shortId(requester)})`,
+    );
   });
 });
