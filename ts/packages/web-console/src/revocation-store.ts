@@ -18,11 +18,22 @@ import type { KeyValueStorage } from "wire-mesh-core/ports/storage";
 
 const KEY_PREFIX = "revocation/";
 
+/** A stored revocation that could not be loaded, so the grant it revoked is not known to be revoked. */
+export interface UnreadableRevocation {
+  /** The storage key it is kept under. */
+  key: string;
+  reason: string;
+}
+
 export interface RevocationStore {
   /** What token verification consults. */
   view: RevocationCheck;
-  /** Calls `listener` after every revocation that is newly recorded, returning a function that stops it. */
+  /** Calls `listener` after every revocation that is newly recorded and every unreadable one that is discarded, returning a function that stops it. */
   subscribe: (listener: () => void) => () => void;
+  /** The stored revocations that could not be loaded when the store was built. The same array is returned until one is discarded, so it can back a subscription. */
+  unreadable: () => readonly UnreadableRevocation[];
+  /** Deletes an unreadable stored revocation, the recovery when it cannot be repaired: until then the grant it revoked may read as valid. */
+  discardUnreadable: (key: string) => Promise<void>;
   /** Verifies a revocation entry (one heard from a node, or one minted here) and, if it verifies, records and keeps it. */
   ingest: (entry: RevocationEntry) => Promise<RevocationEntryVerdict>;
   /**
@@ -38,9 +49,28 @@ export interface RevocationStoreOptions {
   clock: Clock;
 }
 
+/** Loads one stored entry into the view, returning why it could not be, or undefined when it was. */
+async function loadStored(
+  view: Readonly<ReturnType<typeof createRevocationView>>,
+  identity: IdentityPort,
+  value: Uint8Array,
+): Promise<string | undefined> {
+  let decoded: unknown;
+  try {
+    decoded = decode(value, cdeDecodeOptions);
+  } catch {
+    return "it is not valid CBOR";
+  }
+  const parsed = revocationEntrySchema.safeParse(decoded);
+  if (!parsed.success) {
+    return "it is not a revocation entry";
+  }
+  const verdict = await view.record(parsed.data, { identity });
+  return verdict.ok ? undefined : `it no longer verifies (${verdict.reason})`;
+}
+
 /**
- * Builds the store and loads every persisted entry into its view.
- * @throws Error when a persisted entry is malformed or no longer verifies, rather than starting with some revocations silently missing.
+ * Builds the store and loads every persisted entry into its view. An entry that is malformed or no longer verifies is not loaded, and is listed by `unreadable` so the console can say that some revocations are missing rather than either hiding it or refusing to start.
  */
 export async function createRevocationStore(
   options: Readonly<RevocationStoreOptions>,
@@ -61,25 +91,24 @@ export async function createRevocationStore(
     return verdict;
   }
 
+  let unreadable: readonly UnreadableRevocation[] = [];
   for (const key of await storage.keys(KEY_PREFIX)) {
     const value = await storage.get(key);
     if (value === undefined) continue;
-    const parsed = revocationEntrySchema.safeParse(
-      decode(value, cdeDecodeOptions),
-    );
-    if (!parsed.success) {
-      throw new Error(`stored revocation at ${key} is malformed`);
-    }
-    const verdict = await view.record(parsed.data, { identity });
-    if (!verdict.ok) {
-      throw new Error(
-        `stored revocation at ${key} no longer verifies (${verdict.reason})`,
-      );
+    const reason = await loadStored(view, identity, value);
+    if (reason !== undefined) {
+      unreadable = [...unreadable, { key, reason }];
     }
   }
 
   return {
     view,
+    unreadable: () => unreadable,
+    async discardUnreadable(key) {
+      await storage.delete(key);
+      unreadable = unreadable.filter((entry) => entry.key !== key);
+      for (const listener of listeners) listener();
+    },
     subscribe(listener) {
       listeners.add(listener);
       return () => {
