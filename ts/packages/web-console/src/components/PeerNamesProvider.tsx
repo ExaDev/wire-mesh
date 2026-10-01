@@ -98,17 +98,32 @@ export function PeerNamesProvider({
     [],
   );
 
+  const heldPetnames = useMemo(() => new Set(petnames.values()), [petnames]);
+
   const value = useMemo<PeerNames>(
     () => ({
       labelOf: (deviceHex) =>
-        labelPeer(deviceHex, petnames.get(deviceHex), selfNames.get(deviceHex)),
+        labelPeer(
+          deviceHex,
+          petnames.get(deviceHex),
+          selfNames.get(deviceHex),
+          heldPetnames,
+        ),
       petnameOf: (deviceHex) => petnames.get(deviceHex),
       rename,
       selfName,
       setSelfName,
       observeDirectory,
     }),
-    [petnames, selfNames, selfName, rename, setSelfName, observeDirectory],
+    [
+      petnames,
+      heldPetnames,
+      selfNames,
+      selfName,
+      rename,
+      setSelfName,
+      observeDirectory,
+    ],
   );
 
   return (
