@@ -149,10 +149,10 @@ export function App({
     connectionsRef.current = connections;
   }, [connections]);
 
-  // The current domains value, read from a ref rather than closed over directly -- dialExpanded/createExpandableSession are invoked from callbacks createGossipExpansion holds onto for as long as a given session's own gossip directory keeps discovering new peers, well outliving any single render, and must still dial with whatever domains the connect form currently offers, not whichever were selected when that session's own expansion was first wired up.
-  // Addresses of this console's own connect attempts still waiting on a certificate decision, and the device a gossiping node claimed for each address this console has offered to dial and not yet dialled or given up on.
+  // Addresses of this console's own connect attempts still waiting on a certificate decision.
   const confirmingRef = useRef(new Set<string>());
-  const claimedDevices = useRef(new Map<string, string>());
+  // For each address this console has offered to dial and not yet connected or given up on, the devices gossip claimed live there. More than one device claiming an address leaves its claim ambiguous, so none is shown for it.
+  const claimedDevices = useRef(new Map<string, Set<string>>());
   // Set once the console is closed, so a certificate decision or dial that settles afterwards opens nothing. Closing the console also closes every open session: a session's own reconnect timer would otherwise keep dialling for a console that is gone.
   const closedRef = useRef(false);
   // A function rather than a bare read so that a check after an await is not narrowed to the answer it got before it.
@@ -166,6 +166,7 @@ export function App({
       }
     };
   }, []);
+  // The current domains value, read from a ref rather than closed over directly -- dialExpanded/createExpandableSession are invoked from callbacks createGossipExpansion holds onto for as long as a given session's own gossip directory keeps discovering new peers, well outliving any single render, and must still dial with whatever domains the connect form currently offers, not whichever were selected when that session's own expansion was first wired up.
   const domainsRef = useRef(domains);
   useEffect(() => {
     domainsRef.current = domains;
@@ -207,7 +208,10 @@ export function App({
     const key = deviceHex(candidate.device);
     // The connection made through a gossiped address authenticates nothing about which device answers, so the device the gossip named is kept only to show as a claim beside what that connection gossips in turn.
     for (const candidateAddress of candidate.addresses) {
-      claimedDevices.current.set(candidateAddress, key);
+      const claimants =
+        claimedDevices.current.get(candidateAddress) ?? new Set();
+      claimants.add(key);
+      claimedDevices.current.set(candidateAddress, claimants);
     }
     return new Promise<boolean>((resolve) => {
       setDiscovered((current) => [
@@ -249,19 +253,26 @@ export function App({
       selfDeviceId: identity.deviceId,
       shouldExpand: async (candidate) => confirmExpansion(candidate, via),
       dial: dialExpanded,
-      onExpanded: (_candidate, expandedAddress, expandedSession) => {
+      onExpanded: (candidate, expandedAddress, expandedSession) => {
         attachConnection(expandedAddress, expandedSession);
+        forgetClaims(candidate);
       },
-      // A dial that never got user approval (onExpansionDeclined) or that failed against every one of its addresses (onExpansionFailed) simply never produces a session -- there is no panel to remove and nothing further for this console to do, matching how a manually-typed address that fails to connect leaves no panel behind either. Either way the claims kept for its addresses are no longer needed.
+      // A dial that never got user approval (onExpansionDeclined) or that failed against every one of its addresses (onExpansionFailed) simply never produces a session, so there is no panel to remove, matching how a manually-typed address that fails to connect leaves no panel behind either. Whichever way an expansion ends, the claims kept for its addresses are no longer needed.
       onExpansionDeclined: forgetClaims,
       onExpansionFailed: forgetClaims,
     });
     return session;
   }
 
+  /** Withdraws only this candidate's own claims, so another candidate that shares an address keeps its own. */
   function forgetClaims(candidate: Readonly<GossipExpansionCandidate>): void {
+    const key = deviceHex(candidate.device);
     for (const candidateAddress of candidate.addresses) {
-      claimedDevices.current.delete(candidateAddress);
+      const claimants = claimedDevices.current.get(candidateAddress);
+      claimants?.delete(key);
+      if (claimants?.size === 0) {
+        claimedDevices.current.delete(candidateAddress);
+      }
     }
   }
 
@@ -275,8 +286,9 @@ export function App({
     if (isClosed()) {
       throw new Error("the console was closed before the dial began");
     }
-    const claimedDevice = claimedDevices.current.get(gossipedAddress);
-    claimedDevices.current.delete(gossipedAddress);
+    const claimants = claimedDevices.current.get(gossipedAddress);
+    const [soleClaimant] = claimants ?? [];
+    const claimedDevice = claimants?.size === 1 ? soleClaimant : undefined;
     const session = createExpandableSession({
       address: gossipedAddress,
       claimedDevice,

@@ -721,15 +721,90 @@ describe("App", () => {
     );
   });
 
-  it("shows when a peer in the directory was last seen", async () => {
+  it("labels the directory time as when the peer advertised itself, not when it was last heard from", async () => {
     renderApp();
 
     const rootSocket = await connectRoot();
     rootSocket.emitMessage(arrayBuffer(messageFromFrame(gossipedFrame)));
 
     await screen.findByTestId("discovered-peers");
+    expect(
+      screen.getByRole("columnheader", { name: "advertised" }),
+    ).toBeInTheDocument();
     // The advert's snapshot and the fixed test clock are both zero.
     expect(screen.getAllByText("just now").length).toBeGreaterThan(0);
+  });
+
+  /** Connects a root, has it gossip `frames`, dials the discovered peer `dialled`, and has the resulting session gossip the pinned peer, so that peer's row shows what the dialled address was claimed to be. */
+  async function discoverPinnedPeerOver(
+    frames: readonly GossipFrame[],
+    gossiped: readonly string[],
+    dialled: string,
+  ): Promise<HTMLElement> {
+    renderApp();
+    const rootSocket = await connectRoot();
+    for (const frame of frames) {
+      rootSocket.emitMessage(arrayBuffer(messageFromFrame(frame)));
+    }
+    // Every candidate must be listed before one is dialled: each registers its address claim as it is listed.
+    await vi.waitFor(() => {
+      for (const device of gossiped) {
+        expect(
+          within(screen.getByTestId("discovered-peers")).getByText(
+            shortId(device),
+          ),
+        ).toBeInTheDocument();
+      }
+    });
+    fireEvent.click(
+      within(discoveredRow(dialled)).getByRole("button", { name: "Connect" }),
+    );
+    await vi.waitFor(() => {
+      expect(sockets).toHaveLength(2);
+    });
+    const dialledSocket = sockets[1];
+    if (dialledSocket === undefined) {
+      throw new Error("expected the dialled socket to exist");
+    }
+    dialledSocket.emitOpen();
+    await vi.waitFor(() => {
+      expect(screen.getAllByText(/^connected/)).toHaveLength(2);
+    });
+    dialledSocket.emitMessage(arrayBuffer(messageFromFrame(pinnedGossipFrame)));
+    await vi.waitFor(() => {
+      expect(
+        within(screen.getByTestId("discovered-peers")).getByText(
+          shortId(pinnedGossipDeviceHex),
+        ),
+      ).toBeInTheDocument();
+    });
+    return discoveredRow(pinnedGossipDeviceHex);
+  }
+
+  it("shows the device a dialled address was claimed to belong to beside what it then gossips", async () => {
+    const row = await discoverPinnedPeerOver(
+      [gossipedFrame],
+      [gossipedDeviceHex],
+      gossipedDeviceHex,
+    );
+
+    expect(within(row).getByText("claimed to be")).toBeInTheDocument();
+    expect(
+      within(row).getByText(shortId(gossipedDeviceHex)),
+    ).toBeInTheDocument();
+  });
+
+  it("claims no device for an address that two gossiped devices both advertise", async () => {
+    const row = await discoverPinnedPeerOver(
+      [gossipedFrame, namedFrame],
+      [gossipedDeviceHex, namedDeviceHex],
+      gossipedDeviceHex,
+    );
+
+    expect(within(row).queryByText("claimed to be")).toBeNull();
+    expect(
+      within(row).getByText(shortId(pinnedGossipDeviceHex)),
+    ).toBeInTheDocument();
   });
 
   it("names the connection a discovered peer was gossiped over", async () => {

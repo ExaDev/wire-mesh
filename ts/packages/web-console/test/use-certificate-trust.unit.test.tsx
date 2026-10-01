@@ -116,4 +116,40 @@ describe("useCertificateTrust", () => {
     await expect(pending).resolves.toBeUndefined();
     expect(await memory.recall(NODE)).toEqual([]);
   });
+
+  it("keeps a newer prompt for the same question intact when an older one is decided again", async () => {
+    const memory = await memoryRemembering();
+    const { result, unmount } = renderHook(() =>
+      useCertificateTrust(memory, CLOCK),
+    );
+    const first = result.current.confirmAddress(pinnedTo("a"));
+    await waitFor(() => {
+      expect(result.current.prompts).toHaveLength(1);
+    });
+    const older = result.current.prompts[0];
+    act(() => {
+      older?.decide(false);
+    });
+    await expect(first).resolves.toBeUndefined();
+
+    const second = result.current.confirmAddress(pinnedTo("a"));
+    await waitFor(() => {
+      expect(result.current.prompts).toHaveLength(1);
+    });
+    const newer = result.current.prompts[0];
+    act(() => {
+      older?.decide(true);
+    });
+    // A third request still shares the newer prompt instead of raising another.
+    const third = result.current.confirmAddress(pinnedTo("a"));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.prompts).toEqual([newer]);
+    unmount();
+    await expect(second).resolves.toBeUndefined();
+    await expect(third).resolves.toBeUndefined();
+    expect(await memory.recall(NODE)).toEqual([]);
+  });
 });

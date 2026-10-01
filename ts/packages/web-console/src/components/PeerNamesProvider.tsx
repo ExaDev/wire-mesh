@@ -1,6 +1,6 @@
 // Holds the petnames loaded from the console's name store and the self display names observed in directories, and serves them through PeerNamesContext.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert } from "@mantine/core";
 import type { DirectoryEntry } from "wire-mesh-core/domain/mesh-session";
 import { deviceIdToHex } from "wire-mesh-core/domain/device-id";
@@ -29,17 +29,24 @@ export function PeerNamesProvider({
     undefined,
   );
 
-  /** Runs one storage operation and shows its failure to the person, since names are read and written from event handlers with no caller positioned to handle a rejection. */
+  /** The tail of the chain of storage operations. Each write is followed by a re-read, and two overlapping ones could settle out of order and leave the older snapshot in state, so operations run one after another. Every link settles, so a failure never blocks the next. */
+  const storageQueue = useRef<Promise<void>>(Promise.resolve());
+
+  /** Queues one storage operation behind the earlier ones and shows its failure to the person, since names are read and written from event handlers with no caller positioned to handle a rejection. */
   const reportFailure = useCallback(
     async (operation: () => Promise<void>): Promise<void> => {
-      try {
-        await operation();
-        setStorageFailure(undefined);
-      } catch (error: unknown) {
-        setStorageFailure(
-          error instanceof Error ? error.message : String(error),
-        );
-      }
+      const run = async (): Promise<void> => {
+        try {
+          await operation();
+          setStorageFailure(undefined);
+        } catch (error: unknown) {
+          setStorageFailure(
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      };
+      storageQueue.current = storageQueue.current.then(run);
+      await storageQueue.current;
     },
     [],
   );
@@ -98,17 +105,32 @@ export function PeerNamesProvider({
     [],
   );
 
+  const heldPetnames = useMemo(() => new Set(petnames.values()), [petnames]);
+
   const value = useMemo<PeerNames>(
     () => ({
       labelOf: (deviceHex) =>
-        labelPeer(deviceHex, petnames.get(deviceHex), selfNames.get(deviceHex)),
+        labelPeer(
+          deviceHex,
+          petnames.get(deviceHex),
+          selfNames.get(deviceHex),
+          heldPetnames,
+        ),
       petnameOf: (deviceHex) => petnames.get(deviceHex),
       rename,
       selfName,
       setSelfName,
       observeDirectory,
     }),
-    [petnames, selfNames, selfName, rename, setSelfName, observeDirectory],
+    [
+      petnames,
+      heldPetnames,
+      selfNames,
+      selfName,
+      rename,
+      setSelfName,
+      observeDirectory,
+    ],
   );
 
   return (

@@ -88,7 +88,7 @@ const CLOCK_TICK_MS = 1000;
 const DIRECTORY_COLUMNS: readonly StackedColumn[] = [
   { label: "device" },
   { label: "addresses" },
-  { label: "last seen" },
+  { label: "advertised" },
   { label: "actions", headerless: true },
 ];
 
@@ -206,7 +206,7 @@ export function ConnectionPanel({
               <PeerLabel key="device" deviceHex={deviceHex(entry.device)} />,
               entry.advert.addresses.join(", "),
               <Tooltip
-                key="last seen"
+                key="advertised"
                 label="As the peer advertised it, by its own clock"
               >
                 <span>
