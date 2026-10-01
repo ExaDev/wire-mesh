@@ -75,8 +75,8 @@ export interface CreateRoomRekeyHandlerOptions {
   revocation: RevocationCheck;
   /** This recipient's own currently-held room:member token for the room being rekeyed, verified fresh on every incoming room.rekey (not cached) -- see this module's own doc comment for why its certified root issuer-key is what the ECDH derivation uses, rather than a separately-tracked live-sender identity. */
   ownRoomMemberToken: CapabilityToken;
-  /** Called once per successfully unwrapped room.rekey. */
-  onRekey: (event: Readonly<RoomRekeyEvent>) => void;
+  /** Called once per successfully unwrapped room.rekey, after the sender has been told it succeeded. May be asynchronous, as storing a key durably is; the handler waits for it, so a failure to store reaches whoever awaits the handler. */
+  onRekey: (event: Readonly<RoomRekeyEvent>) => Promise<void> | void;
 }
 
 /**
@@ -149,6 +149,6 @@ export function createRoomRekeyHandler(
     }
 
     await incoming.respond({ result: "ok" });
-    options.onRekey({ room: roomPath, keyEpoch, contentKeys });
+    await options.onRekey({ room: roomPath, keyEpoch, contentKeys });
   };
 }
