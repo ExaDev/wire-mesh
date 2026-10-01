@@ -377,3 +377,93 @@ describe("createNoticeBoard", () => {
     expect(encryptedContentType("text/plain")).toBe("text/plain+aes256gcm");
   });
 });
+
+describe("notices in a DM", () => {
+  async function dm(): Promise<{
+    a: IdentityPort;
+    b: IdentityPort;
+    roomPath: string;
+  }> {
+    const first = await generateEs256Identity();
+    const second = await generateEs256Identity();
+    const firstIsLower =
+      deviceIdToHex(first.deviceId) < deviceIdToHex(second.deviceId);
+    const a = firstIsLower ? first : second;
+    const b = firstIsLower ? second : first;
+    return {
+      a,
+      b,
+      roomPath: `${deviceIdToHex(a.deviceId)}+${deviceIdToHex(b.deviceId)}`,
+    };
+  }
+
+  async function boardFor(
+    identity: IdentityPort,
+    roomPath: string,
+    key: Uint8Array,
+  ): Promise<{
+    board: ReturnType<typeof createNoticeBoard>;
+    storage: KeyValueStorage;
+  }> {
+    const keys = memoryKeyStore();
+    await keys.set(roomPath, FIRST_EPOCH, key);
+    const storage = createMemoryStorage();
+    return {
+      board: createNoticeBoard({
+        identity,
+        storage,
+        clock: fixedClock(NOW_MS),
+        revocation: createRevocationView(),
+        roomKeys: keys,
+      }),
+      storage,
+    };
+  }
+
+  it("reads its own notice although the token it holds is rooted at the other participant", async () => {
+    const { a, b, roomPath } = await dm();
+    const { board } = await boardFor(a, roomPath, generateContentKey());
+    await board.postEncryptedNotice({
+      room: roomPath,
+      token: await mintRoomMemberToken(b, a, roomPath),
+      contentType: "text/plain",
+      plaintext: new TextEncoder().encode("mine"),
+    });
+
+    const read = await board.readOwnNotices(roomPath);
+
+    expect(read[0]?.verified).toBe(true);
+    expect(read[0]?.plaintext).toEqual(new TextEncoder().encode("mine"));
+  });
+
+  it("reads the peer's notice when its token was granted by the reader, and refuses one the poster issued itself", async () => {
+    const { a, b, roomPath } = await dm();
+    const key = generateContentKey();
+    const granted = await boardFor(a, roomPath, key);
+    const selfIssued = await boardFor(a, roomPath, key);
+    await granted.board.postEncryptedNotice({
+      room: roomPath,
+      token: await mintRoomMemberToken(b, a, roomPath),
+      contentType: "text/plain",
+      plaintext: new TextEncoder().encode("granted"),
+    });
+    await selfIssued.board.postEncryptedNotice({
+      room: roomPath,
+      token: await mintRoomMemberToken(a, a, roomPath),
+      contentType: "text/plain",
+      plaintext: new TextEncoder().encode("self-issued"),
+    });
+
+    for (const [poster, expected] of [
+      [granted, true],
+      [selfIssued, false],
+    ] as const) {
+      const reader = await boardFor(b, roomPath, key);
+      for (const entry of await readEntries(poster.storage, a.deviceId, 0)) {
+        await reader.board.ingestPeerEntry(a.deviceId, new Uint8Array(entry));
+      }
+      const read = await reader.board.readPeerNotices(a.deviceId, roomPath);
+      expect(read[0]?.verified).toBe(expected);
+    }
+  });
+});

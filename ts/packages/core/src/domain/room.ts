@@ -90,6 +90,10 @@ export interface VerifyRoomNoticeOptions {
    * When given, refuses any notice not claiming exactly this room -- "is this the room I actually asked to read", checked against the notice's own self-declared `room` field before any cryptographic work, so a caller scanning a mixed stream of notices can cheaply skip ones for other rooms. Independent of, and layered on top of, this function's own unconditional internal self-consistency check (the embedded token's scope.path MUST equal the notice's own `room` field regardless of whether expectedRoom is given at all) -- a notice can be internally self-consistent yet still be for a room other than the one a caller expected, and this is the option that catches that case. Mirrors verifyCapabilityToken's own optional expectedBearer for the same "also assert it matches what I expected" shape.
    */
   expectedRoom?: RoomPath;
+  /**
+   * How a DM's embedded token must be rooted, passed to verifyRoomToken (see its own `dmRootPolicy`). The default requires the root to be the verifying identity, which is right for a notice another device posted to me. A device reading its own notice holds a token rooted at the other participant, so only "either-participant" can pass there; it is safe because nothing about an own notice rests on the root rule, the device wrote it.
+   */
+  dmRootPolicy?: "self" | "either-participant";
 }
 
 /**
@@ -170,6 +174,9 @@ export async function verifyRoomNotice(
     expectedBearer: claims.poster,
     // Obligation 3 (scope.kind MUST be "room" and scope.path MUST equal this notice's own `room` field): this notice's internal self-consistency, independent of options.expectedRoom above, which instead asserts the room against what the CALLER expected.
     roomPath: claims.room,
+    ...(options.dmRootPolicy !== undefined
+      ? { dmRootPolicy: options.dmRootPolicy }
+      : {}),
   });
   if (!tokenVerdict.ok) {
     return { ok: false, reason: tokenVerdict.reason };

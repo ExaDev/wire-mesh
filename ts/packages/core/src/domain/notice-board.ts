@@ -175,11 +175,12 @@ export function createNoticeBoard(
   async function readLog(
     peer: DeviceId,
     room: string,
+    dmRootPolicy: "self" | "either-participant",
   ): Promise<NoticeBoardEntry[]> {
     const entries = await readEntries(storage, peer, 0);
     const out: NoticeBoardEntry[] = [];
     for (const entry of entries) {
-      out.push(await readOne(entry, room));
+      out.push(await readOne(entry, room, dmRootPolicy));
     }
     return out;
   }
@@ -187,6 +188,7 @@ export function createNoticeBoard(
   async function readOne(
     entry: Uint8Array,
     room: string,
+    dmRootPolicy: "self" | "either-participant",
   ): Promise<NoticeBoardEntry> {
     const notice = decodeNotice(entry);
     if (notice === undefined) {
@@ -197,6 +199,7 @@ export function createNoticeBoard(
       clock,
       revocation,
       expectedRoom: room,
+      dmRootPolicy,
     });
     if (!verdict.ok) {
       return { verified: false, reason: verdict.reason };
@@ -246,8 +249,10 @@ export function createNoticeBoard(
   return {
     postEncryptedNotice,
     ingestPeerEntry,
-    readOwnNotices: async (room: string) => readLog(identity.deviceId, room),
+    // A device's own token in a DM is rooted at the other participant, so its own log is read under the either-participant policy; another device's notices must be rooted at this identity.
+    readOwnNotices: async (room: string) =>
+      readLog(identity.deviceId, room, "either-participant"),
     readPeerNotices: async (peer: DeviceId, room: string) =>
-      readLog(peer, room),
+      readLog(peer, room, "self"),
   };
 }
