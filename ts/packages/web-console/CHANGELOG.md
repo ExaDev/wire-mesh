@@ -1,3 +1,20 @@
+## [2.16.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.15.0...%40exadev%2Fwire-mesh-web-console%402.16.0) (2026-10-01)
+
+### Features
+
+* **web-console:** mint manage:grant and manage:request tokens ([4a2b1b6](https://github.com/ExaDev/wire-mesh/commit/4a2b1b63f8393e5b05598d1c486949192513f03a))
+* **web-console:** offer the covered verb, self-grant bars and an authorising grant when minting ([9b3dd6e](https://github.com/ExaDev/wire-mesh/commit/9b3dd6edf9d891f63f7bdf5fdc41fccfac6d736c))
+* **web-console:** present a held manage:request with a room join ([a0de19f](https://github.com/ExaDev/wire-mesh/commit/a0de19f969d3f675ec12363056421fce198e3ac2))
+
+### Documentation
+
+* **web-console:** describe the grant and request permissions in the console ([e27b007](https://github.com/ExaDev/wire-mesh/commit/e27b007098273609c48338abd1d0f9c57bffdbc1))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.9.0
+
 ## [2.15.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.14.2...%40exadev%2Fwire-mesh-web-console%402.15.0) (2026-10-01)
 
 ### Features

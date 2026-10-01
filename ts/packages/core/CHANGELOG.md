@@ -1,3 +1,10 @@
+## [3.9.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.8.0...wire-mesh-core%403.9.0) (2026-10-01)
+
+### Features
+
+* **core:** carry a request's refusal code on a typed error ([0df61aa](https://github.com/ExaDev/wire-mesh/commit/0df61aa95cf38136314e9b2c4f6efa1260722033))
+* **core:** publish token-scope as a subpath ([531a28b](https://github.com/ExaDev/wire-mesh/commit/531a28b2f4545bc78c19665246ada1a4c1bc8c4e))
+
 ## [3.8.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.7.2...wire-mesh-core%403.8.0) (2026-10-01)
 
 ### Features
