@@ -65,6 +65,19 @@ export function buildCapabilityRequestCommand(
   };
 }
 
+/** A capability request the other side answered with a manage-error. The code is the receiver's own (`denied` for a human's no, `token_required`, `capability_mismatch` or `scope_mismatch` from the request-permission gate, or a verifier reason for a presented token it did not accept), kept as a field so a caller can tell a policy refusal from a person's decision without parsing the message. */
+export class CapabilityRequestRefusedError extends Error {
+  readonly capability: string;
+  readonly code: string;
+
+  constructor(capability: string, code: string) {
+    super(`capability request for "${capability}" was refused (${code})`);
+    this.name = "CapabilityRequestRefusedError";
+    this.capability = capability;
+    this.code = code;
+  }
+}
+
 /**
  * Sends a deliberately ungated capability-request (no token field at all -- per management.cddl's own header comment, this primitive puts access control entirely in the receiving side's own decision, not a capability check on the request itself, the same design room.join already established). Resolves with the freshly granted capability-grant-ok on approval (its own open `* tstr => any` tail may carry domain-specific extension fields, e.g. core/room's member list -- a caller that needs those parses the raw result itself, the same way room-client.ts's own requestToJoin wrapper does); rejects on denial (an ordinary manage-error) or a malformed response.
  *
@@ -88,9 +101,7 @@ export async function requestCapability(
     timeoutMs,
   );
   if (outcome.result !== "ok") {
-    throw new Error(
-      `capability request for "${capability}" was refused (${outcome.code})`,
-    );
+    throw new CapabilityRequestRefusedError(capability, outcome.code);
   }
   const parsed = capabilityGrantOkSchema.safeParse(outcome);
   if (!parsed.success) {
