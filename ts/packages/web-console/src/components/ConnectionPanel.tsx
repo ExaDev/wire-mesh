@@ -202,7 +202,7 @@ export function ConnectionPanel({
             <Table.Tr>
               <Table.Th>device</Table.Th>
               <Table.Th>addresses</Table.Th>
-              <Table.Th>last seen</Table.Th>
+              <Table.Th>advertised</Table.Th>
               <Table.Th />
             </Table.Tr>
           </Table.Thead>

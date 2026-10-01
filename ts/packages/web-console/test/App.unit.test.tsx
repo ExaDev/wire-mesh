@@ -709,13 +709,16 @@ describe("App", () => {
     );
   });
 
-  it("shows when a peer in the directory was last seen", async () => {
+  it("labels the directory time as when the peer advertised itself, not when it was last heard from", async () => {
     renderApp();
 
     const rootSocket = await connectRoot();
     rootSocket.emitMessage(arrayBuffer(messageFromFrame(gossipedFrame)));
 
     await screen.findByTestId("discovered-peers");
+    expect(
+      screen.getByRole("columnheader", { name: "advertised" }),
+    ).toBeInTheDocument();
     // The advert's snapshot and the fixed test clock are both zero.
     expect(screen.getAllByText("just now").length).toBeGreaterThan(0);
   });

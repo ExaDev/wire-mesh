@@ -8,7 +8,7 @@ The browser client for wire-mesh: a client of *any* node, not just the hub. It c
 - **Identity** — the console holds a persisted Web Crypto (P-256) identity (`src/adapters/web-crypto-identity.ts`'s `createPersistedWebCryptoIdentity`, backed by `src/adapters/indexeddb-storage.ts`), stable across reloads and shared across every connection the console makes.
 - **Capability tokens** — `MeshSession.setToken` accepts a capability token to present on subsequent `manage-request`s (`sendManageRequest`), gating anything the connected node or a relayed peer requires authorization for.
 - **Reconnect** — a dropped connection retries with backoff (opt-in `ReconnectPolicy`; `main.ts` wires a default exponential backoff, capped, for every session it creates), surfaced as an explicit `"reconnecting"` status rather than silently going dark.
-- **Peer directory** — every `gossip` frame the node sends is folded into a directory table (device, addresses, snapshot time), latest advert per device winning.
+- **Peer directory**: every `gossip` frame the node sends is folded into a directory table (device, addresses, and when the peer advertised itself by its own clock), latest advert per device winning.
 - **Frame log** — a live, ordered feed of every frame that crossed the connection in either direction, plus a *Send ping* button.
 
 ## How it maps onto core's ports
