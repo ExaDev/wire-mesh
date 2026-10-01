@@ -198,6 +198,10 @@
       "import": "./dist/domain/token-predicates.mjs",
       "require": "./dist/domain/token-predicates.cjs"
     },
+    "./domain/token-scope": {
+      "import": "./dist/domain/token-scope.mjs",
+      "require": "./dist/domain/token-scope.cjs"
+    },
     "./domain/tokens": {
       "import": "./dist/domain/tokens.mjs",
       "require": "./dist/domain/tokens.cjs"
