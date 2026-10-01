@@ -1,12 +1,12 @@
-// Whether the first-run intro is on screen. It opens on a device that has never dismissed it, stays closed until the stored answer has loaded so a returning user never sees it flash, and can be reopened.
+// Whether the first-run intro is on screen. It opens on a device that has never dismissed it, stays closed until the stored answer has loaded so a returning user never sees it flash (an answer that cannot be read counts as not dismissed), and can be reopened.
 
 import { useCallback, useEffect, useState } from "react";
 import type { PreferencesStore } from "../preferences-store.js";
 
 export interface Intro {
-  /** True once the stored answer has loaded and the intro is wanted. */
+  /** True once the stored answer has loaded, or failed to load, and the intro is wanted. */
   visible: boolean;
-  /** True once the stored answer has loaded, so the control that reopens the intro is not offered before then. */
+  /** True once the stored answer has loaded or failed to, so the control that reopens the intro is not offered before then. */
   ready: boolean;
   /** Why the stored answer could not be read or saved, for the person to see: the intro then follows this session's choice only, and reappears next load if the dismissal was not saved. */
   error: string | undefined;
@@ -24,6 +24,8 @@ export function useIntro(store: Readonly<PreferencesStore>): Intro {
 
   useEffect(() => {
     store.introDismissed().then(setDismissed, (reason: unknown) => {
+      // An answer that cannot be read is no dismissal, so the intro is shown and can be dismissed for this session.
+      setDismissed(false);
       setError(describe(reason));
     });
   }, [store]);
