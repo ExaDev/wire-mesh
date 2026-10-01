@@ -6,6 +6,7 @@ import type { KeyValueStorage } from "wire-mesh-core/ports/storage";
 import {
   IDENTITY_STORAGE_KEY,
   deriveDeviceId,
+  identityFromStoredEnvelope,
   isStoredIdentityEnvelope,
 } from "./web-crypto-identity.js";
 
@@ -52,8 +53,12 @@ function bytesFromHex(hex: string): Uint8Array<ArrayBuffer> {
 }
 
 function fromBase64Url(text: string): Uint8Array<ArrayBuffer> {
-  const binary = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
-  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  try {
+    const binary = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
+    return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  } catch {
+    throw new Error("the backup's key is not valid base64url");
+  }
 }
 
 /** The raw uncompressed public point a P-256 private JWK carries in its x and y. */
@@ -76,6 +81,33 @@ function publicPointOf(jwk: Readonly<JsonWebKey>): Uint8Array<ArrayBuffer> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** What the private key must sign and its public key verify for a backup to count as holding a matching pair. */
+const KEY_PAIR_PROBE = new TextEncoder().encode(
+  "wire-mesh console identity backup key-pair check",
+);
+
+/** Loads the backup's key the way the console does at startup, then proves by a signature that the private scalar belongs to the public key the backup names. */
+async function assertKeyPair(
+  privateJwk: Readonly<JsonWebKey>,
+  publicKeyRaw: Uint8Array<ArrayBuffer>,
+): Promise<void> {
+  let loaded;
+  try {
+    loaded = await identityFromStoredEnvelope({ privateJwk, publicKeyRaw });
+  } catch (error) {
+    throw new Error(
+      `the backup's private key cannot be loaded: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
+  const signature = await loaded.sign(KEY_PAIR_PROBE);
+  if (!(await loaded.verify(loaded.identityKey, KEY_PAIR_PROBE, signature))) {
+    throw new Error(
+      "the private key does not belong to the backup's public key",
+    );
+  }
 }
 
 /**
@@ -110,6 +142,7 @@ export async function parseIdentityBackup(
   if (deviceIdToHex(await deriveDeviceId(point)) !== parsed.deviceId) {
     throw new Error("the backup's device-id does not match its public key");
   }
+  await assertKeyPair(privateJwk, point);
   return {
     format: IDENTITY_BACKUP_FORMAT,
     version: IDENTITY_BACKUP_VERSION,
