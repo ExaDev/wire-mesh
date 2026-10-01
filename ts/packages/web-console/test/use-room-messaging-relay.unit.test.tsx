@@ -4,7 +4,11 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { createAsyncQueue } from "wire-mesh-core/domain/async-queue";
 import { createMemoryStorage } from "wire-mesh-core/adapters/memory-storage";
-import { buildCapabilityRequestCommand } from "wire-mesh-core/domain/capability-request";
+import {
+  MANAGE_REQUEST_CAPABILITY,
+  buildCapabilityRequestCommand,
+} from "wire-mesh-core/domain/capability-request";
+import { mintCapabilityToken } from "wire-mesh-core/domain/tokens";
 import type {
   IncomingManageRequest,
   MeshSession,
@@ -113,6 +117,48 @@ function incomingFromPeer(
 }
 
 describe("a conversation over a hub", () => {
+  it("presents a held request permission with the join, and none when it holds none", async () => {
+    const own2 = await testCapabilities(own, clock);
+    const permissionVerdict = await mintCapabilityToken({
+      identity: peer,
+      clock,
+      tokenId: Uint8Array.from([SOME_BYTE]),
+      bearer: own.deviceId,
+      capability: MANAGE_REQUEST_CAPABILITY,
+      scope: { kind: "room" },
+      expires: TOKEN_EXPIRES,
+    });
+    if (!permissionVerdict.ok) throw new Error(permissionVerdict.reason);
+    await own2.grants.record("held", permissionVerdict.token, 0);
+    const store = createMessageStore(createMemoryStorage());
+    const roomStorage = createMemoryStorage();
+    const gated = renderHook(() =>
+      useRoomMessaging(own, clock, store, roomStorage, own2.services),
+    );
+    const hub = await answeringHub();
+    act(() => {
+      gated.result.current.openRelay(hub, peer.deviceId);
+    });
+
+    await act(async () => gated.result.current.send(roomPath, "hello"));
+
+    const join = hub.sendManageRequest.mock.calls.find(
+      ([command]) => command.params.verb === "capability.request",
+    );
+    expect(join?.[3]).toEqual(permissionVerdict.token);
+
+    const plain = render();
+    const plainHub = await answeringHub();
+    act(() => {
+      plain.result.current.openRelay(plainHub, peer.deviceId);
+    });
+    await act(async () => plain.result.current.send(roomPath, "hello"));
+    const plainJoin = plainHub.sendManageRequest.mock.calls.find(
+      ([command]) => command.params.verb === "capability.request",
+    );
+    expect(plainJoin?.[3]).toBeUndefined();
+  });
+
   it("opens with no connection of its own, reaching the peer through the hub", async () => {
     const { result } = render();
     const hub = await answeringHub();

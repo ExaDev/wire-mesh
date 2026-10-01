@@ -203,6 +203,42 @@ describe("requestToJoin", () => {
     expect(result.members).toEqual([memberDevice]);
   });
 
+  it("presents a held request permission as the token of the join, and none when it holds none", async () => {
+    const { session } = fakeSession();
+    vi.mocked(session.sendManageRequest).mockResolvedValue({
+      result: "error",
+      code: "denied",
+    });
+    const permission: CapabilityToken = [
+      new Uint8Array(0),
+      {},
+      null,
+      new Uint8Array(0),
+    ];
+
+    await requestToJoin(session, ROOM_PATH, undefined, permission).catch(
+      () => undefined,
+    );
+    await requestToJoin(session, ROOM_PATH).catch(() => undefined);
+
+    const [withPermission, without] = vi.mocked(session.sendManageRequest).mock
+      .calls;
+    expect(withPermission?.[3]).toEqual(permission);
+    expect(without?.[3]).toBeUndefined();
+  });
+
+  it("says a gate wanted a request permission, as distinct from a person's no", async () => {
+    const { session } = fakeSession();
+    vi.mocked(session.sendManageRequest).mockResolvedValue({
+      result: "error",
+      code: "token_required",
+    });
+
+    await expect(requestToJoin(session, ROOM_PATH)).rejects.toThrow(
+      /only accepts requests that present a request permission/,
+    );
+  });
+
   it("throws when the join is denied", async () => {
     const { session } = fakeSession();
     vi.mocked(session.sendManageRequest).mockResolvedValue({

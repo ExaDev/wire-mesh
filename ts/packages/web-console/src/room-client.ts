@@ -25,6 +25,7 @@ import {
   ROOM_MEMBER_CAPABILITY,
   verifyRoomToken,
 } from "wire-mesh-core/domain/room-token-verification";
+import { describeRequestRefusal } from "./request-permission.js";
 import {
   createCapabilityRequestHandler,
   requestCapability,
@@ -107,13 +108,24 @@ export async function requestToJoin(
   session: Readonly<Pick<MeshSession, "sendManageRequest">>,
   roomPath: string,
   targetDevice?: DeviceId,
+  /** A held manage:request to present, for a receiver that gates requests (wire-mesh#324). Absent keeps the join ungated, as a first contact from a stranger must be. */
+  requestToken?: CapabilityToken,
 ): Promise<RoomJoinResult> {
-  const outcome = await requestCapability(
-    session,
-    ROOM_MEMBER_CAPABILITY,
-    { kind: "room", path: roomPath },
-    targetDevice,
-  );
+  let outcome;
+  try {
+    outcome = await requestCapability(
+      session,
+      ROOM_MEMBER_CAPABILITY,
+      { kind: "room", path: roomPath },
+      targetDevice,
+      undefined,
+      undefined,
+      requestToken,
+    );
+  } catch (error) {
+    const described = describeRequestRefusal(error);
+    throw described === undefined ? error : new Error(described);
+  }
   const parsed = roomJoinOkSchema.safeParse(outcome);
   if (!parsed.success) {
     throw new Error(`room.join response for ${roomPath} was malformed`);
