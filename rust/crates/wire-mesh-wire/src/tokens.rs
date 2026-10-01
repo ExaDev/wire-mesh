@@ -505,6 +505,10 @@ pub struct TokenClaims {
     /// On a manage:grant token: the single verb it authorises minting.
     /// Absent means any verb within the token's own scope.
     pub grants_capability: Option<CapabilityVerb>,
+    /// On a manage:request token (wire-mesh#324): the single verb it
+    /// authorises requesting. Absent means any verb within the token's own
+    /// scope.
+    pub requests_capability: Option<CapabilityVerb>,
     pub extra: CanonicalMap<String, CborValue>,
 }
 
@@ -566,6 +570,9 @@ impl Encode<()> for TokenClaims {
         if let Some(grants) = &self.grants_capability {
             builder.push("grants-capability", &grants.0.as_str());
         }
+        if let Some(requests) = &self.requests_capability {
+            builder.push("requests-capability", &requests.0.as_str());
+        }
         for (key, value) in self.extra.iter() {
             let mut value_buf = Vec::new();
             let mut value_enc = Encoder::new(&mut value_buf);
@@ -600,6 +607,7 @@ pub(crate) fn token_claims_from(d: &mut Decoder<'_>) -> Result<TokenClaims, Deco
     let mut delegations_remaining: Option<u64> = None;
     let mut authorised_by: Option<Vec<u8>> = None;
     let mut grants_capability: Option<String> = None;
+    let mut requests_capability: Option<String> = None;
     let mut extra = CanonicalMap::new();
     while let Some(key) = map.next_key(d)? {
         match key {
@@ -623,6 +631,9 @@ pub(crate) fn token_claims_from(d: &mut Decoder<'_>) -> Result<TokenClaims, Deco
             "grants-capability" => {
                 strict::set_once(&mut grants_capability, strict::text_value(d)?)?
             }
+            "requests-capability" => {
+                strict::set_once(&mut requests_capability, strict::text_value(d)?)?
+            }
             other => {
                 let value = CborValue::decode_strict(d)?;
                 extra.insert(other.to_owned(), value)?;
@@ -644,6 +655,7 @@ pub(crate) fn token_claims_from(d: &mut Decoder<'_>) -> Result<TokenClaims, Deco
         delegations_remaining,
         authorised_by,
         grants_capability: grants_capability.map(CapabilityVerb),
+        requests_capability: requests_capability.map(CapabilityVerb),
         extra,
     })
 }
@@ -898,6 +910,7 @@ mod tests {
             delegations_remaining: None,
             authorised_by: None,
             grants_capability: None,
+            requests_capability: None,
             extra,
         };
         let bytes = claims.encode_to_vec();
@@ -936,6 +949,7 @@ mod tests {
             authorised_by: Some(vec![5; 48]),
             grants_capability: Some(CapabilityVerb("exec:pty".to_owned())),
             extra: CanonicalMap::new(),
+            requests_capability: None,
         };
         let bytes = claims.encode_to_vec();
         let decoded = TokenClaims::decode_bytes(&bytes).expect("decode");
