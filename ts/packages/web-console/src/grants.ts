@@ -110,6 +110,9 @@ const REASON_TEXT: Readonly<Record<TokenVerdictReason, string>> = {
   parent_invalid: "its parent grant is no longer valid",
   conditions_invalid: "its conditions are invalid",
   conditions_not_satisfied: "its conditions are not met",
+  authorisation_invalid: "exceeds what its authorising grant allows",
+  chain_too_deep: "its chain is deeper than allowed",
+  chain_cycle: "its chain revisits a token",
 };
 
 export function describeGrantStatus(status: Readonly<GrantStatus>): string {
