@@ -1,12 +1,18 @@
 // One open relay/hub connection's own UI: status line, ping/disconnect controls, peer directory, and frame log. All behaviour lives in wire-mesh-core's own mesh-session domain module; this component only renders whatever useMeshSessionEvents last reported and forwards clicks back onto the session.
 
-import { Button, Card, Group, Table, Text } from "@mantine/core";
+import { Alert, Button, Card, Group, Table, Text } from "@mantine/core";
+import { useEffect, useState } from "react";
 import type {
   MeshSession,
   SessionEvent,
 } from "wire-mesh-core/domain/mesh-session";
 import type { DeviceId } from "wire-mesh-core/generated/protocol";
 import { useMeshSessionEvents } from "../hooks/use-mesh-session-events.js";
+import {
+  browserPermissions,
+  explainLocalNetworkBlock,
+  type PermissionQuerier,
+} from "../local-network.js";
 
 const HEX_RADIX = 16;
 
@@ -63,6 +69,10 @@ export interface ConnectionPanelProps {
   session: Readonly<MeshSession>;
   onClose: () => void;
   onMessagePeer: (device: DeviceId) => void;
+  /** The host of the page this panel is shown on, which decides whether reaching a local address needs the browser's permission. Defaults to the real page's. */
+  pageHost?: string;
+  /** Where to read the browser's permissions. Defaults to `navigator.permissions`, which a browser without the API leaves undefined. */
+  permissions?: PermissionQuerier | undefined;
 }
 
 export function ConnectionPanel({
@@ -70,8 +80,34 @@ export function ConnectionPanel({
   session,
   onClose,
   onMessagePeer,
+  pageHost = window.location.hostname,
+  permissions = browserPermissions(),
 }: Readonly<ConnectionPanelProps>): React.JSX.Element {
   const event = useMeshSessionEvents(session);
+  const failing =
+    event?.state.status === "reconnecting" || event?.state.status === "closed";
+  // What the browser's answer was for one address; ignored once the connection is working again or the address is another.
+  const [explained, setExplained] = useState<
+    { address: string; message: string | undefined } | undefined
+  >(undefined);
+  useEffect(() => {
+    // Set only while this effect is still current, so a slow answer cannot overwrite a newer one.
+    const current = { value: true };
+    if (failing) {
+      void explainLocalNetworkBlock(address, pageHost, permissions).then(
+        (message) => {
+          if (current.value) {
+            setExplained({ address, message });
+          }
+        },
+      );
+    }
+    return () => {
+      current.value = false;
+    };
+  }, [failing, address, pageHost, permissions]);
+  const blocked =
+    failing && explained?.address === address ? explained.message : undefined;
   const status = event === undefined ? "idle" : describeStatus(event);
   const directory = event?.directory ?? [];
   const frameLog = event?.frameLog ?? [];
@@ -98,6 +134,11 @@ export function ConnectionPanel({
       <Text fw={600} size="sm" mb="sm">
         {status}
       </Text>
+      {blocked === undefined ? null : (
+        <Alert color="yellow" mb="sm">
+          {blocked}
+        </Alert>
+      )}
 
       <Text fw={600} size="sm">
         Peer directory
