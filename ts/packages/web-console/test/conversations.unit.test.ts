@@ -18,7 +18,8 @@ import {
   type RelayRoute,
 } from "../src/conversations.js";
 import type { CapabilityToken } from "wire-mesh-core/generated/protocol";
-import { shortId } from "../src/peer-names.js";
+import { labelPeer } from "../src/peer-names.js";
+import type { PeerLabel } from "../src/peer-names.js";
 import type { StoredMessage } from "../src/message-store.js";
 
 const DEVICE_ID_HEX_LENGTH = 64;
@@ -431,17 +432,33 @@ describe("participantsOf", () => {
 });
 
 describe("participantLabel", () => {
+  const names = {
+    labelOf: (hex: string): PeerLabel =>
+      labelPeer(hex, undefined, undefined, new Set()),
+  };
+
   it("shortens each participant's device-id and joins them", () => {
     expect(
       participantLabel(
         { roomPath: DM, participants: [PEER, OTHER_PEER] },
-        shortId,
+        names,
       ),
     ).toBe("222222222222, 333333333333");
   });
 
+  it("writes a self-asserted name with the short id beside it", () => {
+    const claiming = {
+      labelOf: (hex: string): PeerLabel =>
+        labelPeer(hex, undefined, "Support", new Set()),
+    };
+
+    expect(
+      participantLabel({ roomPath: DM, participants: [PEER] }, claiming),
+    ).toBe("Support (222222222222)");
+  });
+
   it("falls back to the room path when nobody else is in the room", () => {
-    expect(participantLabel({ roomPath: DM, participants: [] }, shortId)).toBe(
+    expect(participantLabel({ roomPath: DM, participants: [] }, names)).toBe(
       DM,
     );
   });
