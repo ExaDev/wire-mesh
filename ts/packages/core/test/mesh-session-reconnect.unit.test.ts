@@ -11,6 +11,7 @@ import {
 import {
   EVENTS_PER_RECONNECT_ROUND,
   EVENTS_THROUGH_FAILURE,
+  EVENTS_THROUGH_FAILED_FIRST_CONNECT,
   EVENTS_THROUGH_FIRST_RECONNECT,
   EVENTS_THROUGH_STALE_TIMER_REGRESSION,
   FakeConnection,
@@ -103,6 +104,55 @@ describe("reconnect policy", () => {
       expect(connections).toHaveLength(drops + 1);
     });
     await session.close();
+  });
+
+  it("reports a first connect that fails as closed with the reason when there is no policy, and still rejects connect()", async () => {
+    const transport: Transport = {
+      connect: async () => Promise.reject(new Error("refused")),
+      listen: async () => Promise.reject(new Error("client-only transport")),
+    };
+    const session = createMeshSession(transport, testIdentity, testClock);
+    const closed = nthEvent(session, EVENTS_THROUGH_FAILED_FIRST_CONNECT);
+    await expect(session.connect("ws://node", ["core/data"])).rejects.toThrow(
+      "refused",
+    );
+    const event = (await closed) as {
+      state: { status: string; reason: string };
+    };
+    expect(event.state.status).toBe("closed");
+    expect(event.state.reason).toBe("refused");
+  });
+
+  it("retries a first connect that fails when there is a policy, reporting each attempt", async () => {
+    vi.useFakeTimers();
+    try {
+      const transport: Transport = {
+        connect: async () => Promise.reject(new Error("refused")),
+        listen: async () => Promise.reject(new Error("client-only transport")),
+      };
+      const session = createMeshSession(transport, testIdentity, testClock, {
+        maxAttempts: RECONNECT_MAX_ATTEMPTS,
+        delayMs: () => RECONNECT_DELAY_MS,
+      });
+      const reconnecting = nthEvent(
+        session,
+        EVENTS_THROUGH_FAILED_FIRST_CONNECT,
+      );
+      await expect(session.connect("ws://node", ["core/data"])).rejects.toThrow(
+        "refused",
+      );
+      const event = (await reconnecting) as {
+        state: { status: string; attempt?: number; reason?: string };
+      };
+      expect(event.state).toMatchObject({
+        status: "reconnecting",
+        attempt: 1,
+        reason: "refused",
+      });
+      await session.close();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("clears the handshake timeout on reconnect, so a stale timer from the previous attempt cannot corrupt the new one", async () => {

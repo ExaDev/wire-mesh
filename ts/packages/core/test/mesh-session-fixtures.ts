@@ -41,6 +41,8 @@ export const SNAPSHOT_UPDATED = 300;
 // Reconnect-flow event-stream positions: each reconnect round emits connecting + connected(pending) + self-advert-sent, then either a further reconnecting (retrying) or closed (attempts exhausted) event.
 export const RECONNECT_DELAY_MS = 100;
 export const RECONNECT_MAX_ATTEMPTS = 2;
+/** Events up to and including the first failed dial's report: connecting, then reconnecting or closed. */
+export const EVENTS_THROUGH_FAILED_FIRST_CONNECT = 2;
 export const EVENTS_THROUGH_FIRST_RECONNECT = 4;
 export const EVENTS_PER_RECONNECT_ROUND = 4;
 export const EVENTS_THROUGH_STALE_TIMER_REGRESSION = 8;

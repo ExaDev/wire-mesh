@@ -619,7 +619,15 @@ function createSessionCore(
           );
         }
         attempt = 0;
-        await doConnect(address, localDomains);
+        await doConnect(address, localDomains).catch((error: unknown) => {
+          // A dial that never produced a connection fails like any later one: the session reports reconnecting or closed with the reason, instead of staying "connecting" for ever, and the caller still sees the rejection.
+          handleDisconnect(
+            error instanceof Error ? error.message : String(error),
+            address,
+            localDomains,
+          );
+          throw error;
+        });
       },
       async sendPing(): Promise<void> {
         const link = requireConnectedLink();
