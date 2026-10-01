@@ -16,7 +16,17 @@ import {
 import type { IncomingManageRequest, MeshSession } from "./mesh-session.js";
 import type { Clock } from "../ports/clock.js";
 import type { IdentityPort } from "../ports/identity.js";
-import { mintCapabilityToken } from "./tokens.js";
+import {
+  mintCapabilityToken,
+  verifyCapabilityToken,
+  type RevocationCheck,
+  type TokenVerdictReason,
+} from "./tokens.js";
+import { scopeNarrows } from "./token-scope.js";
+import type {
+  ConditionsContext,
+  TokenDelegateHandler,
+} from "./token-predicates.js";
 
 const TOKEN_ID_BYTE_LENGTH = 16;
 
@@ -67,12 +77,14 @@ export async function requestCapability(
   targetDevice?: DeviceId,
   timeoutMs?: number,
   validUntil?: number,
+  /** A manage:request token to present with the ask, for a receiver that gates requesting (wire-mesh#324). Absent keeps the request ungated, which is what a stranger's first contact must remain able to send. */
+  requestToken?: CapabilityToken,
 ): Promise<CapabilityGrantOk> {
   const outcome = await session.sendManageRequest(
     buildCapabilityRequestCommand(capability, validUntil),
     scope,
     targetDevice,
-    undefined,
+    requestToken,
     timeoutMs,
   );
   if (outcome.result !== "ok") {
@@ -114,17 +126,69 @@ export interface CapabilityGrantRequestEvent {
   decide: (decision: Readonly<CapabilityGrantDecision>) => Promise<void>;
 }
 
+/** The capability verb of a request-permission (wire-mesh#324): the right to ask for a capability, grantable and delegable like any other. */
+export const MANAGE_REQUEST_CAPABILITY = "manage:request";
+
 export interface CreateCapabilityRequestHandlerOptions {
   /** The capability this handler grants. Checked against both the incoming request's own `params.capability` field (a mismatch is refused as malformed rather than trusted -- nothing about manage-command.verb structurally guarantees params.capability agrees with it) and used as the scope this handler is willing to act on at all; a caller wanting to grant several distinct capabilities over one session constructs one handler per capability, the same way core/room constructs one handler for `room:member` and nothing else. */
   capability: string;
   identity: IdentityPort;
   clock: Clock;
+  /** The revocation view the request-permission gate (requireRequestToken) verifies a presented manage:request token against -- the same plumbing every other token verification here already takes. Required only when the gate is on. */
+  revocation?: RevocationCheck;
+  /** Opt the receiver into the request-permission gate (wire-mesh#324): when on, a request must present a valid manage:request token whose bearer is the authenticated requester, whose requests-capability (when present) matches this handler's capability, and whose scope covers the request's own scope. Off by default so a stranger's first contact still reaches the domain's own decision. */
+  requireRequestToken?: boolean;
+  /** Domain-specific delegate systems a presented request-permission's own conditions entries may name, forwarded verbatim to verifyCapabilityToken. */
+  extraPredicateResolvers?: Readonly<
+    Record<string, TokenDelegateHandler<ConditionsContext>>
+  >;
   /** The peer device-id authenticated on this session's own connection -- the requester, and so the future bearer of any token this handler mints. One handler is constructed per session for the same reason one RoomRouter is (RoomRouterOptions.peerDevice): MeshSession exposes no way for domain code to learn the authenticated peer independently. */
   bearerDevice: DeviceId;
   /** Receiver-side auto-reject window (wire-mesh#81): how long an incoming request may sit awaiting the domain's decision before this side responds with a real manage-error timeout rather than leaving the requester's own sendManageRequest hanging indefinitely. Ported from agent-comms' PendingConnection pattern (`wire-mesh-transport.ts`'s `pendingConnectionTimeoutMs` / `expirePendingConnection`): an unref'd timer so a stray one can never by itself keep the process alive, cleared the instant decide() is actually called so it can never fire after the request has already been answered. IncomingManageRequest exposes no requester-disconnect signal at this layer (unlike agent-comms' own transport, which owns the raw connection), so only the timeout half of that pattern is implemented here -- there is nothing to detect the requester giving up early honestly, so this module does not pretend to. */
   timeoutMs: number;
   /** Called once per incoming, not-yet-expired capability-request, for the domain to accept or reject via the event's own decide(). */
   onRequest: (event: Readonly<CapabilityGrantRequestEvent>) => void;
+}
+
+/** The request-permission gate (wire-mesh#324): the incoming request must present a manage:request token naming this requester as bearer, matching this capability when the token names one, and covering the request's own scope. A wrong token is an ordinary manage-error, never an exception -- the same convention every other refusal here already follows. */
+async function checkRequestPermission(
+  incoming: Readonly<IncomingManageRequest>,
+  options: Readonly<CreateCapabilityRequestHandlerOptions>,
+): Promise<{ ok: true } | { ok: false; code: string }> {
+  if (incoming.token === undefined) {
+    return { ok: false, code: "token_required" };
+  }
+  if (options.revocation === undefined) {
+    throw new Error(
+      "requireRequestToken needs a revocation view on the handler options",
+    );
+  }
+  const verdict = await verifyCapabilityToken(incoming.token, {
+    identity: options.identity,
+    clock: options.clock,
+    revocation: options.revocation,
+    expectedBearer: options.bearerDevice,
+    ...(options.extraPredicateResolvers !== undefined
+      ? { extraPredicateResolvers: options.extraPredicateResolvers }
+      : {}),
+  });
+  if (!verdict.ok) {
+    return { ok: false, code: verdict.reason satisfies TokenVerdictReason };
+  }
+  if (verdict.claims.capability !== MANAGE_REQUEST_CAPABILITY) {
+    return { ok: false, code: "capability_mismatch" };
+  }
+  const requestsCapability = verdict.claims["requests-capability"];
+  if (
+    requestsCapability !== undefined &&
+    requestsCapability !== options.capability
+  ) {
+    return { ok: false, code: "capability_mismatch" };
+  }
+  if (!scopeNarrows(verdict.claims.scope, incoming.scope)) {
+    return { ok: false, code: "scope_mismatch" };
+  }
+  return { ok: true };
 }
 
 /**
@@ -142,6 +206,16 @@ export function createCapabilityRequestHandler(
       return;
     }
     const params = parsed.data;
+    if (options.requireRequestToken === true) {
+      const verdict = await checkRequestPermission(incoming, options);
+      if (!verdict.ok) {
+        await incoming.respond({
+          result: "error",
+          code: verdict.code,
+        });
+        return;
+      }
+    }
     const validUntil = params["valid-until"];
     if (validUntil !== undefined && validUntil <= options.clock.now()) {
       await incoming.respond({ result: "error", code: "expired" });
