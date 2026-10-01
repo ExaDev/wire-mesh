@@ -55,12 +55,16 @@ export function useCertificateTrust(
   );
 
   // One pending decision per node and presented certificate set, shared by every request for exactly that until the user answers. A request presenting other certificates for the node is a different question and gets its own prompt.
-  const pending = useRef(new Map<string, Promise<boolean>>());
-  const refusals = useRef(new Map<string, () => void>());
+  const pending = useRef(
+    new Map<string, { promptKey: string; decision: Promise<boolean> }>(),
+  );
+  const refusals = useRef(
+    new Map<string, { promptKey: string; refuse: () => void }>(),
+  );
   useEffect(() => {
     const open = refusals.current;
     return () => {
-      for (const refuse of [...open.values()]) {
+      for (const { refuse } of [...open.values()]) {
         refuse();
       }
     };
@@ -73,24 +77,35 @@ export function useCertificateTrust(
       const question = `${assessment.node} ${[...assessment.presented].sort().join(",")}`;
       const existing = pending.current.get(question);
       if (existing !== undefined) {
-        return existing;
+        return existing.decision;
       }
+      const key = crypto.randomUUID();
       const decision = new Promise<boolean>((resolve) => {
-        const key = crypto.randomUUID();
+        let settled = false;
+        // A later prompt for the same question owns the map entries by then, so a settled one must leave them alone and answer only once.
         const decide = (answer: boolean): void => {
-          refusals.current.delete(question);
-          pending.current.delete(question);
+          if (settled) return;
+          settled = true;
+          if (refusals.current.get(question)?.promptKey === key) {
+            refusals.current.delete(question);
+          }
+          if (pending.current.get(question)?.promptKey === key) {
+            pending.current.delete(question);
+          }
           setPrompts((current) =>
             current.filter((prompt) => prompt.key !== key),
           );
           resolve(answer);
         };
-        refusals.current.set(question, () => {
-          decide(false);
+        refusals.current.set(question, {
+          promptKey: key,
+          refuse: () => {
+            decide(false);
+          },
         });
         setPrompts((current) => [...current, { key, assessment, decide }]);
       });
-      pending.current.set(question, decision);
+      pending.current.set(question, { promptKey: key, decision });
       return decision;
     },
     [],
