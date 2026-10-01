@@ -1,3 +1,18 @@
+## [2.12.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.11.0...%40exadev%2Fwire-mesh-web-console%402.12.0) (2026-10-01)
+
+### Features
+
+* **web-console:** keep notice logs, room keys and room tokens across reloads ([31d0633](https://github.com/ExaDev/wire-mesh/commit/31d0633e89013ec35e2d88239f73775b1a3e0082))
+
+### Tests
+
+* **web-console:** await asynchronous room key writes in notice tests ([60db23e](https://github.com/ExaDev/wire-mesh/commit/60db23eaf3cce8400aa244d106db68da7387cb7f))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.6.0
+
 ## [2.11.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.10.2...%40exadev%2Fwire-mesh-web-console%402.11.0) (2026-10-01)
 
 ### Features

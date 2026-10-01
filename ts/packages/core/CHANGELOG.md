@@ -1,3 +1,9 @@
+## [3.6.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.5.1...wire-mesh-core%403.6.0) (2026-10-01)
+
+### Features
+
+* **core:** let a room key store and the rekey callback be asynchronous ([6136900](https://github.com/ExaDev/wire-mesh/commit/6136900ea9dda357b0cb822f27906ce81d2863b8))
+
 ## [3.5.1](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.5.0...wire-mesh-core%403.5.1) (2026-10-01)
 
 ### Bug Fixes
