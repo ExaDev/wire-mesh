@@ -1,3 +1,14 @@
+## [2.15.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.14.2...%40exadev%2Fwire-mesh-web-console%402.15.0) (2026-10-01)
+
+### Features
+
+* **web-console:** describe the grant-authorisation verdict and refusal reasons ([7f4291b](https://github.com/ExaDev/wire-mesh/commit/7f4291ba277a22dcd4eedcfdf9380a70e90bd7f8))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.8.0
+
 ## [2.14.2](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.14.1...%40exadev%2Fwire-mesh-web-console%402.14.2) (2026-10-01)
 
 

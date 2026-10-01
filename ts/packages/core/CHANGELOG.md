@@ -1,3 +1,12 @@
+## [3.8.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.7.2...wire-mesh-core%403.8.0) (2026-10-01)
+
+### Features
+
+* **core:** gate a capability request on a presented manage:request token ([c87cb09](https://github.com/ExaDev/wire-mesh/commit/c87cb099ed3e262468af3214e3e6ce3954bf1ca1))
+* **core:** verify and mint tokens under a grant-capability ([5f57466](https://github.com/ExaDev/wire-mesh/commit/5f57466de2950ea82df606c3e9f4054c6820f5a4))
+* **spec:** define the grant permission and subject-mode conditions ([d6ea599](https://github.com/ExaDev/wire-mesh/commit/d6ea5993e2ccdd02ccdf7d2bf3a102a1cf965a3e))
+* **spec:** define the request permission as manage:request ([e41b4da](https://github.com/ExaDev/wire-mesh/commit/e41b4da25bacad26912c37722ca92684537c4f1e))
+
 ## [3.7.2](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.7.1...wire-mesh-core%403.7.2) (2026-10-01)
 
 ### Documentation
