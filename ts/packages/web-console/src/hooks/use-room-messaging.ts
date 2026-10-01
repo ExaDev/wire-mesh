@@ -165,8 +165,9 @@ export function useRoomMessaging(
     [roomStorage],
   );
   const tokenStore = useMemo(
-    () => createPersistentRoomTokenStore(roomStorage, identity, clock),
-    [roomStorage, identity, clock],
+    () =>
+      createPersistentRoomTokenStore(roomStorage, identity, clock, revocation),
+    [roomStorage, identity, clock, revocation],
   );
   /** Holds a token for the session and keeps it across reloads. */
   async function rememberToken(

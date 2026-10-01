@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryStorage } from "wire-mesh-core/adapters/memory-storage";
-import { mintCapabilityToken } from "wire-mesh-core/domain/tokens";
+import { createRevocationView } from "wire-mesh-core/domain/revocation-view";
+import {
+  mintCapabilityToken,
+  mintRevocationEntry,
+  type RevocationCheck,
+} from "wire-mesh-core/domain/tokens";
 import type { Clock } from "wire-mesh-core/ports/clock";
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
@@ -13,6 +18,11 @@ const NOW_MS = 1_000_000;
 const LIFETIME_MS = 60_000;
 const TOKEN_ID = Uint8Array.from([1]);
 const ROOM = "owner/room";
+
+/** A revocation view that has recorded nothing, so every otherwise valid token passes. */
+const NOTHING_REVOKED: RevocationCheck = {
+  entriesFor: async () => Promise.resolve([]),
+};
 const SECOND_EPOCH = 2;
 const TENTH_EPOCH = 10;
 
@@ -64,15 +74,18 @@ describe("createPersistentRoomTokenStore", () => {
     const minted = await roomToken(owner, member);
     if (!minted.ok) throw new Error(minted.reason);
     const storage = createMemoryStorage();
-    await createPersistentRoomTokenStore(storage, member, clockAt(NOW_MS)).set(
-      ROOM,
-      minted.token,
-    );
+    await createPersistentRoomTokenStore(
+      storage,
+      member,
+      clockAt(NOW_MS),
+      NOTHING_REVOKED,
+    ).set(ROOM, minted.token);
 
     const restored = await createPersistentRoomTokenStore(
       storage,
       member,
       clockAt(NOW_MS),
+      NOTHING_REVOKED,
     ).get(ROOM);
 
     expect(restored).toEqual(minted.token);
@@ -85,7 +98,12 @@ describe("createPersistentRoomTokenStore", () => {
     if (!minted.ok) throw new Error(minted.reason);
     const storage = createMemoryStorage();
     const later = clockAt(NOW_MS + LIFETIME_MS + 1);
-    const store = createPersistentRoomTokenStore(storage, member, later);
+    const store = createPersistentRoomTokenStore(
+      storage,
+      member,
+      later,
+      NOTHING_REVOKED,
+    );
     await store.set(ROOM, minted.token);
 
     expect(await store.get(ROOM)).toBeUndefined();
@@ -103,9 +121,40 @@ describe("createPersistentRoomTokenStore", () => {
       storage,
       other,
       clockAt(NOW_MS),
+      NOTHING_REVOKED,
     );
     await store.set(ROOM, minted.token);
 
     expect(await store.get(ROOM)).toBeUndefined();
+  });
+
+  it("drops a stored token its issuer has since revoked", async () => {
+    const owner = await createWebCryptoIdentity();
+    const member = await createWebCryptoIdentity();
+    const minted = await roomToken(owner, member);
+    if (!minted.ok) throw new Error(minted.reason);
+    const storage = createMemoryStorage();
+    const revocations = createRevocationView();
+    const store = createPersistentRoomTokenStore(
+      storage,
+      member,
+      clockAt(NOW_MS),
+      revocations,
+    );
+    await store.set(ROOM, minted.token);
+    expect(await store.get(ROOM)).toEqual(minted.token);
+
+    const recorded = await revocations.record(
+      await mintRevocationEntry({
+        identity: owner,
+        tokenId: TOKEN_ID,
+        revokedAt: NOW_MS,
+      }),
+      { identity: member },
+    );
+    expect(recorded.ok).toBe(true);
+
+    expect(await store.get(ROOM)).toBeUndefined();
+    expect(await storage.keys("room-token/")).toEqual([]);
   });
 });
