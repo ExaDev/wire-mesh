@@ -54,6 +54,22 @@ const REFUSAL_TEXT: Readonly<Record<MintRefusalReason, string>> = {
   capability_mismatch:
     "its capability differs from the grant it delegates from",
   delegation_exceeds_parent: "it permits more delegation than its parent does",
+  links_exclusive:
+    "it would carry both a parent grant and an authorising grant",
+  authorisation_malformed: "the grant authorising it is malformed",
+  authorisation_parent_forbidden:
+    "a grant permission cannot be delegated from a parent grant",
+  authorisation_bearer_mismatch:
+    "the grant authorising it is not held by this device",
+  authorisation_capability_mismatch:
+    "the grant authorising it names a different capability",
+  authorisation_scope_does_not_narrow:
+    "its scope is wider than the grant authorising it",
+  authorisation_exceeds_authoriser: "it would outlast the grant authorising it",
+  authorisation_delegation_exceeds:
+    "it permits more delegation than the grant authorising it does",
+  authorisation_conditions_not_satisfied:
+    "the grant authorising it does not allow this mint",
 };
 
 function randomTokenId(): Uint8Array<ArrayBuffer> {
