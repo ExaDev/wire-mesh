@@ -662,7 +662,7 @@ describe("verifyCapabilityToken - delegation narrowing", () => {
     expect(verdict.ok).toBe(true);
   });
 
-  it("accepts a delegation whose bearer is the delegator itself, so the right to delegate a capability always includes using it", async () => {
+  it("accepts a delegation whose bearer is the delegator itself, the model's unconstrained behaviour today", async () => {
     const root = await signToken(issuer, {
       tokenId: nextTokenId(),
       bearer: bearerDeviceId,

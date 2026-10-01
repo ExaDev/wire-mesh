@@ -1051,9 +1051,10 @@ mod tests {
 
     #[tokio::test]
     async fn a_delegator_may_name_itself_as_the_bearer_of_its_own_delegation() {
-        // The right to delegate a capability always includes using it: nothing
-        // stops a delegator minting a child that names itself, so a
-        // delegate-only permission would not separate the two.
+        // Today's unconstrained behaviour: nothing stops a delegator minting
+        // a child that names itself. Whether a grant-capability whose
+        // conditions bind the grants it authorises should constrain this is
+        // the open design in wire-mesh#323.
         let parent = NodeIdentity::generate_ed25519();
         let (_, self_delegated, claims) = mint_delegated(&parent, |child| {
             child.bearer = child.issuer;
