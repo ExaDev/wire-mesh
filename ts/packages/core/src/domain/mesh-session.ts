@@ -800,6 +800,11 @@ export function createMeshSession(
   addresses: readonly string[] = [],
   /** Fired for every peer-advert entry as it's applied to the directory, regardless of source -- the hook a gossip-expansion consumer (wire-mesh#187, gossip-expansion.ts's own createGossipExpansion) uses to observe newly-gossiped peers without becoming a second, competing consumer of this session's own single-reader events stream (each emitted SessionEvent wakes at most one waiter, so a second for-await loop over events would silently steal events from whichever consumer already reads it). Omit for a caller with no use for it, exactly today's behaviour. */
   onPeerAdvert?: (advert: PeerAdvert) => void,
+  /** Fired once per frame received on this session's connection, with the Connection it arrived on: a new Connection after a reconnect is how a caller notices it has to announce itself again, and a core/data reply is how it receives a log it asked a hub for. Omit for a caller with no use for it, exactly today's behaviour. */
+  onFrame?: (
+    connection: Readonly<Connection>,
+    frame: Frame,
+  ) => void | Promise<void>,
 ): MeshSession {
   const { session } = createSessionCore(
     identity,
@@ -808,6 +813,7 @@ export function createMeshSession(
     async (address) => transport.connect(address),
     onPeerAdvert,
     addresses,
+    onFrame,
   );
   return session;
 }

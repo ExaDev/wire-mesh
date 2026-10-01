@@ -44,7 +44,7 @@ export function buildRoomRekeyCommand(
 
 /** Sends a room.rekey for roomPath. targetDevice/token forward directly to MeshSession.sendManageRequest's own identically-named parameters, exactly as sendRoomMessage's own doc comment already describes. */
 export async function sendRoomRekey(
-  session: Readonly<MeshSession>,
+  session: Readonly<Pick<MeshSession, "sendManageRequest">>,
   roomPath: string,
   keyEpoch: number,
   wrappedKey: Uint8Array | readonly Uint8Array[],

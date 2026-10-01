@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type {
   DataHaveFrame,
+  DataRequestFrame,
   GossipFrame,
   HandshakeFrame,
   PeerAdvert,
@@ -640,6 +641,33 @@ describe("createMeshSession", () => {
     const iterator = session.events[Symbol.asyncIterator]();
     const result = await iterator.next();
     expect(result.done).toBe(false);
+    await session.close();
+  });
+
+  it("hands every received frame to onFrame", async () => {
+    const { transport, connection } = fakeTransport();
+    const onFrame = vi.fn(async (): Promise<void> => Promise.resolve());
+    const session = createMeshSession(
+      transport,
+      testIdentity,
+      testClock,
+      null,
+      [],
+      undefined,
+      onFrame,
+    );
+    await session.connect("ws://node", ["core/data"]);
+
+    const request: DataRequestFrame = {
+      type: "data-request",
+      peer: deviceA,
+      "from-seq": 0,
+    };
+    connection.push(request);
+
+    await vi.waitFor(() => {
+      expect(onFrame).toHaveBeenCalledWith(expect.anything(), request);
+    });
     await session.close();
   });
 });
