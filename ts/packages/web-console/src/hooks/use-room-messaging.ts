@@ -28,6 +28,8 @@ import {
   deviceIdToHex,
 } from "wire-mesh-core/domain/device-id";
 import { dmRoomPath } from "wire-mesh-core/domain/room-path";
+import { ROOM_MEMBER_CAPABILITY } from "wire-mesh-core/domain/room-token-verification";
+import { heldRequestToken } from "../request-permission.js";
 import {
   createRoomRouter,
   requestToJoin,
@@ -437,6 +439,23 @@ export function useRoomMessaging(
     [identity, clock, ownDeviceHex, sessions, messageStore, noticeWiring],
   );
 
+  /** The held manage:request this device presents with a room join, if it holds one that is valid and covers the ask. */
+  const requestTokenFor = useCallback(
+    async (roomPath: string): Promise<CapabilityToken | undefined> =>
+      heldRequestToken(
+        grants,
+        {
+          identity,
+          clock,
+          revocation,
+          expectedBearer: identity.deviceId,
+        },
+        ROOM_MEMBER_CAPABILITY,
+        { kind: "room", path: roomPath },
+      ),
+    [grants, identity, clock, revocation],
+  );
+
   /** One delivery attempt: joins the room if this side holds no token yet, sends, and persists the message. Reports each phase it is in through onPhase, since the join waits on the other side's consent. Throws on any failure; the caller decides how that is surfaced. */
   const deliver = useCallback(
     async (
@@ -449,7 +468,12 @@ export function useRoomMessaging(
       let token = entry?.token;
       if (token === undefined) {
         onPhase("awaiting-approval");
-        const joined = await requestToJoin(session, roomPath, target);
+        const joined = await requestToJoin(
+          session,
+          roomPath,
+          target,
+          await requestTokenFor(roomPath),
+        );
         onPhase("sending");
         token = joined.token;
         await rememberToken(roomPath, token);
@@ -481,7 +505,7 @@ export function useRoomMessaging(
       await messageStore.append(roomPath, stored);
       return stored;
     },
-    [sessions, clock, messageStore, identity, roomKeyStore],
+    [sessions, clock, messageStore, identity, roomKeyStore, requestTokenFor],
   );
 
   /** Runs one delivery attempt for a pending outgoing message. Success moves it into the history; failure keeps it in the list as failed, with the reason, so the user can retry or dismiss it instead of losing the text. */
@@ -545,7 +569,12 @@ export function useRoomMessaging(
       const { session, target } = routeOf(entry);
       let token = entry?.token ?? (await heldToken(roomPath));
       if (token === undefined) {
-        const joined = await requestToJoin(session, roomPath, target);
+        const joined = await requestToJoin(
+          session,
+          roomPath,
+          target,
+          await requestTokenFor(roomPath),
+        );
         token = joined.token;
         await rememberToken(roomPath, token);
         persist(grants.record("held", token, clock.now()));
@@ -564,7 +593,7 @@ export function useRoomMessaging(
       });
       refreshRoom(roomPath);
     },
-    [sessions, identity, clock, roomKeyStore, noticeWiring],
+    [sessions, identity, clock, roomKeyStore, noticeWiring, requestTokenFor],
   );
 
   const markRead = useCallback((roomPath: string): void => {
