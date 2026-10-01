@@ -642,6 +642,8 @@ export interface MintCapabilityTokenOptions {
   authorisedBy?: CapabilityToken;
   /** On a manage:grant token: the single verb it authorises minting. Absent means any verb within scope. */
   grantsCapability?: TokenClaims["capability"];
+  /** On a manage:request token (wire-mesh#324): the single verb it authorises requesting. Absent means any verb within scope. */
+  requestsCapability?: TokenClaims["capability"];
 }
 
 /**
@@ -738,6 +740,9 @@ export async function mintCapabilityToken(
       : {}),
     ...(options.grantsCapability !== undefined
       ? { "grants-capability": options.grantsCapability }
+      : {}),
+    ...(options.requestsCapability !== undefined
+      ? { "requests-capability": options.requestsCapability }
       : {}),
   };
 

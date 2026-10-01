@@ -16,11 +16,15 @@ import type {
   MeshSession,
 } from "../src/domain/mesh-session.js";
 import {
+  MANAGE_REQUEST_CAPABILITY,
   buildCapabilityRequestCommand,
   createCapabilityRequestHandler,
   requestCapability,
   type CapabilityGrantRequestEvent,
 } from "../src/domain/capability-request.js";
+import { mintCapabilityToken } from "../src/domain/tokens.js";
+import { signToken } from "./tokens-fixtures.js";
+import { neverRevoked } from "./tokens-fixtures.js";
 
 const ES256 = -7;
 const HOUR_MS = 3_600_000;
@@ -55,12 +59,14 @@ function fakeSession(): MeshSession {
 function fakeIncoming(
   command: ManageCommand,
   scope: Readonly<CapabilityScope> = TEST_SCOPE,
+  token?: CapabilityToken,
 ): { incoming: IncomingManageRequest; respond: ReturnType<typeof vi.fn> } {
   const respond = vi.fn(async (): Promise<void> => Promise.resolve());
   const incoming: IncomingManageRequest = {
     requestId: 0,
     command,
     scope,
+    ...(token !== undefined ? { token } : {}),
     respond,
   };
   return { incoming, respond };
@@ -173,6 +179,7 @@ describe("createCapabilityRequestHandler", () => {
     onRequest?: (event: Readonly<CapabilityGrantRequestEvent>) => void;
     timeoutMs?: number;
     capability?: string;
+    requireRequestToken?: boolean;
   }): Promise<{
     handle: (incoming: Readonly<IncomingManageRequest>) => Promise<void>;
     identity: IdentityPort;
@@ -191,6 +198,12 @@ describe("createCapabilityRequestHandler", () => {
       clock: fixedClock(NOW_MS),
       bearerDevice: bearer.deviceId,
       timeoutMs: overrides?.timeoutMs ?? HOUR_MS,
+      ...(overrides?.requireRequestToken === true
+        ? {
+            requireRequestToken: true,
+            revocation: neverRevoked,
+          }
+        : {}),
       onRequest,
     });
     return { handle, identity, bearer, onRequest };
@@ -399,6 +412,136 @@ describe("createCapabilityRequestHandler", () => {
     );
     expect(seen.scope).toEqual(TEST_SCOPE);
   });
+  it("a gated handler refuses a request carrying no token, without invoking onRequest", async () => {
+    const { handle, onRequest } = await makeHandler({
+      requireRequestToken: true,
+    });
+    const { incoming, respond } = fakeIncoming(
+      buildCapabilityRequestCommand(TEST_CAPABILITY),
+    );
+    await handle(incoming);
+    expect(respond).toHaveBeenCalledWith({
+      result: "error",
+      code: "token_required",
+    });
+    expect(onRequest).not.toHaveBeenCalled();
+  });
+  it("a gated handler passes a request presenting a valid manage:request token through to the domain", async () => {
+    const { handle, identity, bearer, onRequest } = await makeHandler({
+      requireRequestToken: true,
+    });
+    const token = await mintedRequestToken(identity, bearer.deviceId);
+    const { incoming, respond } = fakeIncoming(
+      buildCapabilityRequestCommand(TEST_CAPABILITY),
+      TEST_SCOPE,
+      token,
+    );
+    await handle(incoming);
+    expect(onRequest).toHaveBeenCalledTimes(1);
+    expect(respond).not.toHaveBeenCalled();
+  });
+  it("a gated handler refuses a token naming a different capability, and one whose scope does not cover the request", async () => {
+    const { handle, identity, bearer } = await makeHandler({
+      requireRequestToken: true,
+    });
+    const wrongVerb = await mintedRequestToken(identity, bearer.deviceId, {
+      requestsCapability: "exec:pty",
+    });
+    const wrongScope = await mintedRequestToken(identity, bearer.deviceId, {
+      scope: { kind: "room", path: "another-room" },
+    });
+    const first = fakeIncoming(
+      buildCapabilityRequestCommand(TEST_CAPABILITY),
+      TEST_SCOPE,
+      wrongVerb,
+    );
+    await handle(first.incoming);
+    expect(first.respond).toHaveBeenCalledWith({
+      result: "error",
+      code: "capability_mismatch",
+    });
+    const second = fakeIncoming(
+      buildCapabilityRequestCommand(TEST_CAPABILITY),
+      TEST_SCOPE,
+      wrongScope,
+    );
+    await handle(second.incoming);
+    expect(second.respond).toHaveBeenCalledWith({
+      result: "error",
+      code: "scope_mismatch",
+    });
+  });
+  it("a gated handler refuses an expired request-permission with the verifier's own reason", async () => {
+    const { handle, identity, bearer } = await makeHandler({
+      requireRequestToken: true,
+    });
+    // Signed directly rather than minted: mint refuses an already-expired token by design, and this test is about the verifier's refusal, not the minter's.
+    const token = await signToken(identity, {
+      tokenId: Uint8Array.from([1]),
+      bearer: bearer.deviceId,
+      capability: MANAGE_REQUEST_CAPABILITY,
+      scope: { kind: "room" },
+      expires: NOW_MS - 1,
+    });
+    const { incoming, respond } = fakeIncoming(
+      buildCapabilityRequestCommand(TEST_CAPABILITY),
+      TEST_SCOPE,
+      token,
+    );
+    await handle(incoming);
+    expect(respond).toHaveBeenCalledWith({
+      result: "error",
+      code: "expired",
+    });
+  });
+  it("a request that passes the gate is still the domain's to refuse, with today's denied code", async () => {
+    let seen: CapabilityGrantRequestEvent | undefined;
+    const { handle, identity, bearer } = await makeHandler({
+      requireRequestToken: true,
+      onRequest: (event) => {
+        seen = event;
+      },
+    });
+    const token = await mintedRequestToken(identity, bearer.deviceId);
+    const { incoming, respond } = fakeIncoming(
+      buildCapabilityRequestCommand(TEST_CAPABILITY),
+      TEST_SCOPE,
+      token,
+    );
+    await handle(incoming);
+    if (seen === undefined) throw new Error("expected one request event");
+    await seen.decide({ kind: "reject", reason: "not today" });
+    expect(respond).toHaveBeenCalledWith({
+      result: "error",
+      code: "denied",
+      message: "not today",
+    });
+  });
+  /** A manage:request token minted by the granting identity for the requester, defaulting to exactly what the gate accepts. */
+  async function mintedRequestToken(
+    identity: IdentityPort,
+    bearer: DeviceId,
+    overrides: Partial<{
+      requestsCapability: string;
+      scope: CapabilityScope;
+      expires: number;
+    }> = {},
+  ): Promise<CapabilityToken> {
+    const verdict = await mintCapabilityToken({
+      identity,
+      clock: fixedClock(NOW_MS),
+      tokenId: Uint8Array.from([1]),
+      bearer,
+      capability: MANAGE_REQUEST_CAPABILITY,
+      scope: overrides.scope ?? { kind: "room" },
+      expires: overrides.expires ?? NOW_MS + HOUR_MS,
+      ...(overrides.requestsCapability !== undefined
+        ? { requestsCapability: overrides.requestsCapability }
+        : {}),
+    });
+    if (!verdict.ok) throw new Error(`mint failed: ${verdict.reason}`);
+    return verdict.token;
+  }
 });
 
 describe("round trip: requestCapability against createCapabilityRequestHandler", () => {
