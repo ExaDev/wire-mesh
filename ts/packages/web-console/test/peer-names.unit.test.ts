@@ -59,6 +59,11 @@ describe("cleanName", () => {
     expect(name).toBe("\u{1F600}".repeat(MAX_NAME_LENGTH));
   });
 
+  it("leaves no trailing space when the length cut lands after a space", () => {
+    const name = `${"a".repeat(MAX_NAME_LENGTH - 1)} b`;
+    expect(cleanName(name)).toBe("a".repeat(MAX_NAME_LENGTH - 1));
+  });
+
   it("rejects a blank name", () => {
     expect(cleanName("   ")).toBeUndefined();
   });
@@ -90,34 +95,55 @@ describe("selfAssertedName", () => {
   });
 });
 
+const NO_PETNAMES: ReadonlySet<string> = new Set();
+
 describe("labelPeer", () => {
   it("prefers the petname and shows the peer's own claim beside it", () => {
-    expect(labelPeer(DEVICE_HEX, "Ada", "ada-laptop")).toEqual({
+    expect(labelPeer(DEVICE_HEX, "Ada", "ada-laptop", NO_PETNAMES)).toEqual({
       primary: "Ada",
       secondary: "ada-laptop",
       source: "petname",
+      matchesPetname: false,
     });
   });
 
   it("omits the secondary text when the petname equals the claim or there is no claim", () => {
-    expect(labelPeer(DEVICE_HEX, "Ada", "Ada").secondary).toBeUndefined();
-    expect(labelPeer(DEVICE_HEX, "Ada", undefined).secondary).toBeUndefined();
+    expect(
+      labelPeer(DEVICE_HEX, "Ada", "Ada", NO_PETNAMES).secondary,
+    ).toBeUndefined();
+    expect(
+      labelPeer(DEVICE_HEX, "Ada", undefined, NO_PETNAMES).secondary,
+    ).toBeUndefined();
   });
 
   it("falls back to the self-asserted name, with the short id beside it", () => {
-    expect(labelPeer(DEVICE_HEX, undefined, "ada-laptop")).toEqual({
-      primary: "ada-laptop",
-      secondary: shortId(DEVICE_HEX),
-      source: "self",
-    });
+    expect(labelPeer(DEVICE_HEX, undefined, "ada-laptop", NO_PETNAMES)).toEqual(
+      {
+        primary: "ada-laptop",
+        secondary: shortId(DEVICE_HEX),
+        source: "self",
+        matchesPetname: false,
+      },
+    );
   });
 
   it("falls back to the short id when nothing names the peer", () => {
-    expect(labelPeer(DEVICE_HEX, undefined, undefined)).toEqual({
+    expect(labelPeer(DEVICE_HEX, undefined, undefined, NO_PETNAMES)).toEqual({
       primary: shortId(DEVICE_HEX),
       secondary: undefined,
       source: "id",
+      matchesPetname: false,
     });
+  });
+
+  it("flags a self-asserted name that copies a petname held for any device", () => {
+    const held = new Set(["Ada"]);
+    expect(labelPeer(DEVICE_HEX, undefined, "Ada", held).matchesPetname).toBe(
+      true,
+    );
+    expect(labelPeer(DEVICE_HEX, undefined, "Grace", held).matchesPetname).toBe(
+      false,
+    );
   });
 });
 
@@ -131,15 +157,17 @@ describe("selfNameExtension", () => {
 
 describe("labelText", () => {
   it("puts the short id beside a self-asserted name", () => {
-    expect(labelText(labelPeer(DEVICE_HEX, undefined, "Ada"))).toBe(
-      `Ada (${shortId(DEVICE_HEX)})`,
-    );
+    expect(
+      labelText(labelPeer(DEVICE_HEX, undefined, "Ada", NO_PETNAMES)),
+    ).toBe(`Ada (${shortId(DEVICE_HEX)})`);
   });
 
   it("shows a petname or a short id alone", () => {
-    expect(labelText(labelPeer(DEVICE_HEX, "Grace", "Ada"))).toBe("Grace");
-    expect(labelText(labelPeer(DEVICE_HEX, undefined, undefined))).toBe(
-      shortId(DEVICE_HEX),
+    expect(labelText(labelPeer(DEVICE_HEX, "Grace", "Ada", NO_PETNAMES))).toBe(
+      "Grace",
     );
+    expect(
+      labelText(labelPeer(DEVICE_HEX, undefined, undefined, NO_PETNAMES)),
+    ).toBe(shortId(DEVICE_HEX));
   });
 });

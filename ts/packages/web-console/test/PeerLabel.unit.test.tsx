@@ -2,14 +2,43 @@
 
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useEffect } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { deviceIdFromHex } from "wire-mesh-core/domain/device-id";
 import { PeerLabel } from "../src/components/PeerLabel.js";
-import { shortId } from "../src/peer-names.js";
+import { usePeerNames } from "../src/hooks/use-peer-names.js";
+import { selfNameExtension, shortId } from "../src/peer-names.js";
+import { syntheticAdvertProof } from "./synthetic-advert.js";
 import { WithNames, memoryNameStore } from "./names-harness.js";
 import { stubMantineJsdomGlobals } from "./jsdom-mantine-polyfills.js";
 
 const DEVICE_ID_BYTES = 32;
 const DEVICE_HEX = "cd".repeat(DEVICE_ID_BYTES);
+const OTHER_HEX = "ef".repeat(DEVICE_ID_BYTES);
+
+/** Feeds the naming context a directory in which `deviceHex` asserts `selfName` about itself, as a connected node's directory would. */
+function SelfClaim({
+  deviceHex,
+  selfName,
+}: Readonly<{ deviceHex: string; selfName: string }>): null {
+  const { observeDirectory } = usePeerNames();
+  useEffect(() => {
+    const device = deviceIdFromHex(deviceHex);
+    observeDirectory([
+      {
+        device,
+        advert: {
+          device,
+          addresses: [],
+          "snapshot-seconds": 0,
+          ...syntheticAdvertProof(),
+          ...selfNameExtension(selfName),
+        },
+      },
+    ]);
+  }, [deviceHex, selfName, observeDirectory]);
+  return null;
+}
 
 describe("PeerLabel", () => {
   beforeEach(() => {
@@ -95,5 +124,47 @@ describe("PeerLabel", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Copy device id/ }));
 
     expect(writeText).toHaveBeenCalledWith(DEVICE_HEX);
+  });
+
+  it("marks a self-asserted name as the peer's own claim, apart from a petname", async () => {
+    render(
+      <WithNames>
+        <SelfClaim deviceHex={DEVICE_HEX} selfName="Alice" />
+        <PeerLabel deviceHex={DEVICE_HEX} />
+      </WithNames>,
+    );
+
+    await screen.findByText("Alice");
+    expect(screen.getByText("calls itself")).toBeInTheDocument();
+    expect(screen.getByText(shortId(DEVICE_HEX))).toBeInTheDocument();
+    expect(screen.queryByText("same as a name you set")).toBeNull();
+  });
+
+  it("does not mark a petname as a claim", async () => {
+    const store = memoryNameStore();
+    await store.setPetname(DEVICE_HEX, "Alice");
+    render(
+      <WithNames store={store}>
+        <PeerLabel deviceHex={DEVICE_HEX} />
+      </WithNames>,
+    );
+
+    await screen.findByText("Alice");
+    expect(screen.queryByText("calls itself")).toBeNull();
+  });
+
+  it("flags a self-asserted name that copies a petname held for another device", async () => {
+    const store = memoryNameStore();
+    await store.setPetname(OTHER_HEX, "Alice");
+    render(
+      <WithNames store={store}>
+        <SelfClaim deviceHex={DEVICE_HEX} selfName="Alice" />
+        <PeerLabel deviceHex={DEVICE_HEX} />
+      </WithNames>,
+    );
+
+    expect(
+      await screen.findByText("same as a name you set"),
+    ).toBeInTheDocument();
   });
 });
