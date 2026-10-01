@@ -3,8 +3,13 @@
 import { capabilityVerbSchema } from "wire-mesh-core/generated/protocol";
 import type { CapabilityToken } from "wire-mesh-core/generated/protocol";
 import { deviceIdFromHex } from "wire-mesh-core/domain/device-id";
-import { mintCapabilityToken } from "wire-mesh-core/domain/tokens";
+import { MANAGE_REQUEST_CAPABILITY } from "wire-mesh-core/domain/capability-request";
+import {
+  MANAGE_GRANT_CAPABILITY,
+  mintCapabilityToken,
+} from "wire-mesh-core/domain/tokens";
 import type { MintRefusalReason } from "wire-mesh-core/domain/tokens";
+import { noSelfGrantBar } from "wire-mesh-core/domain/token-predicates";
 import type { Clock } from "wire-mesh-core/ports/clock";
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
 
@@ -25,7 +30,17 @@ export const KNOWN_CAPABILITIES: readonly {
   { verb: "exec:pty", scopeKind: "folder" },
   { verb: "exec:proc", scopeKind: "folder" },
   { verb: "group:member", scopeKind: "group" },
+  { verb: MANAGE_GRANT_CAPABILITY, scopeKind: "folder" },
+  { verb: MANAGE_REQUEST_CAPABILITY, scopeKind: "room" },
 ];
+
+/** The two capabilities whose token names the single verb it covers, and so the claim that carries it. */
+const TARGET_VERB_CLAIM: Readonly<
+  Record<string, "grantsCapability" | "requestsCapability">
+> = {
+  [MANAGE_GRANT_CAPABILITY]: "grantsCapability",
+  [MANAGE_REQUEST_CAPABILITY]: "requestsCapability",
+};
 
 export interface MintGrantInput {
   /** Hex device-id of the device the grant is for. */
@@ -39,6 +54,12 @@ export interface MintGrantInput {
   delegationsRemaining: number | undefined;
   /** A grant held by this device to delegate from, or undefined for a root grant. */
   parent: CapabilityToken | undefined;
+  /** A manage:grant held by this device that authorises this mint, or absent for none. Mutually exclusive with `parent`. */
+  authorisedBy?: CapabilityToken | undefined;
+  /** For a manage:grant or manage:request: the one verb it covers, or empty (or absent) for any verb within its scope. */
+  targetVerb?: string;
+  /** For a manage:grant: verbs the holder is barred from granting to itself, each becoming one subject-mode condition on the token. */
+  selfGrantBars?: readonly string[];
 }
 
 export type MintGrantResult =
@@ -71,6 +92,39 @@ const REFUSAL_TEXT: Readonly<Record<MintRefusalReason, string>> = {
   authorisation_conditions_not_satisfied:
     "the grant authorising it does not allow this mint",
 };
+
+type TargetVerb =
+  | {
+      ok: true;
+      claim?: "grantsCapability" | "requestsCapability";
+      verb?: string;
+    }
+  | { ok: false; error: string };
+
+/** Reads the optional covered verb against the capability being minted: only a manage:grant or manage:request names one, and a given verb must be well formed. */
+function parseTargetVerb(
+  capability: string,
+  raw: string | undefined,
+): TargetVerb {
+  const trimmed = (raw ?? "").trim();
+  if (trimmed === "") return { ok: true };
+  const claim = TARGET_VERB_CLAIM[capability];
+  if (claim === undefined) {
+    return {
+      ok: false,
+      error: `only ${MANAGE_GRANT_CAPABILITY} and ${MANAGE_REQUEST_CAPABILITY} name a verb they cover`,
+    };
+  }
+  const verb = capabilityVerbSchema.safeParse(trimmed);
+  if (!verb.success) {
+    return {
+      ok: false,
+      error:
+        "the covered verb must look like subsystem:action, for example room:member",
+    };
+  }
+  return { ok: true, claim, verb: verb.data };
+}
 
 function randomTokenId(): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(TOKEN_ID_BYTE_LENGTH);
@@ -117,6 +171,28 @@ export async function mintGrant(
       error: "further delegations must be a whole number, zero or more",
     };
   }
+  const target = parseTargetVerb(capability.data, input.targetVerb);
+  if (!target.ok) {
+    return target;
+  }
+  const bars = input.selfGrantBars ?? [];
+  if (bars.length > 0 && capability.data !== MANAGE_GRANT_CAPABILITY) {
+    return {
+      ok: false,
+      error: `only a ${MANAGE_GRANT_CAPABILITY} can bar its holder from granting to itself`,
+    };
+  }
+  const barNodes = [];
+  for (const raw of bars) {
+    const barred = capabilityVerbSchema.safeParse(raw.trim());
+    if (!barred.success) {
+      return {
+        ok: false,
+        error: `the barred verb "${raw}" must look like subsystem:action`,
+      };
+    }
+    barNodes.push(noSelfGrantBar(barred.data, bearer));
+  }
   const scopePath = input.scopePath.trim();
   const verdict = await mintCapabilityToken({
     identity: context.identity,
@@ -136,6 +212,13 @@ export async function mintGrant(
       ? {}
       : { delegationsRemaining: input.delegationsRemaining }),
     ...(input.parent === undefined ? {} : { parent: input.parent }),
+    ...(input.authorisedBy === undefined
+      ? {}
+      : { authorisedBy: input.authorisedBy }),
+    ...(target.claim === undefined || target.verb === undefined
+      ? {}
+      : { [target.claim]: target.verb }),
+    ...(barNodes.length === 0 ? {} : { conditions: barNodes }),
   });
   return verdict.ok
     ? { ok: true, token: verdict.token }

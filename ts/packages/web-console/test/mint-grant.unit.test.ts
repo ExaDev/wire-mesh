@@ -1,6 +1,11 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { deviceIdToHex } from "wire-mesh-core/domain/device-id";
 import { createRevocationView } from "wire-mesh-core/domain/revocation-view";
+import { mintCapabilityToken } from "wire-mesh-core/domain/tokens";
+import type {
+  CapabilityToken,
+  TokenClaims,
+} from "wire-mesh-core/generated/protocol";
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import { createWebCryptoIdentity } from "../src/adapters/web-crypto-identity.js";
 import { decodeGrantClaims, grantStatus } from "../src/grants.js";
@@ -34,6 +39,13 @@ function input(overrides: Partial<MintGrantInput> = {}): MintGrantInput {
     parent: undefined,
     ...overrides,
   };
+}
+
+/** The decoded claims of a token a test just minted, failing loudly rather than narrowing around an absence that would mean the mint itself was wrong. */
+function claimsOf(token: CapabilityToken): TokenClaims {
+  const claims = decodeGrantClaims(token);
+  if (claims === undefined) throw new Error("the minted token has no claims");
+  return claims;
 }
 
 /** The reason a mint was refused, or an empty string for one that succeeded. */
@@ -197,6 +209,169 @@ describe("mintGrant", () => {
         ok: false,
         error: "refused: its scope is wider than the grant it delegates from",
       });
+    });
+  });
+
+  describe("the grant and request permissions", () => {
+    const FOLDER_SCOPE = { scopeKind: "folder", scopePath: "/work" } as const;
+
+    it("mints a manage:grant that names its verb and bars its holder from granting that verb to itself", async () => {
+      const minted = await mintGrant(
+        input({
+          capability: "manage:grant",
+          ...FOLDER_SCOPE,
+          targetVerb: "exec:pty",
+          selfGrantBars: ["exec:pty"],
+        }),
+        { identity: own, clock },
+      );
+      if (!minted.ok) throw new Error(minted.error);
+      expect(claimsOf(minted.token)["grants-capability"]).toBe("exec:pty");
+
+      // The bar does its job end to end: the holder (peer) minting exec:pty under this grant
+      // naming itself is refused, and naming anyone else is accepted.
+      const toSelf = await mintCapabilityToken({
+        identity: peer,
+        clock,
+        tokenId: Uint8Array.from([1]),
+        bearer: peer.deviceId,
+        capability: "exec:pty",
+        scope: { kind: "folder", path: "/work/sub" },
+        expires: NOW + HOUR_MS,
+        authorisedBy: minted.token,
+      });
+      expect(toSelf).toEqual({
+        ok: false,
+        reason: "authorisation_conditions_not_satisfied",
+      });
+      const toOther = await mintCapabilityToken({
+        identity: peer,
+        clock,
+        tokenId: Uint8Array.from([2]),
+        bearer: own.deviceId,
+        capability: "exec:pty",
+        scope: { kind: "folder", path: "/work/sub" },
+        expires: NOW + HOUR_MS,
+        authorisedBy: minted.token,
+      });
+      expect(toOther.ok).toBe(true);
+    });
+
+    it("mints a manage:request that names the verb it may ask for", async () => {
+      const minted = await mintGrant(
+        input({
+          capability: "manage:request",
+          scopeKind: "room",
+          scopePath: "",
+          targetVerb: "room:member",
+        }),
+        { identity: own, clock },
+      );
+      if (!minted.ok) throw new Error(minted.error);
+
+      expect(claimsOf(minted.token)["requests-capability"]).toBe("room:member");
+    });
+
+    it("mints a grant authorised by a held manage:grant, citing it", async () => {
+      const authoriser = await mintGrant(
+        input({
+          capability: "manage:grant",
+          bearerHex: deviceIdToHex(own.deviceId),
+          ...FOLDER_SCOPE,
+        }),
+        { identity: peer, clock },
+      );
+      if (!authoriser.ok) throw new Error(authoriser.error);
+
+      const minted = await mintGrant(
+        input({
+          capability: "exec:pty",
+          bearerHex: deviceIdToHex(peer.deviceId),
+          scopeKind: "folder",
+          scopePath: "/work/sub",
+          authorisedBy: authoriser.token,
+        }),
+        { identity: own, clock },
+      );
+
+      expect(minted.ok).toBe(true);
+      if (minted.ok) {
+        expect(claimsOf(minted.token)["authorised-by"]).toBeDefined();
+      }
+    });
+
+    it("reports a refused authorised mint in the person's terms", async () => {
+      const authoriser = await mintGrant(
+        input({
+          capability: "manage:grant",
+          bearerHex: deviceIdToHex(own.deviceId),
+          targetVerb: "exec:pty",
+          ...FOLDER_SCOPE,
+        }),
+        { identity: peer, clock },
+      );
+      if (!authoriser.ok) throw new Error(authoriser.error);
+
+      const result = await mintGrant(
+        input({
+          capability: "pin:write",
+          scopeKind: "folder",
+          scopePath: "/work/sub",
+          authorisedBy: authoriser.token,
+        }),
+        { identity: own, clock },
+      );
+
+      expect(result).toEqual({
+        ok: false,
+        error: "refused: the grant authorising it names a different capability",
+      });
+    });
+
+    it("refuses a covered verb on a capability that names none, and bars on anything but a manage:grant", async () => {
+      expect(
+        errorOf(
+          await mintGrant(input({ targetVerb: "room:member" }), {
+            identity: own,
+            clock,
+          }),
+        ),
+      ).toContain("only manage:grant and manage:request name a verb");
+      expect(
+        errorOf(
+          await mintGrant(input({ selfGrantBars: ["exec:pty"] }), {
+            identity: own,
+            clock,
+          }),
+        ),
+      ).toContain("only a manage:grant can bar its holder");
+    });
+
+    it("refuses a malformed covered or barred verb", async () => {
+      expect(
+        errorOf(
+          await mintGrant(
+            input({
+              capability: "manage:grant",
+              ...FOLDER_SCOPE,
+              targetVerb: "nope",
+            }),
+            { identity: own, clock },
+          ),
+        ),
+      ).toContain("the covered verb must look like subsystem:action");
+      expect(
+        errorOf(
+          await mintGrant(
+            input({
+              capability: "manage:grant",
+              ...FOLDER_SCOPE,
+              selfGrantBars: ["nope"],
+            }),
+            { identity: own, clock },
+          ),
+        ),
+      ).toContain('the barred verb "nope" must look like subsystem:action');
     });
   });
 });
