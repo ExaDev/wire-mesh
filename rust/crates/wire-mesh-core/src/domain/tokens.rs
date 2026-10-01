@@ -1050,6 +1050,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_delegator_may_name_itself_as_the_bearer_of_its_own_delegation() {
+        // The right to delegate a capability always includes using it: nothing
+        // stops a delegator minting a child that names itself, so a
+        // delegate-only permission would not separate the two.
+        let parent = NodeIdentity::generate_ed25519();
+        let (_, self_delegated, claims) = mint_delegated(&parent, |child| {
+            child.bearer = child.issuer;
+        })
+        .await;
+        assert_eq!(claims.bearer, claims.issuer);
+        assert!(matches!(
+            verify(&parent, &RevocationView::new(), &self_delegated).await,
+            TokenVerdict::Valid { .. }
+        ));
+    }
+
+    #[tokio::test]
     async fn delegation_cannot_widen_scope() {
         let parent = NodeIdentity::generate_ed25519();
         let (_, token, _) = mint_delegated(&parent, |child| {
