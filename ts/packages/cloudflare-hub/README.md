@@ -23,15 +23,18 @@ The hub domain logic itself is core's (`wire-mesh-core/domain/relay-hub`), delib
 
 The hub forwards every advert whole to every connected client, and an advert is signed, so it cannot be trimmed on the way through. Anyone can connect, so the hub carries only the advert extensions listed in `src/advert-policy.ts`, each held to an exact shape, and refuses an advert holding any other (`extensionPolicy` on core's `createRelayHub`). What an application publishes into an advert reaches strangers otherwise.
 
+## Who can read the directory
+
+Anyone. The hub is deliberately open: any client can connect and read every device's id, its addresses and the extensions the policy above lets through, which is a short list. That suits discovery between people who have never met, and it was chosen over a company-only hub (decided on 2026-10-01, wire-mesh#260). What the policy does not hide is visible to the internet, so an application that must keep a name or a room private keeps it out of the adverts the policy allows. A hub run for one company's people only is a different deployment: put reading the directory behind a capability token, the way relay use already is, rather than changing this one.
+
 ## What is real versus deferred
 
-Real and tested: the WebSocket connection adapter (hostile-input behaviour included), the Web Crypto identity adapter with cross-adapter signature interop, the relay pairing logic, and eviction survival, which `test/hibernation.integration.test.ts` exercises by building a second hub over the same sockets and attachments the runtime would preserve. The full entry path is verified against the real workerd runtime too, not just bundling: `pnpm dev` plus `node scripts/live-check.mjs` drives two genuine WebSocket clients through gossip → relay-connect → relay-inbound → bidirectional relay-data and asserts every hop, exiting non-zero and naming the failing step if the runtime ever regresses to the hang-cancellation behaviour. `node scripts/idle-relay-live-check.mjs` covers the case that one cannot, a pairing left quiet long enough to be evicted before it is used again; run it against a real deployment rather than `wrangler dev`, since local workerd does not evict on production's schedule.
+Real and tested: the WebSocket connection adapter (hostile-input behaviour included), the Web Crypto identity adapter with cross-adapter signature interop, the relay pairing logic, and eviction survival, which `test/hibernation.integration.test.ts` exercises by building a second hub over the same sockets and attachments the runtime would preserve. The full entry path is verified against the real workerd runtime too, not just bundling: `pnpm dev` plus `node scripts/live-check.mjs` drives two genuine WebSocket clients through gossip → relay-connect → relay-inbound → bidirectional relay-data and asserts every hop, exiting non-zero and naming the failing step if the runtime ever regresses to the hang-cancellation behaviour. `node scripts/idle-relay-live-check.mjs` covers the case that one cannot, a pairing left quiet long enough to be evicted before it is used again; run it against a real deployment rather than `wrangler dev`, since local workerd does not evict on production's schedule. The announcer role is served from Durable Object storage within fixed limits (`src/mailbox-limits.ts`), the `/health` answer reports `relay` and `announcer`, and the `Deploy hub` workflow deploys the Worker with the console as its static assets on every push to main and then checks that it answers.
 
 Deferred deliberately:
 
 - **Raw TCP ingress** via `cloudflare:sockets` — the WebSocket ingress is the sound first pass; raw TCP is a follow-up adapter behind the same Connection contract.
-- **The announcer role** (the second role the repo README names: `discovery.cddl`'s `mailboxes` — holding peers' handle-records as `core/data` entries) needs a Storage port adapter over KV or Durable Object storage.
-- **A real deployment** — `wrangler deploy --dry-run --outdir=dist` (the `_build` task, and what CI runs) validates the bundle without Cloudflare credentials; an actual deploy needs `wrangler deploy` with an authenticated account and is not part of CI.
+- **A trusted-network deployment of the directory**: see above; reading it behind a token is a separate deployment, not a switch on this one.
 
 ## Type environment
 
