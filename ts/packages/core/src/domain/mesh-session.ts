@@ -34,6 +34,7 @@ import {
 } from "./gossip-extensions.js";
 import { signPeerAdvert, verifyPeerAdvert } from "./peer-advert.js";
 import { createRelayChannels } from "./relay-channels.js";
+import { isDataFrame } from "./hub-mailbox.js";
 import type { Clock } from "../ports/clock.js";
 import type { IdentityPort } from "../ports/identity.js";
 import type { Connection, Transport } from "../ports/transport.js";
@@ -80,6 +81,19 @@ export interface IncomingManageRequest {
   respond: (outcome: ManageOutcome) => Promise<void>;
 }
 
+/** The core/data frames: the raw have, request and entries primitive data-sync.ts answers. */
+export type DataDomainFrame =
+  DataHaveFrame | DataRequestFrame | DataEntriesFrame;
+
+/** One core/data frame this session received, surfaced for the application's replication policy to answer. */
+export interface IncomingDataFrame {
+  frame: DataDomainFrame;
+  /** The device-id of the peer that sent this frame through a relay pairing, as the end-to-end secure channel it arrived through authenticated it (spec/secure-channel.cddl), never the `from-device` a hub stamps. Absent for a frame that arrived directly on the connection, whose sender is the connection's own peer. A reply goes back to this device through sendDataFrame's targetDevice. */
+  fromDevice?: DeviceId;
+  /** The device-id the frame's relay-data was addressed to, for a caller fronting several local devices behind one hub connection, exactly as IncomingManageRequest.toDevice. Present only for a relayed frame that carried one. */
+  toDevice?: DeviceId;
+}
+
 export type HandshakeStatus =
   | { status: "pending" }
   | { status: "negotiated"; version: ProtocolVersion; sharedDomains: string[] }
@@ -108,6 +122,8 @@ export interface MeshSession {
   readonly events: AsyncIterable<SessionEvent>;
   /** Every `manage-request` received from the peer, in arrival order. */
   readonly incomingManageRequests: AsyncIterable<IncomingManageRequest>;
+  /** Every core/data frame received, direct or through a relay pairing, in arrival order. A relayed one arrives only when it opened under the secure channel of the device that sent it, and names that device in `fromDevice`. What a frame means, and what to answer, is data-sync.ts's and the application's business, so the session only delivers it. */
+  readonly incomingDataFrames: AsyncIterable<IncomingDataFrame>;
   /** Every `revocation-entry` received from the peer, in arrival order -- a `revocation-announce` frame's own `entries` array is flattened to one item per entry, since each entry is independently verifiable and independently meaningful regardless of which frame carried it. A consumer typically feeds each one into a RevocationView's own `record`. */
   readonly revocationAnnouncements: AsyncIterable<RevocationEntry>;
   /** Every `coordinator-frame` received from the peer, in arrival order: a gossiped, term-based claim to the rendezvous role (spec/transport.cddl), surfaced raw exactly like revocationAnnouncements because what a claim means is coordinator-election.ts's own business, not the session's. A consumer feeds each one into a CoordinatorElection's evaluate, and sends its own claims with sendCoordinatorClaim. */
@@ -138,9 +154,10 @@ export interface MeshSession {
   sendGossipUpdate: (extensions?: Record<string, unknown>) => Promise<void>;
   /** This session's own current topology snapshot -- the identical `topology/peers` value buildSelfAdvert merges into every gossiped self-advert (wire-mesh#180), read back directly rather than only from a possibly-stale gossiped copy elsewhere in the mesh. The live, cache-bust half of the cached-vs-live split `topology.get` itself establishes: a caller answering an incoming topology.get manage-request (see topology.ts's createTopologyGetHandler) calls this to build the response. Synchronous and side-effect-free -- unlike every other method here, it sends nothing and works even before this session has ever connected (an unconnected session simply has no direct peer and no relay pairings yet, both honestly empty). */
   getTopologyPeers: () => TopologyPeers;
-  /** Sends one core/data frame (data-have, data-request, or data-entries) directly over this session's own connection, never relay-wrapped -- the transport half of an application's own noticeboard replication policy (data-sync.ts owns what the frames MEAN; this owns getting one onto the wire), the same layering sendRevocationAnnounce already established for its own frame kind. Rejects when not connected, exactly like every other send method here. */
+  /** Sends one core/data frame (data-have, data-request, or data-entries): the transport half of an application's own noticeboard replication policy (data-sync.ts owns what the frames MEAN; this owns getting one onto the wire), the same layering sendRevocationAnnounce already established for its own frame kind. Without targetDevice it goes directly over this session's own connection, never relay-wrapped, which is how a hub's mailbox is addressed. With targetDevice it is routed to that specific peer through a relay pairing, sealed on the secure channel with that device like a manage-request (spec/secure-channel.cddl), so two devices that reach each other only through a hub can run the data-domain exchange; the hub sees ciphertext and its mailbox is not involved. The peer's own frames come back through incomingDataFrames. Rejects when not connected, exactly like every other send method here. */
   sendDataFrame: (
-    frame: DataHaveFrame | DataRequestFrame | DataEntriesFrame,
+    frame: DataDomainFrame,
+    targetDevice?: DeviceId,
   ) => Promise<void>;
   /** Sends a manage-request and resolves with the matching manage-response's outcome, correlated by request-id. When targetDevice is given, the request is routed to that specific peer via an established relay-connect pairing (wrapped as relay-data) rather than sent directly over this session's own Connection -- relay-hub deliberately drops manage-request/manage-response frames sent to it directly, since routing between two connected peers is not the relay role's business, so a specific peer reachable only through a relay hub can only be addressed this way. Absent, this sends directly over the Connection exactly as before. When token is given, it is attached to this one request instead of whatever setToken last set -- a single session routinely needs a different token per request when its peer shares more than one scope with this side (e.g. several core/room memberships over one connection), and a session-global token can only ever be correct for one of them. Absent, this request carries setToken's own session-global token exactly as before. When timeoutMs is given, the returned promise resolves with `{ result: "error", code: "timeout" }` rather than hanging forever if no manage-response arrives in time -- a held-open request (a human approval, a not-yet-online peer) otherwise has no way for the caller to give up on it. Absent, this request waits exactly as before, with no time limit of its own. */
   sendManageRequest: (
@@ -232,6 +249,7 @@ function createSessionCore(
   const incomingQueue = createAsyncQueue<IncomingManageRequest>();
   const revocationQueue = createAsyncQueue<RevocationEntry>();
   const coordinatorQueue = createAsyncQueue<CoordinatorFrame>();
+  const dataQueue = createAsyncQueue<IncomingDataFrame>();
   const pingRoundTrips = createPingRoundTrips();
 
   function snapshot(): SessionEvent {
@@ -365,10 +383,19 @@ function createSessionCore(
       }
       if (inner?.type === "secure-data") {
         const opened = await relayChannels.open(inner, frame["from-device"]);
-        // Only a manage-request or manage-response is ever acted on, and always as coming from the device its channel authenticated.
+        // Only a manage-request, manage-response or core/data frame is ever acted on, and always as coming from the device its channel authenticated.
         if (opened?.frame.type === "manage-response") {
           frameLog.push({ direction: "received", frame: opened.frame });
           applyManageResponse(opened.frame, opened.from);
+        } else if (opened !== undefined && isDataFrame(opened.frame)) {
+          frameLog.push({ direction: "received", frame: opened.frame });
+          dataQueue.push({
+            frame: opened.frame,
+            fromDevice: opened.from,
+            ...(frame["to-device"] !== undefined
+              ? { toDevice: frame["to-device"] }
+              : {}),
+          });
         } else if (opened?.frame.type === "manage-request") {
           frameLog.push({ direction: "received", frame: opened.frame });
           applyManageRequest(opened.frame, {
@@ -413,6 +440,8 @@ function createSessionCore(
       for (const entry of frame.entries) {
         revocationQueue.push(entry);
       }
+    } else if (isDataFrame(frame)) {
+      dataQueue.push({ frame });
     } else if (frame.type === "coordinator") {
       // The frame reaches this session the same way gossip does, forwarded by whichever peers carried it; this layer only delivers it, and coordinator-election.ts owns what it means (a gossiped, term-based claim whose evaluation supersedes or retains an incumbent).
       coordinatorQueue.push(frame);
@@ -622,6 +651,7 @@ function createSessionCore(
       incomingManageRequests: incomingQueue.stream,
       revocationAnnouncements: revocationQueue.stream,
       coordinatorFrames: coordinatorQueue.stream,
+      incomingDataFrames: dataQueue.stream,
       async connect(address, localDomains): Promise<void> {
         if (connection !== null) {
           throw new Error(
@@ -749,11 +779,15 @@ function createSessionCore(
         return topology.compute();
       },
       async sendDataFrame(
-        frame: DataHaveFrame | DataRequestFrame | DataEntriesFrame,
+        frame: DataDomainFrame,
+        targetDevice?: DeviceId,
       ): Promise<void> {
         requireConnectedLink();
+        if (targetDevice !== undefined) {
+          await ensureRelayPairing(targetDevice);
+        }
         frameLog.push({ direction: "sent", frame });
-        await transmit(frame, false);
+        await transmit(frame, targetDevice !== undefined, targetDevice);
         emit();
       },
       async close(): Promise<void> {

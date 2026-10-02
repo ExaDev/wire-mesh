@@ -143,6 +143,7 @@ function createFakeSession(): FakeSession {
     incomingManageRequests,
     revocationAnnouncements: emptyAsyncIterable(),
     coordinatorFrames: emptyAsyncIterable(),
+    incomingDataFrames: emptyAsyncIterable(),
     connect: async (): Promise<void> =>
       Promise.reject(new Error("not used in these tests")),
     sendPing: async (): Promise<void> => Promise.resolve(),

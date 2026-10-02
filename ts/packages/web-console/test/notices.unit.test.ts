@@ -136,6 +136,7 @@ function fakeSession(): MeshSession & {
     incomingManageRequests: emptyStream(),
     revocationAnnouncements: emptyStream(),
     coordinatorFrames: emptyStream(),
+    incomingDataFrames: emptyStream(),
     connect: () => unimplemented("connect"),
     sendPing: () => unimplemented("sendPing"),
     sendPingMeasureRtt: () => unimplemented("sendPingMeasureRtt"),
