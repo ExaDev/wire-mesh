@@ -14,6 +14,7 @@ import type {
 import { verifyPeerAdvert } from "../src/domain/peer-advert.js";
 import type { IdentityPort } from "../src/ports/identity.js";
 import {
+  FRAME_LOG_WINDOW,
   HANDSHAKE_TIMEOUT_MS,
   createMeshSession,
 } from "../src/domain/mesh-session.js";
@@ -334,6 +335,41 @@ describe("createMeshSession", () => {
     );
     expect(event.frameLog.at(-1)?.direction).toBe("sent");
     expect(event.frameLog.at(-1)?.frame.type).toBe("gossip");
+    await session.close();
+  });
+
+  it("keeps only the recent-activity window of the frame log once more frames than the window have crossed", async () => {
+    const { transport } = fakeTransport();
+    const session = createMeshSession(transport, testIdentity, testClock);
+    const eventsDone = nthEvent(session, EVENTS_THROUGH_REMOTE_HANDSHAKE - 1);
+    await session.connect("ws://node", ["core/data"]);
+    await eventsDone;
+
+    const beyondWindow = FRAME_LOG_WINDOW + 20;
+    for (let i = 0; i < beyondWindow; i++) {
+      await session.sendGossipUpdate();
+    }
+    // Every send queued its own snapshot; drain the queue and keep the newest,
+    // since an earlier snapshot would still show the log mid-window.
+    const eventsIterator = session.events[Symbol.asyncIterator]();
+    let newest:
+      | { frameLog: { direction: string; frame: { type: string } }[] }
+      | undefined;
+    for (;;) {
+      const result = await withinShortWait(eventsIterator.next());
+      if (result === TIMEOUT_MARKER) break;
+      newest = yielded(
+        result as IteratorResult<{
+          frameLog: { direction: string; frame: { type: string } }[];
+        }>,
+      );
+    }
+    expect(newest).toBeDefined();
+    expect(newest?.frameLog).toHaveLength(FRAME_LOG_WINDOW);
+    // The window keeps the newest frames, so the last entry is the final gossip
+    // send and nothing from before the window survives.
+    expect(newest?.frameLog.at(-1)?.direction).toBe("sent");
+    expect(newest?.frameLog.at(-1)?.frame.type).toBe("gossip");
     await session.close();
   });
 
