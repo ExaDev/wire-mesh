@@ -1,3 +1,14 @@
+## [2.2.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%402.1.14...%40exadev%2Fwire-mesh-cloudflare-hub%402.2.0) (2026-10-02)
+
+### Features
+
+* **core:** front a relay hub's clients over an uplink ([b4e5d43](https://github.com/ExaDev/wire-mesh/commit/b4e5d433b21bb5da6a893861697644cf5f761d3d))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.10.0
+
 ## [2.1.14](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%402.1.13...%40exadev%2Fwire-mesh-cloudflare-hub%402.1.14) (2026-10-01)
 
 

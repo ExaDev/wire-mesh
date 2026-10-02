@@ -1,3 +1,15 @@
+## [3.6.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.5.13...wire-mesh%403.6.0) (2026-10-02)
+
+### Features
+
+* **core:** front a relay hub's clients over an uplink ([b4e5d43](https://github.com/ExaDev/wire-mesh/commit/b4e5d433b21bb5da6a893861697644cf5f761d3d))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.10.0
+- Updated @exadev/wire-mesh-web-console to 2.16.1
+
 ## [3.5.13](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.5.12...wire-mesh%403.5.13) (2026-10-01)
 
 

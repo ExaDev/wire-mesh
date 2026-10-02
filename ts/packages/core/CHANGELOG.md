@@ -1,3 +1,10 @@
+## [3.10.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.9.0...wire-mesh-core%403.10.0) (2026-10-02)
+
+### Features
+
+* **core:** front a relay hub's clients over an uplink ([b4e5d43](https://github.com/ExaDev/wire-mesh/commit/b4e5d433b21bb5da6a893861697644cf5f761d3d))
+* **spec:** let a relay connection front several devices ([0962ba8](https://github.com/ExaDev/wire-mesh/commit/0962ba8d66c978c8e9ff4a0391c0b1d129d25b33))
+
 ## [3.9.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.8.0...wire-mesh-core%403.9.0) (2026-10-01)
 
 ### Features

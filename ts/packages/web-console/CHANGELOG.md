@@ -1,3 +1,14 @@
+## [2.16.1](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.16.0...%40exadev%2Fwire-mesh-web-console%402.16.1) (2026-10-02)
+
+### Tests
+
+* **web-console:** wait for the minted grant to reach the issued list ([727f90a](https://github.com/ExaDev/wire-mesh/commit/727f90a32f49a40ccf30e3e682332146ba53efa8))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.10.0
+
 ## [2.16.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.15.0...%40exadev%2Fwire-mesh-web-console%402.16.0) (2026-10-01)
 
 ### Features
