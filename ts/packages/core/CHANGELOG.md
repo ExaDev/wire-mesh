@@ -1,3 +1,13 @@
+## [4.0.1](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.0.0...wire-mesh-core%404.0.1) (2026-10-02)
+
+### Bug Fixes
+
+* **core:** bound a session's frame log to a recent-activity window ([16a6799](https://github.com/ExaDev/wire-mesh/commit/16a679906c03f7e533b967180ac02b8e75bb9455))
+
+### Tests
+
+* **core:** name the frames-past-window count the frame log test uses ([5377bfd](https://github.com/ExaDev/wire-mesh/commit/5377bfd1e878b4b042e5f4a05c40696b131f131f))
+
 ## [4.0.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.11.0...wire-mesh-core%404.0.0) (2026-10-02)
 
 ### ⚠ BREAKING CHANGES
