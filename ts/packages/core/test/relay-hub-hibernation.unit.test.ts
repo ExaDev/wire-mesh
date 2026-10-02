@@ -174,7 +174,11 @@ describe("relay state across a hub instance being torn down", () => {
     });
 
     expect(b.sent).toEqual([
-      { type: "relay-inbound", "source-device": peerA.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerA.device,
+        "target-device": peerB.device,
+      },
     ]);
   });
 
@@ -220,6 +224,52 @@ describe("relay state across a hub instance being torn down", () => {
       pairedDevices: [peerB.device],
       mostRecentDevice: peerB.device,
     });
+  });
+});
+
+describe("a connection fronting several devices", () => {
+  it("keeps a pairing made through a fronted device that is not the one the hub attributes to the connection", async () => {
+    const established = createRelayHub({ identity: hubVerifier });
+    const front1 = await createTestPeer();
+    const front2 = await createTestPeer();
+    const client = await createTestPeer();
+    const gateway = new FakeConnection();
+    const caller = new FakeConnection();
+    const gatewayConnection = gateway.connection;
+    const callerConnection = caller.connection;
+    established.registerConnection(gatewayConnection);
+    established.registerConnection(callerConnection);
+    await established.onFrame(gatewayConnection, {
+      type: "gossip",
+      peers: [front1.advert, front2.advert],
+    });
+    await established.onFrame(callerConnection, client.gossip);
+    await established.onFrame(gatewayConnection, {
+      type: "relay-connect",
+      "target-device": client.device,
+      "source-device": front2.device,
+    });
+
+    const woken = wokenHubOver([
+      restoreEntryFor(established, gatewayConnection),
+      restoreEntryFor(established, callerConnection),
+    ]);
+    caller.sent.length = 0;
+    await woken.onFrame(gatewayConnection, {
+      type: "relay-data",
+      payload: relayPayload,
+      "to-device": client.device,
+      "from-device": front2.device,
+    });
+
+    expect(caller.sent).toEqual([
+      {
+        type: "relay-data",
+        payload: relayPayload,
+        "from-device": front2.device,
+        "to-device": client.device,
+      },
+    ]);
   });
 });
 

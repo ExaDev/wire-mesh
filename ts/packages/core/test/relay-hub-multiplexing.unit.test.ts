@@ -79,11 +79,19 @@ describe("createRelayHub -- multiplexed pairings and to-device addressing", () =
     // b and c each also received the other two connections' gossip forwarded to them (own device excluded) and their own combined catch-up, before the relay-inbound.
     expect(b.sent).toEqual([
       ...gossipReceivedBy(peerB.advert, adverts),
-      { type: "relay-inbound", "source-device": peerA.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerA.device,
+        "target-device": peerB.device,
+      },
     ]);
     expect(c.sent).toEqual([
       ...gossipReceivedBy(peerC.advert, adverts),
-      { type: "relay-inbound", "source-device": peerA.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerA.device,
+        "target-device": peerC.device,
+      },
     ]);
 
     // b's relay-data (single pairing on b's own side) still reaches a -- the b<->a pairing was never torn down
@@ -129,7 +137,11 @@ describe("createRelayHub -- multiplexed pairings and to-device addressing", () =
     await settle(...everyone);
     expect(b.sent).toEqual([
       ...gossipReceivedBy(peerB.advert, adverts),
-      { type: "relay-inbound", "source-device": peerA.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerA.device,
+        "target-device": peerB.device,
+      },
       {
         type: "relay-data",
         payload: relayPayload,
@@ -139,7 +151,11 @@ describe("createRelayHub -- multiplexed pairings and to-device addressing", () =
     ]);
     expect(c.sent).toEqual([
       ...gossipReceivedBy(peerC.advert, adverts),
-      { type: "relay-inbound", "source-device": peerA.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerA.device,
+        "target-device": peerC.device,
+      },
       {
         type: "relay-data",
         payload: relayPayload,
@@ -180,7 +196,11 @@ describe("createRelayHub -- multiplexed pairings and to-device addressing", () =
     // a also received x's and b's gossip forwarded to it and its own catch-up, before the relay-inbound.
     expect(a.sent).toEqual([
       ...gossipReceivedBy(peerA.advert, adverts),
-      { type: "relay-inbound", "source-device": peerX.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerX.device,
+        "target-device": peerA.device,
+      },
     ]);
 
     // a now also initiates its own pipe to b -- the x <-> a pairing stays live alongside the new a <-> b one
@@ -189,7 +209,11 @@ describe("createRelayHub -- multiplexed pairings and to-device addressing", () =
     // b also received x's and a's gossip forwarded to it and its own catch-up, before the relay-inbound.
     expect(b.sent).toEqual([
       ...gossipReceivedBy(peerB.advert, adverts),
-      { type: "relay-inbound", "source-device": peerA.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerA.device,
+        "target-device": peerB.device,
+      },
     ]);
 
     // x's data (x holds one pairing, no to-device needed) still reaches a
@@ -197,7 +221,11 @@ describe("createRelayHub -- multiplexed pairings and to-device addressing", () =
     await settle(...everyone);
     expect(a.sent).toEqual([
       ...gossipReceivedBy(peerA.advert, adverts),
-      { type: "relay-inbound", "source-device": peerX.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerX.device,
+        "target-device": peerA.device,
+      },
       {
         type: "relay-data",
         payload: relayPayload,
@@ -215,7 +243,11 @@ describe("createRelayHub -- multiplexed pairings and to-device addressing", () =
     await settle(...everyone);
     expect(a.sent).toEqual([
       ...gossipReceivedBy(peerA.advert, adverts),
-      { type: "relay-inbound", "source-device": peerX.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerX.device,
+        "target-device": peerA.device,
+      },
       {
         type: "relay-data",
         payload: relayPayload,
@@ -229,7 +261,11 @@ describe("createRelayHub -- multiplexed pairings and to-device addressing", () =
     ]);
     expect(b.sent).toEqual([
       ...gossipReceivedBy(peerB.advert, adverts),
-      { type: "relay-inbound", "source-device": peerA.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerA.device,
+        "target-device": peerB.device,
+      },
       {
         type: "relay-data",
         payload: relayPayload,
@@ -270,7 +306,11 @@ describe("createRelayHub -- multiplexed pairings and to-device addressing", () =
     // y also received a's and b's gossip forwarded to it and its own catch-up, before the relay-inbound.
     expect(y.sent).toEqual([
       ...gossipReceivedBy(peerY.advert, adverts),
-      { type: "relay-inbound", "source-device": peerB.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerB.device,
+        "target-device": peerY.device,
+      },
     ]);
 
     // a now dials b -- the b <-> y pairing stays live alongside the new a <-> b one
@@ -279,7 +319,11 @@ describe("createRelayHub -- multiplexed pairings and to-device addressing", () =
     // b also received a's and y's gossip forwarded to it and its own catch-up, before the relay-inbound.
     expect(b.sent).toEqual([
       ...gossipReceivedBy(peerB.advert, adverts),
-      { type: "relay-inbound", "source-device": peerA.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerA.device,
+        "target-device": peerB.device,
+      },
     ]);
 
     // y's data (single pairing on y's own side) still reaches b
@@ -287,7 +331,11 @@ describe("createRelayHub -- multiplexed pairings and to-device addressing", () =
     await settle(...everyone);
     expect(b.sent).toEqual([
       ...gossipReceivedBy(peerB.advert, adverts),
-      { type: "relay-inbound", "source-device": peerA.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerA.device,
+        "target-device": peerB.device,
+      },
       {
         type: "relay-data",
         payload: relayPayload,
@@ -314,7 +362,11 @@ describe("createRelayHub -- multiplexed pairings and to-device addressing", () =
     ]);
     expect(b.sent).toEqual([
       ...gossipReceivedBy(peerB.advert, adverts),
-      { type: "relay-inbound", "source-device": peerA.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerA.device,
+        "target-device": peerB.device,
+      },
       {
         type: "relay-data",
         payload: relayPayload,
@@ -385,7 +437,11 @@ describe("createRelayHub -- multiplexed pairings and to-device addressing", () =
     // Each target also received the other targets' (and a's) gossip forwarded to it, own device excluded, and its own combined catch-up, before the relay-inbound.
     expect(b.sent).toEqual([
       ...gossipReceivedBy(peerB.advert, adverts),
-      { type: "relay-inbound", "source-device": peerA.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerA.device,
+        "target-device": peerB.device,
+      },
       {
         type: "relay-data",
         payload: relayPayload,
@@ -395,7 +451,11 @@ describe("createRelayHub -- multiplexed pairings and to-device addressing", () =
     ]);
     expect(c.sent).toEqual([
       ...gossipReceivedBy(peerC.advert, adverts),
-      { type: "relay-inbound", "source-device": peerA.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerA.device,
+        "target-device": peerC.device,
+      },
       {
         type: "relay-data",
         payload: relayPayload,
@@ -405,7 +465,11 @@ describe("createRelayHub -- multiplexed pairings and to-device addressing", () =
     ]);
     expect(d.sent).toEqual([
       ...gossipReceivedBy(peerD.advert, adverts),
-      { type: "relay-inbound", "source-device": peerA.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerA.device,
+        "target-device": peerD.device,
+      },
       {
         type: "relay-data",
         payload: relayPayload,

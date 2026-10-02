@@ -128,7 +128,11 @@ describe("createRelayHub over the real wrapWebSocket adapter", () => {
       expect(decodeSent(wsB)).toEqual([
         peerA.gossip,
         peerA.gossip,
-        { type: "relay-inbound", "source-device": peerA.device },
+        {
+          type: "relay-inbound",
+          "source-device": peerA.device,
+          "target-device": peerB.device,
+        },
       ]);
     });
 
@@ -147,7 +151,11 @@ describe("createRelayHub over the real wrapWebSocket adapter", () => {
       expect(decodeSent(wsB)).toEqual([
         peerA.gossip,
         peerA.gossip,
-        { type: "relay-inbound", "source-device": peerA.device },
+        {
+          type: "relay-inbound",
+          "source-device": peerA.device,
+          "target-device": peerB.device,
+        },
         {
           type: "relay-data",
           payload: relayPayload,
@@ -216,7 +224,11 @@ describe("createRelayHub over the real wrapWebSocket adapter", () => {
         peerA.gossip,
         peerA.gossip,
         peerA.gossip,
-        { type: "relay-inbound", "source-device": peerA.device },
+        {
+          type: "relay-inbound",
+          "source-device": peerA.device,
+          "target-device": peerB.device,
+        },
       ]);
     });
 

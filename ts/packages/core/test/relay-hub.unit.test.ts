@@ -108,7 +108,11 @@ describe("createRelayHub", () => {
     expect(b.sent).toEqual([
       peerA.gossip,
       peerA.gossip,
-      { type: "relay-inbound", "source-device": peerA.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerA.device,
+        "target-device": peerB.device,
+      },
     ]);
     await Promise.all([a.end(), b.end()]);
     await Promise.all(handling);
@@ -140,7 +144,11 @@ describe("createRelayHub", () => {
     expect(b.sent).toEqual([
       peerA.gossip,
       peerA.gossip,
-      { type: "relay-inbound", "source-device": peerA.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerA.device,
+        "target-device": peerB.device,
+      },
       {
         type: "relay-data",
         payload: relayPayload,
@@ -186,7 +194,11 @@ describe("createRelayHub", () => {
     expect(b.sent).toEqual([
       peerA.gossip,
       peerA.gossip,
-      { type: "relay-inbound", "source-device": peerA.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerA.device,
+        "target-device": peerB.device,
+      },
       {
         type: "relay-data",
         payload: relayPayload,
@@ -296,7 +308,11 @@ describe("createRelayHub", () => {
     expect(fresh.sent).toEqual([
       peerB.gossip,
       peerA.gossip,
-      { type: "relay-inbound", "source-device": peerA.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerA.device,
+        "target-device": peerB.device,
+      },
     ]);
     expect(old.sent).toEqual([newerB, peerA.gossip]);
     // The dialer's catch-up carries B's newer advert, the one now registered to fresh, not the one old originally gossiped.
@@ -327,7 +343,11 @@ describe("createRelayHub", () => {
     // b received a's gossip forwarded to it, then the relay-connect paired and notified it.
     expect(b.sent).toEqual([
       peerA.gossip,
-      { type: "relay-inbound", "source-device": peerA.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerA.device,
+        "target-device": peerB.device,
+      },
     ]);
 
     a.rejectNow();
@@ -533,6 +553,7 @@ describe("createRelayHub", () => {
       expect(b.sent).toContainEqual({
         type: "relay-inbound",
         "source-device": peerA.device,
+        "target-device": peerB.device,
       });
     });
 

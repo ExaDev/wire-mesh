@@ -163,7 +163,11 @@ describe("a relay pairing across a Durable Object eviction", () => {
     );
 
     expect(b.frames()).toEqual([
-      { type: "relay-inbound", "source-device": peerA.device },
+      {
+        type: "relay-inbound",
+        "source-device": peerA.device,
+        "target-device": peerB.device,
+      },
     ]);
   });
 
