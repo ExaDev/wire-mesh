@@ -1,3 +1,9 @@
+## [3.11.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.10.0...wire-mesh-core%403.11.0) (2026-10-02)
+
+### Features
+
+* **core:** carry core/data frames between devices over a relay pairing ([bab75e5](https://github.com/ExaDev/wire-mesh/commit/bab75e5d94b1370205292cc3b36e37a461629e06))
+
 ## [3.10.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.9.0...wire-mesh-core%403.10.0) (2026-10-02)
 
 ### Features

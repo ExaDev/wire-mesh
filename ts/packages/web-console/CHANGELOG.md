@@ -1,3 +1,14 @@
+## [2.17.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.16.1...%40exadev%2Fwire-mesh-web-console%402.17.0) (2026-10-02)
+
+### Features
+
+* **core:** carry core/data frames between devices over a relay pairing ([bab75e5](https://github.com/ExaDev/wire-mesh/commit/bab75e5d94b1370205292cc3b36e37a461629e06))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 3.11.0
+
 ## [2.16.1](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.16.0...%40exadev%2Fwire-mesh-web-console%402.16.1) (2026-10-02)
 
 ### Tests
