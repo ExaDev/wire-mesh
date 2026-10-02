@@ -34,5 +34,6 @@
     "test": "turbo run _test",
     "typecheck": "turbo run _typecheck"
   },
-  "type": "module"
+  "type": "module",
+  "license": "MIT"
 }
