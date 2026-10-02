@@ -10,8 +10,12 @@
 ;
 ; A channel lives between exactly two devices and inside one relay pairing. It
 ; is set up by an exchange of `secure-hello-frame`s and then carries every
-; manage-request and manage-response in `secure-data-frame`s, both of which
-; travel as the payload of `relay-data-frame`. The relay sees the two hellos in
+; manage-request, manage-response and core/data frame (data-have, data-request
+; and data-entries) in `secure-data-frame`s, both of which travel as the
+; payload of `relay-data-frame`. Carrying core/data frames is what lets two
+; devices that reach each other only through a relay replicate logs between
+; themselves; a relay's own mailbox (discovery.cddl) is addressed directly,
+; never through a channel. The relay sees the two hellos in
 ; the clear (an ephemeral public key, a nonce and an identity key, none of
 ; which is secret) and everything after as ciphertext.
 ;
@@ -62,15 +66,17 @@
 ; 2. The identity a request is attributed to is the one a hello authenticated,
 ;    never the `from-device` a relay stamps on `relay-data`. That field only
 ;    says which channel to try.
-; 3. A manage-request or manage-response that arrives as the payload of a
-;    `relay-data-frame` without being sealed in a `secure-data-frame` MUST be
-;    dropped. There is no plaintext fallback, since one would let a relay
+; 3. A manage-request, manage-response or core/data frame that arrives as the
+;    payload of a `relay-data-frame` without being sealed in a
+;    `secure-data-frame` MUST be dropped. There is no plaintext fallback, since one would let a relay
 ;    strip the protection.
 ; 4. A `secure-data-frame` MUST be dropped unless it opens under the channel
 ;    for that peer and its counter is greater than every counter already
 ;    accepted from that peer on that channel.
-; 5. Only a manage-request or manage-response may be sealed inside a
-;    `secure-data-frame`; anything else MUST be dropped after opening.
+; 5. Only a manage-request, manage-response, data-have, data-request or
+;    data-entries frame may be sealed inside a `secure-data-frame`; anything
+;    else MUST be dropped after opening. A core/data frame is attributed to the
+;    device the channel authenticated, never to the log its `peer` field names.
 ; 6. Ephemeral keys and nonces are fresh for every channel and MUST NOT be
 ;    reused. A channel does not outlive the relay connection it was set up on.
 ;
