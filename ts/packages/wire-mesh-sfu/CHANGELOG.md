@@ -1,3 +1,17 @@
+## [1.1.3](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-sfu%401.1.2...wire-mesh-sfu%401.1.3) (2026-10-02)
+
+### Miscellaneous Chores
+
+* licence the repository and every package MIT ([ace8ac3](https://github.com/ExaDev/wire-mesh/commit/ace8ac3719c8b038baf94e1900fae16989ea556b))
+* place each package's licence field where tsdown writes it ([992feab](https://github.com/ExaDev/wire-mesh/commit/992feab5f588369bac479b7a6e2bbaa0074d8599))
+* place the licence field immediately before packageManager, as tsdown writes it ([fdbe61f](https://github.com/ExaDev/wire-mesh/commit/fdbe61f64e0e217e58039730be71dbb9839720fb))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 4.0.2
+- Updated wire-mesh to 3.6.4
+
 ## [1.1.2](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-sfu%401.1.1...wire-mesh-sfu%401.1.2) (2026-10-02)
 
 

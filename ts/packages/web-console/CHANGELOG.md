@@ -1,3 +1,16 @@
+## [2.17.3](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.17.2...%40exadev%2Fwire-mesh-web-console%402.17.3) (2026-10-02)
+
+### Miscellaneous Chores
+
+* licence the repository and every package MIT ([ace8ac3](https://github.com/ExaDev/wire-mesh/commit/ace8ac3719c8b038baf94e1900fae16989ea556b))
+* place each package's licence field where tsdown writes it ([992feab](https://github.com/ExaDev/wire-mesh/commit/992feab5f588369bac479b7a6e2bbaa0074d8599))
+* place the licence field immediately before packageManager, as tsdown writes it ([fdbe61f](https://github.com/ExaDev/wire-mesh/commit/fdbe61f64e0e217e58039730be71dbb9839720fb))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 4.0.2
+
 ## [2.17.2](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.17.1...%40exadev%2Fwire-mesh-web-console%402.17.2) (2026-10-02)
 
 
