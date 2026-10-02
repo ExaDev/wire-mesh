@@ -1,5 +1,7 @@
 # wire-mesh
 
+[![GitHub](https://img.shields.io/badge/GitHub-181717?logo=github&logoColor=white)](https://github.com/ExaDev/wire-mesh) [![npm](https://img.shields.io/badge/npm-CB3837?logo=npm&logoColor=white)](https://www.npmjs.com/package/wire-mesh-core) [![Release](https://img.shields.io/github/v/release/ExaDev/wire-mesh)](https://github.com/ExaDev/wire-mesh/releases/latest) [![CI](https://img.shields.io/github/actions/workflow/status/ExaDev/wire-mesh/ci.yml?branch=main)](https://github.com/ExaDev/wire-mesh/actions)
+
 An application-neutral peer-mesh wire protocol. Any tool that speaks it — a file-sync client, an agent communication bus, a terminal broker — can be a first-class peer in the same mesh as any other tool. No single implementation is the canonical runtime. The protocol is the contract; no codebase is.
 
 > **Status: schema written, one implementation underway.** [`spec/protocol.cddl`](spec/protocol.cddl) is a real, RFC 8610-valid schema, validated against a CDDL parser — not just prose. `ts/packages/core` consumes it, with schema-driven Zod generation and handshake/capability-token domain logic; `rust/` and the remaining `ts/packages/*` don't exist as code yet, only as the repository structure below.
