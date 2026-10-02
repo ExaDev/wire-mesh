@@ -63,5 +63,6 @@
     "test:e2e:containers:offline": "test/e2e-containers-offline/offline.sh",
     "typecheck": "turbo run _typecheck"
   },
-  "type": "module"
+  "type": "module",
+  "license": "MIT"
 }
