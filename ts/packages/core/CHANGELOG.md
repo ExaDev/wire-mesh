@@ -1,3 +1,15 @@
+## [4.0.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.11.0...wire-mesh-core%404.0.0) (2026-10-02)
+
+### ⚠ BREAKING CHANGES
+
+* **core:** EvaluationOutcome gains a "rejected" variant that
+  carries no incumbent, so a caller reading result.incumbent must narrow
+  on result.outcome first.
+
+### Bug Fixes
+
+* **core:** reject a coordinator term a later claim cannot supersede ([c1ae4d7](https://github.com/ExaDev/wire-mesh/commit/c1ae4d74683151144f2e566d18b0cae75f7f61ff))
+
 ## [3.11.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%403.10.0...wire-mesh-core%403.11.0) (2026-10-02)
 
 ### Features
