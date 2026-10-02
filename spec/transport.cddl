@@ -116,7 +116,16 @@ observed-address-frame = { type: "observed-address", address: tstr }
 ; checked before honouring subsequent relay frames on that connection, not a
 ; constraint this frame's own fields express.
 relay-offer-frame   = { type: "relay-offer", addresses: [* tstr] }
-relay-connect-frame = { type: "relay-connect", target-device: device-id }
+; Fronting: a connection may speak for more than one device (a gateway
+; carrying the clients behind it over one uplink to an upstream hub, whose
+; adverts it forwarded so the upstream hub registered each to that
+; connection). `source-device` on a relay-connect names which of those
+; devices is the initiator; absent, the initiator is the device the hub
+; attributes to the connection itself, which is what every non-gateway peer
+; sends. A hub honours it only when the device it names is registered to the
+; sending connection, and ignores the frame otherwise, so a connection can
+; never initiate on behalf of a device it does not front.
+relay-connect-frame = { type: "relay-connect", target-device: device-id, ? source-device: device-id }
 ; Multiplexing: a connection may hold more than one relay pairing at once (a
 ; peer fanning a message out to several members of a group, all of whom are
 ; only reachable through this same hub). `to-device` names which pairing an
@@ -125,13 +134,21 @@ relay-connect-frame = { type: "relay-connect", target-device: device-id }
 ; does once per pairing, now carried per frame so it stays unambiguous when a
 ; connection holds several. Directional obligations, not something CDDL
 ; itself can enforce (the same idiom as coordinator-frame's tiebreak rule
-; above): a peer sets `to-device` and MUST NOT set `from-device`; a hub
-; overwrites `from-device` with the sending peer's own gossiped device-id on
-; every frame it forwards, and strips `to-device`. A connection holding
-; exactly one pairing may omit `to-device` entirely, which is what every
-; pre-multiplexing peer does.
+; above): a peer sets `to-device` and MUST NOT set `from-device`, except a
+; connection fronting several devices (see relay-connect-frame), which sets
+; it to the fronted device the payload comes from; a hub drops such a frame
+; unless that device is registered to the sending connection and holds a
+; pairing with the addressed device. Otherwise a hub overwrites `from-device`
+; with the sending peer's own gossiped device-id on every frame it forwards,
+; and echoes `to-device` unmodified so a fronting receiver can tell which of
+; its devices the frame is for. A connection holding exactly one pairing may
+; omit `to-device` entirely, which is what every pre-multiplexing peer does.
 relay-data-frame    = { type: "relay-data", payload: bstr, ? to-device: device-id, ? from-device: device-id }
-relay-inbound-frame = { type: "relay-inbound", source-device: device-id }
+; `target-device` names which of the receiving connection's own devices the
+; pairing is for. A hub sets it on every relay-inbound it sends, so a
+; connection fronting several devices can tell which of them was paired;
+; a receiver that fronts a single device may ignore it.
+relay-inbound-frame = { type: "relay-inbound", source-device: device-id, ? target-device: device-id }
 
 ; Coordinator election — a lightweight, gossiped claim to the introduction/
 ; rendezvous role among whichever peers are presently reachable (there is no

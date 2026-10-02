@@ -636,10 +636,14 @@ pub(crate) fn relay_offer_from(d: &mut Decoder<'_>) -> Result<RelayOfferFrame, D
     })
 }
 
-/// `relay-connect-frame = { type, target-device }`.
+/// `relay-connect-frame = { type, target-device, ? source-device }`.
+/// `source-device` names which of a fronting connection's devices is the
+/// initiator; absent, the initiator is the device the hub attributes to the
+/// connection itself.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RelayConnectFrame {
     pub target_device: DeviceId,
+    pub source_device: Option<DeviceId>,
 }
 
 impl RelayConnectFrame {
@@ -652,8 +656,11 @@ impl Encode<()> for RelayConnectFrame {
         e: &mut Encoder<W>,
         _ctx: &mut (),
     ) -> Result<(), minicbor::encode::Error<W::Error>> {
-        e.map(2)?;
+        e.map(2 + self.source_device.is_some() as u64)?;
         e.str("type")?.str(Self::TYPE)?;
+        if let Some(source_device) = self.source_device {
+            e.str("source-device")?.encode(source_device)?;
+        }
         e.str("target-device")?.encode(self.target_device)?;
         e.ok()
     }
@@ -668,15 +675,18 @@ impl Decode<'_, ()> for RelayConnectFrame {
 pub(crate) fn relay_connect_from(d: &mut Decoder<'_>) -> Result<RelayConnectFrame, DecodeError> {
     let mut map = strict::MapDecoder::new(d)?;
     let mut target_device: Option<DeviceId> = None;
+    let mut source_device: Option<DeviceId> = None;
     while let Some(key) = map.next_key(d)? {
         match key {
             "type" => strict::literal(d, RelayConnectFrame::TYPE)?,
             "target-device" => strict::set_once(&mut target_device, device_id_from(d)?)?,
+            "source-device" => strict::set_once(&mut source_device, device_id_from(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
     Ok(RelayConnectFrame {
         target_device: target_device.ok_or(DecodeError::MissingField("target-device"))?,
+        source_device,
     })
 }
 
@@ -744,10 +754,13 @@ pub(crate) fn relay_data_from(d: &mut Decoder<'_>) -> Result<RelayDataFrame, Dec
     })
 }
 
-/// `relay-inbound-frame = { type, source-device }`.
+/// `relay-inbound-frame = { type, source-device, ? target-device }`.
+/// `target-device` names which of the receiving connection's own devices the
+/// pairing is for, so a fronting connection can tell which was paired.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RelayInboundFrame {
     pub source_device: DeviceId,
+    pub target_device: Option<DeviceId>,
 }
 
 impl RelayInboundFrame {
@@ -760,9 +773,12 @@ impl Encode<()> for RelayInboundFrame {
         e: &mut Encoder<W>,
         _ctx: &mut (),
     ) -> Result<(), minicbor::encode::Error<W::Error>> {
-        e.map(2)?;
+        e.map(2 + self.target_device.is_some() as u64)?;
         e.str("type")?.str(Self::TYPE)?;
         e.str("source-device")?.encode(self.source_device)?;
+        if let Some(target_device) = self.target_device {
+            e.str("target-device")?.encode(target_device)?;
+        }
         e.ok()
     }
 }
@@ -776,15 +792,18 @@ impl Decode<'_, ()> for RelayInboundFrame {
 pub(crate) fn relay_inbound_from(d: &mut Decoder<'_>) -> Result<RelayInboundFrame, DecodeError> {
     let mut map = strict::MapDecoder::new(d)?;
     let mut source_device: Option<DeviceId> = None;
+    let mut target_device: Option<DeviceId> = None;
     while let Some(key) = map.next_key(d)? {
         match key {
             "type" => strict::literal(d, RelayInboundFrame::TYPE)?,
             "source-device" => strict::set_once(&mut source_device, device_id_from(d)?)?,
+            "target-device" => strict::set_once(&mut target_device, device_id_from(d)?)?,
             other => return Err(DecodeError::UnknownKey(other.to_owned())),
         }
     }
     Ok(RelayInboundFrame {
         source_device: source_device.ok_or(DecodeError::MissingField("source-device"))?,
+        target_device,
     })
 }
 
@@ -1091,6 +1110,11 @@ mod tests {
         });
         round_trip(RelayConnectFrame {
             target_device: DeviceId([2; 32]),
+            source_device: None,
+        });
+        round_trip(RelayConnectFrame {
+            target_device: DeviceId([2; 32]),
+            source_device: Some(DeviceId([6; 32])),
         });
         round_trip(RelayDataFrame {
             payload: vec![9, 9, 9],
@@ -1104,6 +1128,11 @@ mod tests {
         });
         round_trip(RelayInboundFrame {
             source_device: DeviceId([3; 32]),
+            target_device: None,
+        });
+        round_trip(RelayInboundFrame {
+            source_device: DeviceId([3; 32]),
+            target_device: Some(DeviceId([7; 32])),
         });
     }
 
