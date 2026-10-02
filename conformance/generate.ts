@@ -10,6 +10,7 @@ import {
   type Vector,
 } from "@exadev/wire-mesh-conformance";
 import { advertVectors } from "./adverts.ts";
+import { relayVectors } from "./relay-vectors.ts";
 import {
   grantTokenVectors,
   manageRequestTokenVector,
@@ -317,21 +318,11 @@ const frameVectors: Vector[] = [
     type: "observed-address",
     address: "203.0.113.5:51820",
   }),
-  vector("relay_offer_v1", {
-    type: "relay-offer",
-    addresses: ["198.51.100.2:7000"],
-  }),
-  vector("relay_connect_v1", {
-    type: "relay-connect",
-    "target-device": deviceC,
-  }),
-  vector("relay_data_v1", {
-    type: "relay-data",
-    payload: hex("de".repeat(EXAMPLE_RELAY_PAYLOAD_BYTE_LENGTH)),
-  }),
-  vector("relay_inbound_v1", {
-    type: "relay-inbound",
-    "source-device": deviceB,
+  ...relayVectors({
+    deviceB,
+    deviceC,
+    wireHex,
+    payloadByteLength: EXAMPLE_RELAY_PAYLOAD_BYTE_LENGTH,
   }),
   vector("secure_hello_v1", {
     type: "secure-hello",

@@ -289,9 +289,9 @@ mod tests {
             Frame::SyncPunch(SyncPunchFrame { nonce: 1, deadline_unix_ms: 2 }),
             Frame::ObservedAddress(ObservedAddressFrame { address: "a".to_owned() }),
             Frame::RelayOffer(RelayOfferFrame::default()),
-            Frame::RelayConnect(RelayConnectFrame { target_device: crate::identity::DeviceId([1; 32]) }),
+            Frame::RelayConnect(RelayConnectFrame { target_device: crate::identity::DeviceId([1; 32]), source_device: None }),
             Frame::RelayData(RelayDataFrame { payload: vec![1], to_device: None, from_device: None }),
-            Frame::RelayInbound(RelayInboundFrame { source_device: crate::identity::DeviceId([1; 32]) }),
+            Frame::RelayInbound(RelayInboundFrame { source_device: crate::identity::DeviceId([1; 32]), target_device: None }),
             Frame::Coordinator(CoordinatorFrame { term: 1, coordinator: crate::identity::DeviceId([1; 32]), capacity_hint: None }),
             Frame::ManageRequest(Box::new(ManageRequestFrame {
                 request_id: 1,
