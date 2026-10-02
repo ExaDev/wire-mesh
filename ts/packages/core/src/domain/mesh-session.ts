@@ -104,7 +104,7 @@ export interface SessionEvent {
   state: ConnectionState;
   /** The peer directory as of this event: latest peer-advert per device-id, in first-heard order. */
   directory: readonly DirectoryEntry[];
-  /** Every frame that crossed the connection, sent or received, in order. */
+  /** The most recent frames that crossed the connection, sent or received, in order: at most FRAME_LOG_WINDOW entries, the recent-activity window a console shows rather than a session history. */
   frameLog: readonly FrameLogEntry[];
 }
 
@@ -112,6 +112,16 @@ export interface DirectoryEntry {
   device: DeviceId;
   advert: PeerAdvert;
 }
+
+/**
+ * How many entries a session's frameLog keeps: the log exists for a console's
+ * recent-activity view, not as a session history, so it holds the most recent
+ * window of frames rather than every frame a long-lived session ever crossed.
+ * Without the bound, a busy session (a relay hub pairing, or any peer on a
+ * chatty mesh) retains every frame for its whole life, which on an
+ * always-on node grows without limit.
+ */
+export const FRAME_LOG_WINDOW = 256;
 
 export interface FrameLogEntry {
   direction: "sent" | "received";
@@ -213,6 +223,14 @@ function createSessionCore(
   let handshake: HandshakeStatus = { status: "pending" };
   const directory = new Map<string, DirectoryEntry>();
   const frameLog: FrameLogEntry[] = [];
+
+  /** Keeps the frame log at its recent-activity window: newest entries at the end, the oldest dropped once the window is full. */
+  function recordFrame(entry: FrameLogEntry): void {
+    frameLog.push(entry);
+    if (frameLog.length > FRAME_LOG_WINDOW) {
+      frameLog.splice(0, frameLog.length - FRAME_LOG_WINDOW);
+    }
+  }
   let feedCancelled = false;
   const eventQueue = createAsyncQueue<SessionEvent>();
   let handshakeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -242,7 +260,7 @@ function createSessionCore(
     if (connection === null) {
       throw new Error("not connected");
     }
-    frameLog.push({ direction: "sent", frame: hello });
+    recordFrame({ direction: "sent", frame: hello });
     await connection.send(wrapRelayData(hello, peer));
     emit();
   });
@@ -360,7 +378,7 @@ function createSessionCore(
           "request-id": requestId,
           outcome,
         };
-        frameLog.push({ direction: "sent", frame: response });
+        recordFrame({ direction: "sent", frame: response });
         await transmit(response, origin !== undefined, fromDevice);
         emit();
       },
@@ -377,7 +395,7 @@ function createSessionCore(
       // relay-data's payload is a byte pipe the hub forwards blindly between an established pairing. What rides it is a secure channel's hello or sealed data (spec/secure-channel.cddl). A manage-request or manage-response that arrives as plain payload is dropped: accepting one would let a hub strip the protection, and it could not be attributed to anyone.
       const inner = tryDecodeFrame(frame.payload);
       if (inner?.type === "secure-hello") {
-        frameLog.push({ direction: "received", frame: inner });
+        recordFrame({ direction: "received", frame: inner });
         await relayChannels.applyHello(inner);
         return;
       }
@@ -385,10 +403,10 @@ function createSessionCore(
         const opened = await relayChannels.open(inner, frame["from-device"]);
         // Only a manage-request, manage-response or core/data frame is ever acted on, and always as coming from the device its channel authenticated.
         if (opened?.frame.type === "manage-response") {
-          frameLog.push({ direction: "received", frame: opened.frame });
+          recordFrame({ direction: "received", frame: opened.frame });
           applyManageResponse(opened.frame, opened.from);
         } else if (opened !== undefined && isDataFrame(opened.frame)) {
-          frameLog.push({ direction: "received", frame: opened.frame });
+          recordFrame({ direction: "received", frame: opened.frame });
           dataQueue.push({
             frame: opened.frame,
             fromDevice: opened.from,
@@ -397,7 +415,7 @@ function createSessionCore(
               : {}),
           });
         } else if (opened?.frame.type === "manage-request") {
-          frameLog.push({ direction: "received", frame: opened.frame });
+          recordFrame({ direction: "received", frame: opened.frame });
           applyManageRequest(opened.frame, {
             fromDevice: opened.from,
             ...(frame["to-device"] !== undefined
@@ -407,10 +425,10 @@ function createSessionCore(
         }
         return;
       }
-      frameLog.push({ direction: "received", frame });
+      recordFrame({ direction: "received", frame });
       return;
     }
-    frameLog.push({ direction: "received", frame });
+    recordFrame({ direction: "received", frame });
     if (frame.type === "handshake") {
       applyRemoteHandshake(frame);
     } else if (frame.type === "gossip") {
@@ -460,7 +478,7 @@ function createSessionCore(
       type: "relay-connect",
       "target-device": targetDevice,
     };
-    frameLog.push({ direction: "sent", frame: relayConnect });
+    recordFrame({ direction: "sent", frame: relayConnect });
     await connection.send(relayConnect);
     relayPairings.add(targetDevice);
     emit();
@@ -592,11 +610,11 @@ function createSessionCore(
     localHandshakeSent = localHandshake(localDomains);
     handshake = { status: "pending" };
     state = { status: "connected", address, handshake };
-    frameLog.push({ direction: "sent", frame: localHandshakeSent });
+    recordFrame({ direction: "sent", frame: localHandshakeSent });
     await connection.send(localHandshakeSent);
     emit();
     const selfAdvert = await buildSelfAdvert();
-    frameLog.push({ direction: "sent", frame: selfAdvert });
+    recordFrame({ direction: "sent", frame: selfAdvert });
     await connection.send(selfAdvert);
     emit();
     handshakeTimer = setTimeout(() => {
@@ -672,7 +690,7 @@ function createSessionCore(
       async sendPing(): Promise<void> {
         const link = requireConnectedLink();
         const ping: Frame = { type: "ping" };
-        frameLog.push({ direction: "sent", frame: ping });
+        recordFrame({ direction: "sent", frame: ping });
         await link.send(ping);
         emit();
       },
@@ -682,7 +700,7 @@ function createSessionCore(
           clock.now(),
           async () => {
             const ping: Frame = { type: "ping" };
-            frameLog.push({ direction: "sent", frame: ping });
+            recordFrame({ direction: "sent", frame: ping });
             await link.send(ping);
             emit();
           },
@@ -712,7 +730,7 @@ function createSessionCore(
             expectedFrom: targetDevice,
           });
         });
-        frameLog.push({ direction: "sent", frame });
+        recordFrame({ direction: "sent", frame });
         // The timeout below covers the whole exchange, secure-channel handshake included: a peer that never answers the hello would otherwise leave a request with a timeout waiting for ever.
         const exchange = (async (): Promise<ManageOutcome> => {
           try {
@@ -753,7 +771,7 @@ function createSessionCore(
           type: "revocation-announce",
           entries: [...entries],
         };
-        frameLog.push({ direction: "sent", frame });
+        recordFrame({ direction: "sent", frame });
         await transmit(frame, false);
         emit();
       },
@@ -762,7 +780,7 @@ function createSessionCore(
       ): Promise<void> {
         requireConnectedLink();
         const claim: CoordinatorFrame = { ...frame };
-        frameLog.push({ direction: "sent", frame: claim });
+        recordFrame({ direction: "sent", frame: claim });
         await transmit(claim, false);
         emit();
       },
@@ -771,7 +789,7 @@ function createSessionCore(
       ): Promise<void> {
         requireConnectedLink();
         const frame = await buildSelfAdvert(extensions);
-        frameLog.push({ direction: "sent", frame });
+        recordFrame({ direction: "sent", frame });
         await transmit(frame, false);
         emit();
       },
@@ -786,7 +804,7 @@ function createSessionCore(
         if (targetDevice !== undefined) {
           await ensureRelayPairing(targetDevice);
         }
-        frameLog.push({ direction: "sent", frame });
+        recordFrame({ direction: "sent", frame });
         await transmit(frame, targetDevice !== undefined, targetDevice);
         emit();
       },
