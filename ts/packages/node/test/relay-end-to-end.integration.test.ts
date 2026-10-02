@@ -94,6 +94,7 @@ describe("wire-mesh relay, end to end", () => {
     expect(inbound).toEqual({
       type: "relay-inbound",
       "source-device": peerA.device,
+      "target-device": peerB.device,
     });
 
     await a.send({ type: "relay-data", payload: relayPayload });

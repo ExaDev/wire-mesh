@@ -183,3 +183,47 @@ export function withBrokenSignature(advert: Readonly<PeerAdvert>): PeerAdvert {
 export function gossipForMany(...adverts: readonly PeerAdvert[]): Frame {
   return { type: "gossip", peers: [...adverts] };
 }
+
+/** Two connection ends wired back to back, the way a gateway's uplink and the upstream hub's view of that same connection are: what one end sends the other receives, and each end's sent frames stay readable. */
+export interface LinkedConnections {
+  /** The end the gateway hub drives as its uplink. Its frames are those the upstream hub sent. */
+  readonly gateway: FakeConnection;
+  /** The end the upstream hub serves. Its frames are those the gateway sent. */
+  readonly upstream: FakeConnection;
+  /** The connection the gateway hub is given: sending delivers to the upstream hub. */
+  readonly gatewayConnection: Readonly<Connection>;
+  /** The connection the upstream hub is given: sending delivers to the gateway hub. */
+  readonly upstreamConnection: Readonly<Connection>;
+  /** Ends both ends' inbound streams, as a dropped link does. */
+  readonly end: () => Promise<void>;
+}
+
+export function linkedConnections(): LinkedConnections {
+  const gateway = new FakeConnection();
+  const upstream = new FakeConnection();
+  return {
+    gateway,
+    upstream,
+    gatewayConnection: {
+      send: async (frame) => {
+        gateway.sent.push(frame);
+        upstream.push(frame);
+        return Promise.resolve();
+      },
+      receive: () => gateway.connection.receive(),
+      close: async () => gateway.connection.close(),
+    },
+    upstreamConnection: {
+      send: async (frame) => {
+        upstream.sent.push(frame);
+        gateway.push(frame);
+        return Promise.resolve();
+      },
+      receive: () => upstream.connection.receive(),
+      close: async () => upstream.connection.close(),
+    },
+    end: async () => {
+      await Promise.all([gateway.end(), upstream.end()]);
+    },
+  };
+}

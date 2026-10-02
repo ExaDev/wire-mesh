@@ -12,6 +12,8 @@
 
 // Extension policy: because every entry is signed and an advert is forwarded verbatim, the hub cannot remove a field from an advert; with an extensionPolicy set it refuses, whole, any advert whose extension tail holds something the policy does not allow, exactly as it refuses one that fails verification (not registered, not forwarded, not replayed in a catch-up). Without one every extension is carried, which suits a hub all of whose clients belong to one mesh and is not safe for a hub open to strangers.
 //
+// Fronting (wire-mesh#311): a connection may speak for several devices, namely every device whose advert it carried and this hub registered to it. That is what a gateway is: a hub whose own clients are fronted to an upstream hub over one connection. Three frame fields carry it. A relay-connect names the initiating fronted device in `source-device`; a relay-data frame names the device it comes from in `from-device`; a relay-inbound names which of the receiving connection's devices was paired in `target-device`. In each direction the hub acts on a claim only when the device it names is registered to the connection making it, so a connection can never initiate or send as a device it does not front, and a relay-data claim additionally needs a pairing between the two devices named. The upstream hub therefore needs no gateway mode at all: it already does this for any connection that fronts. The gateway side is the uplink (handleUplink): the connection to the upstream hub is registered here like a client, so local adverts reach upstream through the ordinary gossip fan-out and upstream adverts reach local clients the same way, and it differs from a client in exactly three respects. A relay-connect naming a device registered to the uplink is carried upstream as a relay-connect from the initiating client's own device rather than answered here; a relay-inbound arriving on the uplink pairs the addressed local client with the upstream device it names and is passed on to that client; and the uplink is never sent a catch-up frame, since the upstream hub's reply to one would itself be answered with another, each hub forever re-announcing to the other.
+//
 // Outliving the hub instance (wire-mesh#223): registry and pairing state is held in memory and keyed by Connection, neither of which a host can hand to a successor instance directly. exportConnection/restoreConnections bridge that gap by expressing one connection's state as device-ids and adverts alone: serialisable, and resolvable back to connections by a successor that still holds them. A host that can be torn down while its connections stay open subscribes to onConnectionStateChanged, persists the exported value wherever it keeps per-connection state, and replays the survivors through restoreConnections before handling their next frame. The hub itself neither persists nor schedules anything: what a pairing is keyed by, and when a state changes, are its own business, and where that state is kept between instances is the host's.
 
 import type { DeviceId, Frame, PeerAdvert } from "../generated/protocol.js";
@@ -101,6 +103,10 @@ export interface RelayHub {
   ) => RelayConnectionState | undefined;
   /** Rebuilds device-registry and pairing state for connections that outlived the hub instance which established it, so a frame arriving on one of them routes as it did before rather than being dropped as unknown. Each entry's connection is registered as if registerConnection had been called for it. Pairings resolve within the batch: a paired device-id no entry claims belonged to a peer that disconnected while no instance was running, and its pairing is correctly left out. Meant for a freshly created hub, before it handles any frame. */
   restoreConnections: (entries: readonly RelayConnectionRestore[]) => void;
+  /**
+   * Drives a connection to an upstream hub as this hub's uplink (wire-mesh#311), so the clients registered here are reachable through the upstream hub and can reach the devices registered there, each end keeping its own device-id. Behaves as handleConnection for that connection, and in addition announces every advert already registered here to the upstream hub before its first frame is read, since adverts that arrived earlier would otherwise never be forwarded to it. Resolves when the connection's frame stream ends, after which a new uplink may be attached. Rejects at once when an uplink is already attached.
+   */
+  handleUplink: (connection: Readonly<Connection>) => Promise<void>;
   /** Drops all registry and pairing state -- used by tests and by transport teardown. */
   stop: () => void;
 }
@@ -148,6 +154,8 @@ function supersedes(
 export function createRelayHub(options: Readonly<RelayHubOptions>): RelayHub {
   // Every currently-connected client, independent of whether it has gossiped a device yet -- the fan-out set for gossip re-broadcast (see module header). Not derivable from `devices`/`connectionDevice`, since a connection that hasn't gossiped anything of its own still needs to receive other clients' adverts.
   const connections = new Set<Readonly<Connection>>();
+  // The connection to the upstream hub while one is attached (handleUplink): the one connection whose registered devices are reached by carrying frames onward rather than by delivering them to a client.
+  let uplink: Readonly<Connection> | undefined;
   const devices = new Map<string, Registration>();
   // The connection each gossip-registered device is currently reachable over -- maintained alongside `devices` so relay-data forwarding never needs the linear scan `deviceOf` used to do, which would otherwise run once per forwarded frame instead of once per relay-connect.
   const connectionDevice = new Map<Readonly<Connection>, DeviceId>();
@@ -197,16 +205,22 @@ export function createRelayHub(options: Readonly<RelayHubOptions>): RelayHub {
         devices.delete(key);
       }
     }
-    // Captured before deletion: needed below to find which key in each peer's own pairing map points back at this connection.
-    const ownDevice = connectionDevice.get(connection);
     connectionDevice.delete(connection);
     mostRecentPairing.delete(connection);
+    if (connection === uplink) {
+      uplink = undefined;
+    }
     const own = pairings.get(connection);
     if (own) {
       for (const peer of own.values()) {
+        // A peer keys this connection by whichever of its devices the pairing was made with, and a fronting connection holds several, so every entry that points back at it goes.
         const peerOwn = pairings.get(peer);
-        if (peerOwn && ownDevice !== undefined) {
-          peerOwn.delete(deviceKey(ownDevice));
+        if (peerOwn) {
+          for (const [key, paired] of peerOwn) {
+            if (paired === connection) {
+              peerOwn.delete(key);
+            }
+          }
         }
         if (mostRecentPairing.get(peer) === connection) {
           mostRecentPairing.delete(peer);
@@ -266,6 +280,15 @@ export function createRelayHub(options: Readonly<RelayHubOptions>): RelayHub {
         devices.set(deviceKey(advert.device), { connection, advert });
       }
     }
+    // A fronting connection holds pairings under devices other than the one the hub attributes to it, so each advert it still holds resolves to it as well, unless another entry's own device already claims that id.
+    for (const { connection, state } of entries) {
+      for (const advert of state.adverts) {
+        const key = deviceKey(advert.device);
+        if (!byDevice.has(key)) {
+          byDevice.set(key, connection);
+        }
+      }
+    }
     for (const { connection, state } of entries) {
       for (const paired of state.pairedDevices) {
         const peer = byDevice.get(deviceKey(paired));
@@ -273,8 +296,8 @@ export function createRelayHub(options: Readonly<RelayHubOptions>): RelayHub {
           // That peer's connection did not survive, so the pairing genuinely no longer exists and restoring half of it would leave a forward with nowhere to go.
           continue;
         }
+        // Only this connection's own side: the peer's side is restored from its own state, under whichever of its devices the pairing was made with.
         pairingsOf(connection).set(deviceKey(paired), peer);
-        pairingsOf(peer).set(deviceKey(state.device), connection);
       }
     }
     for (const { connection, state } of entries) {
@@ -287,6 +310,47 @@ export function createRelayHub(options: Readonly<RelayHubOptions>): RelayHub {
         mostRecentPairing.set(connection, peer);
       }
     }
+  }
+
+  /** The device a frame from `connection` acts for: the one it names when it fronts that device, otherwise the device the hub attributes to the connection when none is named. Undefined when the connection has no device yet or names one it does not front. */
+  function initiatorOf(
+    connection: Readonly<Connection>,
+    claimed: DeviceId | undefined,
+  ): DeviceId | undefined {
+    if (claimed === undefined) {
+      return connectionDevice.get(connection);
+    }
+    return devices.get(deviceKey(claimed))?.connection === connection
+      ? claimed
+      : undefined;
+  }
+
+  /** A relay-inbound is only meaningful from the upstream hub, which sends one to say a device it holds was paired with a device fronted through this hub. Both devices must be known here (the upstream one registered to the uplink, the addressed one to a local client) so the pairing can be recorded and the client told. */
+  async function handleUplinkInbound(
+    connection: Readonly<Connection>,
+    frame: Readonly<Extract<Frame, { type: "relay-inbound" }>>,
+  ): Promise<void> {
+    const target = frame["target-device"];
+    if (connection !== uplink || target === undefined) {
+      return;
+    }
+    const local = devices.get(deviceKey(target));
+    const source = devices.get(deviceKey(frame["source-device"]));
+    if (
+      local === undefined ||
+      local.connection === connection ||
+      source?.connection !== connection
+    ) {
+      return;
+    }
+    addPairing(local.connection, target, connection, frame["source-device"]);
+    stateChanged(local.connection);
+    stateChanged(connection);
+    await local.connection.send({
+      type: "relay-inbound",
+      "source-device": frame["source-device"],
+      "target-device": target,
+    });
   }
 
   async function handleFrame(
@@ -356,14 +420,14 @@ export function createRelayHub(options: Readonly<RelayHubOptions>): RelayHub {
           // That peer's own connection has died; its own handleConnection loop will discover this independently via its receive() stream and clean up through the ordinary disconnect path.
         }
       }
-      // Catch up the sender with every other currently-known device's latest advert -- see module header for why forwarding alone is not sufficient for a late joiner.
+      // Catch up the sender with every other currently-known device's latest advert -- see module header for why forwarding alone is not sufficient for a late joiner. Never the uplink: see the module header's fronting paragraph for why two hubs must not catch each other up.
       const catchUp: PeerAdvert[] = [];
       for (const registration of devices.values()) {
         if (registration.connection !== connection) {
           catchUp.push(registration.advert);
         }
       }
-      if (catchUp.length > 0) {
+      if (catchUp.length > 0 && connection !== uplink) {
         try {
           await connection.send({ type: "gossip", peers: catchUp });
         } catch {
@@ -379,9 +443,9 @@ export function createRelayHub(options: Readonly<RelayHubOptions>): RelayHub {
         // No such device on this hub (or it dialled itself): the spec's transport.cddl defines no error frame for this, so a first pass silently ignores the request -- a protocol change would be needed to answer it, noted in the README.
         return;
       }
-      const initiatorDevice = connectionDevice.get(connection);
-      if (initiatorDevice === undefined) {
-        // The initiator never gossiped its own advert, so relay-inbound would carry no source-device; ignore until it identifies itself.
+      const initiatorDevice = initiatorOf(connection, frame["source-device"]);
+      if (initiatorDevice === undefined || connection === uplink) {
+        // The initiator never gossiped its own advert, or named a device it does not front, so relay-inbound would carry no source-device the hub can vouch for; ignore until it identifies itself. The upstream hub never initiates, it only answers.
         return;
       }
       // Adds a pairing; does not tear down any existing ones -- a connection may hold several simultaneously. Idempotent for a target already paired (re-adding the same map entry is a no-op beyond refreshing mostRecentPairing).
@@ -393,10 +457,25 @@ export function createRelayHub(options: Readonly<RelayHubOptions>): RelayHub {
       );
       stateChanged(connection);
       stateChanged(registration.connection);
+      if (registration.connection === uplink) {
+        // The target is reached through the upstream hub, which pairs it with the initiating device and tells it, so what goes upstream is the initiator's own request rather than anything addressed to the uplink here.
+        await registration.connection.send({
+          type: "relay-connect",
+          "target-device": registration.advert.device,
+          "source-device": initiatorDevice,
+        });
+        return;
+      }
       await registration.connection.send({
         type: "relay-inbound",
         "source-device": initiatorDevice,
+        "target-device": registration.advert.device,
       });
+      return;
+    }
+
+    if (frame.type === "relay-inbound") {
+      await handleUplinkInbound(connection, frame);
       return;
     }
 
@@ -410,8 +489,16 @@ export function createRelayHub(options: Readonly<RelayHubOptions>): RelayHub {
       if (!peer) {
         return;
       }
-      const senderDevice = connectionDevice.get(connection);
+      const claimedFrom = frame["from-device"];
+      const senderDevice = initiatorOf(connection, claimedFrom);
       if (senderDevice === undefined) {
+        return;
+      }
+      if (
+        claimedFrom !== undefined &&
+        pairings.get(peer)?.get(deviceKey(claimedFrom)) !== connection
+      ) {
+        // The connection fronts the device it names but that device holds no pairing with the one addressed, so the frame belongs to no pairing.
         return;
       }
       await peer.send({
@@ -452,18 +539,38 @@ export function createRelayHub(options: Readonly<RelayHubOptions>): RelayHub {
     // Everything else (handshake, candidates, manage-*, streaming, data-domain, coordinator, revocation-announce) is not the relay role's business: the hub is a transport-level node and forwards nothing it isn't named in. Frames are consumed and dropped.
   }
 
-  return {
-    async handleConnection(connection) {
-      connections.add(connection);
-      try {
-        for await (const frame of connection.receive()) {
-          await handleFrame(connection, frame);
-        }
-      } catch {
-        // A rejecting receive iteration is the connection-level failure signal (the adapter already closed the socket for undecodable bytes or a non-binary message), and a failed relay-data peer.send inside handleFrame means that peer's connection died mid-forward (gossip's own per-recipient sends are caught individually above and never reach here) -- both are disconnects, not errors to surface, and the entry point voids its caller anyway. Cleanup below runs identically to a clean end.
-      } finally {
-        forgetConnection(connection);
+  async function serve(connection: Readonly<Connection>): Promise<void> {
+    connections.add(connection);
+    try {
+      for await (const frame of connection.receive()) {
+        await handleFrame(connection, frame);
       }
+    } catch {
+      // A rejecting receive iteration is the connection-level failure signal (the adapter already closed the socket for undecodable bytes or a non-binary message), and a failed relay-data peer.send inside handleFrame means that peer's connection died mid-forward (gossip's own per-recipient sends are caught individually above and never reach here) -- both are disconnects, not errors to surface, and the entry point voids its caller anyway. Cleanup below runs identically to a clean end.
+    } finally {
+      forgetConnection(connection);
+    }
+  }
+
+  return {
+    handleConnection: serve,
+    async handleUplink(connection) {
+      if (uplink !== undefined) {
+        throw new Error("this relay hub already has an uplink");
+      }
+      uplink = connection;
+      const local: PeerAdvert[] = [];
+      for (const registration of devices.values()) {
+        local.push(registration.advert);
+      }
+      if (local.length > 0) {
+        try {
+          await connection.send({ type: "gossip", peers: local });
+        } catch {
+          // The uplink died before its first frame; serve observes the same death on its own receive() stream and cleans up through the ordinary disconnect path.
+        }
+      }
+      await serve(connection);
     },
     registerConnection(connection) {
       connections.add(connection);
@@ -478,6 +585,7 @@ export function createRelayHub(options: Readonly<RelayHubOptions>): RelayHub {
       connectionDevice.clear();
       pairings.clear();
       mostRecentPairing.clear();
+      uplink = undefined;
     },
   };
 }

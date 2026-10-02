@@ -103,7 +103,11 @@ describe("createRelayHub: authenticated gossip", () => {
     expect(
       gatewayConnection.fake.sent.at(-1),
       "the gateway's connection is where a relay-connect for its local peer must land",
-    ).toEqual({ type: "relay-inbound", "source-device": callerPeer.device });
+    ).toEqual({
+      type: "relay-inbound",
+      "source-device": callerPeer.device,
+      "target-device": local.device,
+    });
 
     await Promise.all([gatewayConnection.fake.end(), caller.fake.end()]);
     await Promise.all([gatewayConnection.handling, caller.handling]);
@@ -135,6 +139,7 @@ describe("createRelayHub: authenticated gossip", () => {
     const inbound: Frame = {
       type: "relay-inbound",
       "source-device": callerPeer.device,
+      "target-device": target.device,
     };
     expect(
       owner.fake.sent,
@@ -180,6 +185,7 @@ describe("createRelayHub: authenticated gossip", () => {
     const inbound: Frame = {
       type: "relay-inbound",
       "source-device": callerPeer.device,
+      "target-device": peer.device,
     };
     expect(
       second.fake.sent,
