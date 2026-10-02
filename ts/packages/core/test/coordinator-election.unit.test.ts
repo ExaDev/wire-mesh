@@ -18,6 +18,8 @@ const TERM_HIGH = 5;
 const TERM_HIGHEST = 6;
 const CAPACITY_HINT = 7;
 const LATE_CAPACITY_HINT = 9;
+/** A fractional offset, to make a term that is not an integer. */
+const HALF = 0.5;
 
 /** A coordinator-frame naming `device` at `term`, the shape every evaluate test feeds. */
 function claim(device: DeviceId, term: number): CoordinatorFrame {
@@ -53,8 +55,10 @@ describe("CoordinatorElection.evaluate", () => {
   it("accepts the first claim it hears", () => {
     const election = new CoordinatorElection({ ownDevice: OWN });
     const outcome = election.evaluate(claim(LOWER, TERM_LOW));
-    expect(outcome.outcome).toBe("accepted");
-    expect(outcome.incumbent).toEqual({ term: TERM_LOW, coordinator: LOWER });
+    expect(outcome).toEqual({
+      outcome: "accepted",
+      incumbent: { term: TERM_LOW, coordinator: LOWER },
+    });
   });
 
   it("supersedes the incumbent on a strictly higher term", () => {
@@ -95,7 +99,63 @@ describe("CoordinatorElection.evaluate", () => {
       ...claim(LOWER, TERM_MIDDLE),
       "capacity-hint": LATE_CAPACITY_HINT,
     });
-    expect(outcome.incumbent.capacityHint).toBe(LATE_CAPACITY_HINT);
+    expect(election.current()?.capacityHint).toBe(LATE_CAPACITY_HINT);
+    expect(outcome.outcome).toBe("accepted");
+  });
+});
+
+describe("CoordinatorElection term ceiling", () => {
+  // The highest term evaluate accepts: its successor, term + 1, is still an exactly represented integer, so it is strictly greater.
+  const LAST_RAISABLE_TERM = Number.MAX_SAFE_INTEGER - 1;
+  const UNRAISABLE_TERMS = [
+    Number.MAX_SAFE_INTEGER,
+    Number.MAX_SAFE_INTEGER + 1,
+    Number.POSITIVE_INFINITY,
+    Number.NaN,
+    -1,
+    TERM_LOW + HALF,
+  ];
+
+  it.each(UNRAISABLE_TERMS)(
+    "rejects a claim at term %s without making it the incumbent",
+    (term) => {
+      const election = new CoordinatorElection({ ownDevice: OWN });
+      expect(election.evaluate(claim(LOWER, term))).toEqual({
+        outcome: "rejected",
+      });
+      expect(election.current()).toBeUndefined();
+    },
+  );
+
+  it("keeps the incumbent when an unraisable claim arrives", () => {
+    const election = new CoordinatorElection({ ownDevice: OWN });
+    election.evaluate(claim(HIGHER, TERM_LOW));
+    expect(
+      election.evaluate(claim(LOWER, Number.MAX_SAFE_INTEGER)).outcome,
+    ).toBe("rejected");
+    expect(election.current()).toEqual({
+      term: TERM_LOW,
+      coordinator: HIGHER,
+    });
+    expect(election.claim().term).toBe(TERM_LOW + 1);
+  });
+
+  it("accepts a claim at the highest usable term, after which claim() refuses rather than mint a term peers would reject", () => {
+    const election = new CoordinatorElection({ ownDevice: OWN });
+    expect(election.evaluate(claim(HIGHER, LAST_RAISABLE_TERM)).outcome).toBe(
+      "accepted",
+    );
+    expect(() => election.claim()).toThrow(RangeError);
+    expect(election.current()?.coordinator).toEqual(HIGHER);
+  });
+
+  it("mints a claim at the highest usable term that a peer accepts", () => {
+    const election = new CoordinatorElection({ ownDevice: OWN });
+    election.evaluate(claim(HIGHER, LAST_RAISABLE_TERM - 1));
+    const frame = election.claim();
+    expect(frame.term).toBe(LAST_RAISABLE_TERM);
+    const peer = new CoordinatorElection({ ownDevice: HIGHER });
+    expect(peer.evaluate(frame).outcome).toBe("accepted");
   });
 });
 

@@ -59,7 +59,7 @@ describe("coordinator-frame plumbing", () => {
     expect(frame.term).toBe(TERM_REMOTE_HEARD);
     const outcome = election.evaluate(frame);
     expect(outcome.outcome).toBe("accepted");
-    expect(outcome.incumbent.coordinator).toEqual(OTHER);
+    expect(election.current()?.coordinator).toEqual(OTHER);
     await session.close();
   });
 });
