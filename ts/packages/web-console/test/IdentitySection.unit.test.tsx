@@ -128,10 +128,13 @@ describe("grants", () => {
 
     await screen.findByText("Grant minted");
     const issued = await screen.findByTestId("grants-issued");
-    expect(within(issued).getByText("room:member")).toBeInTheDocument();
-    expect(within(issued).getByText("valid")).toBeInTheDocument();
-    fireEvent.click(within(issued).getByRole("button", { name: "Inspect" }));
-    const code = within(issued).getByLabelText("Grant code");
+    // The issued list is rendered before the minted grant reaches it, so each assertion waits for its own content rather than reading it once.
+    expect(await within(issued).findByText("room:member")).toBeInTheDocument();
+    expect(await within(issued).findByText("valid")).toBeInTheDocument();
+    fireEvent.click(
+      await within(issued).findByRole("button", { name: "Inspect" }),
+    );
+    const code = await within(issued).findByLabelText("Grant code");
     if (!(code instanceof HTMLTextAreaElement)) {
       throw new Error("expected the grant code in a textarea");
     }
