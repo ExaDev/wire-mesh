@@ -1,4 +1,5 @@
 {
+  "license": "MIT",
   "name": "wire-mesh",
   "version": "3.6.3",
   "bin": {
@@ -67,6 +68,5 @@
     "test": "turbo run _test",
     "typecheck": "turbo run _typecheck"
   },
-  "type": "module",
-  "license": "MIT"
+  "type": "module"
 }
