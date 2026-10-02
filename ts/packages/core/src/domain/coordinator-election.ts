@@ -25,10 +25,18 @@ export function compareDeviceIds(a: DeviceId, b: DeviceId): number {
   return a.length - b.length;
 }
 
-/** What evaluating an incoming claim concluded, so the caller can react without re-deriving the comparison: "accepted" means this claim is now the incumbent (it superseded a previous one, or there was none), "retained" means the incumbent survived (the incoming claim was stale, or lost the equal-term tiebreak), and the incumbent is returned either way so a caller squashing a stale claim re-announces exactly what it already holds. */
+/** Whether a claim at this term can be superseded by a later claim: a non-negative safe integer strictly below Number.MAX_SAFE_INTEGER, so that term + 1 is still an exactly represented, strictly greater integer. Above that ceiling a double cannot count on (2 ** 53 + 1 === 2 ** 53), and an incumbent there could never be superseded, so a device that named itself holder would keep the role for good even after it had gone. */
+export function isSupersedableTerm(term: number): boolean {
+  return (
+    Number.isSafeInteger(term) && term >= 0 && term < Number.MAX_SAFE_INTEGER
+  );
+}
+
+/** What evaluating an incoming claim concluded, so the caller can react without re-deriving the comparison: "accepted" means this claim is now the incumbent (it superseded a previous one, or there was none), "retained" means the incumbent survived (the incoming claim was stale, or lost the equal-term tiebreak), and the incumbent is returned either way so a caller squashing a stale claim re-announces exactly what it already holds. "rejected" means the claim's term is not one a later claim can supersede (isSupersedableTerm), so it was never compared: the incumbent, if any, is untouched, and there is nothing to answer it with. */
 export type EvaluationOutcome =
   | { outcome: "accepted"; incumbent: CoordinatorClaim }
-  | { outcome: "retained"; incumbent: CoordinatorClaim };
+  | { outcome: "retained"; incumbent: CoordinatorClaim }
+  | { outcome: "rejected" };
 
 export interface CoordinatorElectionOptions {
   /** This device's own id: the coordinator named by a claim this side mints. */
@@ -57,13 +65,19 @@ export class CoordinatorElection {
   }
 
   /**
-   * Claims the role for this side's own device at a term above every term seen so far (lastTerm + 1, so a first-ever claim is term 0), and returns the frame to gossip. Claiming over a claim this side already holds is a deliberate takeover: it raises the term, which is exactly what a peer recovering the role after losing track of the mesh should do, and what a routine refresh should not (announceCurrent exists for that).
+   * Claims the role for this side's own device at a term above every term seen so far (lastTerm + 1, so a first-ever claim is term 0), and returns the frame to gossip. Throws a RangeError when that term is not one peers accept (isSupersedableTerm), which only happens when the incumbent already sits at the highest term the election accepts. Claiming over a claim this side already holds is a deliberate takeover: it raises the term, which is exactly what a peer recovering the role after losing track of the mesh should do, and what a routine refresh should not (announceCurrent exists for that).
    */
   claim(capacityHint?: number): CoordinatorFrame {
     const lastTerm = this.incumbent?.term ?? -1;
+    const term = lastTerm + 1;
+    if (!isSupersedableTerm(term)) {
+      throw new RangeError(
+        `the incumbent's term ${String(lastTerm)} leaves no term a claim can be raised to`,
+      );
+    }
     const frame: CoordinatorFrame = {
       type: "coordinator",
-      term: lastTerm + 1,
+      term,
       coordinator: this.ownDevice,
       ...(capacityHint !== undefined ? { "capacity-hint": capacityHint } : {}),
     };
@@ -91,9 +105,12 @@ export class CoordinatorElection {
   }
 
   /**
-   * Evaluates an incoming claim against the one this side currently accepts: a strictly higher term always wins; an equal term breaks by lowest device-id, so an incoming claim naming a lower device-id than the incumbent's takes the role and one naming a higher device-id loses; a lower term never wins. "accepted" means the incumbent changed (the caller should gossip the new incumbent onward so the supersession propagates); "retained" means it did not (the caller may answer a stale claim by re-gossiping announceCurrent(), and should drop a lost equal-term claim it originated, since the tiebreak has settled it).
+   * Evaluates an incoming claim against the one this side currently accepts: a strictly higher term always wins; an equal term breaks by lowest device-id, so an incoming claim naming a lower device-id than the incumbent's takes the role and one naming a higher device-id loses; a lower term never wins. "accepted" means the incumbent changed (the caller should gossip the new incumbent onward so the supersession propagates); "retained" means it did not (the caller may answer a stale claim by re-gossiping announceCurrent(), and should drop a lost equal-term claim it originated, since the tiebreak has settled it); "rejected" means the claim's term is not supersedable (isSupersedableTerm), so it is dropped unevaluated and the caller should neither gossip nor answer it.
    */
   evaluate(frame: Readonly<CoordinatorFrame>): EvaluationOutcome {
+    if (!isSupersedableTerm(frame.term)) {
+      return { outcome: "rejected" };
+    }
     const previous = this.incumbent;
     if (
       previous === undefined ||
