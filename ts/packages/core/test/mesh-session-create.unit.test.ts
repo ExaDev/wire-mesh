@@ -345,8 +345,10 @@ describe("createMeshSession", () => {
     await session.connect("ws://node", ["core/data"]);
     await eventsDone;
 
-    const beyondWindow = FRAME_LOG_WINDOW + 20;
-    for (let i = 0; i < beyondWindow; i++) {
+    // Enough frames past the window to prove the oldest were dropped, without
+    // making the test spend its time pushing frames nobody inspects.
+    const framesPastWindow = 20;
+    for (let i = 0; i < FRAME_LOG_WINDOW + framesPastWindow; i++) {
       await session.sendGossipUpdate();
     }
     // Every send queued its own snapshot; drain the queue and keep the newest,
