@@ -1,3 +1,9 @@
+## [4.0.3](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.0.2...wire-mesh-core%404.0.3) (2026-10-04)
+
+### Documentation
+
+* describe implemented domains and remaining gaps in the core and Rust readmes ([c97846c](https://github.com/ExaDev/wire-mesh/commit/c97846c5fd46cbf1dc7a20436b04d30798f3ea04))
+
 ## [4.0.2](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.0.1...wire-mesh-core%404.0.2) (2026-10-02)
 
 ### Miscellaneous Chores
