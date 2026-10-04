@@ -1,25 +1,36 @@
 # rust/
 
-The Rust implementation of wire-mesh: a Cargo workspace of three crates mirroring the TypeScript core's generated/ports/adapters/domain split.
+The Rust implementation of wire-mesh: a Cargo workspace whose core crate mirrors the TypeScript core's generated/ports/adapters/domain split.
 
 ```
 crates/
-  wire-mesh-wire/         The CDDL model + CDE codec. One hand-written module per CDDL rule family
-                          (identity, handshake, tokens, transport, management, streaming, exec,
-                          data, discovery, frame) plus the CborValue/CanonicalMap DOM for every
-                          `any` and open-map position. alloc-only, no async/crypto/serde
-                          dependencies.
-  wire-mesh-core/         Ports (Transport, KeyValueStorage, Identity, Clock), domain logic
-                          (handshake negotiation, capability-token verification, revocation),
-                          and adapters (in-memory storage, Tokio TCP transport, system clock,
-                          Ed25519/ES256 node identity).
-  wire-mesh-conformance/  The conformance-check binary gating the frozen vectors in
-                          ../../conformance/*.v1.json.
+  wire-mesh-wire/              The CDDL model + CDE codec. One hand-written module per CDDL rule family
+                               (identity, handshake, tokens, transport, management, streaming, exec,
+                               data, discovery, frame, bulk, room, secure-channel, threshold, webrtc)
+                               plus the CborValue/CanonicalMap DOM for every `any` and open-map
+                               position. No async, crypto or serde dependencies.
+  wire-mesh-core/              Ports (Transport, KeyValueStorage, Identity, Clock), domain logic
+                               (handshake negotiation, capability-token verification, revocation,
+                               predicate conditions, peer-advert verification, rooms and room
+                               paths, room content-key wrapping, erasure coding and shard
+                               manifests, and a node session runtime that dispatches
+                               manage-requests), and adapters (in-memory storage, Tokio TCP
+                               transport, system clock, Ed25519/ES256 node identity).
+  wire-mesh-threshold/         FROST(Ed25519, SHA-512) threshold signing (RFC 9591) among a
+                               person's own devices, wrapping the audited frost-ed25519 and
+                               frost-core crates: distributed key generation, proactive resharing,
+                               two-round signing, share envelopes, a nonce-store port, and
+                               wire-driven coordinator and participant roles over manage-requests.
+  wire-mesh-threshold-wasm/    WebAssembly bindings for wire-mesh-threshold, so the TypeScript core
+                               holds a real FROST key share without reimplementing the
+                               cryptography. Byte-oriented wrappers only; no domain logic.
+  wire-mesh-conformance/       The conformance-check binary gating the frozen vectors in
+                               ../../conformance/*.v1.json.
 ```
 
 ## Codec guarantees
 
-Every wire type implements `minicbor` `Encode`/`Decode` by hand (minicbor is pinned to exactly 2.2.2; the 2.x trait shapes differ from the widely documented 0.2x series) with two invariants:
+Every wire type implements `minicbor` `Encode`/`Decode` by hand (minicbor is pinned to an exact version because its 2.x trait shapes differ from the widely documented 0.2x series) with two invariants:
 
 - **CDE by construction** (RFC 8949 4.2 core deterministic encoding, the rules DAG-CBOR builds on): map keys are written in encoded-length-first-then-bytewise order, integer heads are minimal-length, lengths are always definite. Closed-key structs hard-code the order (pinned by the conformance vectors); open maps go through `CanonicalMap`; mixed typed-plus-tail maps through `CdeMapBuilder`, because an extension key can sort anywhere among the typed fields.
 - **Strict decode**: unknown keys, wrong arity, indefinite lengths, floats, tags, duplicate keys, unsorted keys, non-minimal integer/string/array/map heads, non-32-byte device-ids, bad enum literals, and trailing bytes are all rejected — matching what cbor2's `cdeDecodeOptions` enforces on the TypeScript side, so both implementations accept exactly the same byte strings and any input that decodes also re-encodes to identical bytes.
@@ -36,7 +47,7 @@ cargo run --bin conformance-check
 
 The root `justfile` already dispatches these (`just build`, `just test`, `just lint`, `just conformance`); `just conformance` runs this binary alongside the vector-generation gate in `conformance/`.
 
-`conformance-check` proves all 26 frozen vectors two ways per vector: a typed decode → validate → re-encode → byte-compare loop (with a first-divergence hex diff on mismatch), and a reverse message-JSON → `CborValue` DOM → CDE encode → byte-compare loop that pins the `{"hex": ...}` byte-string convention and rejects non-integral JSON numbers rather than truncating them. For the three COSE vectors it additionally round-trips the nested protected headers and claims through the on-demand accessors, proving those re-encode identically too.
+`conformance-check` proves every frozen vector two ways per vector: a typed decode → validate → re-encode → byte-compare loop (with a first-divergence hex diff on mismatch), and a reverse message-JSON → `CborValue` DOM → CDE encode → byte-compare loop that pins the `{"hex": ...}` byte-string convention and rejects non-integral JSON numbers rather than truncating them. For the three COSE vectors it additionally round-trips the nested protected headers and claims through the on-demand accessors, proving those re-encode identically too.
 
 ## Known upstream quirk (flagged, worked around)
 
@@ -44,11 +55,11 @@ The frozen `tokens.v1.json` protected headers encode the RFC 9052 `alg`/`kid` la
 
 ## Scope and deferrals
 
-Real domain logic exists for the three areas the plan prioritised — transport (TCP adapter with 4-byte big-endian length-prefixed framing, matching the TS adapter), handshake negotiation (version min + order-independent domain intersection, retired `core/federation` rejected distinctly), and capability tokens (COSE_Sign1 per RFC 9052 Sig_structure, self-certifying sha256(device-id) check, expiry/not-before, delegation-chain narrowing with expiry clamping, and the revocation obligations from `management.cddl`: entries verified as signed claims, only a token's own issuer may revoke it, and every ancestor token-id swept against the view, not just the leaf's). Everything else is wire types plus schema validation only. Deferred, deliberately:
+Real domain logic exists for transport (a TCP adapter with 4-byte big-endian length-prefixed framing, matching the TS adapter), handshake negotiation (version min + order-independent domain intersection, retired `core/federation` rejected distinctly), capability tokens (COSE_Sign1 per RFC 9052 Sig_structure, self-certifying sha256(device-id) check, expiry/not-before, delegation-chain narrowing with expiry clamping, and the revocation obligations from `management.cddl`: entries verified as signed claims, only a token's own issuer may revoke it, and every ancestor token-id swept against the view, not just the leaf's), gossiped peer-advert verification, rooms, erasure coding and shard manifests byte-identical with the TS core, and threshold signing. The Rust side has no relay hub (the session runtime deliberately has no relay or hub role), no secure channel (the frames have a codec only, with no handshake, key schedule or sealing), no bulk transfer, no data sync and no exec or streaming engine: those frame families decode, encode and validate, but no code drives them. Deferred, deliberately:
 
-- **TLS transport adapter** — the TCP adapter implements the same `Transport` port a TLS adapter will; no TLS code exists yet.
-- **Exec/data/discovery services** — the frame families decode, encode, and validate, but no process spawning, oplog storage, or handle-resolution client/server exists. `handle-record` verification (signature + `sha256(identity-key) == device-id` + expiry) is available through the same COSE machinery as tokens, but nothing performs DNS fetches of `/.well-known/wire-mesh/<local-part>`.
-- **Coordinator election logic** — the frame type exists; the term/lowest-device-id tiebreak is a receiver obligation documented in `transport.cddl` but no gossip engine implements it.
-- **Revocation persistence wiring** — `RevocationView` verifies and admits entries in memory; a service that stores raw entries via the `KeyValueStorage` port and rebuilds the view on startup is not built.
-- **Streaming backpressure enforcement** — the credit-window frames exist; no producer/consumer engine enforces `ack-seq + window` yet.
-- **CDRL-to-Rust drift mitigation** — there is no CDDL-to-Rust generator (cddl.js emits TS/Zod only), so beyond the 26 vectors, drift is caught by the per-family unit tests derived from the CDDL text (key order, regex tiers over the registry's examples, arity, and unknown-key rejection). Vectors should be regenerated and this gate re-run whenever `spec/*.cddl` changes.
+- **TLS transport adapter**: the TCP adapter implements the same `Transport` port a TLS adapter will; no TLS code exists on the Rust side.
+- **Exec, data and discovery services**: no process spawning, oplog storage or handle-resolution client or server exists, and nothing performs DNS fetches of `/.well-known/wire-mesh/<local-part>`. `handle-record` verification (signature + `sha256(identity-key) == device-id` + expiry) is available through the same COSE machinery as tokens.
+- **Coordinator election logic**: the frame type exists; the term/lowest-device-id tiebreak is a receiver obligation documented in `transport.cddl` but no gossip engine implements it.
+- **Revocation persistence wiring**: `RevocationView` verifies and admits entries in memory; a service that stores raw entries via the `KeyValueStorage` port and rebuilds the view on startup is not built.
+- **Streaming backpressure enforcement**: the credit-window frames exist; no producer/consumer engine enforces `ack-seq + window` yet.
+- **CDDL-to-Rust drift mitigation**: there is no CDDL-to-Rust generator (cddl.js emits TS/Zod only), so beyond the frozen vectors, drift is caught by the per-family unit tests derived from the CDDL text (key order, regex tiers over the registry's examples, arity, and unknown-key rejection). Vectors should be regenerated and this gate re-run whenever `spec/*.cddl` changes.
