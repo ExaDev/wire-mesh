@@ -39,10 +39,14 @@ describe("parseOffer", () => {
       ["3", "other"],
     ]);
     expect(parsed.sections.map((section) => section.canReceive)).toEqual([
-      true, // audio sendrecv
-      true, // video sendrecv
-      true, // video recvonly
-      false, // application m-line is never receivable
+      // audio sendrecv
+      true,
+      // video sendrecv
+      true,
+      // video recvonly
+      true,
+      // application m-line is never receivable
+      false,
     ]);
   });
 

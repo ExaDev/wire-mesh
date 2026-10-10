@@ -16,9 +16,10 @@ describe("createMediasoupMediaBackend, against a real mediasoup Worker", () => {
 
   afterEach(async () => {
     // mediasoup has no explicit "close the whole backend" method in this port (a real deployment runs one backend for the process's own lifetime), but leave()ing every participant this test created closes their transports and everything under them, so the underlying mediasoup Worker has nothing left running by the time the next test's own createMediasoupMediaBackend() call spins up a fresh one.
-    await backend?.leave("participant-b");
-    await backend?.leave("participant-a");
+    const closing = backend;
     backend = undefined;
+    await closing?.leave("participant-b");
+    await closing?.leave("participant-a");
   });
 
   it("produces real Producers from a send-capable offer and builds a well-formed, parseable answer", async () => {
@@ -42,7 +43,8 @@ describe("createMediasoupMediaBackend, against a real mediasoup Worker", () => {
       "3",
     ]);
     const audioAnswer = parsedAnswer.media[0];
-    expect(audioAnswer?.direction).toBe("inactive"); // produced-from mid: the SFU never sends media back on the same mid it received on
+    // produced-from mid: the SFU never sends media back on the same mid it received on
+    expect(audioAnswer?.direction).toBe("inactive");
     expect(audioAnswer?.iceUfrag).toBeTruthy();
     expect(audioAnswer?.icePwd).toBeTruthy();
     expect(audioAnswer?.fingerprint?.type).toBeTruthy();

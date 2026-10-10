@@ -19,6 +19,7 @@ import {
   isWebrtcOffer,
   rtcIceCandidateInitFromWire,
 } from "wire-mesh-core/domain/webrtc-signaling";
+import { eachInOrder } from "./in-order.js";
 import type { SfuMediaBackend } from "./media-backend.js";
 
 export interface SfuCall {
@@ -38,8 +39,6 @@ interface ParticipantEntry {
   session: Readonly<MeshSession>;
   /** deviceId, hex-encoded, purely as this call's own backend participantId: SfuMediaBackend's contract takes plain strings, not DeviceId's raw bytes, since a remote-process backend needs a serialisable key. */
   participantId: string;
-  /** This participant's own current negotiation-id, learned from its offer, so a later sfu-track-map to it (or its own answer) can carry the right value. Undefined until its first offer arrives. */
-  negotiationId?: number;
 }
 
 const HEX_RADIX = 16;
@@ -50,22 +49,24 @@ function participantIdFor(deviceId: DeviceId): string {
   for (const byte of deviceId) {
     id += byte.toString(HEX_RADIX).padStart(HEX_DIGITS_PER_BYTE, "0");
   }
+
   return id;
 }
 
-/** Sends this participant's own current sfu-track-map: every mid on its own connection now carrying live media, whether from its own initial join (backend-reported consumed tracks) or a later participant leaving (an empty resend for any mid whose track just ended). negotiationId must already be known (the participant's own offer must have arrived): a participant this call has never negotiated with has no connection-specific mid space to describe. */
+/** Sends this participant's own current sfu-track-map: every mid on its own connection now carrying live media, whether from its own initial join (backend-reported consumed tracks) or a later participant leaving (an empty resend for any mid whose track just ended). `negotiationId` is the participant's own current negotiation-id, learned from its offer; it is undefined until the first offer arrives, and a participant this call has never negotiated with has no connection-specific mid space to describe, so nothing is sent. */
 async function sendTrackMap(
   entry: Readonly<ParticipantEntry>,
+  negotiationId: number | undefined,
   tracks: readonly {
     mid: string;
     member: DeviceId;
     kind: "audio" | "video";
   }[],
 ): Promise<void> {
-  if (entry.negotiationId === undefined) {
+  if (negotiationId === undefined) {
     return;
   }
-  const command = buildSfuTrackMapCommand(entry.negotiationId, tracks);
+  const command = buildSfuTrackMapCommand(negotiationId, tracks);
   await entry.session.sendManageRequest(command, { kind: "node" });
 }
 
@@ -74,6 +75,8 @@ export function createSfuCall(
   verifyOptions: Readonly<VerifyCapabilityTokenOptions>,
 ): SfuCall {
   const participants = new Map<string, ParticipantEntry>();
+  // Each participant entry's own current negotiation-id, learned from its offer. Keyed by the entry, not the device, so an offer still being authorised when its participant is removed cannot hand its id to the same device added again.
+  const negotiationIds = new WeakMap<ParticipantEntry, number>();
   // Every currently live track this call knows about, per owning participant: rebuilt into a per-recipient tracks[] array (excluding the recipient's own tracks) whenever any recipient's sfu-track-map needs resending. Kept flat (not nested under the consuming participant) since it describes the call's actual media state, not any one participant's own view of it.
   const liveTracks = new Map<
     string,
@@ -94,6 +97,7 @@ export function createSfuCall(
       }
       tracks.push(...ownerTracks);
     }
+
     return tracks;
   }
 
@@ -102,7 +106,11 @@ export function createSfuCall(
     if (entry === undefined) {
       return;
     }
-    await sendTrackMap(entry, tracksForRecipient(participantId));
+    await sendTrackMap(
+      entry,
+      negotiationIds.get(entry),
+      tracksForRecipient(participantId),
+    );
   }
 
   async function handleOffer(
@@ -113,9 +121,10 @@ export function createSfuCall(
     const authorized = await authorizeIncomingOffer(incoming, verifyOptions);
     if (!authorized) {
       await incoming.respond({ result: "error", code: "unauthorized" });
+
       return;
     }
-    entry.negotiationId = offer["negotiation-id"];
+    negotiationIds.set(entry, offer["negotiation-id"]);
     const result = await backend.join(entry.participantId, offer.sdp);
     liveTracks.set(
       entry.participantId,
@@ -131,7 +140,7 @@ export function createSfuCall(
         verb: WEBRTC_SIGNAL_VERB,
         params: {
           verb: "webrtc.answer",
-          "negotiation-id": entry.negotiationId,
+          "negotiation-id": offer["negotiation-id"],
           sdp: result.answerSdp,
         },
       },
@@ -143,21 +152,22 @@ export function createSfuCall(
         const owner = [...participants.values()].find(
           (candidate) => candidate.participantId === track.fromParticipantId,
         );
+
         return {
           mid: track.mid,
           member: owner?.deviceId ?? entry.deviceId,
           kind: track.kind,
         };
       });
-      await sendTrackMap(entry, consumedEntries);
+      await sendTrackMap(entry, offer["negotiation-id"], consumedEntries);
     }
     // Every other participant now has one more live track (this joiner's own) to report.
-    for (const other of participants.values()) {
-      if (other.participantId === entry.participantId) {
-        continue;
-      }
-      await republishTo(other.participantId);
-    }
+    await eachInOrder(
+      [...participants.values()]
+        .filter((other) => other.participantId !== entry.participantId)
+        .map((other) => other.participantId),
+      republishTo,
+    );
   }
 
   async function handleIceCandidate(
@@ -207,9 +217,7 @@ export function createSfuCall(
       participants.delete(participantId);
       liveTracks.delete(participantId);
       const affected = await backend.leave(participantId);
-      for (const otherParticipantId of affected) {
-        await republishTo(otherParticipantId);
-      }
+      await eachInOrder(affected, republishTo);
     },
     get participantCount() {
       return participants.size;

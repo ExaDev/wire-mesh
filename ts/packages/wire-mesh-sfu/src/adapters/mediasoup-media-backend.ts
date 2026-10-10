@@ -1,8 +1,8 @@
-// The one real SfuMediaBackend implementation this package ships: wraps a single mediasoup Worker/Router, one WebRtcTransport per joined participant, and sdp-bridge.ts's own SDP<->RtpParameters translation. Leans on mediasoup rather than a from-scratch RTP forwarder for the same audited-library-over-reimplementation reasoning the design settled on FROST threshold signing with (wire-mesh#29, wire-mesh#37).
-//
-// DTLS role: this backend always answers with a=setup:active (this SFU initiates the DTLS handshake as the client), so the remote's own dtlsParameters.role passed to transport.connect() is always "server", its complement. Either choice is a valid DTLS negotiation outcome for an offer proposing a=setup:actpass; this is a deliberate, fixed pick for simplicity, not a constraint mediasoup or the browser imposes.
-//
-// Scope: one recv slot per already-proposed recvonly m-line, filled from whichever other participant's matching-kind producer is available first, never reassigned once filled. A participant joining after another's own recvonly slots are already exhausted (or already filled) is not connected to it without a later renegotiation this backend does not drive: see this package's README for the fuller explanation and what a later version would add.
+/* The one real SfuMediaBackend implementation this package ships: wraps a single mediasoup Worker/Router, one WebRtcTransport per joined participant, and sdp-bridge.ts's own SDP<->RtpParameters translation. Leans on mediasoup rather than a from-scratch RTP forwarder for the same audited-library-over-reimplementation reasoning the design settled on FROST threshold signing with (wire-mesh#29, wire-mesh#37).
+
+   DTLS role: this backend always answers with a=setup:active (this SFU initiates the DTLS handshake as the client), so the remote's own dtlsParameters.role passed to transport.connect() is always "server", its complement. Either choice is a valid DTLS negotiation outcome for an offer proposing a=setup:actpass; this is a deliberate, fixed pick for simplicity, not a constraint mediasoup or the browser imposes.
+
+   Scope: one recv slot per already-proposed recvonly m-line, filled from whichever other participant's matching-kind producer is available first, never reassigned once filled. A participant joining after another's own recvonly slots are already exhausted (or already filled) is not connected to it without a later renegotiation this backend does not drive: see this package's README for the fuller explanation and what a later version would add. */
 
 import { createWorker } from "mediasoup";
 import type {
@@ -25,6 +25,7 @@ import {
   type AnswerSection,
   type BridgeRtpParameters,
 } from "./sdp-bridge.js";
+import { eachInOrder } from "../domain/in-order.js";
 import type { BackendTrack, SfuMediaBackend } from "../domain/media-backend.js";
 
 export interface MediasoupMediaBackendOptions {
@@ -124,6 +125,7 @@ function toDtlsFingerprint(
       `offer's own a=fingerprint carries an unrecognised algorithm: ${fingerprint.type}`,
     );
   }
+
   return { algorithm: fingerprint.type, value: fingerprint.hash };
 }
 
@@ -221,6 +223,7 @@ export async function createMediasoupMediaBackend(
         }
       }
     }
+
     return undefined;
   }
 
@@ -248,14 +251,16 @@ export async function createMediasoupMediaBackend(
       const answerSections: AnswerSection[] = [];
       const consumedProducerIds = new Set<string>();
 
-      for (const section of offer.sections) {
+      // One section at a time, in offer order: a section that fails stops the ones after it, and nothing registers once join has thrown.
+      await eachInOrder(offer.sections, async (section) => {
         if (section.kind === "other") {
           answerSections.push({
             mid: section.mid,
             kind: "other",
             direction: "inactive",
           });
-          continue;
+
+          return;
         }
         if (section.send !== undefined) {
           const narrowed = intersectWithRouterCapabilities(
@@ -275,7 +280,8 @@ export async function createMediasoupMediaBackend(
             kind: section.kind,
             direction: "inactive",
           });
-          continue;
+
+          return;
         }
         if (section.canReceive) {
           const available = findAvailableProducer(
@@ -315,7 +321,8 @@ export async function createMediasoupMediaBackend(
                 consumer,
               ),
             });
-            continue;
+
+            return;
           }
         }
         answerSections.push({
@@ -323,7 +330,7 @@ export async function createMediasoupMediaBackend(
           kind: section.kind,
           direction: "inactive",
         });
-      }
+      });
 
       await transport.connect({
         dtlsParameters: {
@@ -387,6 +394,7 @@ export async function createMediasoupMediaBackend(
         }
       }
       state.transport.close();
+
       return [...affected];
     },
   };

@@ -1,6 +1,6 @@
-// Bridges plain WebRTC SDP offer/answer (what a browser RTCPeerConnection, unmodified, actually sends and expects) against mediasoup's own transport/router state, which is expressed as structured RtpParameters/IceParameters/DtlsParameters rather than SDP text. mediasoup deliberately does not do this itself (its own FAQ: "mediasoup does not process or generate SDP... you can build your own SDP handling on top using an npm module such as sdp-transform"); this module is that layer, kept as a standalone adapter with no mediasoup import of its own so it takes and returns only plain, already-portable data shapes (mediasoup's own Rtp/Ice/Dtls parameter types are structurally compatible with what this module expects, needing no cast at the call site in mediasoup-media-backend.ts).
-//
-// Scope: intersects the offer's own codecs against the router's own RouterRtpCapabilities to choose exactly one payload type per m-line (no simulcast, no codec preference beyond "first mutually supported match"), and treats a non-audio/video m-line (e.g. an application/SCTP m-line from a data channel bundled on the same connection) as rejected in the answer (port 0), never produced or consumed. Both are explicit, documented scope boundaries, not silent gaps: see this package's README for what a fuller implementation would add.
+/* Bridges plain WebRTC SDP offer/answer (what a browser RTCPeerConnection, unmodified, actually sends and expects) against mediasoup's own transport/router state, which is expressed as structured RtpParameters/IceParameters/DtlsParameters rather than SDP text. mediasoup deliberately does not do this itself (its own FAQ: "mediasoup does not process or generate SDP... you can build your own SDP handling on top using an npm module such as sdp-transform"); this module is that layer, kept as a standalone adapter with no mediasoup import of its own so it takes and returns only plain, already-portable data shapes (mediasoup's own Rtp/Ice/Dtls parameter types are structurally compatible with what this module expects, needing no cast at the call site in mediasoup-media-backend.ts).
+
+   Scope: intersects the offer's own codecs against the router's own RouterRtpCapabilities to choose exactly one payload type per m-line (no simulcast, no codec preference beyond "first mutually supported match"), and treats a non-audio/video m-line (e.g. an application/SCTP m-line from a data channel bundled on the same connection) as rejected in the answer (port 0), never produced or consumed. Both are explicit, documented scope boundaries, not silent gaps: see this package's README for what a fuller implementation would add. */
 
 import {
   parse as parseSdp,
@@ -67,6 +67,7 @@ function iceDtlsFor(
       `m-line mid=${midOf(media) ?? "?"} carries no ICE ufrag/pwd or DTLS fingerprint, at session or media level`,
     );
   }
+
   return { iceUfrag, icePwd, fingerprint };
 }
 
@@ -82,6 +83,7 @@ function midOf(media: Readonly<Media>): string | undefined {
   if (typeof mid === "number") {
     return String(mid);
   }
+
   return typeof mid === "string" ? mid : undefined;
 }
 
@@ -109,6 +111,7 @@ function rtpParametersFromMedia(media: Readonly<Media>): BridgeRtpParameters {
   const codecs: BridgeRtpCodecParameters[] = media.rtp.map((rtp) => {
     const config = fmtpByPayload.get(rtp.payload);
     const rtcpFeedback = rtcpFbByPayload.get(rtp.payload);
+
     return {
       mimeType: `${media.type}/${rtp.codec}`,
       payloadType: rtp.payload,
@@ -132,6 +135,7 @@ function rtpParametersFromMedia(media: Readonly<Media>): BridgeRtpParameters {
     .filter((group) => group.semantics === "FID")
     .map((group) => group.ssrcs.split(" ").map(Number))
     .find((pair) => pair[0] === mediaSsrc)?.[1];
+
   return {
     mid,
     codecs,
@@ -164,6 +168,7 @@ export function parseOffer(offerSdp: string): ParsedOffer {
     if (kind === "other") {
       return { mid, kind, canReceive: false };
     }
+
     return {
       mid,
       kind,
@@ -178,6 +183,7 @@ export function parseOffer(offerSdp: string): ParsedOffer {
   if (firstMedia === undefined) {
     throw new Error("offer carries no m-lines");
   }
+
   return { iceDtls: iceDtlsFor(session, firstMedia), sections };
 }
 
@@ -201,6 +207,7 @@ export function intersectWithRouterCapabilities(
   if (matched === undefined) {
     return undefined;
   }
+
   return { ...offered, codecs: [matched] };
 }
 
@@ -231,7 +238,8 @@ export interface BuildAnswerOptions {
 }
 
 const SDP_UNICAST_ADDRESS = "0.0.0.0";
-const SDP_PORT_WHEN_BUNDLED = 9; // RFC 8843: every bundled m-line after the first uses the discard port; ICE/DTLS/media all flow over the first m-line's own candidates.
+// RFC 8843: every bundled m-line after the first uses the discard port; ICE/DTLS/media all flow over the first m-line's own candidates.
+const SDP_PORT_WHEN_BUNDLED = 9;
 const SDP_PORT_REJECTED = 0;
 
 /** Builds a complete SDP answer for a parsed offer's own m-line sequence: sections must be given in exactly the same order as the offer's own parseOffer().sections, one per m-line, so RFC 8843 bundling and m-line-position matching hold. Every section becomes a real m-line: "other" (non-audio/video) sections are rejected (port 0), matching how this bridge treats them in parseOffer. */
@@ -257,6 +265,7 @@ export function buildAnswer(options: Readonly<BuildAnswerOptions>): string {
       buildAnswerMedia(section, index, options),
     ),
   };
+
   return writeSdp(session);
 }
 
@@ -278,6 +287,7 @@ function buildAnswerMedia(
   }
   const rtpParameters = section.rtpParameters;
   const payloads = rtpParameters?.codecs.map((codec) => codec.payloadType);
+
   return {
     type: section.kind,
     port:

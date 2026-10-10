@@ -1,4 +1,6 @@
-// A real Chrome offer's own audio (opus, sendrecv), video (VP8+VP9 as its RTX pair, sendrecv), and a second, recvonly video m-line reserved for consuming another participant's track: one BUNDLE group, per-media ICE/DTLS (Chrome duplicates these onto every m-line rather than only the session level), an SCTP application m-line for the data channel core/webrtc's own signaling doubles as. Shared by sdp-bridge.unit.test.ts (pure parsing, no mediasoup) and mediasoup-media-backend.integration.test.ts (a real mediasoup Router, where the same fixture doubles as two different participants' own offers, since Chrome always numbers its own mids from 0 the same way regardless of who is offering).
+/**
+ * A real Chrome offer's own audio (opus, sendrecv), video (VP8+VP9 as its RTX pair, sendrecv), and a second, recvonly video m-line reserved for consuming another participant's track: one BUNDLE group, per-media ICE/DTLS (Chrome duplicates these onto every m-line rather than only the session level), an SCTP application m-line for the data channel core/webrtc's own signaling doubles as. Shared by sdp-bridge.unit.test.ts (pure parsing, no mediasoup) and mediasoup-media-backend.integration.test.ts (a real mediasoup Router, where the same fixture doubles as two different participants' own offers, since Chrome always numbers its own mids from 0 the same way regardless of who is offering).
+ */
 export const CHROME_SHAPED_OFFER = [
   "v=0",
   "o=- 4611731400430051336 2 IN IP4 127.0.0.1",
