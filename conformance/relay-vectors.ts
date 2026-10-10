@@ -18,6 +18,7 @@ export function relayVectors(ctx: Readonly<RelayVectorContext>): Vector[] {
     wire_hex: ctx.wireHex(message),
   });
   const payload = hex("de".repeat(ctx.payloadByteLength));
+
   return [
     vector("relay_offer_v1", {
       type: "relay-offer",

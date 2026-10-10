@@ -1,9 +1,9 @@
-// Token vectors kept out of generate.ts the same way adverts.ts already is: generate.ts
-// sits at this repo's own max-lines cap, so when a set of token vectors grows the file it
-// moves here instead. Everything shared with generate.ts (the synthetic identities, the
-// signature filler, the CDE hex encoders) arrives via the context parameter rather than
-// being redefined here, so the two files cannot drift apart on what deviceB or a filler
-// signature is.
+/* Token vectors kept out of generate.ts the same way adverts.ts already is: generate.ts
+   sits at this repo's own max-lines cap, so when a set of token vectors grows the file it
+   moves here instead. Everything shared with generate.ts (the synthetic identities, the
+   signature filler, the CDE hex encoders) arrives via the context parameter rather than
+   being redefined here, so the two files cannot drift apart on what deviceB or a filler
+   signature is. */
 
 import { encode, cdeEncodeOptions } from "cbor2";
 import { hex, type JsonWire, type Vector } from "@exadev/wire-mesh-conformance";
@@ -42,8 +42,8 @@ export function grantTokenVectors(ctx: Readonly<TokenVectorContext>): Vector[] {
     ctx.signatureFiller,
   ];
 
-  // The named no-self-grant bar, the exact node shape the TS core's noSelfGrantBar
-  // builds: not(and(granted-capability-is "exec:pty", grantee-is <deviceB-hex>)).
+  /* The named no-self-grant bar, the exact node shape the TS core's noSelfGrantBar
+     builds: not(and(granted-capability-is "exec:pty", grantee-is <deviceB-hex>)). */
   const noSelfGrantBar = {
     kind: "not",
     operand: {
@@ -74,11 +74,11 @@ export function grantTokenVectors(ctx: Readonly<TokenVectorContext>): Vector[] {
     encode([noSelfGrantBar], cdeEncodeOptions),
   ).toString("hex");
 
-  // A manage:grant root (deviceA grants deviceB the right to mint, any verb within
-  // /work since grants-capability is absent, one hop deep) carrying that bar, then an
-  // exec:pty token deviceB minted under it (citing it via authorised-by, granted to
-  // deviceC so the bar holds), and a second-level manage:grant deviceB passed onward to
-  // deviceC, itself naming exec:pty.
+  /* A manage:grant root (deviceA grants deviceB the right to mint, any verb within
+     /work since grants-capability is absent, one hop deep) carrying that bar, then an
+     exec:pty token deviceB minted under it (citing it via authorised-by, granted to
+     deviceC so the bar holds), and a second-level manage:grant deviceB passed onward to
+     deviceC, itself naming exec:pty. */
   const manageGrantRootTokenVector = vector(
     "capability_token_v1_manage_grant_root",
     token(ctx.deviceA, ctx.publicKeyEs256A, {
@@ -132,10 +132,12 @@ export function grantTokenVectors(ctx: Readonly<TokenVectorContext>): Vector[] {
   ];
 }
 
-/// core/room's own membership chain demonstrating delegations-remaining: the owner
-/// (deviceA) issues a root grant to deviceB capped at one further re-delegation, and
-/// deviceB narrows it (a strictly lower value, 0) when re-delegating to deviceC, whose
-/// own token therefore bears no further-delegation authority at all.
+/**
+ * / core/room's own membership chain demonstrating delegations-remaining: the owner
+ * / (deviceA) issues a root grant to deviceB capped at one further re-delegation, and
+ * / deviceB narrows it (a strictly lower value, 0) when re-delegating to deviceC, whose
+ * / own token therefore bears no further-delegation authority at all.
+ */
 export function roomMemberTokens(ctx: Readonly<TokenVectorContext>): {
   vectors: Vector[];
   /** The root room:member token's own JsonWire shape, for vectors that embed it (a room-notice's posting authority, a manage-request's presented token). */
@@ -191,11 +193,13 @@ export function roomMemberTokens(ctx: Readonly<TokenVectorContext>): {
   };
 }
 
-/// wire-mesh#324's request-permission root: deviceA grants deviceB the right to ASK for
-/// room:member over any room (a path-less room scope is the kind's whole root, so the
-/// token's scope covers any room path a request might carry). Presented in
-/// manage-request-frame's own token field; the gated frame vector below embeds exactly
-/// these wire bytes.
+/**
+ * / wire-mesh#324's request-permission root: deviceA grants deviceB the right to ASK for
+ * / room:member over any room (a path-less room scope is the kind's whole root, so the
+ * / token's scope covers any room path a request might carry). Presented in
+ * / manage-request-frame's own token field; the gated frame vector below embeds exactly
+ * / these wire bytes.
+ */
 export function manageRequestTokenVector(
   ctx: Readonly<TokenVectorContext>,
 ): Vector {
@@ -204,6 +208,7 @@ export function manageRequestTokenVector(
     message,
     wire_hex: ctx.wireHex(message),
   });
+
   return vector("capability_token_v1_manage_request_root", [
     hex(ctx.protectedHeaderHex(ctx.deviceA)),
     {},

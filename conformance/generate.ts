@@ -1,6 +1,6 @@
-// Produces conformance/{handshake,tokens,adverts,frames}.v1.json from the vector definitions below. Each vector's `wire_hex` is derived mechanically by canonically CBOR-encoding `message` via cbor2's CDE (CBOR Common Deterministic Encoding) mode -- the same RFC 8949 4.2 core deterministic rules DAG-CBOR builds on -- never hand-typed. Signature and public-key bytes are clearly-synthetic filler everywhere except adverts.v1.json, since those files freeze the wire-exact envelope shape (map key ordering, field presence, array structure, nesting) rather than a working signature, the same scope Cascade's own frozen frames/handshake/tokens vectors commit to for structural fields with no real crypto behind them. adverts.v1.json is the exception, and carries real Ed25519 material: a peer-advert's signature is the only thing binding a gossiped device-id to the device that owns it, so what gets signed has to be pinned across implementations, not merely shaped correctly.
-//
-// Run `pnpm generate` after changing anything below, then `pnpm test` to confirm every vector round-trips.
+/* Produces conformance/{handshake,tokens,adverts,frames}.v1.json from the vector definitions below. Each vector's `wire_hex` is derived mechanically by canonically CBOR-encoding `message` via cbor2's CDE (CBOR Common Deterministic Encoding) mode -- the same RFC 8949 4.2 core deterministic rules DAG-CBOR builds on -- never hand-typed. Signature and public-key bytes are clearly-synthetic filler everywhere except adverts.v1.json, since those files freeze the wire-exact envelope shape (map key ordering, field presence, array structure, nesting) rather than a working signature, the same scope Cascade's own frozen frames/handshake/tokens vectors commit to for structural fields with no real crypto behind them. adverts.v1.json is the exception, and carries real Ed25519 material: a peer-advert's signature is the only thing binding a gossiped device-id to the device that owns it, so what gets signed has to be pinned across implementations, not merely shaped correctly.
+
+   Run `pnpm generate` after changing anything below, then `pnpm test` to confirm every vector round-trips. */
 
 import { encode, cdeEncodeOptions } from "cbor2";
 import {
@@ -28,30 +28,45 @@ function vector(name: string, message: JsonWire): Vector {
 
 // -- Byte lengths named for what they actually are, not left as bare literals --
 
-const SHA256_BYTE_LENGTH = 32; // device-id = SHA-256(identity-key.public-key)
-const P256_COORDINATE_BYTE_LENGTH = 32; // uncompressed SEC1 point: 0x04 || X || Y, X and Y each this length
+// device-id = SHA-256(identity-key.public-key)
+const SHA256_BYTE_LENGTH = 32;
+// uncompressed SEC1 point: 0x04 || X || Y, X and Y each this length
+const P256_COORDINATE_BYTE_LENGTH = 32;
 const ED25519_PUBLIC_KEY_BYTE_LENGTH = 32;
-const SIGNATURE_BYTE_LENGTH = 64; // raw ES256/EdDSA signature length
-const TOKEN_ID_BYTE_LENGTH = 16; // opaque token-id, arbitrarily sized like a UUID
-const EXAMPLE_RELAY_PAYLOAD_BYTE_LENGTH = 24; // arbitrary example ciphertext length for relay-data-frame
-const SECURE_EPHEMERAL_KEY_BYTE_LENGTH = 65; // SEC1 uncompressed P-256 point in secure-hello-frame: 0x04 || X || Y
-const SECURE_NONCE_BYTE_LENGTH = 16; // secure-hello-frame nonce
-const EXAMPLE_SECURE_CIPHERTEXT_BYTE_LENGTH = 32; // arbitrary example AEAD output length for secure-data-frame
+// raw ES256/EdDSA signature length
+const SIGNATURE_BYTE_LENGTH = 64;
+// opaque token-id, arbitrarily sized like a UUID
+const TOKEN_ID_BYTE_LENGTH = 16;
+// arbitrary example ciphertext length for relay-data-frame
+const EXAMPLE_RELAY_PAYLOAD_BYTE_LENGTH = 24;
+// SEC1 uncompressed P-256 point in secure-hello-frame: 0x04 || X || Y
+const SECURE_EPHEMERAL_KEY_BYTE_LENGTH = 65;
+// secure-hello-frame nonce
+const SECURE_NONCE_BYTE_LENGTH = 16;
+// arbitrary example AEAD output length for secure-data-frame
+const EXAMPLE_SECURE_CIPHERTEXT_BYTE_LENGTH = 32;
 
 // -- Shared synthetic identities, reused across files for a coherent story --
 
-const deviceA = hex("11".repeat(SHA256_BYTE_LENGTH)); // issuer / coordinator
-const deviceB = hex("22".repeat(SHA256_BYTE_LENGTH)); // bearer of the root token / delegator
-const deviceC = hex("33".repeat(SHA256_BYTE_LENGTH)); // bearer of the delegated token
-const deviceD = hex("44".repeat(SHA256_BYTE_LENGTH)); // handle-record subject
-const deviceGroup = hex("55".repeat(SHA256_BYTE_LENGTH)); // exadev.io/threshold's own group device-id -- SHA-256(group verifying key), an ordinary identity.cddl device-id derivation applied to a FROST-issued Ed25519 key, distinct from any single participant's own device-id
-const deviceGroupKeyBytes = hex("66".repeat(ED25519_PUBLIC_KEY_BYTE_LENGTH)); // synthetic group verifying-key bytes, reused by threshold-keygen-round1's existing-group-key and threshold-keygen-confirm's group-key
+// issuer / coordinator
+const deviceA = hex("11".repeat(SHA256_BYTE_LENGTH));
+// bearer of the root token / delegator
+const deviceB = hex("22".repeat(SHA256_BYTE_LENGTH));
+// bearer of the delegated token
+const deviceC = hex("33".repeat(SHA256_BYTE_LENGTH));
+// handle-record subject
+const deviceD = hex("44".repeat(SHA256_BYTE_LENGTH));
+// exadev.io/threshold's own group device-id -- SHA-256(group verifying key), an ordinary identity.cddl device-id derivation applied to a FROST-issued Ed25519 key, distinct from any single participant's own device-id
+const deviceGroup = hex("55".repeat(SHA256_BYTE_LENGTH));
+// synthetic group verifying-key bytes, reused by threshold-keygen-round1's existing-group-key and threshold-keygen-confirm's group-key
+const deviceGroupKeyBytes = hex("66".repeat(ED25519_PUBLIC_KEY_BYTE_LENGTH));
 
 const publicKeyEs256A = hex(
   "04" +
     "aa".repeat(P256_COORDINATE_BYTE_LENGTH) +
     "bb".repeat(P256_COORDINATE_BYTE_LENGTH),
-); // uncompressed P-256 point, synthetic
+  // uncompressed P-256 point, synthetic
+);
 const publicKeyEs256B = hex(
   "04" +
     "cc".repeat(P256_COORDINATE_BYTE_LENGTH) +
@@ -59,13 +74,15 @@ const publicKeyEs256B = hex(
 );
 const publicKeyEd25519D = hex("ee".repeat(ED25519_PUBLIC_KEY_BYTE_LENGTH));
 
-const signatureFiller = hex("ff".repeat(SIGNATURE_BYTE_LENGTH)); // synthetic ES256/EdDSA-shaped signature
+// synthetic ES256/EdDSA-shaped signature
+const signatureFiller = hex("ff".repeat(SIGNATURE_BYTE_LENGTH));
 
-const EDDSA = -8; // COSE algorithm identifier for pure Ed25519 (RFC 9053)
+// COSE algorithm identifier for pure Ed25519 (RFC 9053)
+const EDDSA = -8;
 
-// -----------------------------------------------------------------------
-// handshake.v1.json
-// -----------------------------------------------------------------------
+/* -----------------------------------------------------------------------
+   handshake.v1.json
+   ----------------------------------------------------------------------- */
 
 const handshakeVectors: Vector[] = [
   vector("handshake_v1_management_exec_data", {
@@ -81,9 +98,9 @@ const handshakeVectors: Vector[] = [
   }),
 ];
 
-// -----------------------------------------------------------------------
-// tokens.v1.json
-// -----------------------------------------------------------------------
+/* -----------------------------------------------------------------------
+   tokens.v1.json
+   ----------------------------------------------------------------------- */
 
 const rootTokenClaims: JsonWire = {
   "token-id": hex("01".repeat(TOKEN_ID_BYTE_LENGTH)),
@@ -112,7 +129,8 @@ const delegatedTokenClaims: JsonWire = {
   bearer: deviceC,
   capability: "exec:pty",
   scope: { kind: "folder", path: "/work/subdir" },
-  expires: 1861920000000, // earlier than the parent's expiry -- delegation narrows, never widens
+  // earlier than the parent's expiry -- delegation narrows, never widens
+  expires: 1861920000000,
   parent: hex(rootTokenVector.wire_hex),
 };
 
@@ -153,8 +171,9 @@ const roomMemberVectors: Vector[] = roomMember.vectors;
 
 // A room:member grant chain demonstrating this session's own delegations-remaining fix: the owner (deviceA) issues a root grant to deviceB capped at one further re-delegation, and deviceB narrows it (a strictly lower value, 0) when re-delegating to deviceC -- deviceC's own token therefore bears no further-delegation authority at all, closing the unbounded-admission gap the claim exists to fix.
 
-// core/room's own noticeboard entry (room.cddl's room-notice), self-certifying the same way capability-token and handle-record already are. deviceB posts to the same general room its roomMemberRootToken already grants it membership in, embedding that exact token in full so a reader with no other context can verify posting authority from the notice alone.
-const NOTICE_ID_BYTE_LENGTH = 16; // opaque notice-id, arbitrarily sized like token-id
+/* core/room's own noticeboard entry (room.cddl's room-notice), self-certifying the same way capability-token and handle-record already are. deviceB posts to the same general room its roomMemberRootToken already grants it membership in, embedding that exact token in full so a reader with no other context can verify posting authority from the notice alone.
+   opaque notice-id, arbitrarily sized like token-id */
+const NOTICE_ID_BYTE_LENGTH = 16;
 
 const roomNoticeClaims: JsonWire = {
   room: `${deviceAHex}/general`,
@@ -180,7 +199,8 @@ const roomNoticeVector = vector("room_notice_v1_posted", roomNotice);
 const roomNoticeForwardClaims: JsonWire = {
   room: `${deviceAHex}/general`,
   poster: deviceC,
-  "poster-key": { alg: -7, "public-key": publicKeyEs256B }, // reusing B's synthetic key bytes for C is fine here -- this file freezes envelope shape, not real per-device key material
+  // reusing B's synthetic key bytes for C is fine here -- this file freezes envelope shape, not real per-device key material
+  "poster-key": { alg: -7, "public-key": publicKeyEs256B },
   token: roomMember.delegatedToken,
   "notice-id": hex("a2".repeat(NOTICE_ID_BYTE_LENGTH)),
   "posted-at": 1861920100000,
@@ -210,7 +230,8 @@ const roomNoticeEncryptedClaims: JsonWire = {
   "notice-id": hex("a3".repeat(NOTICE_ID_BYTE_LENGTH)),
   "posted-at": 1861920200000,
   "content-type": "text/plain+aes256gcm",
-  content: hex("deadbeef"), // structural placeholder for an AES-256-GCM ciphertext, not real crypto -- see this file's own header comment
+  // structural placeholder for an AES-256-GCM ciphertext, not real crypto -- see this file's own header comment
+  content: hex("deadbeef"),
   "key-epoch": 1,
 };
 
@@ -255,9 +276,9 @@ const tokenVectors: Vector[] = [
   handleRecordVector,
 ];
 
-// -----------------------------------------------------------------------
-// frames.v1.json -- every $frame-variant in spec/frame.cddl except handshake-frame, which lives in handshake.v1.json above.
-// -----------------------------------------------------------------------
+/* -----------------------------------------------------------------------
+   frames.v1.json -- every $frame-variant in spec/frame.cddl except handshake-frame, which lives in handshake.v1.json above.
+   ----------------------------------------------------------------------- */
 
 const frameVectors: Vector[] = [
   vector("ping_v1", { type: "ping" }),
@@ -515,8 +536,8 @@ const frameVectors: Vector[] = [
     scope: { kind: "room", path: `${deviceAHex}/general` },
     token: roomMember.rootToken,
   }),
-  // room.join and room.invite are deliberately ungated (no token field) -- access control is a human's explicit approval in the receiving UI, not a pre-shared token, the first verbs in this spec to work that way. This join vector uses a DM room path (the sorted device-id pair), the shape a first, tokenless contact actually needs.
-  // wire-mesh#324: the same capability.request ask, presented by a requester holding a manage:request permission -- manage-request-frame's own token field carries it, exactly what a receiver that has opted into gating checks.
+  /* room.join and room.invite are deliberately ungated (no token field) -- access control is a human's explicit approval in the receiving UI, not a pre-shared token, the first verbs in this spec to work that way. This join vector uses a DM room path (the sorted device-id pair), the shape a first, tokenless contact actually needs.
+     wire-mesh#324: the same capability.request ask, presented by a requester holding a manage:request permission -- manage-request-frame's own token field carries it, exactly what a receiver that has opted into gating checks. */
   vector("manage_request_v1_capability_request_gated", {
     type: "manage-request",
     "request-id": 21,
@@ -652,7 +673,8 @@ const frameVectors: Vector[] = [
     session: 7,
     seq: 3,
     channel: "stdout",
-    bytes: hex("68656c6c6f0a"), // "hello\n"
+    // "hello\n"
+    bytes: hex("68656c6c6f0a"),
   }),
   vector("stream_ack_v1", {
     type: "stream-ack",
@@ -679,9 +701,11 @@ const frameVectors: Vector[] = [
   }),
   vector("bulk_data_v1_chunk", {
     type: "bulk-data",
-    "transfer-id": hex("aa".repeat(TOKEN_ID_BYTE_LENGTH)), // transfer-id is the identical opaque-16-byte convention token-id already uses
+    // transfer-id is the identical opaque-16-byte convention token-id already uses
+    "transfer-id": hex("aa".repeat(TOKEN_ID_BYTE_LENGTH)),
     seq: 3,
-    bytes: hex("68656c6c6f0a"), // "hello\n"
+    // "hello\n"
+    bytes: hex("68656c6c6f0a"),
   }),
   vector("bulk_ack_v1", {
     type: "bulk-ack",
@@ -692,7 +716,8 @@ const frameVectors: Vector[] = [
   vector("bulk_end_v1", {
     type: "bulk-end",
     "transfer-id": hex("aa".repeat(TOKEN_ID_BYTE_LENGTH)),
-    digest: hex("cd".repeat(SHA256_BYTE_LENGTH)), // digest is a SHA-256 hash, the same 32-byte length device-id derivation already uses
+    // digest is a SHA-256 hash, the same 32-byte length device-id derivation already uses
+    digest: hex("cd".repeat(SHA256_BYTE_LENGTH)),
   }),
   // exadev.io/threshold (wire-mesh#29/#171) -- FROST(Ed25519) threshold signing's two-round commit/sign protocol, session abort, and the collapsed DKG/reshare keygen-round1/round2/confirm triplet. The group itself (deviceGroup) is a synthetic Ed25519 device-id distinct from deviceA/B/C, which here play the role of the group's own committing/signing participants.
   vector("manage_request_v1_threshold_commit", {
