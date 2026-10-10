@@ -49,6 +49,7 @@ async function generateIdentity(): Promise<IdentityPort> {
   const publicKeyBytes = new Uint8Array(
     await webcrypto.subtle.exportKey("raw", keyPair.publicKey),
   );
+
   return createNodeIdentity(keyPair.privateKey, publicKeyBytes, ES256);
 }
 
@@ -101,6 +102,7 @@ async function mintAuthorizingToken(
     ),
   );
   const signature = await identity.sign(toBeSigned);
+
   return [protectedHeader, {}, payload, signature];
 }
 
@@ -123,6 +125,7 @@ function createFakeSession(): FakeSession {
   const incomingManageRequests: AsyncIterable<IncomingManageRequest> = {
     [Symbol.asyncIterator]() {
       let delivered = false;
+
       return {
         async next(): Promise<IteratorResult<IncomingManageRequest>> {
           if (delivered) {
@@ -130,6 +133,7 @@ function createFakeSession(): FakeSession {
           }
           delivered = true;
           const request = await nextRequest;
+
           return request === null
             ? { value: undefined, done: true }
             : { value: request, done: false };
@@ -157,6 +161,7 @@ function createFakeSession(): FakeSession {
     sendDataFrame: async (): Promise<void> => Promise.resolve(),
     sendManageRequest: async (command): Promise<ManageOutcome> => {
       sent.push(command);
+
       return Promise.resolve({ result: "ok" });
     },
     close: async (): Promise<void> => Promise.resolve(),
@@ -190,10 +195,12 @@ function createFakeBackend(
   joinResult: JoinResult,
 ): SfuMediaBackend & { joinedParticipantIds: string[] } {
   const joinedParticipantIds: string[] = [];
+
   return {
     joinedParticipantIds,
     async join(participantId): Promise<JoinResult> {
       joinedParticipantIds.push(participantId);
+
       return Promise.resolve(joinResult);
     },
     // Not exercised by these tests: see media-backend.ts's own doc comment for why a real backend may legitimately no-op this too.
@@ -227,6 +234,7 @@ describe("createSfuCall", () => {
         undefined,
         async (outcome): Promise<void> => {
           responses.push(outcome);
+
           return Promise.resolve();
         },
       ),
@@ -261,6 +269,7 @@ describe("createSfuCall", () => {
         token,
         async (outcome): Promise<void> => {
           responses.push(outcome);
+
           return Promise.resolve();
         },
       ),
@@ -343,6 +352,63 @@ describe("createSfuCall", () => {
         },
       },
     ]);
+  });
+
+  it("does not hand the negotiation id of an offer authorised after its participant was removed to the same device added again", async () => {
+    const deviceA = deviceIdFromFillByte(DEVICE_A_FILL_BYTE);
+    const deviceB = deviceIdFromFillByte(DEVICE_B_FILL_BYTE);
+    const identity = await generateIdentity();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const call = createSfuCall(
+      createFakeBackend({
+        answerSdp: "v=0 answer",
+        produced: [{ mid: "0", kind: "audio" } satisfies BackendTrack],
+        consumed: [],
+      }),
+      {
+        identity,
+        clock: { now: () => Date.now() },
+        revocation: {
+          entriesFor: async () => {
+            await gate;
+
+            return [];
+          },
+        },
+      },
+    );
+    const first = createFakeSession();
+    const firstAdded = call.addParticipant(deviceA, first.session);
+    first.pushAndEnd(
+      fakeIncomingOffer(
+        NEGOTIATION_ID_AUTHORIZED_OFFER,
+        "v=0 offer",
+        await mintAuthorizingToken(identity, deviceA),
+        async (): Promise<void> => Promise.resolve(),
+      ),
+    );
+    await call.removeParticipant(deviceA);
+    const second = createFakeSession();
+    void call.addParticipant(deviceA, second.session);
+    release();
+    await firstAdded;
+
+    const third = createFakeSession();
+    const thirdAdded = call.addParticipant(deviceB, third.session);
+    third.pushAndEnd(
+      fakeIncomingOffer(
+        NEGOTIATION_ID_B_JOINS_FIRST,
+        "v=0 offer",
+        await mintAuthorizingToken(identity, deviceB),
+        async (): Promise<void> => Promise.resolve(),
+      ),
+    );
+    await thirdAdded;
+
+    expect(second.sent).toEqual([]);
   });
 
   it("removeParticipant is idempotent for a participant never added", async () => {

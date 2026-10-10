@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// The wire-mesh-sfu CLI entrypoint: a standalone media-relay service accepting real MeshSessions over a WebSocket transport (reusing wire-mesh's own adapter, the identical wire protocol every deployment already speaks) and handing each one to a shared SfuCall. Deployment mode is a genuine, independent choice from the mediasoup backend itself (see spec/webrtc.cddl's own module header): this is the standalone-service half of that choice; an in-process deployment inside another wire-mesh process would call createSfuCall/createMediasoupMediaBackend directly instead of spawning this binary, sharing the identical domain and adapter code.
-//
-// Identity: this SFU signs its own handshake with a freshly generated, in-memory ES256 keypair each time it starts, never persisted to disk: a deliberate v1 scope choice, not an oversight. It matters for restart continuity (a restarted SFU cannot be recognised as "the same device" by anyone holding an old capability-token scoped to its old device-id) but not for correctness within one run: this SFU never issues its own capability tokens for others to hold long-term, and its own identity is used only to sign/verify handshake and manage-request exchanges for the lifetime of the process. A future revision wanting restart continuity would persist the keypair the same way core/node-fs-storage already persists other node-local state.
+/* The wire-mesh-sfu CLI entrypoint: a standalone media-relay service accepting real MeshSessions over a WebSocket transport (reusing wire-mesh's own adapter, the identical wire protocol every deployment already speaks) and handing each one to a shared SfuCall. Deployment mode is a genuine, independent choice from the mediasoup backend itself (see spec/webrtc.cddl's own module header): this is the standalone-service half of that choice; an in-process deployment inside another wire-mesh process would call createSfuCall/createMediasoupMediaBackend directly instead of spawning this binary, sharing the identical domain and adapter code.
+
+   Identity: this SFU signs its own handshake with a freshly generated, in-memory ES256 keypair each time it starts, never persisted to disk: a deliberate v1 scope choice, not an oversight. It matters for restart continuity (a restarted SFU cannot be recognised as "the same device" by anyone holding an old capability-token scoped to its old device-id) but not for correctness within one run: this SFU never issues its own capability tokens for others to hold long-term, and its own identity is used only to sign/verify handshake and manage-request exchanges for the lifetime of the process. A future revision wanting restart continuity would persist the keypair the same way core/node-fs-storage already persists other node-local state. */
 
 import { webcrypto } from "node:crypto";
 import { createNodeIdentity } from "wire-mesh-core/adapters/node-identity";
@@ -23,6 +23,7 @@ export function healthResponse(): { ok: true; node: string; roles: string[] } {
 
 function argValue(argv: readonly string[], flag: string): string | undefined {
   const flagIndex = argv.indexOf(flag);
+
   return flagIndex === -1 ? undefined : argv[flagIndex + 1];
 }
 
@@ -54,6 +55,7 @@ async function generateIdentity(): Promise<IdentityPort> {
   const publicKeyBytes = new Uint8Array(
     await webcrypto.subtle.exportKey("raw", keyPair.publicKey),
   );
+
   return createNodeIdentity(keyPair.privateKey, publicKeyBytes, ES256);
 }
 
