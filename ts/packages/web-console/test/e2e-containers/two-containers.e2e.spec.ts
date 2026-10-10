@@ -11,6 +11,7 @@ function requiredEnvironment(name: string): string {
   if (value === undefined || value === "") {
     throw new Error(`${name} must be set`);
   }
+
   return value;
 }
 

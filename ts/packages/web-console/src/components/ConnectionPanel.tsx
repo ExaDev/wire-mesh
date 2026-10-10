@@ -38,6 +38,7 @@ export function deviceHex(device: Uint8Array): string {
   for (const byte of device) {
     hex += byte.toString(HEX_RADIX).padStart(2, "0");
   }
+
   return hex;
 }
 
@@ -55,6 +56,7 @@ function describeHandshake(event: Readonly<SessionEvent>): string {
     case "rejected":
       return ` · handshake rejected (${event.state.handshake.reason})`;
   }
+
   return "";
 }
 
@@ -72,6 +74,7 @@ function describeStatus(event: Readonly<SessionEvent>): string {
     case "idle":
       return "idle";
   }
+
   return "";
 }
 
@@ -135,6 +138,7 @@ export function ConnectionPanel({
         },
       );
     }
+
     return () => {
       current.value = false;
     };

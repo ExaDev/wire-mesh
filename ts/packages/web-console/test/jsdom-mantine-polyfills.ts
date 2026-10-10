@@ -19,9 +19,11 @@ export class ResizeObserverStub {
   observe(): void {
     // no-op
   }
+
   unobserve(): void {
     // no-op
   }
+
   disconnect(): void {
     // no-op
   }

@@ -59,6 +59,7 @@ export async function verifyWithPublicKey(
   signature: Uint8Array,
 ): Promise<boolean> {
   const cryptoKey = await importPublicKey(key);
+
   return crypto.subtle.verify(
     algParams(key.alg),
     cryptoKey,
@@ -92,6 +93,7 @@ export async function createWebCryptoIdentity(): Promise<IdentityPort> {
         keyPair.privateKey,
         toBufferSource(message),
       );
+
       return new Uint8Array(signature);
     },
     verify: verifyWithPublicKey,
@@ -109,6 +111,7 @@ export function isStoredIdentityEnvelope(
 ): value is StoredIdentityEnvelope {
   if (typeof value !== "object" || value === null) return false;
   if (!("privateJwk" in value) || !("publicKeyRaw" in value)) return false;
+
   return (
     typeof value.privateJwk === "object" &&
     value.privateJwk !== null &&
@@ -127,6 +130,7 @@ async function generateStoredIdentityEnvelope(): Promise<StoredIdentityEnvelope>
   const publicKeyRaw = new Uint8Array(
     await crypto.subtle.exportKey("raw", keyPair.publicKey),
   );
+
   return { privateJwk, publicKeyRaw };
 }
 
@@ -151,13 +155,13 @@ export async function identityFromStoredEnvelope(
   };
   const deviceId = await deriveDeviceId(envelope.publicKeyRaw);
 
-  // The same scalar imported a second time under ECDH for room.rekey's
-  // deriveSharedSecret -- possible here precisely because the persisted
-  // envelope already re-imports from JWK (the one-time export happened at
-  // generation), so no additional extractability is granted. The source
-  // JWK's own alg/key_ops describe its ECDSA usage; strip both (importKey
-  // validates requested usage against key_ops when present) and re-declare
-  // deriveBits, which is all ECDH needs from the curve point.
+  /* The same scalar imported a second time under ECDH for room.rekey's
+     deriveSharedSecret -- possible here precisely because the persisted
+     envelope already re-imports from JWK (the one-time export happened at
+     generation), so no additional extractability is granted. The source
+     JWK's own alg/key_ops describe its ECDSA usage; strip both (importKey
+     validates requested usage against key_ops when present) and re-declare
+     deriveBits, which is all ECDH needs from the curve point. */
   const ecdhJwk: JsonWebKey = {
     ...envelope.privateJwk,
     key_ops: ["deriveBits"],
@@ -180,6 +184,7 @@ export async function identityFromStoredEnvelope(
         privateKey,
         toBufferSource(message),
       );
+
       return new Uint8Array(signature);
     },
     verify: verifyWithPublicKey,
@@ -197,12 +202,14 @@ export async function identityFromStoredEnvelope(
         false,
         [],
       );
-      const SHARED_SECRET_BIT_LENGTH = 256; // P-256's own field size
+      // P-256's own field size
+      const SHARED_SECRET_BIT_LENGTH = 256;
       const bits = await crypto.subtle.deriveBits(
         { name: "ECDH", public: peerPublicKey },
         ecdhPrivateKey,
         SHARED_SECRET_BIT_LENGTH,
       );
+
       return new Uint8Array(bits);
     },
   };
@@ -218,6 +225,7 @@ export async function createPersistedWebCryptoIdentity(
     if (!isStoredIdentityEnvelope(decoded)) {
       throw new Error("stored identity envelope is malformed");
     }
+
     return identityFromStoredEnvelope(decoded);
   }
   const envelope = await generateStoredIdentityEnvelope();
@@ -225,5 +233,6 @@ export async function createPersistedWebCryptoIdentity(
     IDENTITY_STORAGE_KEY,
     new Uint8Array(encode(envelope, cdeEncodeOptions)),
   );
+
   return identityFromStoredEnvelope(envelope);
 }

@@ -44,6 +44,7 @@ async function issuedRecord(): Promise<GrantRecord> {
   if (!minted.ok) throw new Error(minted.error);
   const claims = decodeGrantClaims(minted.token);
   if (claims === undefined) throw new Error("minted token has no claims");
+
   return {
     tokenId: "issued-1",
     direction: "issued",
@@ -66,15 +67,18 @@ function scriptedStore(): {
     list: async () => {
       const answer = Promise.withResolvers<GrantRecord[]>();
       answers.push(answer);
+
       return answer.promise;
     },
     subscribe: (listener) => {
       listeners.add(listener);
+
       return () => {
         listeners.delete(listener);
       };
     },
   };
+
   return {
     store,
     answers,

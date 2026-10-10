@@ -34,6 +34,7 @@ export function GrantTable({
   const [inspected, setInspected] = useState<string | undefined>(undefined);
   // The grant whose revocation is awaiting confirmation: revoking cannot be undone.
   const [revoking, setRevoking] = useState<string | undefined>(undefined);
+
   return (
     <div data-testid={`grants-${title.toLowerCase()}`}>
       <Text fw={600} size="sm" mt="sm">

@@ -43,6 +43,7 @@ function describeRevocation(
       text: `Sent to ${String(reached)} of ${String(attempted)} connected nodes. This console no longer honours the grant.`,
     };
   }
+
   return {
     color: "green",
     title: "Revoked",
@@ -62,6 +63,7 @@ export function GrantsPanel({
     revocation === undefined ? undefined : describeRevocation(revocation);
   const held = grants.rows.filter((row) => row.direction === "held");
   const issued = grants.rows.filter((row) => row.direction === "issued");
+
   return (
     <Stack gap="xs" data-testid="grants-panel">
       <Text size="sm" c="dimmed">

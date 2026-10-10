@@ -25,6 +25,7 @@ export async function testCapabilities(
     identity,
     clock,
   });
+
   return {
     grants,
     revocations,

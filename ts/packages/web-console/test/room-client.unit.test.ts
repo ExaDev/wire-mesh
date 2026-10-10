@@ -51,6 +51,7 @@ function encodeBuf(value: unknown): Uint8Array<ArrayBuffer> {
 let issuedTokenIds = 0;
 function nextTokenId(): Uint8Array<ArrayBuffer> {
   issuedTokenIds += 1;
+
   return buf([issuedTokenIds]);
 }
 
@@ -84,6 +85,7 @@ async function signToken(
     payload,
   ]);
   const signature = await identity.sign(toBeSigned);
+
   return [protectedHeader, {}, payload, signature];
 }
 
@@ -127,6 +129,7 @@ function fakeSession(): {
             if (queued !== undefined) {
               return Promise.resolve({ value: queued, done: false });
             }
+
             return new Promise((resolve) => {
               waiters.push((request) => {
                 resolve({ value: request, done: false });
@@ -137,6 +140,7 @@ function fakeSession(): {
       },
     },
   } as unknown as MeshSession;
+
   return {
     session,
     push(request: IncomingManageRequest): void {
@@ -162,7 +166,7 @@ describe("sendRoomMessage", () => {
     const mockOutcome: ManageOutcome = { result: "ok" };
     vi.mocked(session.sendManageRequest).mockResolvedValue(mockOutcome);
 
-    const outcome = await sendRoomMessage(session, ROOM_PATH, "hi", token);
+    const outcome = await sendRoomMessage(session, ROOM_PATH, "hi", { token });
 
     expect(outcome).toBe(mockOutcome);
     expect(session.sendManageRequest).toHaveBeenCalledTimes(1);
@@ -216,7 +220,7 @@ describe("requestToJoin", () => {
       new Uint8Array(0),
     ];
 
-    await requestToJoin(session, ROOM_PATH, undefined, permission).catch(
+    await requestToJoin(session, ROOM_PATH, { requestToken: permission }).catch(
       () => undefined,
     );
     await requestToJoin(session, ROOM_PATH).catch(() => undefined);
@@ -255,13 +259,11 @@ describe("mintRoomInviteGrant", () => {
     const owner = await createWebCryptoIdentity();
     const invitee = await createWebCryptoIdentity();
 
-    const token = await mintRoomInviteGrant(
-      owner,
-      fixedClock(NOW_MS),
-      ROOM_PATH,
-      invitee.deviceId,
-      NOW_MS + HOUR_MS,
-    );
+    const token = await mintRoomInviteGrant(owner, fixedClock(NOW_MS), {
+      roomPath: ROOM_PATH,
+      invitee: invitee.deviceId,
+      expires: NOW_MS + HOUR_MS,
+    });
 
     const payload = token[2];
     if (payload === null) throw new Error("expected a payload");
@@ -301,8 +303,10 @@ describe("sendRoomInvite", () => {
 
 function fakeIncomingRoomSend(
   token: CapabilityToken | undefined,
-  params: Record<string, unknown> = {},
-  roomPath: string = ROOM_PATH,
+  {
+    params = {},
+    roomPath = ROOM_PATH,
+  }: { params?: Record<string, unknown>; roomPath?: string } = {},
 ): { incoming: IncomingManageRequest; respond: ReturnType<typeof vi.fn> } {
   const respond = vi.fn(async (): Promise<void> => Promise.resolve());
   const incoming: IncomingManageRequest = {
@@ -315,6 +319,7 @@ function fakeIncomingRoomSend(
     ...(token !== undefined ? { token } : {}),
     respond,
   };
+
   return { incoming, respond };
 }
 
@@ -349,11 +354,14 @@ describe("createRoomRouter", () => {
       { onMessage },
     );
 
-    const { incoming, respond } = fakeIncomingRoomSend(
-      token,
-      { "message-id": messageId, "sent-at": NOW_MS, text: "hello room" },
+    const { incoming, respond } = fakeIncomingRoomSend(token, {
+      params: {
+        "message-id": messageId,
+        "sent-at": NOW_MS,
+        text: "hello room",
+      },
       roomPath,
-    );
+    });
     push(incoming);
     await vi.waitFor(() => {
       expect(onMessage).toHaveBeenCalledTimes(1);
@@ -385,9 +393,11 @@ describe("createRoomRouter", () => {
     );
 
     const { incoming, respond } = fakeIncomingRoomSend(undefined, {
-      "message-id": messageId,
-      "sent-at": NOW_MS,
-      text: "hello room",
+      params: {
+        "message-id": messageId,
+        "sent-at": NOW_MS,
+        text: "hello room",
+      },
     });
     push(incoming);
     await vi.waitFor(() => {
@@ -506,13 +516,11 @@ describe("createRoomRouter", () => {
       deviceIdToHex(owner.deviceId),
       "general",
     );
-    const grantedToken = await mintRoomInviteGrant(
-      owner,
-      fixedClock(NOW_MS),
+    const grantedToken = await mintRoomInviteGrant(owner, fixedClock(NOW_MS), {
       roomPath,
-      invitee.deviceId,
-      NOW_MS + HOUR_MS,
-    );
+      invitee: invitee.deviceId,
+      expires: NOW_MS + HOUR_MS,
+    });
     const { session, push } = fakeSession();
     const onRoomInvite = vi.fn<(event: Readonly<RoomInviteEvent>) => void>();
     createRoomRouter(
@@ -560,9 +568,7 @@ describe("createRoomRouter", () => {
     const misdirectedToken = await mintRoomInviteGrant(
       owner,
       fixedClock(NOW_MS),
-      roomPath,
-      someoneElse.deviceId,
-      NOW_MS + HOUR_MS,
+      { roomPath, invitee: someoneElse.deviceId, expires: NOW_MS + HOUR_MS },
     );
     const { session, push } = fakeSession();
     const onRoomInvite = vi.fn<(event: Readonly<RoomInviteEvent>) => void>();
@@ -608,13 +614,11 @@ describe("createRoomRouter", () => {
       deviceIdToHex(owner.deviceId),
       "general",
     );
-    const grantedToken = await mintRoomInviteGrant(
-      owner,
-      fixedClock(NOW_MS),
+    const grantedToken = await mintRoomInviteGrant(owner, fixedClock(NOW_MS), {
       roomPath,
-      invitee.deviceId,
-      NOW_MS + HOUR_MS,
-    );
+      invitee: invitee.deviceId,
+      expires: NOW_MS + HOUR_MS,
+    });
     const { session, push } = fakeSession();
     createRoomRouter(
       session,

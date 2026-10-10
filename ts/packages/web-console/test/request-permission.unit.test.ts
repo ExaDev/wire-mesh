@@ -15,6 +15,7 @@ import {
   describeRequestRefusal,
   heldRequestToken,
 } from "../src/request-permission.js";
+import { inSequence } from "./sequence.js";
 
 const NOW = 1000;
 const HOUR_MS = 3_600_000;
@@ -62,6 +63,7 @@ async function permission(
       : { requestsCapability: overrides.requestsCapability }),
   });
   if (!verdict.ok) throw new Error(verdict.reason);
+
   return verdict.token;
 }
 
@@ -69,9 +71,10 @@ async function storeWith(
   recorded: readonly { token: CapabilityToken; direction?: GrantDirection }[],
 ): Promise<ReturnType<typeof createGrantStore>> {
   const store = createGrantStore(createMemoryStorage());
-  for (const { token, direction } of recorded) {
+  await inSequence(recorded, async ({ token, direction }) => {
     await store.record(direction ?? "held", token, NOW);
-  }
+  });
+
   return store;
 }
 

@@ -4,9 +4,13 @@ type Listener = (event: { data?: unknown }) => void;
 
 export class FakeWebSocket {
   binaryType = "arraybuffer";
+
   sent: ArrayBuffer[] = [];
+
   closed = false;
+
   closeCode: number | null = null;
+
   private readonly listeners = new Map<string, Listener[]>();
 
   constructor(public readonly url: string) {}

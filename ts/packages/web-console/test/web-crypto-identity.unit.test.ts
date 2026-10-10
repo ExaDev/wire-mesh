@@ -16,9 +16,11 @@ import {
 import { bytesFromHex } from "./hex.js";
 
 const ES256 = -7;
-const ES512 = -36; // a real COSE algorithm this adapter deliberately does not implement
+// a real COSE algorithm this adapter deliberately does not implement
+const ES512 = -36;
 const SHA256_BYTE_LENGTH = 32;
-const UNCOMPRESSED_P256_POINT_BYTE_LENGTH = 65; // 0x04 || X || Y
+// 0x04 || X || Y
+const UNCOMPRESSED_P256_POINT_BYTE_LENGTH = 65;
 
 function someMessage(): Uint8Array {
   return bytesFromHex("0102030405");

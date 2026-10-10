@@ -37,6 +37,7 @@ export function IdentitySection({
     revocations,
     announce: announceRevocation,
   });
+
   return (
     <Accordion multiple variant="contained" data-testid="identity-section">
       <Accordion.Item value="identity">

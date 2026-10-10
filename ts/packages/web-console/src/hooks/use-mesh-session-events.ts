@@ -54,6 +54,7 @@ export function useMeshSessionEvents(
         }));
       }
     })();
+
     return () => {
       lifecycle.cancelled = true;
     };

@@ -75,6 +75,7 @@ export async function startNode(
       reject(new Error(`the node exited with code ${String(code)}`));
     });
   });
+
   return {
     address,
     process: child,
@@ -99,6 +100,7 @@ export async function openConsole(
     "First connection to",
   );
   await page.getByRole("button", { name: "Trust and connect" }).click();
+
   return page;
 }
 
@@ -140,6 +142,7 @@ export async function converse(
 export async function handshakesSent(page: Readonly<Page>): Promise<number> {
   // The handshakes are counted in the raw frame log, which the connection panel keeps behind a toggle.
   await page.getByRole("switch", { name: "Show raw frames" }).check();
+
   return page
     .locator("table tbody tr", { hasText: /^sent\{"type":"handshake"/ })
     .count();

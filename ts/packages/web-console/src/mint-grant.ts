@@ -123,12 +123,14 @@ function parseTargetVerb(
         "the covered verb must look like subsystem:action, for example room:member",
     };
   }
+
   return { ok: true, claim, verb: verb.data };
 }
 
 function randomTokenId(): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(TOKEN_ID_BYTE_LENGTH);
   crypto.getRandomValues(bytes);
+
   return bytes;
 }
 
@@ -220,6 +222,7 @@ export async function mintGrant(
       : { [target.claim]: target.verb }),
     ...(barNodes.length === 0 ? {} : { conditions: barNodes }),
   });
+
   return verdict.ok
     ? { ok: true, token: verdict.token }
     : { ok: false, error: `refused: ${REFUSAL_TEXT[verdict.reason]}` };

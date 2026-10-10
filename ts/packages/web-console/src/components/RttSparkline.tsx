@@ -24,6 +24,7 @@ function describe(samples: readonly RttSample[]): string {
       ? "No round trips measured yet"
       : "Last ping got no pong";
   }
+
   return `Round trip ${String(Math.round(last))} ms`;
 }
 
@@ -46,6 +47,7 @@ export function RttSparkline({
     .filter((point) => point.y !== undefined)
     .map((point) => `${point.x.toFixed(1)},${String(point.y)}`)
     .join(" ");
+
   return (
     <div data-testid="rtt-sparkline">
       <svg

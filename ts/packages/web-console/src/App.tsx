@@ -148,13 +148,13 @@ export function App({
     () => ({ revocation: revocations.view, grants }),
     [revocations, grants],
   );
-  const roomMessaging = useRoomMessaging(
+  const roomMessaging = useRoomMessaging({
     identity,
     clock,
     messageStore,
     roomStorage,
     capabilities,
-  );
+  });
   const [selectedPath, setSelectedPath] = useState<string | undefined>();
   // The conversation shown is the one the user picked, falling back to the first while nothing is picked or the picked one no longer exists.
   const selectedConversation =
@@ -204,6 +204,7 @@ export function App({
   const isClosed = (): boolean => closedRef.current;
   useEffect(() => {
     closedRef.current = false;
+
     return () => {
       closedRef.current = true;
       for (const entry of connectionsRef.current) {
@@ -274,6 +275,7 @@ export function App({
       claimants.add(key);
       claimedDevices.current.set(candidateAddress, claimants);
     }
+
     return new Promise<boolean>((resolve) => {
       setDiscovered((current) => [
         ...current,
@@ -291,6 +293,7 @@ export function App({
   function resolveDiscovered(key: string, approved: boolean): void {
     setDiscovered((current) => {
       current.find((entry) => entry.key === key)?.resolve(approved);
+
       return current.filter((entry) => entry.key !== key);
     });
   }
@@ -334,6 +337,7 @@ export function App({
       onExpansionDeclined: forgetClaims,
       onExpansionFailed: forgetClaims,
     });
+
     return session;
   }
 
@@ -371,6 +375,7 @@ export function App({
       await session.close();
       throw new Error("the console was closed while the dial was connecting");
     }
+
     return session;
   }
 
@@ -442,6 +447,7 @@ export function App({
         connection.session.sendRevocationAnnounce([entry]),
       ),
     );
+
     return {
       attempted: outcomes.length,
       reached: outcomes.filter((outcome) => outcome.status === "fulfilled")

@@ -25,19 +25,25 @@ export function createNameStore(storage: Readonly<KeyValueStorage>): NameStore {
     const cleaned = cleanName(name);
     if (cleaned === undefined) {
       await storage.delete(key);
+
       return;
     }
     await storage.set(key, new Uint8Array(encoder.encode(cleaned)));
   }
+
   return {
     async petnames() {
       const names = new Map<string, string>();
-      for (const key of await storage.keys(PETNAME_PREFIX)) {
-        const value = await storage.get(key);
+      const keys = await storage.keys(PETNAME_PREFIX);
+      const entries = await Promise.all(
+        keys.map(async (key) => ({ key, value: await storage.get(key) })),
+      );
+      for (const { key, value } of entries) {
         if (value !== undefined) {
           names.set(key.slice(PETNAME_PREFIX.length), decoder.decode(value));
         }
       }
+
       return names;
     },
     async setPetname(deviceHex, name) {
@@ -45,6 +51,7 @@ export function createNameStore(storage: Readonly<KeyValueStorage>): NameStore {
     },
     async selfName() {
       const value = await storage.get(SELF_NAME_KEY);
+
       return value === undefined ? undefined : decoder.decode(value);
     },
     async setSelfName(name) {

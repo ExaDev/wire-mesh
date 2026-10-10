@@ -16,6 +16,7 @@ export async function probeLocalNode(
 ): Promise<string | undefined> {
   try {
     await fetch(`http://127.0.0.1:${String(port)}/`, { mode: "no-cors" });
+
     return `ws://127.0.0.1:${String(port)}`;
   } catch {
     return undefined;
@@ -29,5 +30,6 @@ export async function discoverLocalNode(
   if (isLocalOrigin(host)) {
     return Promise.resolve(undefined);
   }
+
   return probeLocalNode();
 }

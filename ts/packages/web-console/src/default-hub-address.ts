@@ -6,6 +6,7 @@ export function sameOriginHubAddress(
   location: Readonly<Pick<Location, "protocol" | "host">>,
 ): string {
   const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
+
   return `${wsProtocol}//${location.host}`;
 }
 

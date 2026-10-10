@@ -4,8 +4,11 @@ type Listener = (event: { data?: unknown }) => void;
 
 export class FakeRtcDataChannel {
   binaryType = "arraybuffer";
+
   sent: ArrayBuffer[] = [];
+
   readyState: "connecting" | "open" | "closing" | "closed" = "open";
+
   private readonly listeners = new Map<string, Listener[]>();
 
   send(data: Readonly<ArrayBuffer>): void {

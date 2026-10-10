@@ -44,6 +44,7 @@ let issuedTokenIds = 0;
 /** A fresh, distinct token-id per call -- the tests only need each token to be distinguishable from the others, not any particular byte value. */
 function nextTokenId(): Uint8Array<ArrayBuffer> {
   issuedTokenIds += 1;
+
   return buf([issuedTokenIds]);
 }
 
@@ -77,6 +78,7 @@ async function signToken(
     payload,
   ]);
   const signature = await identity.sign(toBeSigned);
+
   return [protectedHeader, {}, payload, signature];
 }
 
@@ -231,21 +233,27 @@ class StubPeerConnection {
   addEventListener(): void {
     return undefined;
   }
+
   createDataChannel(): { binaryType: string; addEventListener: () => void } {
     return { binaryType: "", addEventListener: () => undefined };
   }
+
   async createOffer(): Promise<{ sdp: string }> {
     return Promise.resolve({ sdp: "v=0" });
   }
+
   async createAnswer(): Promise<{ sdp: string }> {
     return Promise.resolve({ sdp: "v=0" });
   }
+
   async setLocalDescription(): Promise<void> {
     return Promise.resolve();
   }
+
   async setRemoteDescription(): Promise<void> {
     return Promise.resolve();
   }
+
   close(): void {
     return undefined;
   }
@@ -265,10 +273,12 @@ function requestsOf(
   return {
     [Symbol.asyncIterator]: () => {
       let index = 0;
+
       return {
         next: async () => {
           const value = requests[index];
           index += 1;
+
           return Promise.resolve(
             value === undefined
               ? { done: true as const, value: undefined }
@@ -421,14 +431,16 @@ describe("mintOfferToken", () => {
         revocation: neverRevoked,
       }),
     ).toBe(true);
-    for (const token of [first, second]) {
-      expect(
-        await authorizeIncomingOffer(fakeIncomingRequest(token), {
-          identity,
-          clock: fixedClock(now + HOUR_MS + 1),
-          revocation: neverRevoked,
-        }),
-      ).toBe(false);
-    }
+    await Promise.all(
+      [first, second].map(async (token) => {
+        expect(
+          await authorizeIncomingOffer(fakeIncomingRequest(token), {
+            identity,
+            clock: fixedClock(now + HOUR_MS + 1),
+            revocation: neverRevoked,
+          }),
+        ).toBe(false);
+      }),
+    );
   });
 });

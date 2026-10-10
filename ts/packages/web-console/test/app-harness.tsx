@@ -30,10 +30,12 @@ export const fixedClock: Clock = { now: () => 0 };
 
 export function fakeMessageStore(): MessageStore {
   const stored = new Map<string, StoredMessage[]>();
+
   return {
     async append(roomPath, message): Promise<void> {
       const existing = stored.get(roomPath) ?? [];
       stored.set(roomPath, [...existing, message]);
+
       return Promise.resolve();
     },
     async list(roomPath): Promise<StoredMessage[]> {
@@ -59,6 +61,7 @@ class TrackedFakeWebSocket extends FakeWebSocket {
 export function dismissedPreferencesStorage(): KeyValueStorage {
   const storage = createMemoryStorage();
   void createPreferencesStore(storage).setIntroDismissed(true);
+
   return storage;
 }
 
@@ -86,6 +89,7 @@ export function renderApp(
     capabilities: suppliedCapabilities = currentCapabilities(),
     identityBackupStorage = createMemoryStorage(),
   } = options;
+
   return render(
     <MantineProvider>
       <App
@@ -127,6 +131,7 @@ export async function connectRoot(): Promise<FakeWebSocket> {
   }
   rootSocket.emitOpen();
   await screen.findByText(/^connected/);
+
   return rootSocket;
 }
 
@@ -135,6 +140,7 @@ export function appIdentity(): IdentityPort {
   if (identity === undefined) {
     throw new Error("installAppHarness must be called before the tests run");
   }
+
   return identity;
 }
 
@@ -143,6 +149,7 @@ export function currentCapabilities(): TestCapabilities {
   if (capabilities === undefined) {
     throw new Error("installAppHarness must be called before the tests run");
   }
+
   return capabilities;
 }
 

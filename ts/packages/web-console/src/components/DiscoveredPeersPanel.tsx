@@ -44,6 +44,7 @@ export function DiscoveredPeersPanel({
   if (peers.length === 0) {
     return null;
   }
+
   return (
     <Card withBorder padding="md" radius="md" data-testid="discovered-peers">
       <Text fw={600} size="sm" mb="xs">

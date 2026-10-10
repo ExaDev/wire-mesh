@@ -24,12 +24,14 @@ export function createRequestDemux(
       queues.get(request.command.verb)?.push(request);
     }
   })();
+
   return {
     stream: (verb) => {
       const queue = queues.get(verb);
       if (queue === undefined) {
         throw new Error(`the demux was not built to carry verb ${verb}`);
       }
+
       return queue.stream;
     },
   };

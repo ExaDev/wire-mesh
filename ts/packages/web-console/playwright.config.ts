@@ -1,9 +1,13 @@
 import { defineConfig } from "@playwright/test";
 
-// A fixed, dedicated port pair for the e2e run (never the dev-time 8787/5173 pair) so a developer's own `pnpm dev` session never collides with CI or a concurrent local test run.
+/**
+ * A fixed, dedicated port pair for the e2e run (never the dev-time 8787/5173 pair) so a developer's own `pnpm dev` session never collides with CI or a concurrent local test run.
+ */
 export const RELAY_PORT = 8790;
 export const VITE_PORT = 8798;
-// A second hub that also holds other devices' logs while they are offline, for the spec that has one device away while the other writes.
+/**
+ * A second hub that also holds other devices' logs while they are offline, for the spec that has one device away while the other writes.
+ */
 export const MAILBOX_RELAY_PORT = 8791;
 export const MAILBOX_RELAY_ADDRESS = `ws://127.0.0.1:${String(MAILBOX_RELAY_PORT)}`;
 const MAILBOX_DIR = "test-results/mailbox";

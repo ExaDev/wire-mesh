@@ -111,6 +111,7 @@ export function createNoticeWiring(
   function handleFrame(frame: Frame, from: Readonly<DataFrameSender>): void {
     if (frame.type === "data-have") {
       void requestCatchUp(from, frame.peer).catch(() => undefined);
+
       return;
     }
     if (frame.type === "data-entries") {
@@ -123,6 +124,7 @@ export function createNoticeWiring(
         }
         onChange();
       })();
+
       return;
     }
     if (frame.type === "data-request") {
@@ -153,6 +155,7 @@ export function createNoticeWiring(
       const perPeer = await Promise.all(
         peers.map(async (peer) => board.readPeerNotices(peer, room)),
       );
+
       return [...own, ...perPeer.flat()];
     },
     async sync(sender, peers) {
@@ -219,9 +222,9 @@ export async function bootstrapDmEpoch1(
     delivery,
   } = options;
   const FIRST_EPOCH = 1;
-  // Only the lower participant mints epoch 1: dmRoomPath embeds the sorted
-  // pair (lower + "+" + higher), so this side mints iff its own hex sorts
-  // strictly below the peer's -- the participant names ARE the path halves.
+  /* Only the lower participant mints epoch 1: dmRoomPath embeds the sorted
+     pair (lower + "+" + higher), so this side mints iff its own hex sorts
+     strictly below the peer's -- the participant names ARE the path halves. */
   const lower = roomPath.split("+")[0] ?? "";
   if (lower === "" || deviceIdToHex(identity.deviceId) !== lower) {
     return;

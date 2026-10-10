@@ -46,6 +46,7 @@ export function createPersistentRoomKeyStore(
     currentEpoch: async (room) => {
       const keys = (await storage.keys(`${KEY_PREFIX}${room}/`)).sort();
       const last = keys.at(-1);
+
       return last === undefined
         ? undefined
         : Number(last.slice(last.lastIndexOf("/") + 1));
@@ -78,6 +79,7 @@ export function createPersistentRoomTokenStore(
         if (verdict.ok) return parsed.data;
       }
       await storage.delete(key);
+
       return undefined;
     },
     set: async (room, token) => {

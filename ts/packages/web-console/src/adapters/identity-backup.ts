@@ -49,12 +49,14 @@ function bytesFromHex(hex: string): Uint8Array<ArrayBuffer> {
       HEX_RADIX,
     );
   }
+
   return bytes;
 }
 
 function fromBase64Url(text: string): Uint8Array<ArrayBuffer> {
   try {
     const binary = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
+
     return Uint8Array.from(binary, (char) => char.charCodeAt(0));
   } catch {
     throw new Error("the backup's key is not valid base64url");
@@ -84,6 +86,7 @@ function privateP256From(
   ) {
     throw new Error("the backup does not hold a P-256 private key");
   }
+
   return { kty, crv, x, y, d };
 }
 
@@ -160,6 +163,7 @@ export async function parseIdentityBackup(
     throw new Error("the backup's device-id does not match its public key");
   }
   await assertKeyPair(privateJwk, point);
+
   return {
     format: IDENTITY_BACKUP_FORMAT,
     version: IDENTITY_BACKUP_VERSION,
@@ -183,6 +187,7 @@ export function createIdentityBackupService(
       if (!isStoredIdentityEnvelope(envelope)) {
         throw new Error("stored identity envelope is malformed");
       }
+
       return {
         format: IDENTITY_BACKUP_FORMAT,
         version: IDENTITY_BACKUP_VERSION,

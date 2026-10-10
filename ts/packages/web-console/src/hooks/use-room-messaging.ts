@@ -52,6 +52,7 @@ import {
   createPersistentRoomTokenStore,
 } from "../persistent-room-state.js";
 import { createRoomRekeyHandler } from "wire-mesh-core/domain/room-rekey";
+import { eachInOrder } from "../in-order.js";
 import { bootstrapDmEpoch1, createNoticeWiring } from "../notices.js";
 
 // The domains a direct, WebRTC-negotiated peer session offers -- distinct from the connect-form's own domains list, which governs only what this console offers its relay/hub connection. core/management is implied by manage-request/response itself; core/room is what this session actually exists to speak.
@@ -61,6 +62,7 @@ const LOCAL_MESSAGE_ID_BYTE_LENGTH = 16;
 function randomLocalMessageId(): Uint8Array {
   const bytes = new Uint8Array(LOCAL_MESSAGE_ID_BYTE_LENGTH);
   crypto.getRandomValues(bytes);
+
   return bytes;
 }
 
@@ -115,13 +117,21 @@ function routeOf(entry: Readonly<ConversationInternal> | undefined): {
   throw new Error("conversation is not connected");
 }
 
-export function useRoomMessaging(
-  identity: IdentityPort,
-  clock: Readonly<Clock>,
-  messageStore: Readonly<MessageStore>,
-  roomStorage: Readonly<KeyValueStorage>,
-  capabilities: Readonly<CapabilityServices>,
-): RoomMessaging {
+export interface RoomMessagingOptions {
+  identity: IdentityPort;
+  clock: Readonly<Clock>;
+  messageStore: Readonly<MessageStore>;
+  roomStorage: Readonly<KeyValueStorage>;
+  capabilities: Readonly<CapabilityServices>;
+}
+
+export function useRoomMessaging({
+  identity,
+  clock,
+  messageStore,
+  roomStorage,
+  capabilities,
+}: Readonly<RoomMessagingOptions>): RoomMessaging {
   const { revocation, grants } = capabilities;
   const [sessions, dispatch] = useReducer(
     reduceConversations,
@@ -232,19 +242,23 @@ export function useRoomMessaging(
     if (current !== undefined) return current;
     const restored = await tokenStore.get(roomPath);
     if (restored !== undefined) tokenRef.current.set(roomPath, restored);
+
     return restored;
   }
 
   useEffect(() => {
     const unmounted = new AbortController();
+    const isUnmounted = (): boolean => unmounted.signal.aborted;
     void (async (): Promise<void> => {
       const roomPaths = new Set([
         ...(await messageStore.roomPaths()),
         ...(await tokenStore.rooms()),
       ]);
-      for (const roomPath of roomPaths) {
+      // One room at a time, so the rooms before one whose list fails are already restored.
+      await eachInOrder([...roomPaths], async (roomPath) => {
+        if (isUnmounted()) return;
         const messages = await messageStore.list(roomPath);
-        if (unmounted.signal.aborted) return;
+        if (isUnmounted()) return;
         const participants = participantsOf(roomPath, ownDeviceHex);
         dispatch({ type: "restored", roomPath, participants, messages });
         // The reducer has not applied the action yet, so the notices are read for the participants directly.
@@ -256,8 +270,9 @@ export function useRoomMessaging(
           .then((notices) => {
             dispatch({ type: "notices", roomPath, notices: [...notices] });
           });
-      }
+      });
     })();
+
     return () => {
       unmounted.abort();
     };
@@ -288,6 +303,7 @@ export function useRoomMessaging(
       firstEpochInFlight.current.delete(roomPath);
     });
     firstEpochInFlight.current.set(roomPath, delivery);
+
     return delivery;
   }
 
@@ -333,12 +349,12 @@ export function useRoomMessaging(
           },
         });
       },
-      // The inbound room.rekey path, built lazily per request so the
-      // recipient's own token is read at its current value -- tokens
-      // arrive only after the join/grant exchange, and a rekey that
-      // lands before this side holds one fails closed (no_token) until
-      // the peer retries, which the DM bootstrap's lower-mints ordering
-      // makes the steady state anyway.
+      /* The inbound room.rekey path, built lazily per request so the
+         recipient's own token is read at its current value -- tokens
+         arrive only after the join/grant exchange, and a rekey that
+         lands before this side holds one fails closed (no_token) until
+         the peer retries, which the DM bootstrap's lower-mints ordering
+         makes the steady state anyway. */
       onRekey: async (incoming) => {
         const ownToken = await heldToken(roomPath);
         if (ownToken === undefined) {
@@ -346,6 +362,7 @@ export function useRoomMessaging(
             result: "error",
             code: "no_token",
           });
+
           return;
         }
         const handler = createRoomRekeyHandler({
@@ -354,13 +371,14 @@ export function useRoomMessaging(
           revocation: revocation,
           ownRoomMemberToken: ownToken,
           onRekey: async (event) => {
-            for (const [i, key] of event.contentKeys.entries()) {
+            // Ascending epoch order, so a failure part way leaves the earlier epochs stored.
+            await eachInOrder(event.contentKeys, async (key, i) => {
               await roomKeyStore.set(
                 roomPath,
                 event.keyEpoch - event.contentKeys.length + 1 + i,
                 key,
               );
-            }
+            });
             refreshRoom(roomPath);
           },
         });
@@ -374,11 +392,11 @@ export function useRoomMessaging(
       connection: Readonly<Connection>,
       knownPeerDevice?: DeviceId,
     ): Promise<void> => {
-      // The peer's device-id (and with it the DM room path) only resolves
-      // after the handshake, but the session's onFrame hook exists from the
-      // start; a late-bound sink bridges the gap: early frames (handshake,
-      // gossip) find nothing to observe, and once the sink is set every frame
-      // reaches the notice wiring.
+      /* The peer's device-id (and with it the DM room path) only resolves
+         after the handshake, but the session's onFrame hook exists from the
+         start; a late-bound sink bridges the gap: early frames (handshake,
+         gossip) find nothing to observe, and once the sink is set every frame
+         reaches the notice wiring. */
       const frameSink: { current?: (frame: Frame) => void } = {};
       const accepted = await acceptMeshSession(
         connection,
@@ -397,6 +415,7 @@ export function useRoomMessaging(
       if (sessions.get(roomPath)?.direct !== undefined) {
         // Both sides can race to negotiate a connection to each other at once; the second one to arrive here yields to whichever direct session the conversation already has rather than duplicating it.
         await accepted.close();
+
         return;
       }
       frameSink.current = (frame) => {
@@ -468,31 +487,26 @@ export function useRoomMessaging(
       let token = entry?.token;
       if (token === undefined) {
         onPhase("awaiting-approval");
-        const joined = await requestToJoin(
-          session,
-          roomPath,
-          target,
-          await requestTokenFor(roomPath),
-        );
+        const joined = await requestToJoin(session, roomPath, {
+          targetDevice: target,
+          requestToken: await requestTokenFor(roomPath),
+        });
         onPhase("sending");
         token = joined.token;
         await rememberToken(roomPath, token);
         persist(grants.record("held", token, clock.now()));
         dispatch({ type: "token", roomPath, token });
-        // Opportunistic DM bootstrap: once this side holds its join-grant,
-        // the lower participant mints epoch 1 for the noticeboard. Fire-and-
-        // observe rather than awaited -- messaging must not block on it.
+        /* Opportunistic DM bootstrap: once this side holds its join-grant,
+           the lower participant mints epoch 1 for the noticeboard. Fire-and-
+           observe rather than awaited -- messaging must not block on it. */
         void deliverFirstEpoch(roomPath, token, { session, target }).catch(
           () => undefined,
         );
       }
-      const outcome = await sendRoomMessage(
-        session,
-        roomPath,
-        text,
+      const outcome = await sendRoomMessage(session, roomPath, text, {
         token,
-        target,
-      );
+        targetDevice: target,
+      });
       if (outcome.result !== "ok") {
         throw new Error(`send failed: ${outcome.code}`);
       }
@@ -503,6 +517,7 @@ export function useRoomMessaging(
         sentAt: clock.now(),
       };
       await messageStore.append(roomPath, stored);
+
       return stored;
     },
     [sessions, clock, messageStore, identity, roomKeyStore, requestTokenFor],
@@ -569,21 +584,19 @@ export function useRoomMessaging(
       const { session, target } = routeOf(entry);
       let token = entry?.token ?? (await heldToken(roomPath));
       if (token === undefined) {
-        const joined = await requestToJoin(
-          session,
-          roomPath,
-          target,
-          await requestTokenFor(roomPath),
-        );
+        const joined = await requestToJoin(session, roomPath, {
+          targetDevice: target,
+          requestToken: await requestTokenFor(roomPath),
+        });
         token = joined.token;
         await rememberToken(roomPath, token);
         persist(grants.record("held", token, clock.now()));
         dispatch({ type: "token", roomPath, token });
       }
-      // Awaited here (unlike send()'s opportunistic trigger): posting
-      // without a key would throw inside the wiring -- the bootstrap must
-      // complete first, and for the lower participant it is exactly one
-      // wrap + one send.
+      /* Awaited here (unlike send()'s opportunistic trigger): posting
+         without a key would throw inside the wiring -- the bootstrap must
+         complete first, and for the lower participant it is exactly one
+         wrap + one send. */
       await deliverFirstEpoch(roomPath, token, { session, target });
       await noticeWiring.post({
         room: roomPath,

@@ -99,6 +99,7 @@ export function useGrants(options: Readonly<UseGrantsOptions>): GrantsApi {
     reload();
     const stops = [grants.subscribe(reload), revocations.subscribe(reload)];
     const timer = setInterval(reload, STATUS_REFRESH_MS);
+
     return () => {
       lifecycle.cancelled = true;
       clearInterval(timer);
@@ -113,6 +114,7 @@ export function useGrants(options: Readonly<UseGrantsOptions>): GrantsApi {
         return minted;
       }
       await grants.record("issued", minted.token, clock.now());
+
       return { ok: true as const, code: encodeGrantCode(minted.token) };
     },
     [identity, clock, grants],
@@ -142,6 +144,7 @@ export function useGrants(options: Readonly<UseGrantsOptions>): GrantsApi {
         };
       }
       await grants.record("held", token, clock.now());
+
       return { ok: true };
     },
     [identity, clock, grants, revocations],
@@ -153,6 +156,7 @@ export function useGrants(options: Readonly<UseGrantsOptions>): GrantsApi {
     ): Promise<GrantActionResult<{ announced: AnnounceResult }>> => {
       try {
         const entry = await revocations.revoke(row.claims["token-id"]);
+
         return { ok: true, announced: await announce(entry) };
       } catch (error) {
         return {

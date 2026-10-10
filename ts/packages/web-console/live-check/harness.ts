@@ -32,6 +32,7 @@ function wireFromGossipFrame(frame: Readonly<Frame>): WireGossip {
   if (frame.type !== "gossip") {
     throw new Error(`expected a gossip frame, got ${frame.type}`);
   }
+
   return {
     type: "gossip",
     peers: frame.peers.map((peer) => ({
@@ -75,6 +76,7 @@ function summarizeFrame(
       "verb" in params && typeof params.verb === "string"
         ? params.verb
         : undefined;
+
     return {
       direction,
       type: frame.type,
@@ -84,6 +86,7 @@ function summarizeFrame(
   if (frame.type === "manage-response") {
     return { direction, type: frame.type, result: frame.outcome.result };
   }
+
   return { direction, type: frame.type };
 }
 
@@ -91,6 +94,7 @@ function registerConnection(connection: Readonly<Connection>): string {
   const id = String(nextConnectionId);
   nextConnectionId += 1;
   connections.set(id, connection);
+
   return id;
 }
 
@@ -99,6 +103,7 @@ function requireConnection(id: string): Connection {
   if (connection === undefined) {
     throw new Error(`unknown connection id ${id}`);
   }
+
   return connection;
 }
 
@@ -165,6 +170,7 @@ window.harness = {
       }
     })();
     await session.connect(address, []);
+
     return Array.from(identity.deviceId);
   },
   async initiate(targetDevice: readonly number[]): Promise<string> {
@@ -174,6 +180,7 @@ window.harness = {
     const connection = await negotiatorRef.initiate(
       Uint8Array.from(targetDevice),
     );
+
     return registerConnection(connection);
   },
   frameSummary(): FrameSummaryEntry[] {
@@ -186,6 +193,7 @@ window.harness = {
     if (existing !== undefined) {
       return existing;
     }
+
     return new Promise((resolve) => {
       incomingWaiters.push(resolve);
     });
@@ -204,6 +212,7 @@ window.harness = {
     if (result.done === true) {
       throw new Error("connection ended before a frame arrived");
     }
+
     return wireFromGossipFrame(result.value);
   },
   async closeConnection(connectionId: string): Promise<void> {

@@ -21,6 +21,7 @@ async function take(
     ids.push(item.requestId);
     if (ids.length === count) return ids;
   }
+
   return ids;
 }
 

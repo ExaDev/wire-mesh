@@ -15,6 +15,7 @@ function conversation(
   overrides: Partial<ConversationView> = {},
 ): ConversationView {
   const peer = peerDigit.repeat(DEVICE_ID_HEX_LENGTH);
+
   return {
     roomPath: `${"1".repeat(DEVICE_ID_HEX_LENGTH)}+${peer}`,
     participants: [peer],
@@ -29,10 +30,12 @@ function conversation(
   };
 }
 
-function renderList(
-  props: Partial<React.ComponentProps<typeof ConversationList>> = {},
+function renderList({
   store = memoryNameStore(),
-): ReturnType<typeof render> {
+  ...props
+}: Partial<React.ComponentProps<typeof ConversationList>> & {
+  store?: ReturnType<typeof memoryNameStore>;
+} = {}): ReturnType<typeof render> {
   return render(
     <WithNames store={store}>
       <ConversationList
@@ -129,10 +132,10 @@ describe("ConversationList naming", () => {
     const store = memoryNameStore();
     await store.setPetname("2".repeat(DEVICE_ID_HEX_LENGTH), "Ada");
 
-    renderList(
-      { conversations: [conversation("2"), conversation("3")] },
+    renderList({
+      conversations: [conversation("2"), conversation("3")],
       store,
-    );
+    });
 
     await screen.findByText("Ada");
     expect(screen.getByText("333333333333")).toBeInTheDocument();

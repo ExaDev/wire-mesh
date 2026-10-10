@@ -19,6 +19,7 @@ export function ConversationList({
   if (conversations.length === 0) {
     return null;
   }
+
   return (
     <Stack gap={0} data-testid="conversation-list">
       <Text fw={600} size="sm" mb="xs">

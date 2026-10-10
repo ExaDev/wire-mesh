@@ -45,6 +45,7 @@ function input(overrides: Partial<MintGrantInput> = {}): MintGrantInput {
 function claimsOf(token: CapabilityToken): TokenClaims {
   const claims = decodeGrantClaims(token);
   if (claims === undefined) throw new Error("the minted token has no claims");
+
   return claims;
 }
 
@@ -161,6 +162,7 @@ describe("mintGrant", () => {
         { identity: peer, clock },
       );
       if (!minted.ok) throw new Error(minted.error);
+
       return minted.token;
     }
 
@@ -228,8 +230,8 @@ describe("mintGrant", () => {
       if (!minted.ok) throw new Error(minted.error);
       expect(claimsOf(minted.token)["grants-capability"]).toBe("exec:pty");
 
-      // The bar does its job end to end: the holder (peer) minting exec:pty under this grant
-      // naming itself is refused, and naming anyone else is accepted.
+      /* The bar does its job end to end: the holder (peer) minting exec:pty under this grant
+         naming itself is refused, and naming anyone else is accepted. */
       const toSelf = await mintCapabilityToken({
         identity: peer,
         clock,

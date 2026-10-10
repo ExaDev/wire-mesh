@@ -12,6 +12,7 @@ export function createDialTransport(
 ): Transport {
   const webSocket = createBrowserTransport();
   const webTransport = createBrowserWebTransportTransport(memory);
+
   return {
     connect: async (address) =>
       isPinnedAddress(address)

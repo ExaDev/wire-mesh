@@ -105,6 +105,7 @@ function discoveredRow(deviceHex: string): HTMLElement {
   if (row === null) {
     throw new Error(`expected a table row for device ${deviceHex}`);
   }
+
   return row;
 }
 
@@ -116,8 +117,10 @@ function publishedSelfNames(
   return socket.sent.slice(from).flatMap((data) => {
     const frame = decodeMessage(data);
     if (frame.type !== "gossip") return [];
+
     return frame.peers.flatMap((advert) => {
       const name = selfAssertedName(advert);
+
       return name === undefined ? [] : [name];
     });
   });
@@ -130,6 +133,7 @@ function gossipedClaims(
 ): (string | undefined)[] {
   return socket.sent.slice(from).flatMap((data) => {
     const frame = decodeMessage(data);
+
     return frame.type === "gossip"
       ? frame.peers.map((advert) => selfAssertedName(advert))
       : [];
@@ -677,6 +681,7 @@ describe("App", () => {
         ),
       ).toBeInTheDocument();
     });
+
     return discoveredRow(pinnedGossipDeviceHex);
   }
 

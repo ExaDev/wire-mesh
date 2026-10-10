@@ -29,6 +29,7 @@ export function decodeGrantClaims(
     return undefined;
   }
   const parsed = tokenClaimsSchema.safeParse(decoded);
+
   return parsed.success ? parsed.data : undefined;
 }
 
@@ -37,6 +38,7 @@ function toBase64Url(bytes: Uint8Array): string {
   for (const byte of bytes) {
     binary += String.fromCharCode(byte);
   }
+
   return btoa(binary)
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
@@ -50,6 +52,7 @@ function fromBase64Url(text: string): Uint8Array<ArrayBuffer> {
   for (let index = 0; index < binary.length; index++) {
     bytes[index] = binary.charCodeAt(index);
   }
+
   return bytes;
 }
 
@@ -80,6 +83,7 @@ export function decodeGrantCode(code: string): CapabilityToken {
   if (!parsed.success || decodeGrantClaims(parsed.data) === undefined) {
     throw new Error("the grant code does not carry a capability token");
   }
+
   return parsed.data;
 }
 
@@ -92,6 +96,7 @@ export async function grantStatus(
   options: Readonly<VerifyCapabilityTokenOptions>,
 ): Promise<GrantStatus> {
   const verdict = await verifyCapabilityToken(token, options);
+
   return verdict.ok
     ? { kind: "valid" }
     : { kind: "invalid", reason: verdict.reason };

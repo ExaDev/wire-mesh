@@ -76,6 +76,7 @@ export function MintGrantForm({
         error:
           "the grant you chose to delegate from is no longer valid; choose another, or choose Root grant to mint without one",
       });
+
       return;
     }
     // Same reasoning for an authorising grant that has lapsed since it was picked: minting without it would drop the bars it carried.
@@ -85,6 +86,7 @@ export function MintGrantForm({
         error:
           "the grant you chose to authorise this is no longer valid; choose another, or choose None to mint without one",
       });
+
       return;
     }
     onMint({

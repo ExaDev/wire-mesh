@@ -27,6 +27,7 @@ function ipv4ToNumber(host: string): number | undefined {
     }
     value = value * 2 ** BITS_PER_OCTET + octet;
   }
+
   return value;
 }
 
@@ -38,6 +39,7 @@ function inRange(address: number, range: string): boolean {
     return false;
   }
   const size = 2 ** (IPV4_BITS - length);
+
   return Math.floor(address / size) === Math.floor(start / size);
 }
 
@@ -53,6 +55,7 @@ export function isLocalNetworkHost(host: string): boolean {
   if (name.includes(":")) {
     return name === "::1" || /^f[cd]/.test(name) || /^fe[89ab]/.test(name);
   }
+
   return name === "localhost" || name.endsWith(".local") || !name.includes(".");
 }
 
@@ -91,11 +94,13 @@ export function browserPermissions(): PermissionQuerier | undefined {
   if (!("permissions" in navigator)) {
     return undefined;
   }
+
   return {
     query: async (descriptor) => {
       if (!isPermissionDescriptor(descriptor)) {
         throw new TypeError("not a permission descriptor");
       }
+
       return navigator.permissions.query(descriptor);
     },
   };
@@ -124,6 +129,7 @@ export async function explainLocalNetworkBlock(
     const { state } = await permissions.query({
       name: LOCAL_NETWORK_PERMISSION,
     });
+
     return state === "denied"
       ? `Your browser blocked this page from reaching ${target}, a device on your local network. Allow "Local network access" for this site in the browser's site settings (the icon left of the address), then connect again.`
       : undefined;

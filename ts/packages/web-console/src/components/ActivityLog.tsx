@@ -22,6 +22,7 @@ export function ActivityLog({
   frameLog,
 }: Readonly<ActivityLogProps>): React.JSX.Element {
   const [raw, setRaw] = useState(false);
+
   return (
     <>
       <Switch

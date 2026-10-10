@@ -10,8 +10,10 @@ import { syntheticAdvertProof } from "./synthetic-advert.js";
 const SHA256_BYTE_LENGTH = 32;
 
 const ping: Frame = { type: "ping" };
-const CBOR_MAP_ONE_ENTRY_FIRST_BYTE = 0xa1; // a one-entry CBOR map head -- the ping frame, no length prefix
-const CBOR_BREAK_BYTE = 0xff; // the CBOR break byte on its own: undecodable as a complete value
+// a one-entry CBOR map head -- the ping frame, no length prefix
+const CBOR_MAP_ONE_ENTRY_FIRST_BYTE = 0xa1;
+// the CBOR break byte on its own: undecodable as a complete value
+const CBOR_BREAK_BYTE = 0xff;
 
 function arrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(
@@ -25,6 +27,7 @@ async function collect<T>(iterable: Readonly<AsyncIterable<T>>): Promise<T[]> {
   for await (const item of iterable) {
     out.push(item);
   }
+
   return out;
 }
 
@@ -34,6 +37,7 @@ async function nextValue<T>(iterable: Readonly<AsyncIterable<T>>): Promise<T> {
   if (result.done === true) {
     throw new Error("iterator ended without producing a value");
   }
+
   return result.value;
 }
 

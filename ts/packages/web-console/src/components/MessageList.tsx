@@ -61,6 +61,7 @@ export function MessageList({
           const sent = message.direction === "sent";
           const startsRun =
             index === 0 || messages[index - 1]?.direction !== message.direction;
+
           return (
             <Stack
               key={bytesToHex(message.messageId)}

@@ -51,6 +51,7 @@ function Observed({
   useEffect(() => {
     observeDirectory(directory);
   }, [directory, observeDirectory]);
+
   return (
     <ul>
       {devices.map((hex) => (

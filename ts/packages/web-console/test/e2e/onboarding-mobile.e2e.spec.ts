@@ -50,10 +50,12 @@ test("the intro shows once per device, and the directory stacks into cards on a 
     await expect(phone.getByTestId("onboarding-intro")).toBeHidden();
 
     await peer.goto(appUrl);
-    for (const page of [phone, peer]) {
-      await page.getByLabel("Node").fill(RELAY_ADDRESS);
-      await page.getByRole("button", { name: "Connect" }).click();
-    }
+    await Promise.all(
+      [phone, peer].map(async (page) => {
+        await page.getByLabel("Node").fill(RELAY_ADDRESS);
+        await page.getByRole("button", { name: "Connect" }).click();
+      }),
+    );
 
     const messageButton = phone.getByRole("button", { name: "Message" });
     await expect(messageButton).toBeVisible({ timeout: DIRECTORY_TIMEOUT_MS });

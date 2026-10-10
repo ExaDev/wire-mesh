@@ -74,6 +74,7 @@ export function useCertificateTrust(
   );
   useEffect(() => {
     const open = refusals.current;
+
     return () => {
       for (const { refuse } of [...open.values()]) {
         refuse();
@@ -117,6 +118,7 @@ export function useCertificateTrust(
         setPrompts((current) => [...current, { key, assessment, decide }]);
       });
       pending.current.set(question, { promptKey: key, decision });
+
       return decision;
     },
     [],
@@ -145,6 +147,7 @@ export function useCertificateTrust(
         return undefined;
       }
       await memory.remember(presented.node, presented.sha256);
+
       return address;
     },
     [memory, askUser],

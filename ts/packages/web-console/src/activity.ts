@@ -86,6 +86,7 @@ export function describeFrame(
   if (frame.type === "relay-data") {
     const other =
       direction === "sent" ? frame["to-device"] : frame["from-device"];
+
     return [
       {
         kind: "relay",
@@ -106,6 +107,7 @@ export function describeFrame(
       },
     ];
   }
+
   return [];
 }
 
@@ -155,6 +157,7 @@ function describeState(
       connection(`Handshake rejected (${state.handshake.reason})`);
     }
   }
+
   return entries;
 }
 
@@ -186,6 +189,7 @@ export function advanceActivity(
           return false;
         }
         seen.add(entry.peer);
+
         return true;
       }),
   ];
@@ -194,6 +198,7 @@ export function advanceActivity(
     key: `activity-${String(tracker.issued + index)}`,
     at,
   }));
+
   return {
     tracker: {
       frames: event.frameLog.length,

@@ -57,6 +57,7 @@ async function heldRow(): Promise<GrantRow> {
   if (!minted.ok) throw new Error(minted.error);
   const claims = decodeGrantClaims(minted.token);
   if (claims === undefined) throw new Error("minted token has no claims");
+
   return {
     tokenId: "held-1",
     direction: "held",
@@ -84,6 +85,7 @@ async function heldGrantRow(): Promise<GrantRow> {
   if (!minted.ok) throw new Error(minted.error);
   const claims = decodeGrantClaims(minted.token);
   if (claims === undefined) throw new Error("minted token has no claims");
+
   return {
     tokenId: "held-grant-1",
     direction: "held",

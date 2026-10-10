@@ -10,6 +10,7 @@ export function SelfNameField(): React.JSX.Element {
   // The text being typed, or undefined while the field just shows the saved name.
   const [edit, setEdit] = useState<string | undefined>(undefined);
   const draft = edit ?? selfName ?? "";
+
   return (
     <form
       onSubmit={(event) => {

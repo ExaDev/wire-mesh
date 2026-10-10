@@ -36,10 +36,12 @@ function view(overrides: Partial<ConversationView> = {}): ConversationView {
   };
 }
 
-function renderPanel(
-  props: Partial<React.ComponentProps<typeof RoomPanel>> = {},
+function renderPanel({
   store = memoryNameStore(),
-): ReturnType<typeof render> {
+  ...props
+}: Partial<React.ComponentProps<typeof RoomPanel>> & {
+  store?: ReturnType<typeof memoryNameStore>;
+} = {}): ReturnType<typeof render> {
   return render(
     <WithNames store={store}>
       <RoomPanel
@@ -202,15 +204,13 @@ describe("RoomPanel", () => {
     const store = memoryNameStore();
     const peer = "2".repeat(DEVICE_ID_HEX_LENGTH);
     await store.setPetname(peer, "Ada");
-    renderPanel(
-      {
-        view: view({
-          participants: [peer],
-          pendingJoinRequest: { requesterHex: peer, decide: vi.fn() },
-        }),
-      },
+    renderPanel({
+      view: view({
+        participants: [peer],
+        pendingJoinRequest: { requesterHex: peer, decide: vi.fn() },
+      }),
       store,
-    );
+    });
 
     await screen.findAllByText("Ada");
     expect(screen.getByText(/wants to message you/)).toHaveTextContent(

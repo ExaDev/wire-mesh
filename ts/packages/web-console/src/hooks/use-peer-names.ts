@@ -23,5 +23,6 @@ export function usePeerNames(): PeerNames {
   if (names === undefined) {
     throw new Error("usePeerNames must be used inside PeerNamesProvider");
   }
+
   return names;
 }

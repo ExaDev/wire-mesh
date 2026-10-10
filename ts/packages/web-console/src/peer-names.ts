@@ -39,6 +39,7 @@ const UNSAFE_NAME_CHARACTERS =
 export function cleanName(name: string): string | undefined {
   const trimmed = name.replace(UNSAFE_NAME_CHARACTERS, "").trim();
   if (trimmed === "") return undefined;
+
   return Array.from(trimmed).slice(0, MAX_NAME_LENGTH).join("").trimEnd();
 }
 
@@ -49,6 +50,7 @@ export function selfAssertedName(
   const claim: unknown = advert[SELF_ADVERT_KEY];
   if (typeof claim !== "object" || claim === null) return undefined;
   if (!("name" in claim) || typeof claim.name !== "string") return undefined;
+
   return cleanName(claim.name);
 }
 
@@ -81,6 +83,7 @@ export function labelPeer(
       matchesPetname: heldPetnames.has(selfName),
     };
   }
+
   return {
     primary: shortId(deviceHex),
     secondary: undefined,
@@ -94,5 +97,6 @@ export function labelText(label: Readonly<PeerLabel>): string {
   if (label.source === "self" && label.secondary !== undefined) {
     return `${label.primary} (${label.secondary})`;
   }
+
   return label.primary;
 }

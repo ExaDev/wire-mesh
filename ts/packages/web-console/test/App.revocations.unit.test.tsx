@@ -65,6 +65,7 @@ describe("App revocations", () => {
     await vi.waitFor(() => {
       const responses = rootSocket.sent.slice(sentBefore).flatMap((data) => {
         const frame = decodeMessage(data);
+
         return frame.type === "manage-response" ? [frame] : [];
       });
       expect(responses).toEqual([

@@ -84,6 +84,7 @@ function conversation(
 ): ConversationInternal {
   const found = state.get(roomPath);
   if (found === undefined) throw new Error(`no conversation ${roomPath}`);
+
   return found;
 }
 

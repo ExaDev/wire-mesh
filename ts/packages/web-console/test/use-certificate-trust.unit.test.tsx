@@ -40,6 +40,7 @@ async function memoryRemembering(
       digits.map((digit) => bytesFromHex(hashHex(digit))),
     );
   }
+
   return memory;
 }
 

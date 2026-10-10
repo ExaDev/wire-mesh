@@ -110,6 +110,7 @@ export async function mintOfferToken(
   if (!verdict.ok) {
     throw new Error(`could not mint a webrtc:signal token: ${verdict.reason}`);
   }
+
   return verdict.token;
 }
 
@@ -152,6 +153,7 @@ export function createWebrtcNegotiator(
     const authorized = await authorizeIncomingOffer(incoming, verifyOptions);
     if (!authorized) {
       await incoming.respond({ result: "error", code: "unauthorized" });
+
       return;
     }
     const negotiationId = offer["negotiation-id"];
@@ -163,8 +165,9 @@ export function createWebrtcNegotiator(
       void sendIceCandidate(negotiationId, event.candidate);
     });
     pc.addEventListener("datachannel", (event) => {
-      event.channel.binaryType = "arraybuffer";
-      wireOpenChannel(event.channel, options.onIncomingConnection);
+      const { channel } = event;
+      channel.binaryType = "arraybuffer";
+      wireOpenChannel(channel, options.onIncomingConnection);
     });
     await pc.setRemoteDescription({ type: "offer", sdp: offer.sdp });
     const answer = await pc.createAnswer();
@@ -257,6 +260,7 @@ export function createWebrtcNegotiator(
         pc.close();
         throw new Error(`webrtc offer rejected: ${outcome.code}`);
       }
+
       return channelOpen;
     },
   };

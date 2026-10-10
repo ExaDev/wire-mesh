@@ -33,6 +33,7 @@ async function openConsole(context: Readonly<BrowserContext>): Promise<Page> {
   );
   await page.getByLabel("Node").fill(MAILBOX_RELAY_ADDRESS);
   await page.getByRole("button", { name: "Connect" }).click();
+
   return page;
 }
 

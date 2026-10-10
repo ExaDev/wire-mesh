@@ -24,6 +24,7 @@ export function UnreadableRevocations({
   if (unreadable.length === 0) {
     return null;
   }
+
   return (
     <Alert
       color="red"

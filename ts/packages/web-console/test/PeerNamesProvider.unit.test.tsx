@@ -59,6 +59,7 @@ describe("PeerNamesProvider", () => {
     let names: PeerNames | undefined;
     function Capture(): null {
       names = usePeerNames();
+
       return null;
     }
     render(

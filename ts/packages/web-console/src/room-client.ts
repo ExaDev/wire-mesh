@@ -43,6 +43,7 @@ const MESSAGE_ID_BYTE_LENGTH = 16;
 function randomMessageId(): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(MESSAGE_ID_BYTE_LENGTH);
   crypto.getRandomValues(bytes);
+
   return bytes;
 }
 
@@ -51,6 +52,7 @@ const TOKEN_ID_BYTE_LENGTH = 16;
 function randomTokenId(): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(TOKEN_ID_BYTE_LENGTH);
   crypto.getRandomValues(bytes);
+
   return bytes;
 }
 
@@ -77,6 +79,12 @@ export function buildRoomSendCommand(
   };
 }
 
+/** Who a room message is sent as and where it goes: the sender's own room:member grant, and the relay target when it is not the session's own direct connection. */
+export interface RoomMessageRoute {
+  token: CapabilityToken;
+  targetDevice?: DeviceId | undefined;
+}
+
 /**
  * Sends a room.send (a DM is just a room-path variant, not a separate verb, so this covers both). token is this side's own room:member grant for roomPath, minted by the room's owner (room.join) or pushed by it (room.invite). targetDevice routes the request via a relay-connect pairing rather than directly over the session's own Connection, the same targetDevice semantics sendManageRequest itself already defines -- omit it for a session that already is the direct connection to the room's other member (web-console's own primary case, one negotiated WebRTC Connection per peer).
  */
@@ -84,16 +92,22 @@ export async function sendRoomMessage(
   session: Readonly<Pick<MeshSession, "sendManageRequest">>,
   roomPath: string,
   text: string,
-  token: CapabilityToken,
-  targetDevice?: DeviceId,
+  { token, targetDevice }: Readonly<RoomMessageRoute>,
 ): Promise<ManageOutcome> {
   const command = buildRoomSendCommand(text, randomMessageId(), Date.now());
+
   return session.sendManageRequest(
     command,
     { kind: "room", path: roomPath },
     targetDevice,
     token,
   );
+}
+
+export interface RoomJoinOptions {
+  targetDevice?: DeviceId | undefined;
+  /** A held manage:request to present, for a receiver that gates requests (wire-mesh#324). Absent keeps the join ungated, as a first contact from a stranger must be. */
+  requestToken?: CapabilityToken | undefined;
 }
 
 export interface RoomJoinResult {
@@ -107,9 +121,7 @@ export interface RoomJoinResult {
 export async function requestToJoin(
   session: Readonly<Pick<MeshSession, "sendManageRequest">>,
   roomPath: string,
-  targetDevice?: DeviceId,
-  /** A held manage:request to present, for a receiver that gates requests (wire-mesh#324). Absent keeps the join ungated, as a first contact from a stranger must be. */
-  requestToken?: CapabilityToken,
+  { targetDevice, requestToken }: Readonly<RoomJoinOptions> = {},
 ): Promise<RoomJoinResult> {
   let outcome;
   try {
@@ -130,10 +142,19 @@ export async function requestToJoin(
   if (!parsed.success) {
     throw new Error(`room.join response for ${roomPath} was malformed`);
   }
+
   return {
     token: parsed.data["granted-token"],
     members: parsed.data.members.map((member: RoomMember) => member.device),
   };
+}
+
+/** The room:member grant an inviter mints: for which room and bearer, until when, and how far the bearer may delegate it onwards. */
+export interface RoomInvite {
+  roomPath: string;
+  invitee: DeviceId;
+  expires: number;
+  delegationsRemaining?: number | undefined;
 }
 
 /**
@@ -142,10 +163,7 @@ export async function requestToJoin(
 export async function mintRoomInviteGrant(
   identity: Readonly<IdentityPort>,
   clock: Readonly<Clock>,
-  roomPath: string,
-  invitee: DeviceId,
-  expires: number,
-  delegationsRemaining?: number,
+  { roomPath, invitee, expires, delegationsRemaining }: Readonly<RoomInvite>,
 ): Promise<CapabilityToken> {
   const verdict = await mintCapabilityToken({
     identity,
@@ -162,6 +180,7 @@ export async function mintRoomInviteGrant(
       `failed to mint an invite grant for ${roomPath} (${verdict.reason})`,
     );
   }
+
   return verdict.token;
 }
 
@@ -251,6 +270,7 @@ export function createRoomRouter(
     const roomPath = incoming.scope.path;
     if (roomPath === undefined || incoming.token === undefined) {
       await incoming.respond({ result: "error", code: "unauthorized" });
+
       return;
     }
     const verdict = await verifyRoomToken(incoming.token, {
@@ -262,6 +282,7 @@ export function createRoomRouter(
     });
     if (!verdict.ok) {
       await incoming.respond({ result: "error", code: "unauthorized" });
+
       return;
     }
     await incoming.respond({ result: "ok" });
@@ -291,6 +312,7 @@ export function createRoomRouter(
           ...(decision.reason !== undefined ? { reason: decision.reason } : {}),
         };
         await event.decide(generic);
+
         return;
       }
       const members = [
@@ -322,6 +344,7 @@ export function createRoomRouter(
       // Both unreachable in practice -- handleRoomJoin below already refuses (missing_scope_path/unsupported_verb, matching this router's own pre-rewiring codes exactly) before ever calling this handler when either precondition fails. Kept because CapabilityGrantRequestEvent's own scope/handlers types don't encode either precondition structurally, so TS cannot narrow across this callback boundary on its own.
       if (roomPath === undefined || onJoinRequest === undefined) {
         void event.decide({ kind: "reject", reason: "unsupported verb" });
+
         return;
       }
       onJoinRequest({
@@ -338,10 +361,12 @@ export function createRoomRouter(
     const roomPath = incoming.scope.path;
     if (roomPath === undefined) {
       await incoming.respond({ result: "error", code: "missing_scope_path" });
+
       return;
     }
     if (handlers.onJoinRequest === undefined) {
       await incoming.respond({ result: "error", code: "unsupported_verb" });
+
       return;
     }
     await handleCapabilityGrantRequest({
@@ -387,10 +412,12 @@ export function createRoomRouter(
     const roomPath = incoming.scope.path;
     if (roomPath === undefined) {
       await incoming.respond({ result: "error", code: "missing_scope_path" });
+
       return;
     }
     if (handlers.onRoomInvite === undefined) {
       await incoming.respond({ result: "error", code: "unsupported_verb" });
+
       return;
     }
     await handleCapabilityGrant(incoming);

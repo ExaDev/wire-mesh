@@ -16,6 +16,7 @@ async function storedIdentity(): Promise<{
 }> {
   const storage = createMemoryStorage();
   const identity = await createPersistedWebCryptoIdentity(storage);
+
   return { storage, deviceHex: deviceIdToHex(identity.deviceId) };
 }
 
@@ -75,6 +76,7 @@ describe("parseIdentityBackup", () => {
   async function exported(): Promise<Record<string, unknown>> {
     const { storage } = await storedIdentity();
     const backup = await createIdentityBackupService(storage).export();
+
     return { ...backup };
   }
 

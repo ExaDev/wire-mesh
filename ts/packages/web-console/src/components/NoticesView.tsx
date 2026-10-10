@@ -5,6 +5,7 @@ import type { NoticeBoardEntry } from "wire-mesh-core/domain/notice-board";
 
 function textOf(entry: Readonly<NoticeBoardEntry>): string | undefined {
   if (entry.plaintext === undefined) return undefined;
+
   return new TextDecoder().decode(entry.plaintext);
 }
 
@@ -20,6 +21,7 @@ export function NoticesView({
   }
   const items = notices.map((entry, index) => {
     const text = textOf(entry);
+
     return (
       <Box key={index}>
         {text !== undefined ? (
@@ -32,6 +34,7 @@ export function NoticesView({
       </Box>
     );
   });
+
   return (
     <Stack gap={4}>
       {items}

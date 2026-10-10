@@ -34,6 +34,7 @@ export function SearchPanel({
   const conversationOf = new Map(
     conversations.map((conversation) => [conversation.roomPath, conversation]),
   );
+
   return (
     <Stack gap="xs" data-testid="search-panel">
       <TextInput
@@ -51,6 +52,7 @@ export function SearchPanel({
       )}
       {results.map((result) => {
         const conversation = conversationOf.get(result.roomPath);
+
         return (
           <NavLink
             key={result.key}

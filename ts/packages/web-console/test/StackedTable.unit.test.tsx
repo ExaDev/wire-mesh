@@ -19,6 +19,7 @@ function renderTable(): HTMLElement {
       />
     </MantineProvider>,
   );
+
   return container;
 }
 
