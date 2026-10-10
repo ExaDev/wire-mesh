@@ -4,7 +4,9 @@ import { cdeDecodeOptions, cdeEncodeOptions, decode, encode } from "cbor2";
 import { frameSchema, type Frame } from "wire-mesh-core/generated/protocol";
 import type { Connection } from "wire-mesh-core/ports/transport";
 
-// RFC 6455 close codes, named rather than bare: 1000 normal closure, 1002 protocol error.
+/**
+ * RFC 6455 close codes, named rather than bare: 1000 normal closure, 1002 protocol error.
+ */
 export const CLOSE_NORMAL = 1000;
 export const CLOSE_PROTOCOL_ERROR = 1002;
 
@@ -37,6 +39,7 @@ export function decodeMessage(data: Readonly<ArrayBuffer>): Frame {
   if (!result.success) {
     throw new SchemaInvalidFrameError(result.error.message);
   }
+
   return result.data;
 }
 
@@ -69,6 +72,7 @@ export function wrapWebSocket(ws: Readonly<WebSocket>): Connection {
       // Only binary messages carry frames; a text message from a confused or hostile client is a protocol violation on this connection, same class as undecodable bytes
       failAll(new Error("expected a binary WebSocket message"));
       ws.close(CLOSE_PROTOCOL_ERROR, "protocol error");
+
       return;
     }
     let frame: Frame;
@@ -84,6 +88,7 @@ export function wrapWebSocket(ws: Readonly<WebSocket>): Connection {
           : new Error(`frame body failed to decode: ${String(error)}`),
       );
       ws.close(CLOSE_PROTOCOL_ERROR, "protocol error");
+
       return;
     }
     const waiter = waiters.shift();
@@ -110,6 +115,7 @@ export function wrapWebSocket(ws: Readonly<WebSocket>): Connection {
           if (ended) {
             return { value: undefined, done: true };
           }
+
           return new Promise((resolve, reject) => {
             waiters.push({ resolve, reject });
           });
@@ -125,11 +131,13 @@ export function wrapWebSocket(ws: Readonly<WebSocket>): Connection {
         return Promise.reject(new Error("connection is closed"));
       }
       ws.send(messageFromFrame(frame));
+
       return Promise.resolve();
     },
     receive: () => receiveStream,
     async close(): Promise<void> {
       ws.close(CLOSE_NORMAL);
+
       return Promise.resolve();
     },
   };

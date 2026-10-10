@@ -55,6 +55,7 @@ export async function verifyWithPublicKey(
   signature: Uint8Array,
 ): Promise<boolean> {
   const cryptoKey = await importPublicKey(key);
+
   return crypto.subtle.verify(
     algParams(key.alg),
     cryptoKey,
@@ -88,6 +89,7 @@ export async function createWebCryptoIdentity(): Promise<IdentityPort> {
         keyPair.privateKey,
         toBufferSource(message),
       );
+
       return new Uint8Array(signature);
     },
     verify: verifyWithPublicKey,
