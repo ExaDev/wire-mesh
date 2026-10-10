@@ -13,7 +13,7 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
-    "@exadev/eslint-config": "2.18.0",
+    "@exadev/eslint-config": "3.0.0",
     "@types/node": "26.4.1",
     "@types/sdp-transform": "2.4.10",
     "@types/ws": "8.18.1",
