@@ -13,6 +13,7 @@ export function createMemoryNonceStore(): NonceStore {
         );
       }
       nonces.set(sessionId, value);
+
       return Promise.resolve();
     },
     take: async (sessionId) => {
@@ -24,10 +25,12 @@ export function createMemoryNonceStore(): NonceStore {
         );
       }
       nonces.delete(sessionId);
+
       return Promise.resolve(Uint8Array.from(value));
     },
     discard: async (sessionId) => {
       nonces.delete(sessionId);
+
       return Promise.resolve();
     },
   };

@@ -44,5 +44,6 @@ export function checkAdvertExtensions(
       return { ok: false, key };
     }
   }
+
   return { ok: true };
 }

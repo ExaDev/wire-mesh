@@ -32,12 +32,14 @@ const DIGEST_BYTE_LENGTH = 32;
 function transferIdFromFillHex(fillHex: string): Uint8Array<ArrayBuffer> {
   const out = new Uint8Array(TRANSFER_ID_BYTE_LENGTH);
   out.fill(Number.parseInt(fillHex, HEX_RADIX));
+
   return out;
 }
 
 function digestFromFillHex(fillHex: string): Uint8Array<ArrayBuffer> {
   const out = new Uint8Array(DIGEST_BYTE_LENGTH);
   out.fill(Number.parseInt(fillHex, HEX_RADIX));
+
   return out;
 }
 
@@ -49,7 +51,9 @@ const DEFAULT_WINDOW = 4096;
 /** A one-directional, wake-on-push frame queue -- the same async-iterator-with-a-wait-queue shape mesh-session-fixtures.ts's own FakeConnection uses internally, factored out here so linkedConnections() below can compose two of them into a genuine bidirectional pair. */
 class FakeInbound {
   private readonly queue: Frame[] = [];
+
   private readonly waiters: (() => void)[] = [];
+
   private ended = false;
 
   push(frame: Frame): void {
@@ -75,14 +79,14 @@ class FakeInbound {
   }
 
   private async next(): Promise<IteratorResult<Frame>> {
-    for (;;) {
-      const value = this.queue.shift();
-      if (value !== undefined) return { value, done: false };
-      if (this.ended) return { value: undefined, done: true };
-      await new Promise<void>((resolve) => {
-        this.waiters.push(resolve);
-      });
-    }
+    const value = this.queue.shift();
+    if (value !== undefined) return { value, done: false };
+    if (this.ended) return { value: undefined, done: true };
+    await new Promise<void>((resolve) => {
+      this.waiters.push(resolve);
+    });
+
+    return this.next();
   }
 }
 
@@ -98,25 +102,30 @@ function linkedConnections(): {
   const senderConn: Connection = {
     send: async (frame) => {
       toReceiver.push(frame);
+
       return Promise.resolve();
     },
     receive: () => toSender.stream(),
     close: async () => {
       toSender.end();
+
       return Promise.resolve();
     },
   };
   const receiverConn: Connection = {
     send: async (frame) => {
       toSender.push(frame);
+
       return Promise.resolve();
     },
     receive: () => toReceiver.stream(),
     close: async () => {
       toReceiver.end();
+
       return Promise.resolve();
     },
   };
+
   return {
     senderConn,
     receiverConn,
@@ -163,10 +172,12 @@ function sessionDispatchingTo(
         scope,
         respond: async (o): Promise<void> => {
           resolveOutcome(o);
+
           return Promise.resolve();
         },
       };
       await handler(incoming);
+
       return responded;
     },
   } as unknown as MeshSession;
@@ -178,6 +189,7 @@ function chunkedSource(
   return (fromSeq: number) => ({
     [Symbol.asyncIterator](): AsyncIterator<Uint8Array<ArrayBuffer>> {
       let i = fromSeq;
+
       return {
         next: async (): Promise<IteratorResult<Uint8Array<ArrayBuffer>>> => {
           const value = data[i];
@@ -185,6 +197,7 @@ function chunkedSource(
             return Promise.resolve({ value: undefined, done: true });
           }
           i += 1;
+
           return Promise.resolve({ value, done: false });
         },
       };
@@ -201,6 +214,7 @@ function deferred<T>(): {
   const promise = new Promise<T>((r) => {
     resolve = r;
   });
+
   return { promise, resolve };
 }
 
@@ -212,6 +226,7 @@ function concat(chunks: readonly Uint8Array[]): Uint8Array {
     out.set(chunk, offset);
     offset += chunk.length;
   }
+
   return out;
 }
 
@@ -314,8 +329,12 @@ describe("bulk sender/receiver, end to end", () => {
     const idHex = "01".repeat(TRANSFER_ID_BYTE_LENGTH);
     const reconstructed = new Uint8Array(expected.length);
     let offset = 0;
-    for (let seq = 0; seq < chunks.length; seq += 1) {
-      const stored = await storage.get(`bulk/${idHex}/chunk/${String(seq)}`);
+    const storedChunks = await Promise.all(
+      chunks.map(async (_, seq) =>
+        storage.get(`bulk/${idHex}/chunk/${String(seq)}`),
+      ),
+    );
+    for (const stored of storedChunks) {
       expect(stored).toBeDefined();
       if (stored !== undefined) {
         reconstructed.set(stored, offset);
@@ -373,6 +392,7 @@ describe("bulk sender/receiver, end to end", () => {
       scope: TEST_SCOPE,
       respond: async (o): Promise<void> => {
         secondOutcome = o;
+
         return Promise.resolve();
       },
     };
@@ -426,7 +446,8 @@ describe("bulk sender/receiver, end to end", () => {
     await receiver.onFrame(receiverConn, {
       type: "bulk-end",
       "transfer-id": transferId,
-      digest: digestFromFillHex("ff"), // deliberately wrong
+      // deliberately wrong
+      digest: digestFromFillHex("ff"),
     });
 
     expect(await complete.promise).toEqual({ ok: false, chunkCount: 1 });
@@ -473,6 +494,7 @@ describe("bulk sender/receiver, end to end", () => {
       if (frame.type === "bulk-data" && frame.seq === 1) {
         sawSecondChunkSent = true;
         link1.endReceiverSide();
+
         return;
       }
       await receiver.onFrame(link1.receiverConn, frame);
@@ -517,8 +539,12 @@ describe("bulk sender/receiver, end to end", () => {
     const idHex = "04".repeat(TRANSFER_ID_BYTE_LENGTH);
     const reconstructed = new Uint8Array(expected.length);
     let offset = 0;
-    for (let seq = 0; seq < chunks.length; seq += 1) {
-      const stored = await storage.get(`bulk/${idHex}/chunk/${String(seq)}`);
+    const storedChunks = await Promise.all(
+      chunks.map(async (_, seq) =>
+        storage.get(`bulk/${idHex}/chunk/${String(seq)}`),
+      ),
+    );
+    for (const stored of storedChunks) {
       expect(stored).toBeDefined();
       if (stored !== undefined) {
         reconstructed.set(stored, offset);

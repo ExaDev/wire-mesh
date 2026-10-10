@@ -90,9 +90,11 @@ describe("tracePath", () => {
     calls: number;
   } {
     let calls = 0;
+
     return {
       sendManageRequest: async (): Promise<ManageOutcome> => {
         calls += 1;
+
         return Promise.resolve(outcome);
       },
       get calls(): number {

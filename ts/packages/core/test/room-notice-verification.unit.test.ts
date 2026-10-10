@@ -24,7 +24,8 @@ import { signRoomNotice } from "./room-notice-fixtures.js";
 
 const NOW_MS = 1_893_456_000_000;
 const EXPIRES_MS = NOW_MS + HOUR_MS;
-const INVALID_CBOR_BYTE = 0xff; // not a valid CBOR major-type/length prefix combination -- decode() throws on it
+// not a valid CBOR major-type/length prefix combination -- decode() throws on it
+const INVALID_CBOR_BYTE = 0xff;
 const FAR_FUTURE_HOURS = 1_000;
 const LONG_AFTER_POSTING_HOURS = 10;
 
@@ -45,6 +46,7 @@ async function mintRoomMemberToken(
     delegationsRemaining: 0,
   });
   if (!verdict.ok) throw new Error(`mint failed: ${verdict.reason}`);
+
   return verdict.token;
 }
 

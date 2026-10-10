@@ -22,6 +22,7 @@ export async function acceptDirectManageRequest(
     return null;
   }
   const frame = result.value;
+
   return {
     requestId: frame["request-id"],
     command: frame.command,
@@ -105,5 +106,6 @@ export async function sendDirectManageRequest(
     responsePromise.catch(() => undefined);
   }
   await link.close();
+
   return outcome;
 }

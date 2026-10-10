@@ -36,6 +36,7 @@ interface VectorFile {
 function isVectorFile(value: unknown): value is VectorFile {
   if (typeof value !== "object" || value === null) return false;
   if (!("vectors" in value) || !Array.isArray(value.vectors)) return false;
+
   return value.vectors.every(
     (v: unknown) =>
       typeof v === "object" &&
@@ -55,6 +56,7 @@ function readVectors(filename: string): Vector[] {
   if (!isVectorFile(raw)) {
     throw new Error(`${filename} is not a valid vector file`);
   }
+
   return raw.vectors;
 }
 
@@ -101,6 +103,7 @@ describe("token vectors decode and re-encode byte-exactly through capabilityToke
 
 function isAdvertVector(value: Readonly<Vector>): value is AdvertVector {
   if (!("signing_input_hex" in value) || !("verifies" in value)) return false;
+
   return (
     typeof value.signing_input_hex === "string" &&
     typeof value.verifies === "boolean"

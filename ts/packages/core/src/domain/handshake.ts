@@ -32,6 +32,7 @@ export function negotiate(
     (domain) =>
       !RETIRED_DOMAINS.includes(domain) && remote.domains.includes(domain),
   );
+
   return {
     ok: version >= 1 && sharedDomains.length > 0,
     version,

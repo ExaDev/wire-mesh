@@ -63,6 +63,7 @@ async function connectedSession(): Promise<{
       incoming.push(request);
     }
   })();
+
   return { session, connection, incoming };
 }
 

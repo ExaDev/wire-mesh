@@ -84,10 +84,10 @@ describe("createTcpTransport byte-string re-encoding", () => {
     }
     const [receivedProtectedHeader, , receivedPayload] = receivedFrame.token;
 
-    // The actual defect: re-encoding a received byte string the way COSE's Sig1-to-be-signed
-    // reconstruction does must reproduce exactly what encoding the original, pre-send byte string
-    // produces -- a Buffer-corrupted decode instead serializes it as an object, so this comparison
-    // is where the bug actually manifested.
+    /* The actual defect: re-encoding a received byte string the way COSE's Sig1-to-be-signed
+       reconstruction does must reproduce exactly what encoding the original, pre-send byte string
+       produces -- a Buffer-corrupted decode instead serializes it as an object, so this comparison
+       is where the bug actually manifested. */
     const originalEncoded = encode(
       ["Signature1", protectedHeader, new Uint8Array(0), payload],
       cdeEncodeOptions,

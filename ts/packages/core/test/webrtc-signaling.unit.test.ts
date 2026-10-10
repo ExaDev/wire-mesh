@@ -33,7 +33,8 @@ import {
 
 const NEGOTIATION_ID = 42;
 const TEST_SDP = "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\n";
-const DEVICE_ID_BYTE_LENGTH = 32; // SHA-256 digest length
+// SHA-256 digest length
+const DEVICE_ID_BYTE_LENGTH = 32;
 const DEVICE_B_FILL_BYTE = 0x22;
 
 describe("createNegotiationIdAllocator", () => {

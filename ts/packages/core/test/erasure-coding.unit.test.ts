@@ -60,16 +60,22 @@ describe("encodeShards / decodeShards", () => {
     expect(shards).toHaveLength(K3_N5.totalShards);
 
     // Every K-subset must reconstruct: the erasure guarantee itself.
-    for (let drop1 = 0; drop1 < K3_N5.totalShards; drop1 += 1) {
-      for (let drop2 = drop1 + 1; drop2 < K3_N5.totalShards; drop2 += 1) {
+    const dropPairs = Array.from({ length: K3_N5.totalShards }, (_, drop1) =>
+      Array.from(
+        { length: K3_N5.totalShards - drop1 - 1 },
+        (__, offset) => [drop1, drop1 + 1 + offset] as const,
+      ),
+    ).flat();
+    await Promise.all(
+      dropPairs.map(async ([drop1, drop2]) => {
         const decoded = await decodeShards(
           survivorsOf(shards, drop1, drop2),
           K3_N5,
           data.length,
         );
         expect(decoded).toEqual(data);
-      }
-    }
+      }),
+    );
   });
 
   it("round-trips a K=N configuration (pure splitting, no parity)", async () => {
@@ -105,7 +111,8 @@ describe("encodeShards / decodeShards", () => {
   });
 
   it("pads the last shard: input not a multiple of K still reconstructs to the exact original length", async () => {
-    const data = text("abcde"); // not a multiple of K3_N5.dataShards
+    // not a multiple of K3_N5.dataShards
+    const data = text("abcde");
     const shards = await encodeShards(data, K3_N5);
     const decoded = await decodeShards(
       survivorsOf(shards, 1, 2),
@@ -113,7 +120,8 @@ describe("encodeShards / decodeShards", () => {
       data.length,
     );
     expect(decoded).toEqual(data);
-    expect(decoded).toHaveLength(data.length); // not the padded length
+    // not the padded length
+    expect(decoded).toHaveLength(data.length);
   });
 
   it("rejects fewer than K shards outright", async () => {
@@ -143,7 +151,8 @@ describe("encodeShards / decodeShards", () => {
         totalShards: K2_N2.totalShards,
       }),
     ).rejects.toThrow(/at least.*data/i);
-    const BEYOND_FIELD = 256; // GF(2^8) holds 255 shard rows; 256 deliberately exceeds it
+    // GF(2^8) holds 255 shard rows; 256 deliberately exceeds it
+    const BEYOND_FIELD = 256;
     await expect(
       encodeShards(data, {
         dataShards: BEYOND_FIELD,
@@ -208,18 +217,21 @@ describe("encodeShards / decodeShards", () => {
       [SHARD_1, SHARD_3],
       [SHARD_2, SHARD_3],
     ];
-    for (const dropped of DROP_SETS) {
-      const decoded = await decodeShards(
-        survivorsOf(shards, ...dropped),
-        K2_N4,
-        data.length,
-      );
-      expect(decoded).toEqual(data);
-    }
+    await Promise.all(
+      DROP_SETS.map(async (dropped) => {
+        const decoded = await decodeShards(
+          survivorsOf(shards, ...dropped),
+          K2_N4,
+          data.length,
+        );
+        expect(decoded).toEqual(data);
+      }),
+    );
   });
 
   it("produces the byte-pinned cross-language vector: K=2 N=3 over 'wire-mesh' (the Rust port must match exactly)", async () => {
-    const data = text("wire-mesh"); // 9 bytes: halves are "wire-" and "mesh" + one pad zero
+    // 9 bytes: halves are "wire-" and "mesh" + one pad zero
+    const data = text("wire-mesh");
     const shards = await encodeShards(data, K2_N3);
     expect(shards[0]).toEqual(text("wire-"));
     expect(shards[1]).toEqual(meshPadded());

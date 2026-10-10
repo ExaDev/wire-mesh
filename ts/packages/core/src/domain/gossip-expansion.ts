@@ -58,23 +58,35 @@ export function createGossipExpansion(
       approved = await options.shouldExpand(candidate);
     } catch (error) {
       options.onExpansionFailed?.(candidate, [toError(error)]);
+
       return;
     }
     if (!approved) {
       options.onExpansionDeclined?.(candidate);
+
       return;
     }
-    const errors: Error[] = [];
-    for (const address of candidate.addresses) {
-      try {
-        const session = await options.dial(address);
-        options.onExpanded(candidate, address, session);
-        return;
-      } catch (error) {
-        errors.push(toError(error));
-      }
+    await dialInOrder(candidate, candidate.addresses, []);
+  }
+
+  /** Dials the addresses one at a time, in order, stopping at the first that connects: a later address is only tried once every earlier one has failed, and when none connects the failures, in order, are reported through `onExpansionFailed`. */
+  async function dialInOrder(
+    candidate: Readonly<GossipExpansionCandidate>,
+    addresses: readonly string[],
+    failures: readonly Error[],
+  ): Promise<void> {
+    const [address, ...remaining] = addresses;
+    if (address === undefined) {
+      options.onExpansionFailed?.(candidate, failures);
+
+      return;
     }
-    options.onExpansionFailed?.(candidate, errors);
+    try {
+      const session = await options.dial(address);
+      options.onExpanded(candidate, address, session);
+    } catch (error) {
+      await dialInOrder(candidate, remaining, [...failures, toError(error)]);
+    }
   }
 
   return {

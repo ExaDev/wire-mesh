@@ -92,11 +92,13 @@ export function createCapabilityGrantHandler(
   ): Promise<void> {
     if (incoming.command.verb !== options.capability) {
       await incoming.respond({ result: "error", code: "malformed" });
+
       return;
     }
     const parsed = capabilityGrantSchema.safeParse(incoming.command.params);
     if (!parsed.success) {
       await incoming.respond({ result: "error", code: "malformed" });
+
       return;
     }
     const grantedToken = parsed.data["granted-token"];
@@ -109,6 +111,7 @@ export function createCapabilityGrantHandler(
     });
     if (!verdict.ok) {
       await incoming.respond({ result: "error", code: verdict.reason });
+
       return;
     }
 
@@ -117,11 +120,13 @@ export function createCapabilityGrantHandler(
         result: "error",
         code: "capability_mismatch",
       });
+
       return;
     }
 
     if (!scopeNarrows(verdict.claims.scope, incoming.scope)) {
       await incoming.respond({ result: "error", code: "scope_mismatch" });
+
       return;
     }
 

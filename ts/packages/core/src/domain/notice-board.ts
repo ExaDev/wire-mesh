@@ -37,6 +37,7 @@ import {
   isEncryptedContentType,
   plaintextContentType,
 } from "./group-key.js";
+import { eachInOrder } from "./sequential.js";
 
 /** The opaque byte length a caller-omitted noticeId gets: 16 random bytes, the same sizing token-id already uses. */
 const GENERATED_NOTICE_ID_BYTE_LENGTH = 16;
@@ -151,6 +152,7 @@ export function createNoticeBoard(
       { identity, storage },
       noticeToEntryBytes(notice),
     );
+
     return { dataHave, notice, keyEpoch };
   }
 
@@ -178,10 +180,12 @@ export function createNoticeBoard(
     dmRootPolicy: "self" | "either-participant",
   ): Promise<NoticeBoardEntry[]> {
     const entries = await readEntries(storage, peer, 0);
+
     const out: NoticeBoardEntry[] = [];
-    for (const entry of entries) {
+    await eachInOrder(entries, async (entry) => {
       out.push(await readOne(entry, room, dmRootPolicy));
-    }
+    });
+
     return out;
   }
 
@@ -229,6 +233,7 @@ export function createNoticeBoard(
     }
     try {
       const plaintext = await decryptNoticeContent(contentKey, claims.content);
+
       return { ...base, plaintext };
     } catch {
       // A held key that fails to decrypt is a genuine inconsistency (the notice wasn't encrypted under the key this epoch actually holds); report it as unreadable rather than as verified-and-empty.
@@ -240,6 +245,7 @@ export function createNoticeBoard(
     try {
       const decoded: unknown = decode(entry, cdeDecodeOptions);
       const parsed = roomNoticeSchema.safeParse(decoded);
+
       return parsed.success ? parsed.data : undefined;
     } catch {
       return undefined;

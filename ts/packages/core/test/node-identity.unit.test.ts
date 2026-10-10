@@ -38,6 +38,7 @@ async function generateEs256Identity(withEcdh: boolean): Promise<IdentityPort> {
     false,
     ["deriveBits"],
   );
+
   return createNodeIdentity(
     keyPair.privateKey,
     publicKeyBytes,

@@ -1,8 +1,8 @@
-// The gossiped, term-based coordinator election over coordinator-frame (spec/transport.cddl): pure state, no session or transport dependencies, so the same logic runs in any consumer exactly the way relay-hub.ts's own transport-agnostic core does. The spec fixes the whole algorithm and this module is only its mechanics: `term` is a monotonically increasing epoch a peer raises when claiming the role; a higher term always supersedes a lower one, and two simultaneous claims at equal terms are broken by lowest device-id, a verifier-side obligation the CDDL itself cannot enforce (the same idiom capability-token delegation's narrowing rule and room-notice ordering already use). This gives the rendezvous role the same crash-recovery property a port-race coordinator has (any live peer can take over by raising the term) without relying on OS-level port contention to do the electing.
-//
-// Ownership of when to claim, when to re-gossip, and what the role grants stays with the caller: this module only answers "given the claims I have seen, who holds the role" and mints a claim that beats them. A holder refreshing its claim for late joiners re-announces the incumbent unchanged (announceCurrent) rather than raising the term, because term inflation without a contest would make every refresh a takeover and destroy the monotonic epoch's meaning.
-//
-// Gossip propagation is the caller's transport concern, matching how peer-advert already travels: a claim this module mints reaches exactly the peers the sender's gossip reaches, and a claim evaluated here arrived the same way. There is no membership list to scope an election to (the mesh is the live connected component of the transport graph, nothing more), which is why the spec gossips this frame the same way it gossips peer-advert rather than addressing it to a roster.
+/* The gossiped, term-based coordinator election over coordinator-frame (spec/transport.cddl): pure state, no session or transport dependencies, so the same logic runs in any consumer exactly the way relay-hub.ts's own transport-agnostic core does. The spec fixes the whole algorithm and this module is only its mechanics: `term` is a monotonically increasing epoch a peer raises when claiming the role; a higher term always supersedes a lower one, and two simultaneous claims at equal terms are broken by lowest device-id, a verifier-side obligation the CDDL itself cannot enforce (the same idiom capability-token delegation's narrowing rule and room-notice ordering already use). This gives the rendezvous role the same crash-recovery property a port-race coordinator has (any live peer can take over by raising the term) without relying on OS-level port contention to do the electing.
+
+   Ownership of when to claim, when to re-gossip, and what the role grants stays with the caller: this module only answers "given the claims I have seen, who holds the role" and mints a claim that beats them. A holder refreshing its claim for late joiners re-announces the incumbent unchanged (announceCurrent) rather than raising the term, because term inflation without a contest would make every refresh a takeover and destroy the monotonic epoch's meaning.
+
+   Gossip propagation is the caller's transport concern, matching how peer-advert already travels: a claim this module mints reaches exactly the peers the sender's gossip reaches, and a claim evaluated here arrived the same way. There is no membership list to scope an election to (the mesh is the live connected component of the transport graph, nothing more), which is why the spec gossips this frame the same way it gossips peer-advert rather than addressing it to a roster. */
 
 import type { CoordinatorFrame, DeviceId } from "../generated/protocol.js";
 
@@ -22,6 +22,7 @@ export function compareDeviceIds(a: DeviceId, b: DeviceId): number {
     if (left === undefined || right === undefined) break;
     if (left !== right) return left < right ? -1 : 1;
   }
+
   return a.length - b.length;
 }
 
@@ -45,6 +46,7 @@ export interface CoordinatorElectionOptions {
 
 export class CoordinatorElection {
   private readonly ownDevice: DeviceId;
+
   private incumbent: CoordinatorClaim | undefined;
 
   constructor(options: Readonly<CoordinatorElectionOptions>) {
@@ -86,6 +88,7 @@ export class CoordinatorElection {
       coordinator: this.ownDevice,
       ...(capacityHint !== undefined ? { capacityHint: capacityHint } : {}),
     };
+
     return frame;
   }
 
@@ -94,6 +97,7 @@ export class CoordinatorElection {
    */
   announceCurrent(): CoordinatorFrame | undefined {
     if (this.incumbent === undefined) return undefined;
+
     return {
       type: "coordinator",
       term: this.incumbent.term,
@@ -125,8 +129,10 @@ export class CoordinatorElection {
           ? { capacityHint: frame["capacity-hint"] }
           : {}),
       };
+
       return { outcome: "accepted", incumbent: this.incumbent };
     }
+
     return { outcome: "retained", incumbent: previous };
   }
 }

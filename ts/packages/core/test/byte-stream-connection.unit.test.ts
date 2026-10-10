@@ -20,6 +20,7 @@ const NOT_CBOR_BYTE = 0xff;
 function duplexPair(): [ByteStream, ByteStream] {
   const toSecond = new TransformStream<Uint8Array, Uint8Array>();
   const toFirst = new TransformStream<Uint8Array, Uint8Array>();
+
   return [
     { readable: toFirst.readable, writable: toSecond.writable },
     { readable: toSecond.readable, writable: toFirst.writable },
@@ -32,6 +33,7 @@ async function firstFrame(
   for await (const frame of frames) {
     return frame;
   }
+
   return undefined;
 }
 

@@ -26,6 +26,7 @@ function connect(hub: Readonly<ReturnType<typeof createRelayHub>>): {
   handling: Promise<void>;
 } {
   const fake = new FakeConnection();
+
   return { fake, handling: hub.handleConnection(fake.connection) };
 }
 

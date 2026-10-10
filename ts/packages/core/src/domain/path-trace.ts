@@ -40,6 +40,7 @@ export function buildPathTraceResponse(
   hubAddress?: string,
 ): ManageOutcome {
   const relayed = incoming.fromDevice !== undefined;
+
   return {
     result: "ok",
     relayed,
@@ -117,5 +118,6 @@ export async function tracePath(
       ? { hubAddress: parsed.data["hub-address"] }
       : {}),
   };
+
   return { rttMs, local, remote, outcome };
 }

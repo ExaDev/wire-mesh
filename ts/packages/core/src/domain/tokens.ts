@@ -24,6 +24,7 @@ import {
   type TokenDelegateHandler,
 } from "./token-predicates.js";
 import { bytesToHex } from "./device-id.js";
+import { firstAsync } from "./sequential.js";
 import { bytesEqual, scopeNarrows } from "./token-scope.js";
 
 /** The capability verb of a grant-capability (wire-mesh#323): authority to mint other capability tokens, the same register manage:revoke already established for authority over tokens. */
@@ -122,6 +123,7 @@ function decodeTokenClaims(token: CapabilityToken): TokenClaims | undefined {
     return undefined;
   }
   const result = tokenClaimsSchema.safeParse(decoded);
+
   return result.success ? result.data : undefined;
 }
 
@@ -150,6 +152,7 @@ export async function verifyCapabilityToken(
   ) {
     return { ok: false, reason: "bearer_mismatch" };
   }
+
   return verdict;
 }
 
@@ -182,6 +185,7 @@ async function revocationEntryGrantsRevoke(
     authorizationResult.data,
     { ...options, expectedBearer: entry.issuer },
   );
+
   return (
     authorizationVerdict.ok &&
     authorizationVerdict.claims.capability === "manage:revoke" &&
@@ -189,13 +193,21 @@ async function revocationEntryGrantsRevoke(
   );
 }
 
+/** Where a token sits in the chain being walked. */
+interface ChainLink {
+  /** Subject mode (wire-mesh#323): when this token is being verified as the AUTHORISER of another token, that other token's claims, against which this token's own conditions are evaluated instead of its own. Undefined for a standalone (leaf) verification, which is every existing call. */
+  subjectClaims?: Readonly<GrantSubject>;
+  depth: number;
+  /** The payloads already on the path from the leaf, so a cycle is refused instead of walked. */
+  seen: ReadonlySet<string>;
+}
+
+const LEAF_LINK: ChainLink = { depth: 0, seen: new Set() };
+
 async function verifyTokenChain(
   token: CapabilityToken,
   options: Omit<VerifyCapabilityTokenOptions, "expectedBearer">,
-  /** Subject mode (wire-mesh#323): when this token is being verified as the AUTHORISER of another token, that other token's claims, against which this token's own conditions are evaluated instead of its own. Undefined for a standalone (leaf) verification, which is every existing call. */
-  subjectClaims?: Readonly<GrantSubject>,
-  depth = 0,
-  seen: ReadonlySet<string> = new Set(),
+  { subjectClaims, depth, seen }: Readonly<ChainLink> = LEAF_LINK,
 ): Promise<TokenVerdict> {
   const [protectedHeader, , payload, signature] = token;
   if (payload === null) {
@@ -253,10 +265,11 @@ async function verifyTokenChain(
   const revocationEntries = await options.revocation.entriesFor(
     claims["token-id"],
   );
-  for (const entry of revocationEntries) {
-    if (await revocationEntryGrantsRevoke(entry, claims, options)) {
-      return { ok: false, reason: "revoked" };
-    }
+  const revokedBy = await firstAsync(revocationEntries, async (entry) =>
+    revocationEntryGrantsRevoke(entry, claims, options),
+  );
+  if (revokedBy !== undefined) {
+    return { ok: false, reason: "revoked" };
   }
 
   // claims.conditions is strictly additive to the narrowing checks below -- it is decoded and evaluated here, uniformly for both root and delegated tokens, entirely independent of whether claims.parent is present. See tokens.cddl's own comment on the field and CONVENTIONS.md's verifier-obligations glossary entry for the fail-closed contract this enforces.
@@ -307,13 +320,10 @@ async function verifyTokenChain(
     if (!parentResult.success) {
       return { ok: false, reason: "parent_invalid" };
     }
-    const parentVerdict = await verifyTokenChain(
-      parentResult.data,
-      options,
-      undefined,
-      depth + 1,
-      deeperSeen,
-    );
+    const parentVerdict = await verifyTokenChain(parentResult.data, options, {
+      depth: depth + 1,
+      seen: deeperSeen,
+    });
     if (!parentVerdict.ok) {
       // Walker-level conditions (too deep, cyclic) are properties of the whole chain, not of this one link, so they surface as themselves rather than hiding behind parent_invalid.
       if (
@@ -322,6 +332,7 @@ async function verifyTokenChain(
       ) {
         return { ok: false, reason: parentVerdict.reason };
       }
+
       return { ok: false, reason: "parent_invalid" };
     }
     const candidate: NarrowingCandidate = {
@@ -340,6 +351,7 @@ async function verifyTokenChain(
     if (failedSystem !== undefined) {
       return { ok: false, reason: "delegation_exceeds_parent" };
     }
+
     return {
       ok: true,
       claims,
@@ -363,9 +375,7 @@ async function verifyTokenChain(
     const authoriserVerdict = await verifyTokenChain(
       authoriserResult.data,
       options,
-      claims,
-      depth + 1,
-      deeperSeen,
+      { subjectClaims: claims, depth: depth + 1, seen: deeperSeen },
     );
     if (!authoriserVerdict.ok) {
       if (
@@ -374,6 +384,7 @@ async function verifyTokenChain(
       ) {
         return { ok: false, reason: authoriserVerdict.reason };
       }
+
       return { ok: false, reason: "authorisation_invalid" };
     }
     const authoriser = authoriserVerdict.claims;
@@ -392,6 +403,7 @@ async function verifyTokenChain(
     if (!linkOk) {
       return { ok: false, reason: "authorisation_invalid" };
     }
+
     return {
       ok: true,
       claims,
@@ -513,6 +525,7 @@ async function checkNarrowing(
     granterDeviceId,
     candidate,
   );
+
   return failedSystem === undefined
     ? undefined
     : NARROWING_SYSTEM_TO_MINT_REFUSAL[failedSystem];
@@ -577,6 +590,7 @@ async function checkAuthorisation(
       return "authorisation_conditions_not_satisfied";
     }
   }
+
   return undefined;
 }
 
@@ -600,6 +614,7 @@ export async function canGrant(
   if (heldClaims === undefined) {
     return false;
   }
+
   return (await checkNarrowing(heldClaims, deviceId, candidate)) === undefined;
 }
 
@@ -617,6 +632,7 @@ export async function canGrantVia(
   if (heldClaims === undefined) {
     return false;
   }
+
   return (
     (await checkAuthorisation(heldClaims, deviceId, candidate)) === undefined
   );
@@ -751,6 +767,7 @@ export async function mintCapabilityToken(
   const signature = await options.identity.sign(
     sig1ToBeSigned(protectedHeader, payload),
   );
+
   return { ok: true, token: [protectedHeader, {}, payload, signature] };
 }
 
@@ -776,5 +793,6 @@ export async function mintRevocationEntry(
   const signature = await options.identity.sign(
     sig1ToBeSigned(protectedHeader, payload),
   );
+
   return [protectedHeader, {}, payload, signature];
 }

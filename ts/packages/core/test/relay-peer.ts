@@ -1,5 +1,6 @@
 // The far end of a relay pairing, for tests that drive a MeshSession over a FakeConnection: a real identity that speaks the secure channel (spec/secure-channel.cddl) the way a peer reached through a hub does, so a test can deliver a frame "from" it and read what the session sent it without a hub in the middle.
 
+import { vi } from "vitest";
 import { tryDecodeFrame, wrapRelayData } from "../src/adapters/frame-codec.js";
 import { deviceIdToHex } from "../src/domain/device-id.js";
 import {
@@ -16,14 +17,11 @@ import type {
 } from "../src/generated/protocol.js";
 import type { IdentityPort } from "../src/ports/identity.js";
 import type { FakeConnection } from "./mesh-session-fixtures.js";
+import { inSequence } from "./sequence.js";
 
 const POLL_INTERVAL_MS = 1;
-
-async function sleep(): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, POLL_INTERVAL_MS);
-  });
-}
+/** How long a peer waits for the session to send something: vitest's own default test timeout, so a missing frame fails here with its own message rather than as a timed out test. */
+const WAIT_TIMEOUT_MS = 5_000;
 
 function relayData(frame: Frame): RelayDataFrame | undefined {
   return frame.type === "relay-data" ? frame : undefined;
@@ -35,11 +33,13 @@ function nestedFor(frame: Frame, device: DeviceId): Frame | null {
   const target = wrapped?.["to-device"];
   if (wrapped === undefined || target === undefined) return null;
   if (deviceIdToHex(target) !== deviceIdToHex(device)) return null;
+
   return tryDecodeFrame(wrapped.payload);
 }
 
 export class RelayPeer {
   private channel: SecureChannel | undefined;
+
   private consumed = 0;
 
   constructor(
@@ -55,19 +55,24 @@ export class RelayPeer {
   private hellosSent(): SecureHelloFrame[] {
     return this.link.sent.flatMap((sent) => {
       const inner = nestedFor(sent, this.deviceId);
+
       return inner?.type === "secure-hello" ? [inner] : [];
     });
   }
 
   /** The hello the session sent this peer after the first `skip`, waiting for it to appear. */
   private async sessionHello(skip = 0): Promise<SecureHelloFrame> {
-    for (;;) {
-      const hello = this.hellosSent()[skip];
-      if (hello !== undefined) {
+    return vi.waitFor(
+      () => {
+        const hello = this.hellosSent()[skip];
+        if (hello === undefined) {
+          throw new Error("the session has not sent its hello yet");
+        }
+
         return hello;
-      }
-      await sleep();
-    }
+      },
+      { interval: POLL_INTERVAL_MS, timeout: WAIT_TIMEOUT_MS },
+    );
   }
 
   private async complete(
@@ -135,21 +140,28 @@ export class RelayPeer {
     if (this.channel === undefined) {
       throw new Error("open the channel first");
     }
-    for (;;) {
-      const opened: Frame[] = [];
-      const sealed = this.link.sent.flatMap((frame) => {
-        const inner = nestedFor(frame, this.deviceId);
-        return inner?.type === "secure-data" ? [inner] : [];
-      });
-      for (const data of sealed.slice(this.consumed)) {
-        const inner = await this.channel.open(data);
-        if (inner !== undefined) opened.push(inner);
-      }
-      if (opened.length > 0) {
+    const { channel } = this;
+
+    return vi.waitFor(
+      async () => {
+        const opened: Frame[] = [];
+        const sealed = this.link.sent.flatMap((frame) => {
+          const inner = nestedFor(frame, this.deviceId);
+
+          return inner?.type === "secure-data" ? [inner] : [];
+        });
+        await inSequence(sealed.slice(this.consumed), async (data) => {
+          const inner = await channel.open(data);
+          if (inner !== undefined) opened.push(inner);
+        });
+        if (opened.length === 0) {
+          throw new Error("the session has sent no frame yet");
+        }
         this.consumed = sealed.length;
+
         return opened;
-      }
-      await sleep();
-    }
+      },
+      { interval: POLL_INTERVAL_MS, timeout: WAIT_TIMEOUT_MS },
+    );
   }
 }

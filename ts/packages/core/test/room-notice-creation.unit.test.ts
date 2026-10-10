@@ -36,6 +36,7 @@ async function mintRoomMemberToken(
     delegationsRemaining: 0,
   });
   if (!verdict.ok) throw new Error(`mint failed: ${verdict.reason}`);
+
   return verdict.token;
 }
 
@@ -140,9 +141,9 @@ describe("createRoomNotice", () => {
       content: new TextEncoder().encode("hi"),
       refs: [{ id: priorNoticeId, relation: "reply" }],
       validUntil: VALID_UNTIL_MS,
-      // An encrypted notice: content-type carries the +aes256gcm suffix (room.cddl
-      // obligation 7), so key-epoch must be present alongside it -- the pairing
-      // verifyRoomNotice's key_epoch_mismatch check requires.
+      /* An encrypted notice: content-type carries the +aes256gcm suffix (room.cddl
+         obligation 7), so key-epoch must be present alongside it -- the pairing
+         verifyRoomNotice's key_epoch_mismatch check requires. */
       contentType: encryptedContentType("text/plain"),
       keyEpoch: KEY_EPOCH,
     });

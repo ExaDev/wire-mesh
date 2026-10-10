@@ -33,6 +33,7 @@ const TOKEN_ID_BYTE_LENGTH = 16;
 function randomTokenId(): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(TOKEN_ID_BYTE_LENGTH);
   crypto.getRandomValues(bytes);
+
   return bytes;
 }
 
@@ -68,6 +69,7 @@ export function buildCapabilityRequestCommand(
 /** A capability request the other side answered with a manage-error. The code is the receiver's own (`denied` for a human's no, `token_required`, `capability_mismatch` or `scope_mismatch` from the request-permission gate, or a verifier reason for a presented token it did not accept), kept as a field so a caller can tell a policy refusal from a person's decision without parsing the message. */
 export class CapabilityRequestRefusedError extends Error {
   readonly capability: string;
+
   readonly code: string;
 
   constructor(capability: string, code: string) {
@@ -109,6 +111,7 @@ export async function requestCapability(
       `capability request for "${capability}" response was malformed`,
     );
   }
+
   return parsed.data;
 }
 
@@ -199,6 +202,7 @@ async function checkRequestPermission(
   if (!scopeNarrows(verdict.claims.scope, incoming.scope)) {
     return { ok: false, code: "scope_mismatch" };
   }
+
   return { ok: true };
 }
 
@@ -214,6 +218,7 @@ export function createCapabilityRequestHandler(
     const parsed = capabilityRequestSchema.safeParse(incoming.command.params);
     if (!parsed.success || parsed.data.capability !== options.capability) {
       await incoming.respond({ result: "error", code: "malformed" });
+
       return;
     }
     const params = parsed.data;
@@ -224,12 +229,14 @@ export function createCapabilityRequestHandler(
           result: "error",
           code: verdict.code,
         });
+
         return;
       }
     }
     const validUntil = params["valid-until"];
     if (validUntil !== undefined && validUntil <= options.clock.now()) {
       await incoming.respond({ result: "error", code: "expired" });
+
       return;
     }
 
@@ -263,6 +270,7 @@ export function createCapabilityRequestHandler(
               ? { message: decision.reason }
               : {}),
           });
+
           return;
         }
         const verdict = await mintCapabilityToken({
@@ -279,6 +287,7 @@ export function createCapabilityRequestHandler(
         });
         if (!verdict.ok) {
           await incoming.respond({ result: "error", code: "mint_failed" });
+
           return;
         }
         const grantedToken: CapabilityToken = verdict.token;

@@ -38,6 +38,7 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   for (let i = 0; i < a.length; i += 1) {
     if (a[i] !== b[i]) return false;
   }
+
   return true;
 }
 
@@ -49,6 +50,7 @@ function concat(chunks: readonly Uint8Array[]): Uint8Array<ArrayBuffer> {
     out.set(chunk, offset);
     offset += chunk.length;
   }
+
   return out;
 }
 
@@ -61,6 +63,7 @@ async function readStoredTransferBytes(
   for await (const chunk of source(0)) {
     chunks.push(chunk);
   }
+
   return concat(chunks);
 }
 
@@ -71,11 +74,13 @@ function singleChunkSource(
   return (fromSeq: number) => ({
     [Symbol.asyncIterator](): AsyncIterator<Uint8Array<ArrayBuffer>> {
       let exhausted = fromSeq > 0;
+
       return {
         next: async (): Promise<IteratorResult<Uint8Array<ArrayBuffer>>> => {
           if (exhausted)
             return Promise.resolve({ value: undefined, done: true });
           exhausted = true;
+
           return Promise.resolve({ value: chunk, done: false });
         },
       };
@@ -99,9 +104,9 @@ function pumpSenderAcks(
   })();
 }
 
-// ---------------------------------------------------------------------
-// Sender
-// ---------------------------------------------------------------------
+/* ---------------------------------------------------------------------
+   Sender
+   --------------------------------------------------------------------- */
 
 /** One already-established, already-authenticated connection+session this module pushes a shard over -- establishing and authenticating it (discovery, handshake, whatever reconnect policy applies) is the caller's own job, mirroring every other domain module here (notice-board.ts, capability-request.ts) that takes a live MeshSession rather than owning connection setup itself. */
 export interface ShardChannel {
@@ -180,6 +185,7 @@ export async function distributeShardedPayload(
         source: singleChunkSource(shardBytes),
       });
       pumpSenderAcks(channel.connection, sender);
+
       return sender.open(channel.connection, channel.session, scope, {
         transferId,
         targetDevice: location.device,
@@ -193,12 +199,13 @@ export async function distributeShardedPayload(
     { identity, storage },
     manifestEntry,
   );
+
   return { manifest, manifestEntry, dataHave, outcomes };
 }
 
-// ---------------------------------------------------------------------
-// Holder (mailbox)
-// ---------------------------------------------------------------------
+/* ---------------------------------------------------------------------
+   Holder (mailbox)
+   --------------------------------------------------------------------- */
 
 export interface ShardHolderOptions {
   storage: KeyValueStorage;
@@ -213,9 +220,12 @@ export interface ShardHolder {
   serveShard: (
     channel: Readonly<ShardChannel>,
     transferId: Uint8Array<ArrayBuffer>,
-    targetDevice: DeviceId,
-    scope: Readonly<CapabilityScope>,
-    serveOptions?: Readonly<{ contentType?: string; totalSize?: number }>,
+    serve: Readonly<{
+      targetDevice: DeviceId;
+      scope: Readonly<CapabilityScope>;
+      contentType?: string;
+      totalSize?: number;
+    }>,
   ) => Promise<BulkSendOutcome>;
 }
 
@@ -227,37 +237,34 @@ export function createShardHolder(
 ): ShardHolder {
   const { storage } = options;
   const receiver = createBulkReceiver({ storage });
+
   return {
     onFrame: receiver.onFrame,
     createOpenHandler: receiver.createOpenHandler,
-    async serveShard(
-      channel,
-      transferId,
-      targetDevice,
-      scope,
-      serveOptions = {},
-    ) {
+    async serveShard(channel, transferId, serve) {
+      const { targetDevice, scope } = serve;
       const sender = createBulkSender({
         source: storedTransferSource({ storage, transferId }),
       });
       pumpSenderAcks(channel.connection, sender);
+
       return sender.open(channel.connection, channel.session, scope, {
         transferId,
         targetDevice,
-        ...(serveOptions.contentType !== undefined
-          ? { contentType: serveOptions.contentType }
+        ...(serve.contentType !== undefined
+          ? { contentType: serve.contentType }
           : {}),
-        ...(serveOptions.totalSize !== undefined
-          ? { totalSize: serveOptions.totalSize }
+        ...(serve.totalSize !== undefined
+          ? { totalSize: serve.totalSize }
           : {}),
       });
     },
   };
 }
 
-// ---------------------------------------------------------------------
-// Reader
-// ---------------------------------------------------------------------
+/* ---------------------------------------------------------------------
+   Reader
+   --------------------------------------------------------------------- */
 
 export interface CreateShardCollectorOptions {
   manifest: Readonly<ShardManifest>;
@@ -324,6 +331,7 @@ export function createShardCollector(
             kind: "reject",
             reason: "shard offer does not match the manifest",
           });
+
           return;
         }
         void event.decide({
@@ -374,5 +382,6 @@ export async function locateShardManifests(
       // Not a shard manifest -- some other application entry in the same log.
     }
   }
+
   return manifests;
 }

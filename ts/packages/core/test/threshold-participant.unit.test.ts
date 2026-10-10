@@ -28,6 +28,7 @@ const SESSION_ID = 1n;
 function deviceId(byte: number): DeviceId {
   const bytes = new Uint8Array(DEVICE_ID_LENGTH);
   bytes[DEVICE_ID_LENGTH - 1] = byte;
+
   return bytes;
 }
 
@@ -43,6 +44,7 @@ async function sendOnce(
       ...incoming,
       respond: async (outcome) => {
         resolve(outcome);
+
         return Promise.resolve();
       },
     });
@@ -55,6 +57,7 @@ function participantHarness(): {
 } {
   const waiters: ((request: IncomingManageRequest) => void)[] = [];
   const backlog: IncomingManageRequest[] = [];
+
   return {
     push: (incoming) => {
       const waiter = waiters.shift();
@@ -140,7 +143,8 @@ describe("threshold-participant: fail-closed paths", () => {
     startThresholdParticipant({
       session: harness.session,
       personalIdentity: personal,
-      keyPackagesByGroup: new Map(), // no group known
+      // no group known
+      keyPackagesByGroup: new Map(),
       nonceStore: createMemoryNonceStore(),
       clock,
       revocation: neverRevoked,

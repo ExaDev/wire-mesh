@@ -34,6 +34,7 @@ const ARBITRARY_MESSAGE = new Uint8Array([1, 2, 1]);
 function deviceId(byte: number): DeviceId {
   const bytes = new Uint8Array(DEVICE_ID_LENGTH);
   bytes[DEVICE_ID_LENGTH - 1] = byte;
+
   return bytes;
 }
 
@@ -65,6 +66,7 @@ function runDkg(deviceIds: readonly DeviceId[]): Participant[] {
     const othersRound1 = round1Entries.filter(
       (e) => !sameDeviceId(e.deviceId, p.deviceId),
     );
+
     return {
       deviceId: p.deviceId,
       ...dkgRound2(p.secretPackage, othersRound1),
@@ -94,6 +96,7 @@ function runDkg(deviceIds: readonly DeviceId[]): Participant[] {
     if (!inbox) {
       throw new Error("test fixture: missing inbox for a DKG participant");
     }
+
     return {
       deviceId: p.deviceId,
       round3: dkgRound3(p.secretPackage, othersRound1, inbox),
@@ -133,9 +136,11 @@ function inProcessCoordinator(
         const { nonces, commitments: commitmentBytes } =
           signingRound1Commit(keyPackage);
         noncesByDevice.set(hexOf(id), nonces);
+
         return { deviceId: id, value: commitmentBytes };
       });
       sessions.set(sessionId.toString(), { message, noncesByDevice });
+
       return Promise.resolve(commitments);
     },
     async signRound(sessionId, commitments): Promise<SignatureShareEntry[]> {
@@ -156,13 +161,16 @@ function inProcessCoordinator(
               "test coordinator: missing key package or nonces for a committed participant",
             );
           }
-          session.noncesByDevice.delete(hexOf(id)); // one-shot, matching NonceStore.take's own contract
+          // one-shot, matching NonceStore.take's own contract
+          session.noncesByDevice.delete(hexOf(id));
+
           return {
             deviceId: id,
             value: signingRound2Sign(nonces, signingPackage, keyPackage),
           };
         },
       );
+
       return Promise.resolve(shares);
     },
   };
@@ -238,7 +246,8 @@ describe("threshold-identity: createThresholdIdentity", () => {
     }
 
     const underThreshold: ThresholdCoordinator = {
-      commitRound: async () => Promise.resolve([]), // nobody committed
+      // nobody committed
+      commitRound: async () => Promise.resolve([]),
       signRound: async () => Promise.resolve([]),
     };
     const identity = await createThresholdIdentity(

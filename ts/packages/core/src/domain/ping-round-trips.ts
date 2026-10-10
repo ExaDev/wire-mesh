@@ -38,6 +38,7 @@ export function createPingRoundTrips(): PingRoundTrips {
       return false;
     }
     pending.splice(index, 1);
+
     return true;
   }
 
@@ -61,6 +62,7 @@ export function createPingRoundTrips(): PingRoundTrips {
       if (timeoutMs === undefined) {
         return rtt;
       }
+
       return Promise.race([
         rtt,
         new Promise<number>((_resolve, reject) => {

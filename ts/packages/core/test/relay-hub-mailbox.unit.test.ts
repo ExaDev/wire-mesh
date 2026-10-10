@@ -28,6 +28,7 @@ function connect(
 ): FakeConnection {
   const fake = new FakeConnection();
   void hub.handleConnection(fake.connection);
+
   return fake;
 }
 

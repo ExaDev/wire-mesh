@@ -10,6 +10,7 @@ function parseAddress(address: string): { host: string; port: number } {
   if (lastColon === -1) {
     throw new Error(`expected "host:port", got "${address}"`);
   }
+
   return {
     host: address.slice(0, lastColon),
     port: Number(address.slice(lastColon + 1)),
@@ -60,6 +61,7 @@ function frameReader(socket: Socket): AsyncIterable<Frame> {
             : new Error(`frame body failed to decode: ${String(error)}`);
         failAll(connectionError);
         socket.destroy(connectionError);
+
         return;
       }
       const result = frameSchema.safeParse(decoded);
@@ -114,6 +116,7 @@ function frameReader(socket: Socket): AsyncIterable<Frame> {
           if (ended) {
             return Promise.resolve({ value: undefined, done: true });
           }
+
           return new Promise((resolve, reject) => {
             waiters.push({ resolve, reject });
           });
@@ -125,10 +128,12 @@ function frameReader(socket: Socket): AsyncIterable<Frame> {
 
 function wrapSocket(socket: Socket): Connection {
   const frames = frameReader(socket);
+
   return {
     // Socket.write is not itself async; the contract stays Promise-returning so other adapters (e.g. one with real backpressure/ack semantics) can be genuinely asynchronous.
     send: async (frame) => {
       writeFrame(socket, frame);
+
       return Promise.resolve();
     },
     receive: () => frames,
@@ -146,6 +151,7 @@ export function createTcpTransport(): Transport {
   return {
     async connect(address) {
       const { host, port } = parseAddress(address);
+
       return new Promise((resolve, reject) => {
         const socket = netConnect({ host, port });
         socket.once("connect", () => {
@@ -156,6 +162,7 @@ export function createTcpTransport(): Transport {
     },
     async listen(address, onConnection): Promise<Listener> {
       const { host, port } = parseAddress(address);
+
       return new Promise((resolve, reject) => {
         const server = createServer((socket) => {
           onConnection(wrapSocket(socket));
@@ -166,6 +173,7 @@ export function createTcpTransport(): Transport {
           if (bound === null || typeof bound === "string") {
             // A TCP server's bound address is always an AddressInfo object; null only if the server were not listening, which cannot hold inside this listening callback
             reject(new Error("listener did not report a bound address"));
+
             return;
           }
           const listener: Listener = {

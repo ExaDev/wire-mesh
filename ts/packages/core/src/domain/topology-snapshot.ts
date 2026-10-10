@@ -19,6 +19,7 @@ function directPeerDevice(
   if (inputs.authenticatedPeer !== undefined) {
     return inputs.authenticatedPeer;
   }
+
   return inputs.isAccepted
     ? (inputs.firstAdvertisedPeer ?? undefined)
     : undefined;
@@ -29,6 +30,7 @@ export function computeTopologyPeers(
   inputs: Readonly<TopologyPeersInputs>,
 ): TopologyPeers {
   const direct = directPeerDevice(inputs);
+
   return {
     direct: direct !== undefined ? [direct] : [],
     relayed: inputs.relayedDevices.map((device) => ({
@@ -59,12 +61,14 @@ export function createTopologySnapshotTracker(
   sources: Readonly<TopologySnapshotSources>,
 ): TopologySnapshotTracker {
   let firstAdvertisedPeer: DeviceId | null = null;
+
   return {
     recordAdvert: (device) => {
       firstAdvertisedPeer ??= device;
     },
     compute: () => {
       const authenticatedPeer = sources.getAuthenticatedPeer();
+
       return computeTopologyPeers({
         ...(authenticatedPeer !== undefined ? { authenticatedPeer } : {}),
         firstAdvertisedPeer,

@@ -118,6 +118,7 @@ export async function createThresholdIdentity(
           "aggregate threshold signature failed to verify against the group's own key -- refusing to return it",
         );
       }
+
       return signature;
     },
   };

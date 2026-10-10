@@ -66,6 +66,7 @@ async function generateEs256Identity(): Promise<IdentityPort> {
     false,
     ["deriveBits"],
   );
+
   return createNodeIdentity(
     keyPair.privateKey,
     publicKeyBytes,
@@ -81,6 +82,7 @@ async function deriveSharedSecretOrThrow(
   if (identity.deriveSharedSecret === undefined) {
     throw new Error("identity must expose deriveSharedSecret");
   }
+
   return identity.deriveSharedSecret(peer.identityKey);
 }
 
@@ -98,6 +100,7 @@ async function ownerRekeys(
     keyEpoch,
   });
   const wrapped = await wrapContentKey(wrappingKey, contentKey);
+
   return {
     command: buildRoomRekeyCommand(keyEpoch, wrapped),
     ownerKeyCopy: contentKey,
@@ -132,6 +135,7 @@ async function mintRoomMemberToken(
     delegationsRemaining: 0,
   });
   if (!verdict.ok) throw new Error(`mint failed: ${verdict.reason}`);
+
   return verdict.token;
 }
 

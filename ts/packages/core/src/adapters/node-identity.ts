@@ -54,6 +54,7 @@ export async function verifyWithPublicKey(
   signature: Uint8Array,
 ): Promise<boolean> {
   const cryptoKey = await importPublicKey(key);
+
   return webcrypto.subtle.verify(
     algParams(key.alg),
     cryptoKey,
@@ -103,6 +104,7 @@ export async function createNodeIdentity(
         privateKey,
         toBufferSource(message),
       );
+
       return new Uint8Array(signature);
     },
     verify: verifyWithPublicKey,
@@ -122,12 +124,14 @@ export async function createNodeIdentity(
         );
       }
       const peerPublicKey = await importEs256PublicKeyForEcdh(peerKey);
-      const SHARED_SECRET_BIT_LENGTH = 256; // P-256's own field size
+      // P-256's own field size
+      const SHARED_SECRET_BIT_LENGTH = 256;
       const bits = await webcrypto.subtle.deriveBits(
         { name: "ECDH", public: peerPublicKey },
         ecdhPrivateKey,
         SHARED_SECRET_BIT_LENGTH,
       );
+
       return new Uint8Array(bits);
     },
   };

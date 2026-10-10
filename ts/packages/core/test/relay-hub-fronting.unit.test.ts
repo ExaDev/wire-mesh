@@ -30,6 +30,7 @@ async function fixture() {
   caller.push(client.gossip);
   await settle(gateway, caller);
   const everyone = [gateway, caller];
+
   return { hub, front1, front2, client, gateway, caller, handling, everyone };
 }
 

@@ -10,6 +10,7 @@ export interface AsyncQueue<T> {
 export function createAsyncQueue<T>(): AsyncQueue<T> {
   const waiters: ((value: T) => void)[] = [];
   const backlog: T[] = [];
+
   return {
     push(value) {
       const waiter = waiters.shift();

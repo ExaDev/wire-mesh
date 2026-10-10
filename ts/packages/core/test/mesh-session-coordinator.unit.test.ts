@@ -46,6 +46,7 @@ describe("coordinator-frame plumbing", () => {
       const iterator = session.coordinatorFrames[Symbol.asyncIterator]();
       const first = await iterator.next();
       expect(first.done).toBe(false);
+
       return yielded(first);
     })();
 

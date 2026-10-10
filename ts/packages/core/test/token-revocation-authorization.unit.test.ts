@@ -89,7 +89,8 @@ describe("verifyCapabilityToken -- revocation via a delegated manage:revoke auth
     const tokenId = nextTokenId();
     const token = await mintTargetToken(tokenId);
     const authorization = await mintRevokeAuthorization({
-      authScope: { kind: "folder" }, // whole-kind root, wider than /work
+      // whole-kind root, wider than /work
+      authScope: { kind: "folder" },
     });
     const entry: RevocationClaims = {
       "token-id": tokenId,

@@ -41,6 +41,7 @@ function concat(...parts: readonly Uint8Array[]): Uint8Array<ArrayBuffer> {
     out.set(part, offset);
     offset += part.length;
   }
+
   return out;
 }
 
@@ -50,12 +51,14 @@ function compareBytes(a: Uint8Array, b: Uint8Array): number {
     const difference = (a[i] ?? 0) - (b[i] ?? 0);
     if (difference !== 0) return difference;
   }
+
   return a.length - b.length;
 }
 
 function counterBytes(counter: number): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(COUNTER_BYTE_LENGTH);
   new DataView(bytes.buffer).setBigUint64(0, BigInt(counter), false);
+
   return bytes;
 }
 
@@ -97,6 +100,7 @@ export async function beginHandshake(
   const signature = await identity.sign(
     helloSigningInput(ephemeralKey, nonce, identity.deviceId, peer),
   );
+
   return {
     peer,
     privateKey: pair.privateKey,
@@ -141,6 +145,7 @@ export async function verifyHello(
       ),
       hello.signature,
     );
+
     return valid
       ? { ok: true, peer: { deviceId: sender, identityKey: key } }
       : { ok: false, reason: "bad_signature" };
@@ -161,6 +166,7 @@ export interface SecureChannel {
 function ivFor(counter: number): Uint8Array<ArrayBuffer> {
   const iv = new Uint8Array(GCM_IV_BYTE_LENGTH);
   iv.set(counterBytes(counter), IV_COUNTER_OFFSET);
+
   return iv;
 }
 
@@ -172,13 +178,19 @@ function associatedData(
   return concat(DATA_CONTEXT, sender, recipient, counterBytes(counter));
 }
 
-async function deriveDirectionKey(
-  secret: Uint8Array,
-  salt: Uint8Array,
-  low: DeviceId,
-  high: DeviceId,
-  label: Uint8Array,
-): Promise<CryptoKey> {
+async function deriveDirectionKey({
+  secret,
+  salt,
+  low,
+  high,
+  label,
+}: Readonly<{
+  secret: Uint8Array;
+  salt: Uint8Array;
+  low: DeviceId;
+  high: DeviceId;
+  label: Uint8Array;
+}>): Promise<CryptoKey> {
   const material = await crypto.subtle.importKey(
     "raw",
     Uint8Array.from(secret),
@@ -186,6 +198,7 @@ async function deriveDirectionKey(
     false,
     ["deriveKey"],
   );
+
   return crypto.subtle.deriveKey(
     {
       name: "HKDF",
@@ -237,20 +250,20 @@ export async function establishChannel(
   const lowNonce = localIsLow ? pending.hello.nonce : remote.nonce;
   const highNonce = localIsLow ? remote.nonce : pending.hello.nonce;
   const salt = concat(lowNonce, highNonce);
-  const lowToHigh = await deriveDirectionKey(
+  const lowToHigh = await deriveDirectionKey({
     secret,
     salt,
     low,
     high,
-    LABEL_LOW_TO_HIGH,
-  );
-  const highToLow = await deriveDirectionKey(
+    label: LABEL_LOW_TO_HIGH,
+  });
+  const highToLow = await deriveDirectionKey({
     secret,
     salt,
     low,
     high,
-    LABEL_HIGH_TO_LOW,
-  );
+    label: LABEL_HIGH_TO_LOW,
+  });
   const sendKey = localIsLow ? lowToHigh : highToLow;
   const receiveKey = localIsLow ? highToLow : lowToHigh;
 
@@ -278,6 +291,7 @@ export async function establishChannel(
         messageFromFrame(frame),
       ),
     );
+
     return { type: "secure-data", counter, ciphertext };
   }
 
@@ -306,7 +320,8 @@ export async function establishChannel(
       return undefined;
     }
     // Advanced only after the frame authenticated, so a forged counter cannot lock out the real ones.
-    highestReceived = data.counter;
+    highestReceived = Math.max(highestReceived, data.counter);
+
     return tryDecodeFrame(plaintext) ?? undefined;
   }
 
@@ -318,12 +333,14 @@ export async function establishChannel(
       // Sealing is chained so frames leave in counter order even if the runtime finishes two encryptions out of order: the receiver refuses a counter it has already passed.
       const sealed = sealing.then(async () => sealAt(frame, counter));
       sealing = sealed.catch(() => undefined);
+
       return sealed;
     },
     open: async (data) => {
       // Chained for the same reason: two frames opening at once must not both pass the counter check before either has advanced it.
       const opened = opening.then(async () => openOne(data));
       opening = opened.catch(() => undefined);
+
       return opened;
     },
   };

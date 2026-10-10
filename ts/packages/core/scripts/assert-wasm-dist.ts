@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// Refuses to pack this package unless wasm-dist actually holds the wasm-bindgen output.
-//
-// package.json's "files" lists wasm-dist, but it is a gitignored build artefact that only scripts/build-threshold-wasm.sh produces, and npm packs a listed directory that does not exist without complaint. That combination is how every release up to 1.58.3 shipped a tarball with nothing under wasm-dist while dist/adapters/threshold-wasm required out of it, leaving that export subpath unresolvable for anyone installing from the registry. The failure was invisible from inside the repository, where the directory is always present locally.
-//
-// This runs from prepack, so it covers `npm publish` and a bare `npm pack` alike, whatever builds the package beforehand. It deliberately only checks, never builds: producing these files needs a Rust toolchain and a version-matched wasm-bindgen CLI, and silently invoking that from a lifecycle script would be a far bigger surprise than a clear failure telling the caller which command to run.
+/* Refuses to pack this package unless wasm-dist actually holds the wasm-bindgen output.
+
+   package.json's "files" lists wasm-dist, but it is a gitignored build artefact that only scripts/build-threshold-wasm.sh produces, and npm packs a listed directory that does not exist without complaint. That combination is how every release up to 1.58.3 shipped a tarball with nothing under wasm-dist while dist/adapters/threshold-wasm required out of it, leaving that export subpath unresolvable for anyone installing from the registry. The failure was invisible from inside the repository, where the directory is always present locally.
+
+   This runs from prepack, so it covers `npm publish` and a bare `npm pack` alike, whatever builds the package beforehand. It deliberately only checks, never builds: producing these files needs a Rust toolchain and a version-matched wasm-bindgen CLI, and silently invoking that from a lifecycle script would be a far bigger surprise than a clear failure telling the caller which command to run. */
 
 import { existsSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";

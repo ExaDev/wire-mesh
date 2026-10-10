@@ -20,6 +20,7 @@ function parseAddress(address: string): { host: string; port: number } {
   if (lastColon === -1) {
     throw new Error(`expected "host:port", got "${address}"`);
   }
+
   return {
     host: address.slice(0, lastColon),
     port: Number(address.slice(lastColon + 1)),
@@ -69,6 +70,7 @@ function frameReader(socket: TLSSocket): AsyncIterable<Frame> {
             : new Error(`frame body failed to decode: ${String(error)}`);
         failAll(connectionError);
         socket.destroy(connectionError);
+
         return;
       }
       const result = frameSchema.safeParse(decoded);
@@ -120,6 +122,7 @@ function frameReader(socket: TLSSocket): AsyncIterable<Frame> {
           if (ended) {
             return Promise.resolve({ value: undefined, done: true });
           }
+
           return new Promise((resolve, reject) => {
             waiters.push({ resolve, reject });
           });
@@ -138,6 +141,7 @@ async function authenticatedPeerDeviceId(
   if (Object.keys(cert).length === 0 || !("pubkey" in cert)) {
     return undefined;
   }
+
   return deriveDeviceId(cert.pubkey);
 }
 
@@ -146,9 +150,11 @@ function wrapSocket(
   peerDeviceId: DeviceId | undefined,
 ): Connection {
   const frames = frameReader(socket);
+
   return {
     send: async (frame) => {
       writeFrame(socket, frame);
+
       return Promise.resolve();
     },
     receive: () => frames,
@@ -173,6 +179,7 @@ export function createTlsTransport(identity: Readonly<TlsIdentity>): Transport {
     cert: identity.certificatePem,
     rejectUnauthorized: false,
   };
+
   return {
     async connect(address) {
       const { host, port } = parseAddress(address);
@@ -183,10 +190,12 @@ export function createTlsTransport(identity: Readonly<TlsIdentity>): Transport {
         s.once("error", reject);
       });
       const peerDeviceId = await authenticatedPeerDeviceId(socket);
+
       return wrapSocket(socket, peerDeviceId);
     },
     async listen(address, onConnection): Promise<Listener> {
       const { host, port } = parseAddress(address);
+
       return new Promise((resolve, reject) => {
         const server = createServer(
           { ...tlsOptions, requestCert: true },
@@ -201,6 +210,7 @@ export function createTlsTransport(identity: Readonly<TlsIdentity>): Transport {
           const bound = server.address();
           if (bound === null || typeof bound === "string") {
             reject(new Error("listener did not report a bound address"));
+
             return;
           }
           const listener: Listener = {

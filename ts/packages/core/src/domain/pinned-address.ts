@@ -18,6 +18,7 @@ function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
   for (let index = 0; index < bytes.length; index++) {
     bytes[index] = Number.parseInt(hex.slice(index * 2, index * 2 + 2), 16);
   }
+
   return bytes;
 }
 
@@ -57,6 +58,7 @@ export function parsePinnedAddress(address: string): PinnedAddress {
     );
   }
   url.hash = "";
+
   return { url: url.toString(), sha256: hashes.map(hexToBytes) };
 }
 
@@ -104,6 +106,7 @@ export function decodeCertificateHashes(
     }
     hashes.push(new Uint8Array(hash));
   }
+
   return hashes;
 }
 
@@ -120,6 +123,7 @@ export function mergeHashes(
       merged.push(hash);
     }
   }
+
   return merged;
 }
 
@@ -136,5 +140,6 @@ export function withPinnedHashes(
 ): string {
   const { url } = parsePinnedAddress(address);
   const parsed = new URL(url);
+
   return formatPinnedAddress(parsed.host, sha256.map(bytesToHex));
 }

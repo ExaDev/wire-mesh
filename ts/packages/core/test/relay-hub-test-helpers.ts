@@ -1,6 +1,6 @@
-// Shared fixtures for relay-hub.unit.test.ts and relay-hub-multiplexing.unit.test.ts -- split out under this repo's max-lines cap the same way relay-hub-multiplexing.unit.test.ts's own multi-pairing/to-device coverage was split from the general single-pairing hub behaviour it grew alongside.
-//
-// Every fixture peer holds a real Ed25519 identity rather than a device-id invented from filler bytes: the hub verifies each advert's signature against the key the advert carries (wire-mesh#225), so an advert naming an id no keypair produced can never be registered, and a test built on one would exercise only the rejection path.
+/* Shared fixtures for relay-hub.unit.test.ts and relay-hub-multiplexing.unit.test.ts -- split out under this repo's max-lines cap the same way relay-hub-multiplexing.unit.test.ts's own multi-pairing/to-device coverage was split from the general single-pairing hub behaviour it grew alongside.
+
+   Every fixture peer holds a real Ed25519 identity rather than a device-id invented from filler bytes: the hub verifies each advert's signature against the key the advert carries (wire-mesh#225), so an advert naming an id no keypair produced can never be registered, and a test built on one would exercise only the rejection path. */
 
 import {
   deriveDeviceId,
@@ -44,18 +44,23 @@ export interface Idleable {
 export async function settle(
   ...connections: readonly Readonly<Idleable>[]
 ): Promise<void> {
-  do {
-    await tick();
-  } while (!connections.every((connection) => connection.idle));
+  await tick();
+  if (!connections.every((connection) => connection.idle)) {
+    await settle(...connections);
+  }
 }
 
 /** An in-memory Connection driving the hub through the port contract: queued inbound frames the test pushes, and a record of everything the hub sends back. */
 export class FakeConnection {
   inbound: Frame[] = [];
+
   sent: Frame[] = [];
+
   /** When set, every subsequent send() rejects with this error instead of recording the frame -- simulates a peer whose own connection has died from the hub's perspective, without needing a second connection class. */
   sendRejection: Error | null = null;
+
   private closed = false;
+
   private readonly wakeWaiters: (() => void)[] = [];
 
   /** True when every frame pushed so far has been consumed by the hub loop and its handling has finished: the loop is parked waiting for the next frame (or the stream has ended), so nothing is still in flight on this connection's behalf. */
@@ -72,12 +77,14 @@ export class FakeConnection {
           throw this.sendRejection;
         }
         this.sent.push(frame);
+
         return Promise.resolve();
       },
       receive: () => this.stream(),
       close: async (): Promise<void> => {
         this.closed = true;
         this.wake();
+
         return Promise.resolve();
       },
     };
@@ -92,6 +99,7 @@ export class FakeConnection {
   async end(): Promise<void> {
     this.closed = true;
     this.wake();
+
     return Promise.resolve();
   }
 
@@ -114,18 +122,18 @@ export class FakeConnection {
   }
 
   private async drain(): Promise<IteratorResult<Frame>> {
-    for (;;) {
-      const next = this.inbound.shift();
-      if (next !== undefined) {
-        return { value: next, done: false };
-      }
-      if (this.closed) {
-        return { value: undefined, done: true };
-      }
-      await new Promise<void>((resolve) => {
-        this.wakeWaiters.push(resolve);
-      });
+    const next = this.inbound.shift();
+    if (next !== undefined) {
+      return { value: next, done: false };
     }
+    if (this.closed) {
+      return { value: undefined, done: true };
+    }
+    await new Promise<void>((resolve) => {
+      this.wakeWaiters.push(resolve);
+    });
+
+    return this.drain();
   }
 }
 
@@ -156,6 +164,7 @@ export async function createTestPeer(
 ): Promise<TestPeer> {
   const identity = await generateEd25519Identity();
   const advert = await peerAdvertFor(identity, snapshotSeconds);
+
   return {
     identity,
     device: identity.deviceId,
@@ -176,6 +185,7 @@ export function withBrokenSignature(advert: Readonly<PeerAdvert>): PeerAdvert {
     throw new Error("test setup: signature has no bytes to corrupt");
   }
   signature[0] = firstByte ^ LOW_BYTE_MASK;
+
   return { ...advert, signature };
 }
 
@@ -201,6 +211,7 @@ export interface LinkedConnections {
 export function linkedConnections(): LinkedConnections {
   const gateway = new FakeConnection();
   const upstream = new FakeConnection();
+
   return {
     gateway,
     upstream,
@@ -208,6 +219,7 @@ export function linkedConnections(): LinkedConnections {
       send: async (frame) => {
         gateway.sent.push(frame);
         upstream.push(frame);
+
         return Promise.resolve();
       },
       receive: () => gateway.connection.receive(),
@@ -217,6 +229,7 @@ export function linkedConnections(): LinkedConnections {
       send: async (frame) => {
         upstream.sent.push(frame);
         gateway.push(frame);
+
         return Promise.resolve();
       },
       receive: () => upstream.connection.receive(),

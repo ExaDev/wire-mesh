@@ -48,12 +48,14 @@ function directTransport(peerDeviceId?: DeviceId): {
       if (address !== DIRECT_ADDRESS) {
         return Promise.reject(new Error(`connect to ${address} failed`));
       }
+
       return Promise.resolve({
         ...fake.connection,
         ...(peerDeviceId !== undefined ? { peerDeviceId } : {}),
       });
     },
   };
+
   return { transport, fake };
 }
 

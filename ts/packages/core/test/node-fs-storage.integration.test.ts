@@ -10,6 +10,7 @@ let tmpDirs: string[] = [];
 async function freshDir(): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "node-fs-storage-"));
   tmpDirs.push(dir);
+
   return dir;
 }
 

@@ -23,6 +23,25 @@ import {
   testClock,
   testIdentity,
 } from "./mesh-session-fixtures.js";
+import { repeatInSequence } from "./sequence.js";
+
+/** The latest event taken, stopping at the first whose state is closed or after `remaining` events. */
+async function eventsUntilClosed(
+  iterator: Readonly<AsyncIterator<unknown>>,
+  remaining: number,
+): Promise<{ state: { status: string; reason?: string } } | null> {
+  if (remaining === 0) {
+    return null;
+  }
+  const result = (await iterator.next()) as {
+    value: { state: { status: string; reason?: string } };
+  };
+  if (result.value.state.status === "closed") {
+    return result.value;
+  }
+
+  return (await eventsUntilClosed(iterator, remaining - 1)) ?? result.value;
+}
 
 describe("reconnect policy", () => {
   it("never reconnects when no policy is given, matching today's default behavior", async () => {
@@ -88,7 +107,7 @@ describe("reconnect policy", () => {
     await session.connect("ws://node", ["core/data"]);
     // More drops than the policy allows attempts in all, each after the peer has answered.
     const drops = 4;
-    for (let drop = 0; drop < drops; drop++) {
+    await repeatInSequence(drops, async (drop) => {
       await vi.waitFor(() => {
         expect(connections).toHaveLength(drop + 1);
       });
@@ -99,7 +118,7 @@ describe("reconnect policy", () => {
         expect(connections[drop]?.sent.length).toBeGreaterThan(1);
       });
       connections[drop]?.fail(new Error("dropped"));
-    }
+    });
     await vi.waitFor(() => {
       expect(connections).toHaveLength(drops + 1);
     });
@@ -262,6 +281,7 @@ describe("reconnect policy", () => {
           }
           const next = new FakeConnection();
           connections.push(next);
+
           return Promise.resolve(next.connection);
         },
         listen: async (): Promise<Listener> =>
@@ -277,17 +297,8 @@ describe("reconnect policy", () => {
       await vi.advanceTimersByTimeAsync(RECONNECT_DELAY_MS);
 
       const iterator = session.events[Symbol.asyncIterator]();
-      let event: { state: { status: string; reason?: string } } | null = null;
       const MAX_EVENTS_TO_SCAN = 10;
-      for (let i = 0; i < MAX_EVENTS_TO_SCAN; i++) {
-        const result = (await iterator.next()) as {
-          value: { state: { status: string; reason?: string } };
-        };
-        event = result.value;
-        if (event.state.status === "closed") {
-          break;
-        }
-      }
+      const event = await eventsUntilClosed(iterator, MAX_EVENTS_TO_SCAN);
       expect(event?.state.status).toBe("closed");
       expect(event?.state.reason).toBe("dial failed on retry");
     } finally {

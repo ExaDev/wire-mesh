@@ -51,6 +51,7 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   for (let i = 0; i < a.length; i += 1) {
     if (a[i] !== b[i]) return false;
   }
+
   return true;
 }
 
@@ -66,6 +67,7 @@ function compareBytes(a: Uint8Array, b: Uint8Array): number {
     }
     if (byteA !== byteB) return byteA - byteB;
   }
+
   return a.length - b.length;
 }
 
@@ -152,12 +154,12 @@ export async function verifyRoomNotice(
     return { ok: false, reason: "content_expired" };
   }
 
-  // Obligation 7 (room.cddl): key-epoch is present iff content-type names an encrypted
-  // content-type. Both directions of the mismatch are refused: an encrypted content-type
-  // with no epoch leaves a reader unable to know which epoch's key to decrypt under, and an
-  // epoch on a plaintext content-type names a key nothing was encrypted under. Checked here,
-  // structurally, before any cryptographic work -- a mismatched pairing is malformed data
-  // regardless of whether the signature itself happens to be valid.
+  /* Obligation 7 (room.cddl): key-epoch is present iff content-type names an encrypted
+     content-type. Both directions of the mismatch are refused: an encrypted content-type
+     with no epoch leaves a reader unable to know which epoch's key to decrypt under, and an
+     epoch on a plaintext content-type names a key nothing was encrypted under. Checked here,
+     structurally, before any cryptographic work -- a mismatched pairing is malformed data
+     regardless of whether the signature itself happens to be valid. */
   const keyEpoch = claims["key-epoch"];
   if (
     isEncryptedContentType(claims["content-type"]) !==
@@ -197,6 +199,7 @@ export function compareRoomNotices(
   }
   const posterOrder = compareBytes(a.poster, b.poster);
   if (posterOrder !== 0) return posterOrder;
+
   return compareBytes(a["notice-id"], b["notice-id"]);
 }
 
@@ -244,5 +247,6 @@ export async function createRoomNotice(
   const signature = await options.identity.sign(
     sig1ToBeSigned(protectedHeader, payload),
   );
+
   return [protectedHeader, {}, payload, signature];
 }

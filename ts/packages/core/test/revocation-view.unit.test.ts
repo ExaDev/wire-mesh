@@ -6,7 +6,8 @@ import { createRevocationView } from "../src/domain/revocation-view.js";
 import type { IdentityPort } from "../src/ports/identity.js";
 
 const ES256 = -7;
-const LOW_BYTE_MASK = 0xff; // XOR operand keeping the corrupted byte within one octet when tampering with a signature in this test
+// XOR operand keeping the corrupted byte within one octet when tampering with a signature in this test
+const LOW_BYTE_MASK = 0xff;
 
 function buf(bytes: Uint8Array | ArrayLike<number>): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(bytes);
@@ -25,6 +26,7 @@ async function generateEs256Identity(): Promise<IdentityPort> {
   const publicKeyBytes = new Uint8Array(
     await webcrypto.subtle.exportKey("raw", keyPair.publicKey),
   );
+
   return createNodeIdentity(keyPair.privateKey, publicKeyBytes, ES256);
 }
 

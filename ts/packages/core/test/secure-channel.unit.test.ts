@@ -12,6 +12,7 @@ import type {
   SecureHelloFrame,
 } from "../src/generated/protocol.js";
 import type { IdentityPort } from "../src/ports/identity.js";
+import { inSequence } from "./sequence.js";
 import {
   generateEd25519Identity,
   generateEs256Identity,
@@ -51,12 +52,14 @@ async function connect(
     helloAtB.peer,
   );
   if (atA === undefined || atB === undefined) throw new Error("no channel");
+
   return { atA, atB };
 }
 
 function flipFirstByte(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
   const copy = Uint8Array.from(bytes);
   copy[0] = (copy[0] ?? 0) ^ LOW_BYTE_MASK;
+
   return copy;
 }
 
@@ -65,15 +68,19 @@ describe("the handshake", () => {
     const one = await generateEd25519Identity();
     const two = await generateEs256Identity();
 
-    for (const [a, b] of [
-      [one, two],
-      [two, one],
-    ] as const) {
-      const { atA, atB } = await connect(a, b);
+    await Promise.all(
+      (
+        [
+          [one, two],
+          [two, one],
+        ] as const
+      ).map(async ([a, b]) => {
+        const { atA, atB } = await connect(a, b);
 
-      expect(await atB.open(await atA.seal(request))).toEqual(request);
-      expect(await atA.open(await atB.seal(request))).toEqual(request);
-    }
+        expect(await atB.open(await atA.seal(request))).toEqual(request);
+        expect(await atA.open(await atB.seal(request))).toEqual(request);
+      }),
+    );
   });
 
   it("names the peer by the device-id its own identity key hashes to", async () => {
@@ -273,9 +280,9 @@ describe("a channel", () => {
     expect(sealed.map((frame) => frame.counter)).toEqual(
       sealed.map((_frame, index) => index),
     );
-    for (const frame of sealed) {
+    await inSequence(sealed, async (frame) => {
       expect(await atB.open(frame)).toEqual(request);
-    }
+    });
   });
 
   it("does not put the frame's content in what it sends", async () => {

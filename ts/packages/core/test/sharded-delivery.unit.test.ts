@@ -39,6 +39,7 @@ function text(value: string): Uint8Array {
 
 function identityFor(fillHex: string): IdentityPort {
   const deviceId = deviceIdFromFillHex(fillHex);
+
   return {
     deviceId,
     identityKey: { alg: -7, "public-key": new Uint8Array() },
@@ -51,7 +52,9 @@ function identityFor(fillHex: string): IdentityPort {
 /** A one-directional, wake-on-push frame queue, mirroring bulk.unit.test.ts's own FakeInbound -- kept file-local rather than shared, matching that file's own convention of not factoring these fixtures out further. */
 class FakeInbound {
   private readonly queue: Frame[] = [];
+
   private readonly waiters: (() => void)[] = [];
+
   private ended = false;
 
   push(frame: Frame): void {
@@ -77,14 +80,14 @@ class FakeInbound {
   }
 
   private async next(): Promise<IteratorResult<Frame>> {
-    for (;;) {
-      const value = this.queue.shift();
-      if (value !== undefined) return { value, done: false };
-      if (this.ended) return { value: undefined, done: true };
-      await new Promise<void>((resolve) => {
-        this.waiters.push(resolve);
-      });
-    }
+    const value = this.queue.shift();
+    if (value !== undefined) return { value, done: false };
+    if (this.ended) return { value: undefined, done: true };
+    await new Promise<void>((resolve) => {
+      this.waiters.push(resolve);
+    });
+
+    return this.next();
   }
 }
 
@@ -98,25 +101,30 @@ function linkedConnections(): {
   const senderConn: Connection = {
     send: async (frame) => {
       toReceiver.push(frame);
+
       return Promise.resolve();
     },
     receive: () => toSender.stream(),
     close: async () => {
       toSender.end();
+
       return Promise.resolve();
     },
   };
   const receiverConn: Connection = {
     send: async (frame) => {
       toSender.push(frame);
+
       return Promise.resolve();
     },
     receive: () => toReceiver.stream(),
     close: async () => {
       toReceiver.end();
+
       return Promise.resolve();
     },
   };
+
   return { senderConn, receiverConn };
 }
 
@@ -139,10 +147,12 @@ function sessionDispatchingTo(
         scope,
         respond: async (o): Promise<void> => {
           resolveOutcome(o);
+
           return Promise.resolve();
         },
       };
       await handler(incoming);
+
       return responded;
     },
   } as unknown as MeshSession;
@@ -153,6 +163,7 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   const promise = new Promise<T>((r) => {
     resolve = r;
   });
+
   return { promise, resolve };
 }
 
@@ -180,6 +191,7 @@ function holderAcceptingChannel(
       await holder.onFrame(receiverConn, frame);
     }
   })();
+
   return {
     channel: { connection: senderConn, session },
     accepted: accepted.promise,
@@ -204,6 +216,7 @@ function readerChannel(
     }
   })();
   const session = sessionDispatchingTo(openHandler);
+
   return { holderChannel: { connection: senderConn, session } };
 }
 
@@ -231,6 +244,7 @@ describe("distributeShardedPayload", () => {
       nextTransferId: (i) => {
         const id = new Uint8Array(TRANSFER_ID_BYTE_LENGTH);
         id.fill(i + 1);
+
         return id;
       },
       scope: TEST_SCOPE,
@@ -310,6 +324,7 @@ describe("end-to-end sharded delivery: distribute, hold, serve, collect, reconst
       nextTransferId: (i) => {
         const id = new Uint8Array(TRANSFER_ID_BYTE_LENGTH);
         id.fill(i + 1);
+
         return id;
       },
       scope: TEST_SCOPE,
@@ -336,14 +351,12 @@ describe("end-to-end sharded delivery: distribute, hold, serve, collect, reconst
     await holderA.serveShard(
       readerLinkA.holderChannel,
       Uint8Array.from(locationA["transfer-id"]),
-      readerDevice,
-      TEST_SCOPE,
+      { targetDevice: readerDevice, scope: TEST_SCOPE },
     );
     await holderB.serveShard(
       readerLinkB.holderChannel,
       Uint8Array.from(locationB["transfer-id"]),
-      readerDevice,
-      TEST_SCOPE,
+      { targetDevice: readerDevice, scope: TEST_SCOPE },
     );
 
     const reconstructed = await collector.result;
@@ -374,6 +387,7 @@ describe("end-to-end sharded delivery: distribute, hold, serve, collect, reconst
       nextTransferId: (i) => {
         const id = new Uint8Array(TRANSFER_ID_BYTE_LENGTH);
         id.fill(i + 1);
+
         return id;
       },
       scope: TEST_SCOPE,
@@ -399,14 +413,12 @@ describe("end-to-end sharded delivery: distribute, hold, serve, collect, reconst
     await holderA.serveShard(
       readerLinkA.holderChannel,
       Uint8Array.from(locationA["transfer-id"]),
-      readerDevice,
-      TEST_SCOPE,
+      { targetDevice: readerDevice, scope: TEST_SCOPE },
     );
     await holderB.serveShard(
       readerLinkB.holderChannel,
       Uint8Array.from(locationB["transfer-id"]),
-      readerDevice,
-      TEST_SCOPE,
+      { targetDevice: readerDevice, scope: TEST_SCOPE },
     );
 
     const recovered = await collector.result;
@@ -440,6 +452,7 @@ describe("end-to-end sharded delivery: distribute, hold, serve, collect, reconst
       openerDevice: deviceIdFromFillHex("01"),
       decide: async (d) => {
         decision = d.kind;
+
         return Promise.resolve();
       },
     };

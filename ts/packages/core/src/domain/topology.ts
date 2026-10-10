@@ -39,6 +39,7 @@ export function readTopologyPeers(
     return undefined;
   }
   const parsed = topologyPeersSchema.safeParse(raw);
+
   return parsed.success ? parsed.data : undefined;
 }
 
@@ -77,6 +78,7 @@ export function assembleTopologyGraph(
       });
     }
   }
+
   return { nodes, edges };
 }
 
@@ -102,6 +104,7 @@ export async function sendTopologyGet(
   if (!parsed.success) {
     throw new Error("topology.get response was malformed");
   }
+
   return parsed.data;
 }
 
@@ -117,6 +120,7 @@ export function createTopologyGetHandler(
     const parsed = topologyGetSchema.safeParse(incoming.command.params);
     if (!parsed.success) {
       await incoming.respond({ result: "error", code: "malformed" });
+
       return;
     }
     await incoming.respond({ result: "ok", peers: session.getTopologyPeers() });

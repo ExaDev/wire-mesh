@@ -29,6 +29,7 @@ async function generateEs256Identity(): Promise<IdentityPort> {
   const publicKeyBytes = new Uint8Array(
     await webcrypto.subtle.exportKey("raw", keyPair.publicKey),
   );
+
   return createNodeIdentity(keyPair.privateKey, publicKeyBytes, ES256);
 }
 
@@ -39,6 +40,7 @@ function fixedClock(atMs: number): Clock {
 let issuedTokenIds = 0;
 function nextTokenId(): Uint8Array<ArrayBuffer> {
   issuedTokenIds += 1;
+
   return buf([issuedTokenIds]);
 }
 
@@ -62,6 +64,7 @@ async function mintRoomMemberToken(
     delegationsRemaining: 0,
   });
   if (!verdict.ok) throw new Error(`mint failed: ${verdict.reason}`);
+
   return verdict.token;
 }
 

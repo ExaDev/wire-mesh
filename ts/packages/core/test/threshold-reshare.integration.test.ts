@@ -37,6 +37,7 @@ const ALG_ED25519 = -8;
 function deviceId(byte: number): DeviceId {
   const bytes = new Uint8Array(DEVICE_ID_LENGTH);
   bytes[DEVICE_ID_LENGTH - 1] = byte;
+
   return bytes;
 }
 
@@ -59,6 +60,7 @@ function createRelayBus(): {
       inbox = { waiters: [], backlog: [] };
       inboxes.set(hex, inbox);
     }
+
     return inbox;
   }
 
@@ -74,6 +76,7 @@ function createRelayBus(): {
         }
         const requestId = nextRequestId;
         nextRequestId += 1;
+
         return new Promise<ManageOutcome>((resolve) => {
           const incoming: IncomingManageRequest = {
             requestId,
@@ -82,6 +85,7 @@ function createRelayBus(): {
             fromDevice: self,
             respond: async (outcome: ManageOutcome): Promise<void> => {
               resolve(outcome);
+
               return Promise.resolve();
             },
           };
@@ -120,8 +124,10 @@ describe("threshold-dkg: contributeThresholdReshare + joinThresholdReshare", () 
   it("reshares a T=2-of-3 group to a different T=2-of-3 committee (one device dropped, one added), preserving the group key and producing shares that actually sign", async () => {
     const alice = deviceId(1);
     const bob = deviceId(SECOND_DEVICE_BYTE);
-    const carol = deviceId(THIRD_DEVICE_BYTE); // leaving
-    const dave = deviceId(FOURTH_DEVICE_BYTE); // joining
+    // leaving
+    const carol = deviceId(THIRD_DEVICE_BYTE);
+    // joining
+    const dave = deviceId(FOURTH_DEVICE_BYTE);
 
     const dkgBus = createRelayBus();
     // carol's own DKG result is intentionally unused past this point -- she is the survivor who leaves in the reshare below and never runs joinThresholdReshare.
@@ -192,6 +198,7 @@ describe("threshold-dkg: contributeThresholdReshare + joinThresholdReshare", () 
             : {}),
         }),
       ]);
+
       return joinResult;
     }
 

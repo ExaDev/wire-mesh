@@ -8,6 +8,7 @@ export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   for (let i = 0; i < a.length; i += 1) {
     if (a[i] !== b[i]) return false;
   }
+
   return true;
 }
 
@@ -24,6 +25,7 @@ function pathNarrows(childPath: string, parentPath: string): boolean {
   if (childPath === parentPath) return true;
   if (!childPath.startsWith(parentPath)) return false;
   if (parentPath.endsWith("/")) return true;
+
   return childPath.charAt(parentPath.length) === "/";
 }
 
@@ -37,5 +39,6 @@ export function scopeNarrows(
   if (parent.kind !== child.kind) return false;
   if (parent.path === undefined) return true;
   if (child.path === undefined) return false;
+
   return pathNarrows(child.path, parent.path);
 }

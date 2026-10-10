@@ -38,6 +38,7 @@ export function encodeShardManifest(
   manifest: Readonly<ShardManifest>,
 ): Uint8Array<ArrayBuffer> {
   validateManifest(manifest);
+
   return new Uint8Array(
     encode(
       {
@@ -90,6 +91,7 @@ export function decodeShardManifest(entry: Uint8Array): ShardManifest {
         "shard manifest location is missing device/transfer-id bytes",
       );
     }
+
     // Fresh copies, the same whole-buffer discipline the identity adapters apply at runtime boundaries: cbor2's decoded views can cover a wider buffer.
     return {
       device: Uint8Array.from(device),
@@ -104,6 +106,7 @@ export function decodeShardManifest(entry: Uint8Array): ShardManifest {
     shards: locations,
   };
   validateManifest(manifest);
+
   return manifest;
 }
 
@@ -119,6 +122,7 @@ function targetFor(
       `no target device for shard ${String(index)} (${String(shard.length)} bytes)`,
     );
   }
+
   return target;
 }
 
@@ -187,6 +191,7 @@ export async function splitForShardedDelivery(
     })),
   };
   validateManifest(manifest);
+
   return { manifest, shards, manifestEntry: encodeShardManifest(manifest) };
 }
 
@@ -211,5 +216,6 @@ export async function reconstructFromShards(
   if (options.decrypt === undefined) {
     return reconstructed;
   }
+
   return options.decrypt(reconstructed);
 }

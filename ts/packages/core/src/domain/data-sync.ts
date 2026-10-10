@@ -11,6 +11,7 @@ import type {
 import type { IdentityPort } from "../ports/identity.js";
 import type { KeyValueStorage } from "../ports/storage.js";
 import { deviceIdToHex } from "./device-id.js";
+import { eachInOrder } from "./sequential.js";
 
 function headKey(peer: DeviceId): string {
   return `data/${deviceIdToHex(peer)}/head`;
@@ -26,6 +27,7 @@ async function readHeadSeq(
 ): Promise<number> {
   const raw = await storage.get(headKey(peer));
   if (raw === undefined) return 0;
+
   return Number(new TextDecoder().decode(raw));
 }
 
@@ -66,6 +68,7 @@ export async function appendOwnEntry(
   const seq = currentHead + 1;
   await options.storage.set(entryKey(options.identity.deviceId, seq), entry);
   await writeHeadSeq(options.storage, options.identity.deviceId, seq);
+
   return {
     seq,
     haveFrame: {
@@ -85,7 +88,30 @@ export async function handleDataHave(
 ): Promise<DataRequestFrame | null> {
   const ourHead = await readHeadSeq(storage, frame.peer);
   if (ourHead >= frame["head-seq"]) return null;
+
   return { type: "data-request", peer: frame.peer, "from-seq": ourHead };
+}
+
+/**
+ * The entries stored for `peer` from sequence `first` to `last` inclusive, read one after another and cut at the first hole: a hole is a record missing from a range the head claims is held, which should not happen while entryKey and headKey stay consistent, and stopping there is better than returning a run with a silent gap that a receiver's own check would only catch after the fact. Keys past a hole are never read.
+ */
+async function readRun(
+  storage: Readonly<KeyValueStorage>,
+  peer: DeviceId,
+  first: number,
+  last: number,
+): Promise<Uint8Array<ArrayBuffer>[]> {
+  const run: Uint8Array<ArrayBuffer>[] = [];
+  const readFrom = async (seq: number): Promise<void> => {
+    if (seq > last) return;
+    const entry = await storage.get(entryKey(peer, seq));
+    if (entry === undefined) return;
+    run.push(entry);
+    await readFrom(seq + 1);
+  };
+  await readFrom(first);
+
+  return run;
 }
 
 /**
@@ -99,16 +125,14 @@ export async function handleDataRequest(
   const ourHead = await readHeadSeq(storage, frame.peer);
   if (ourHead <= frame["from-seq"]) return null;
   const lastSeq = Math.min(ourHead, frame["from-seq"] + limit);
-  const entries: Uint8Array<ArrayBuffer>[] = [];
-  for (let seq = frame["from-seq"] + 1; seq <= lastSeq; seq += 1) {
-    const entry = await storage.get(entryKey(frame.peer, seq));
-    if (entry === undefined) {
-      // A hole in this store's own records for a range headSeqFor claims it holds -- shouldn't happen if entryKey/headKey stay consistent, but stop rather than send a data-entries frame with a silent gap a receiver's own check would only catch after the fact.
-      break;
-    }
-    entries.push(entry);
-  }
+  const entries = await readRun(
+    storage,
+    frame.peer,
+    frame["from-seq"] + 1,
+    lastSeq,
+  );
   if (entries.length === 0) return null;
+
   return {
     type: "data-entries",
     peer: frame.peer,
@@ -131,12 +155,19 @@ export async function handleDataEntries(
   if (frame["from-seq"] !== ourHead) {
     return { ok: false, reason: "gap" };
   }
-  let seq = frame["from-seq"];
-  for (const entry of frame.entries) {
-    seq += 1;
-    await storage.set(entryKey(frame.peer, seq), entry);
-  }
-  await writeHeadSeq(storage, frame.peer, seq);
+  // Written in ascending sequence, the head last, so a failure part way leaves a contiguous prefix the head does not yet cover.
+  await eachInOrder(frame.entries, async (entry, index) => {
+    await storage.set(
+      entryKey(frame.peer, frame["from-seq"] + 1 + index),
+      entry,
+    );
+  });
+  await writeHeadSeq(
+    storage,
+    frame.peer,
+    frame["from-seq"] + frame.entries.length,
+  );
+
   return { ok: true };
 }
 
@@ -149,11 +180,6 @@ export async function readEntries(
   fromSeqExclusive: number,
 ): Promise<Uint8Array[]> {
   const head = await readHeadSeq(storage, peer);
-  const entries: Uint8Array[] = [];
-  for (let seq = fromSeqExclusive + 1; seq <= head; seq += 1) {
-    const entry = await storage.get(entryKey(peer, seq));
-    if (entry === undefined) break;
-    entries.push(entry);
-  }
-  return entries;
+
+  return readRun(storage, peer, fromSeqExclusive + 1, head);
 }

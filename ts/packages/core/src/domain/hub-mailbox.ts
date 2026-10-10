@@ -1,8 +1,8 @@
-// The announcer role of a relay hub (discovery.cddl's mailboxes, data-domain.cddl): a replicator that holds other devices' `core/data` logs while those devices are offline, so a peer that reconnects later can catch up from the hub instead of waiting for the author to be back. It is an ordinary replicator of the primitive data-sync.ts already implements, with the one thing a replicator open to anyone needs that data-sync.ts leaves to its caller: who may write, and how much.
-//
-// Only the device that owns a log may write to it. The hub takes `data-have` and `data-entries` for a log from the connection whose verified advert names that device, and from no one else, so nobody can fill or poison another device's log; entries are opaque to it and the applications that write them sign and encrypt their own, which is what lets a reader trust what comes back. Any device the hub has an identity for may read a log: the directory it registers from is already open to every client, and what a log adds is metadata the entries' own encryption does not hide. Whether that stays open is the hub-directory decision (wire-mesh#260), not one made here.
-//
-// Bounded three ways, all set by the host: how many logs it holds, how many bytes any one log may grow to, and how large one entry may be. A frame that would exceed a bound is refused whole and nothing of it is kept, so a log never holds a prefix the writer believes it sent in full. Nothing is ever evicted: a full log stays full until the host clears it, and the writer learns of that only by its entries not being asked for.
+/* The announcer role of a relay hub (discovery.cddl's mailboxes, data-domain.cddl): a replicator that holds other devices' `core/data` logs while those devices are offline, so a peer that reconnects later can catch up from the hub instead of waiting for the author to be back. It is an ordinary replicator of the primitive data-sync.ts already implements, with the one thing a replicator open to anyone needs that data-sync.ts leaves to its caller: who may write, and how much.
+
+   Only the device that owns a log may write to it. The hub takes `data-have` and `data-entries` for a log from the connection whose verified advert names that device, and from no one else, so nobody can fill or poison another device's log; entries are opaque to it and the applications that write them sign and encrypt their own, which is what lets a reader trust what comes back. Any device the hub has an identity for may read a log: the directory it registers from is already open to every client, and what a log adds is metadata the entries' own encryption does not hide. Whether that stays open is the hub-directory decision (wire-mesh#260), not one made here.
+
+   Bounded three ways, all set by the host: how many logs it holds, how many bytes any one log may grow to, and how large one entry may be. A frame that would exceed a bound is refused whole and nothing of it is kept, so a log never holds a prefix the writer believes it sent in full. Nothing is ever evicted: a full log stays full until the host clears it, and the writer learns of that only by its entries not being asked for. */
 
 import type {
   DataEntriesFrame,
@@ -82,6 +82,7 @@ async function readCount(
   key: string,
 ): Promise<number> {
   const raw = await storage.get(key);
+
   return raw === undefined ? 0 : Number(new TextDecoder().decode(raw));
 }
 
@@ -99,14 +100,17 @@ export function createMailbox(options: Readonly<MailboxOptions>): Mailbox {
   ): Promise<Frame | null> {
     if (!sameDevice(sender, frame.peer)) {
       refuse("not-the-owner");
+
       return null;
     }
     if ((await headSeqFor(storage, frame.peer)) === 0) {
       if ((await readCount(storage, LOG_COUNT_KEY)) >= limits.maxLogs) {
         refuse("log-limit");
+
         return null;
       }
     }
+
     return handleDataHave(storage, frame);
   }
 
@@ -117,16 +121,19 @@ export function createMailbox(options: Readonly<MailboxOptions>): Mailbox {
   ): Promise<Frame | null> {
     if (!sameDevice(sender, frame.peer)) {
       refuse("not-the-owner");
+
       return null;
     }
     if (frame.entries.some((entry) => entry.length > limits.maxEntryBytes)) {
       refuse("size-limit");
+
       return null;
     }
     const held = await readCount(storage, logBytesKey(frame.peer));
     const added = frame.entries.reduce((sum, entry) => sum + entry.length, 0);
     if (held + added > limits.maxLogBytes) {
       refuse("entry-limit");
+
       return null;
     }
     const isNewLog = (await headSeqFor(storage, frame.peer)) === 0;
@@ -135,11 +142,13 @@ export function createMailbox(options: Readonly<MailboxOptions>): Mailbox {
       (await readCount(storage, LOG_COUNT_KEY)) >= limits.maxLogs
     ) {
       refuse("log-limit");
+
       return null;
     }
     const stored = await handleDataEntries(storage, frame);
     if (!stored.ok) {
       refuse("gap");
+
       return null;
     }
     await storage.set(logBytesKey(frame.peer), encodeCount(held + added));
@@ -149,6 +158,7 @@ export function createMailbox(options: Readonly<MailboxOptions>): Mailbox {
         encodeCount((await readCount(storage, LOG_COUNT_KEY)) + 1),
       );
     }
+
     return null;
   }
 
@@ -159,12 +169,14 @@ export function createMailbox(options: Readonly<MailboxOptions>): Mailbox {
       };
       if (sender === undefined) {
         refuse("unregistered-sender");
+
         return null;
       }
       if (frame.type === "data-have") return handleHave(sender, frame, refuse);
       if (frame.type === "data-entries") {
         return handleEntries(sender, frame, refuse);
       }
+
       return handleDataRequest(storage, frame, limits.readBatch);
     },
   };

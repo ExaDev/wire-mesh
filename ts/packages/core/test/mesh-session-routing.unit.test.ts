@@ -46,6 +46,7 @@ describe("relay routing", () => {
         `expected a frame at index ${String(index)}, got ${String(frames.length)} frames`,
       );
     }
+
     return frame;
   }
 
@@ -148,6 +149,7 @@ describe("relay routing", () => {
     const incomingDone = (async (): Promise<IncomingManageRequest> => {
       const iterator = session.incomingManageRequests[Symbol.asyncIterator]();
       const result = await iterator.next();
+
       return result.value as IncomingManageRequest;
     })();
 
@@ -187,6 +189,7 @@ describe("relay routing", () => {
     const incomingDone = (async (): Promise<IncomingManageRequest> => {
       const iterator = session.incomingManageRequests[Symbol.asyncIterator]();
       const result = await iterator.next();
+
       return result.value as IncomingManageRequest;
     })();
 
@@ -212,6 +215,7 @@ describe("relay routing", () => {
     const incomingDone = (async (): Promise<IncomingManageRequest> => {
       const iterator = session.incomingManageRequests[Symbol.asyncIterator]();
       const result = await iterator.next();
+
       return result.value as IncomingManageRequest;
     })();
 

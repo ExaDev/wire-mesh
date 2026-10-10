@@ -4,7 +4,8 @@ import { deviceIdSchema, type DeviceId } from "../generated/protocol.js";
 
 const HEX_RADIX = 16;
 const HEX_BYTE_WIDTH = 2;
-const DEVICE_ID_HEX_LENGTH = 64; // 32 bytes, hex-encoded
+// 32 bytes, hex-encoded
+const DEVICE_ID_HEX_LENGTH = 64;
 
 /** Lowercase, byte-exact hex for an arbitrary-length byte string -- the same encoding convention deviceIdToHex uses for the fixed-length device-id case, extracted so any other byte string needing a stable, displayable, map-keyable text form (e.g. a token-id, which tokens.cddl defines as an arbitrary-length bstr rather than a 32-byte device-id) can use the identical convention without going through a device-id-shaped function. */
 export function bytesToHex(bytes: Uint8Array): string {
@@ -12,6 +13,7 @@ export function bytesToHex(bytes: Uint8Array): string {
   for (const byte of bytes) {
     hex += byte.toString(HEX_RADIX).padStart(HEX_BYTE_WIDTH, "0");
   }
+
   return hex;
 }
 
@@ -34,6 +36,7 @@ export function bytesFromHex(hex: string): Uint8Array {
       HEX_RADIX,
     );
   }
+
   return bytes;
 }
 
@@ -44,5 +47,6 @@ export function deviceIdFromHex(hex: string): DeviceId {
       `expected a 64-character lowercase hex string, got ${JSON.stringify(hex)}`,
     );
   }
+
   return deviceIdSchema.parse(bytesFromHex(hex));
 }

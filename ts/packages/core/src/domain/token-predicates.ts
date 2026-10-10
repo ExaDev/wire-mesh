@@ -10,6 +10,7 @@ import { z } from "zod";
 import type { DeviceId, TokenClaims } from "../generated/protocol.js";
 import type { Clock } from "../ports/clock.js";
 import { deviceIdToHex } from "./device-id.js";
+import { firstAsync } from "./sequential.js";
 import { bytesEqual, scopeNarrows } from "./token-scope.js";
 
 /** The wire shape of `token-claims.conditions` once CBOR-decoded: trilean's own PredicateNodeSchema is the single source of truth for what a condition entry may contain, re-validated here rather than trusted from a CDDL-generated shadow schema (see tokens.cddl's own comment on why `conditions` is an opaque bstr, not a native CDDL type) -- a token from an untrusted peer must pass trilean's real schema before any of its conditions are evaluated. Explicitly annotated: trilean's PredicateNodeSchema is a deeply recursive z.lazy() type whose inferred shape is too large for tsdown's declaration-file generator to serialise (TS7056) without this. */
@@ -101,11 +102,13 @@ const subjectHandlers: Record<
   [GRANTEE_IS]: (payload, context) => {
     if (context.subject === undefined) return { found: false };
     if (typeof payload !== "string") return { found: false };
+
     return booleanFound(deviceIdToHex(context.subject.bearer) === payload);
   },
   [GRANTED_CAPABILITY_IS]: (payload, context) => {
     if (context.subject === undefined) return { found: false };
     if (typeof payload !== "string") return { found: false };
+
     return booleanFound(context.subject.capability === payload);
   },
 };
@@ -142,24 +145,28 @@ const narrowingHandlers: Record<
 > = {
   [BEARER_IS]: (_payload, context) => {
     if (context.parentClaims === undefined) return booleanFound(false);
+
     return booleanFound(
       bytesEqual(context.parentClaims.bearer, context.childIssuer),
     );
   },
   [EXPIRES_AT]: (_payload, context) => {
     if (context.parentClaims === undefined) return booleanFound(false);
+
     return booleanFound(
       context.candidate.expires <= context.parentClaims.expires,
     );
   },
   [SCOPE_NARROWS]: (_payload, context) => {
     if (context.parentClaims === undefined) return booleanFound(false);
+
     return booleanFound(
       scopeNarrows(context.parentClaims.scope, context.candidate.scope),
     );
   },
   [CAPABILITY_IS]: (_payload, context) => {
     if (context.parentClaims === undefined) return booleanFound(false);
+
     return booleanFound(
       context.parentClaims.capability === context.candidate.capability,
     );
@@ -169,6 +176,7 @@ const narrowingHandlers: Record<
     if (context.parentClaims === undefined) return booleanFound(false);
     const parentRemaining = context.parentClaims["delegations-remaining"];
     if (parentRemaining === undefined) return booleanFound(true);
+
     return booleanFound(
       context.candidate.delegationsRemaining !== undefined &&
         context.candidate.delegationsRemaining < parentRemaining,
@@ -216,21 +224,21 @@ export async function evaluateNarrowing(
     resolveCollection: unusedResolveCollection,
     resolveDelegate: async (system, payload) => {
       if (!isNarrowingSystem(system)) return { found: false };
+
       return narrowingHandlers[system](payload, context);
     },
   };
-  for (const system of NARROWING_SYSTEMS) {
-    // Each check must short-circuit before the next runs, exactly like the five hardcoded `if`s this replaces; there is nothing to parallelise since a later check's own relevance depends on nothing evaluated here, but ordering (which check is reported as "the" failure) is observable and must match history.
+
+  // Each check must short-circuit before the next runs, exactly like the five hardcoded `if`s this replaces; there is nothing to parallelise since a later check's own relevance depends on nothing evaluated here, but ordering (which check is reported as "the" failure) is observable and must match history.
+  return firstAsync(NARROWING_SYSTEMS, async (system) => {
     const result = await trileanEvaluatePredicate(
       delegateIsTrue(system),
       context,
       resolvers,
     );
-    if (result.status !== "definite" || !result.value) {
-      return system;
-    }
-  }
-  return undefined;
+
+    return result.status !== "definite" || !result.value;
+  });
 }
 
 export type ConditionsVerdict =
@@ -276,12 +284,14 @@ export async function evaluateConditions(
       }
     },
   };
-  for (const node of nodes) {
-    // Fail-closed short-circuit: the first unsatisfied condition refuses the whole token, so there is nothing to gain from evaluating the rest.
+  // Fail-closed short-circuit: the first unsatisfied condition refuses the whole token, so there is nothing to gain from evaluating the rest.
+  const unsatisfied = await firstAsync(nodes, async (node) => {
     const result = await trileanEvaluatePredicate(node, context, resolvers);
-    if (result.status !== "definite" || !result.value) {
-      return { ok: false, reason: "not_satisfied" };
-    }
-  }
-  return { ok: true };
+
+    return result.status !== "definite" || !result.value;
+  });
+
+  return unsatisfied === undefined
+    ? { ok: true }
+    : { ok: false, reason: "not_satisfied" };
 }
