@@ -13,7 +13,7 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
-    "@exadev/eslint-config": "2.18.0",
+    "@exadev/eslint-config": "3.0.0",
     "@exadev/wire-mesh-web-console": "2.17.4",
     "@types/node": "26.4.1",
     "@types/ws": "8.18.1",

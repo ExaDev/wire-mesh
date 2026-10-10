@@ -1,11 +1,13 @@
 import { exadevConfig } from "@exadev/eslint-config";
+import { defineConfig } from "eslint/config";
 import eslintPluginPrettierRecommended from "eslint-plugin-prettier/recommended";
 import globals from "globals";
 
-export default exadevConfig(
-  {},
+export default defineConfig(
+  ...exadevConfig(),
   {
-    ignores: ["dist", "coverage", "node_modules", ".turbo"],
+    // The golden vector files are written by generate.ts and CI diffs them against a fresh generation, so their key order and layout belong to the generator, not to a formatter or key-sorting rule.
+    ignores: ["dist", "coverage", "node_modules", ".turbo", "*.v1.json"],
   },
   {
     languageOptions: {
@@ -17,6 +19,7 @@ export default exadevConfig(
     },
   },
   {
+    files: ["**/*.ts", "**/*.mts", "**/*.cts"],
     rules: {
       "@typescript-eslint/consistent-type-imports": [
         "error",
