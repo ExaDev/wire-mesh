@@ -38,6 +38,7 @@ function reachableHosts(host: string): readonly string[] {
   if (!WILDCARD_HOSTS.includes(host)) {
     return [host];
   }
+
   return Object.values(networkInterfaces())
     .flatMap((addresses) => addresses ?? [])
     .filter((entry) => entry.family === "IPv4" && !entry.internal)
@@ -88,6 +89,7 @@ async function loadHttp3Server(): Promise<typeof Http3Server> {
     await import("@fails-components/webtransport-transport-http3-quiche");
     const module = await import("@fails-components/webtransport");
     await module.quicheLoaded;
+
     return module.Http3Server;
   } catch (error) {
     throw new WebTransportUnavailableError(error);
@@ -136,6 +138,7 @@ export function createWebTransportTransport(
   const reportError = (error: unknown): void => {
     options.onError?.(error);
   };
+
   return {
     // The package's Node client verifies a server certificate against the system's trust and has no way to pin a hash, so it cannot reach a server that serves a self-signed certificate. A browser is the client of this transport; node peers reach each other over WebSocket.
     async connect(): Promise<Connection> {
@@ -164,6 +167,8 @@ export function createWebTransportTransport(
       /** A server this listener is running, and how to retire it. */
       interface RunningServer {
         readonly server: InstanceType<typeof Http3Server>;
+        /** The port the server is bound to, which a later server of the same listener reuses. */
+        readonly port: number;
         /** Refuses every session that arrives from now on, ends the ones open, and resolves once they have finished closing. Stopping a server drops its sessions without telling the client, which would keep a session that no longer works until it next sends; a close lets it reconnect. A client that reconnects the moment it is told would otherwise land on this server, accepted and then dropped silently a moment later, so a session arriving while it drains is closed at once and that client's next attempt reaches the replacement. */
         readonly drain: () => Promise<void>;
       }
@@ -183,7 +188,6 @@ export function createWebTransportTransport(
         if (bound === null) {
           throw new Error("the WebTransport server bound no address");
         }
-        port = bound.port;
         const liveSessions = new Set<IncomingSession>();
         const drainState = { draining: false };
         const endSession = (session: IncomingSession): void => {
@@ -205,6 +209,7 @@ export function createWebTransportTransport(
               await session.ready;
               if (drainState.draining) {
                 endSession(session);
+
                 return;
               }
               liveSessions.add(session);
@@ -236,8 +241,10 @@ export function createWebTransportTransport(
             })().catch(reportError);
           }
         })().catch(reportError);
+
         return {
           server: started,
+          port: bound.port,
           drain: async () => {
             drainState.draining = true;
             const open = [...liveSessions];
@@ -252,6 +259,7 @@ export function createWebTransportTransport(
       };
 
       let running: RunningServer | undefined = await startServer();
+      port = running.port;
       const advertise = (): readonly string[] =>
         reachableHosts(host).map((reachable) =>
           formatPinnedAddress(
@@ -289,6 +297,7 @@ export function createWebTransportTransport(
               return;
             }
             running = await startServer();
+            port = running.port;
             options.onCertificateRenewed?.(advertise());
           })().then(
             () => {

@@ -59,6 +59,7 @@ export async function createTestPeer(): Promise<TestPeer> {
     "snapshot-seconds": FIXTURE_SNAPSHOT_SECONDS,
     "identity-key": identity.identityKey,
   });
+
   return {
     identity,
     device: identity.deviceId,

@@ -62,6 +62,7 @@ function readPackageVersion(): string {
       `no string "version" in ${fileURLToPath(PACKAGE_MANIFEST_URL)}`,
     );
   }
+
   return manifest.version;
 }
 
@@ -75,6 +76,7 @@ export function createHttpRequestHandler(
     if (url.pathname === HEALTH_PATH) {
       response.writeHead(HTTP_OK, { "content-type": "application/json" });
       response.end(JSON.stringify(healthResponse(announcer)));
+
       return;
     }
     const file = resolveConsoleFile(consoleDir, url.pathname);
@@ -84,6 +86,7 @@ export function createHttpRequestHandler(
         ...file.headers,
       });
       response.end(file.body);
+
       return;
     }
     response.writeHead(HTTP_NOT_FOUND).end();
@@ -103,10 +106,12 @@ async function main(argv: readonly string[]): Promise<void> {
   const command = parseCliArguments(argv);
   if (command.kind === "help") {
     logOutput(helpText());
+
     return;
   }
   if (command.kind === "version") {
     logOutput(readPackageVersion());
+
     return;
   }
 
@@ -189,9 +194,9 @@ async function run(argv: readonly string[]): Promise<void> {
   }
 }
 
-// Only run as a side effect when executed directly (the CLI bin entry), never on a plain import, which is how the test suite reaches healthResponse() without binding a real port.
-//
-// Both sides are compared as resolved real paths. A package manager installs a bin as node_modules/.bin/wire-mesh symlinked at this file, and that is the path argv[1] carries, while Node resolves symlinks before recording import.meta.url, so comparing the two as written strings never matches when the CLI is invoked the way anyone actually invokes it, and the process would exit 0 having started nothing. fileURLToPath rather than a "file://" prefix for the same class of reason: it undoes the percent-encoding import.meta.url applies to a path containing a space or a hash.
+/* Only run as a side effect when executed directly (the CLI bin entry), never on a plain import, which is how the test suite reaches healthResponse() without binding a real port.
+
+   Both sides are compared as resolved real paths. A package manager installs a bin as node_modules/.bin/wire-mesh symlinked at this file, and that is the path argv[1] carries, while Node resolves symlinks before recording import.meta.url, so comparing the two as written strings never matches when the CLI is invoked the way anyone actually invokes it, and the process would exit 0 having started nothing. fileURLToPath rather than a "file://" prefix for the same class of reason: it undoes the percent-encoding import.meta.url applies to a path containing a space or a hash. */
 const invokedPath = process.argv[1];
 if (
   invokedPath !== undefined &&

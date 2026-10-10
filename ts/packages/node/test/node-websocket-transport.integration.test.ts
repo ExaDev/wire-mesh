@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { encode } from "cbor2";
 import type { Frame } from "wire-mesh-core/generated/protocol";
 import { WebSocket as WsClient, type WebSocket } from "ws";
@@ -12,10 +12,13 @@ import { bytesFromHex } from "./hex.js";
 import { generateCertFixture } from "./tls-cert-fixture.js";
 
 const SHA256_BYTE_LENGTH = 32;
-const COSE_ALG_EDDSA = -8; // the identity-key.alg value for an Ed25519 key; this advert is only encoded and decoded, never verified, so the value only has to be well-formed
+// the identity-key.alg value for an Ed25519 key; this advert is only encoded and decoded, never verified, so the value only has to be well-formed
+const COSE_ALG_EDDSA = -8;
 const ping: Frame = { type: "ping" };
-const CBOR_MAP_ONE_ENTRY_FIRST_BYTE = 0xa1; // a one-entry CBOR map head -- the ping frame, no length prefix
-const CBOR_BREAK_BYTE = 0xff; // the CBOR break byte on its own: undecodable as a complete value
+// a one-entry CBOR map head -- the ping frame, no length prefix
+const CBOR_MAP_ONE_ENTRY_FIRST_BYTE = 0xa1;
+// the CBOR break byte on its own: undecodable as a complete value
+const CBOR_BREAK_BYTE = 0xff;
 const CLOSE_PROTOCOL_ERROR = 1002;
 const HTTP_OK = 200;
 const POLL_INTERVAL_MS = 10;
@@ -25,6 +28,7 @@ async function collect<T>(iterable: Readonly<AsyncIterable<T>>): Promise<T[]> {
   for await (const item of iterable) {
     out.push(item);
   }
+
   return out;
 }
 
@@ -154,6 +158,7 @@ describe("connect with a URL-form address", () => {
       const check = (): void => {
         if (received.length > 0) {
           resolve();
+
           return;
         }
         setTimeout(check, POLL_INTERVAL_MS);
@@ -197,6 +202,7 @@ describe("createNodeWebSocketTransport, a real loopback round trip", () => {
       const check = (): void => {
         if (received.length > 0) {
           resolve();
+
           return;
         }
         setTimeout(check, POLL_INTERVAL_MS);
@@ -261,6 +267,7 @@ describe("createNodeWebSocketTransport with a tls identity", () => {
       const check = (): void => {
         if (received.length > 0) {
           resolve();
+
           return;
         }
         setTimeout(check, POLL_INTERVAL_MS);
@@ -288,18 +295,13 @@ describe("createNodeWebSocketTransport with a tls identity", () => {
     const listener = await transport.listen("127.0.0.1:0", () => undefined);
 
     // Node's global fetch rejects the fixture's self-signed cert by default; this env var is the standard, narrowly-scoped way to bypass that for a single call in a test — restored immediately after, never left set for the rest of the suite.
-    const original = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+    vi.stubEnv("NODE_TLS_REJECT_UNAUTHORIZED", "0");
     try {
       const response = await fetch(`https://${listener.address}/`);
       expect(response.status).toBe(HTTP_OK);
       expect(await response.json()).toEqual({ ok: true });
     } finally {
-      if (original === undefined) {
-        delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-      } else {
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = original;
-      }
+      vi.unstubAllEnvs();
     }
 
     await listener.close();
