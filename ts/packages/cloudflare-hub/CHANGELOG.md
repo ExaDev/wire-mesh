@@ -1,3 +1,18 @@
+## [2.2.6](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%402.2.5...%40exadev%2Fwire-mesh-cloudflare-hub%402.2.6) (2026-10-10)
+
+### Code Refactoring
+
+* **cloudflare-hub:** satisfy the eslint-config 3 rules ([0c7ddec](https://github.com/ExaDev/wire-mesh/commit/0c7ddece57f4deefcbe5bef439862eb59732da55))
+
+### Build System
+
+* **deps:** bump @exadev/eslint-config to 3.0.0 ([65c0503](https://github.com/ExaDev/wire-mesh/commit/65c050346059bafab4531921422d54fadc0eaf8a))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 4.0.4
+
 ## [2.2.5](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%402.2.4...%40exadev%2Fwire-mesh-cloudflare-hub%402.2.5) (2026-10-04)
 
 

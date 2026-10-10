@@ -1,3 +1,13 @@
+## [4.0.4](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.0.3...wire-mesh-core%404.0.4) (2026-10-10)
+
+### Code Refactoring
+
+* **core:** satisfy the eslint-config 3 rules ([83288a6](https://github.com/ExaDev/wire-mesh/commit/83288a69751a3eebe7a69e76b006cedffdb3499a))
+
+### Build System
+
+* **deps:** bump @exadev/eslint-config to 3.0.0 ([65c0503](https://github.com/ExaDev/wire-mesh/commit/65c050346059bafab4531921422d54fadc0eaf8a))
+
 ## [4.0.3](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.0.2...wire-mesh-core%404.0.3) (2026-10-04)
 
 ### Documentation

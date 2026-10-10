@@ -1,3 +1,18 @@
+## [2.17.5](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.17.4...%40exadev%2Fwire-mesh-web-console%402.17.5) (2026-10-10)
+
+### Code Refactoring
+
+* **web-console:** satisfy the eslint-config 3 rules ([07bf349](https://github.com/ExaDev/wire-mesh/commit/07bf34924327919e33201b8fc52d5a5f3cdcb08b))
+
+### Build System
+
+* **deps:** bump @exadev/eslint-config to 3.0.0 ([65c0503](https://github.com/ExaDev/wire-mesh/commit/65c050346059bafab4531921422d54fadc0eaf8a))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 4.0.4
+
 ## [2.17.4](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.17.3...%40exadev%2Fwire-mesh-web-console%402.17.4) (2026-10-04)
 
 
