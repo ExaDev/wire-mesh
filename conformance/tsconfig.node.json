@@ -4,7 +4,7 @@
     "adverts.ts",
     "vector-files.ts",
     "generate.ts",
-    "verify.test.ts",
+    "verify.unit.test.ts",
     "tsdown.config.ts",
     "eslint.config.ts"
   ]

@@ -1,6 +1,6 @@
-// Shared JSON<->wire helpers for the conformance vector generator and its vitest suite.
-//
-// JSON has no byte-string type, so every CDDL `bstr` field is represented in a vector's `message` as `{ "hex": "<lowercase hex>" }` rather than a raw string or array of numbers -- this keeps `message` valid, diffable JSON while still letting the codec reconstruct exactly the bytes CBOR needs. `toWire` walks a `message` value replacing every such marker with a real byte buffer before encoding; `fromWire` walks a decoded value the other way, turning every real byte string back into the same marker shape so it can be compared against the original `message` with a plain deep-equal.
+/* Shared JSON<->wire helpers for the conformance vector generator and its vitest suite.
+
+   JSON has no byte-string type, so every CDDL `bstr` field is represented in a vector's `message` as `{ "hex": "<lowercase hex>" }` rather than a raw string or array of numbers -- this keeps `message` valid, diffable JSON while still letting the codec reconstruct exactly the bytes CBOR needs. `toWire` walks a `message` value replacing every such marker with a real byte buffer before encoding; `fromWire` walks a decoded value the other way, turning every real byte string back into the same marker shape so it can be compared against the original `message` with a plain deep-equal. */
 
 export interface HexBytes {
   hex: string;
@@ -54,6 +54,7 @@ function isHexBytes(value: unknown): value is HexBytes {
     return false;
   if (!("hex" in value)) return false;
   if (Object.keys(value).length !== 1) return false;
+
   return typeof value.hex === "string";
 }
 
@@ -78,8 +79,10 @@ export function toWire(value: JsonWire): unknown {
   if (value !== null && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) out[k] = toWire(v);
+
     return out;
   }
+
   return value;
 }
 
@@ -93,11 +96,13 @@ export function fromWire(value: unknown): JsonWire {
   if (value instanceof Map) {
     const out: Record<string, JsonWire> = {};
     for (const [k, v] of value.entries()) out[String(k)] = fromWire(v);
+
     return out;
   }
   if (isPlainObject(value)) {
     const out: Record<string, JsonWire> = {};
     for (const [k, v] of Object.entries(value)) out[k] = fromWire(v);
+
     return out;
   }
   if (
@@ -124,6 +129,7 @@ function isJsonWire(value: unknown): value is JsonWire {
   }
   if (Array.isArray(value)) return value.every(isJsonWire);
   if (typeof value === "object") return Object.values(value).every(isJsonWire);
+
   return false;
 }
 
@@ -131,6 +137,7 @@ function isVector(value: unknown): value is Vector {
   if (typeof value !== "object" || value === null) return false;
   if (!("name" in value) || !("message" in value) || !("wire_hex" in value))
     return false;
+
   return (
     typeof value.name === "string" &&
     isJsonWire(value.message) &&
@@ -141,12 +148,14 @@ function isVector(value: unknown): value is Vector {
 export function isVectorFile(value: unknown): value is VectorFile {
   if (typeof value !== "object" || value === null) return false;
   if (!("vectors" in value)) return false;
+
   return Array.isArray(value.vectors) && value.vectors.every(isVector);
 }
 
 function isAdvertVector(value: unknown): value is AdvertVector {
   if (!isVector(value)) return false;
   if (!("signing_input_hex" in value) || !("verifies" in value)) return false;
+
   return (
     typeof value.signing_input_hex === "string" &&
     typeof value.verifies === "boolean"
@@ -156,5 +165,6 @@ function isAdvertVector(value: unknown): value is AdvertVector {
 export function isAdvertVectorFile(value: unknown): value is AdvertVectorFile {
   if (typeof value !== "object" || value === null) return false;
   if (!("vectors" in value)) return false;
+
   return Array.isArray(value.vectors) && value.vectors.every(isAdvertVector);
 }

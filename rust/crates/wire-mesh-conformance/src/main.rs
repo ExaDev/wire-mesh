@@ -1,5 +1,5 @@
 //! `conformance-check` — the Rust gate over the frozen conformance
-//! vectors, mirroring `conformance/verify.test.ts` and the TS core's
+//! vectors, mirroring `conformance/verify.unit.test.ts` and the TS core's
 //! conformance test in one binary.
 //!
 //! Two independent loops per vector:

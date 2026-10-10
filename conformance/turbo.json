@@ -12,18 +12,18 @@
       "inputs": ["generate.ts"],
       "outputs": ["*.v1.json"]
     },
-    "_test": {
-      "dependsOn": ["_build"],
-      "inputs": ["verify.test.ts", "*.v1.json"]
-    },
-    "_typecheck": {
-      "dependsOn": ["_build"],
-      "inputs": ["**/*.ts", "tsconfig.json", "tsconfig.node.json"]
-    },
     "_lint": {
       "dependsOn": ["_build"],
       "inputs": ["$TURBO_DEFAULT$", "eslint.config.ts"],
       "outputs": [".eslintcache"]
+    },
+    "_test": {
+      "dependsOn": ["_build"],
+      "inputs": ["verify.unit.test.ts", "*.v1.json"]
+    },
+    "_typecheck": {
+      "dependsOn": ["_build"],
+      "inputs": ["**/*.ts", "tsconfig.json", "tsconfig.node.json"]
     }
   }
 }
