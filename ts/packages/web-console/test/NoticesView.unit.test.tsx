@@ -28,9 +28,9 @@ describe("NoticesView", () => {
   });
 
   it("renders nothing for an empty notice list", () => {
-    // Mantine injects its own <style> element into the container;
-    // testing-library's queryByText ignores style/script by default, so this
-    // asserts no visible text without tripping over injected styles.
+    /* Mantine injects its own <style> element into the container;
+       testing-library's queryByText ignores style/script by default, so this
+       asserts no visible text without tripping over injected styles. */
     renderView([]);
     expect(screen.queryByText(/./)).toBeNull();
   });

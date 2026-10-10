@@ -19,6 +19,7 @@ function renderSparkline(samples: readonly RttSample[]): HTMLElement {
       <RttSparkline samples={samples} />
     </MantineProvider>,
   );
+
   return screen.getByTestId("rtt-sparkline");
 }
 

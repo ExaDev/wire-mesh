@@ -43,6 +43,7 @@ async function storeWithBadEntry(): Promise<
 > {
   const storage = createMemoryStorage();
   await storage.set(BAD_KEY, new Uint8Array([CBOR_ZERO]));
+
   return createRevocationStore({ storage, identity: own, clock });
 }
 

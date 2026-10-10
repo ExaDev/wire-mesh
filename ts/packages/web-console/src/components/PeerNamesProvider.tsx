@@ -99,6 +99,7 @@ export function PeerNamesProvider({
             next.set(hex, name);
           }
         }
+
         return next ?? current;
       });
     },

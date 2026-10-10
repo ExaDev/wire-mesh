@@ -19,6 +19,7 @@ interface StoredRecord {
 function isStoredRecord(value: unknown): value is StoredRecord {
   if (typeof value !== "object" || value === null) return false;
   if (!("key" in value) || !("value" in value)) return false;
+
   return typeof value.key === "string" && value.value instanceof Uint8Array;
 }
 
@@ -28,12 +29,12 @@ function isStringKey(key: IDBValidKey): key is string {
 
 async function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
-    request.onsuccess = () => {
+    request.addEventListener("success", () => {
       resolve(request.result);
-    };
-    request.onerror = () => {
+    });
+    request.addEventListener("error", () => {
       reject(request.error ?? new Error("IndexedDB request failed"));
-    };
+    });
   });
 }
 
@@ -48,10 +49,12 @@ async function getRecord(
       const result: unknown = request.result;
       if (result === undefined) {
         resolve(undefined);
+
         return;
       }
       if (!isStoredRecord(result)) {
         reject(new Error("stored record is malformed"));
+
         return;
       }
       resolve(result);
@@ -94,6 +97,7 @@ export async function createIndexedDbStorage(
   return {
     async get(key) {
       const record = await getRecord(store("readonly"), key);
+
       return record?.value;
     },
     async set(key, value) {
@@ -113,10 +117,12 @@ export async function createIndexedDbStorage(
       const allKeys = await requestToPromise(
         store("readonly").getAllKeys(range),
       );
+
       return allKeys.map((key) => {
         if (!isStringKey(key)) {
           throw new Error("stored key is not a string");
         }
+
         return key;
       });
     },

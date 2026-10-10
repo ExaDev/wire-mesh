@@ -14,11 +14,16 @@ const ADDRESS = formatPinnedAddress("192.0.2.5:4433", [HASH_HEX]);
 /** A session that is ready but whose streams never open, as Safari's do against a node that grants no flow-control credit. */
 class StuckSession {
   static closed = 0;
+
   readonly ready = Promise.resolve();
+
   readonly closed = new Promise<never>(() => undefined);
+
   readonly incomingUnidirectionalStreams = new ReadableStream();
+
   readonly createBidirectionalStream = async (): Promise<never> =>
     new Promise<never>(() => undefined);
+
   close(): void {
     StuckSession.closed += 1;
   }

@@ -1,6 +1,8 @@
 import { defineConfig } from "@playwright/test";
 
-// The spec run inside each browser container of test/e2e-containers/compose.yaml. No web server is started: the hub is a container of its own and serves the console. Chrome's default candidate handling is left alone (no flag hides or reveals local addresses), which is what a device on a real network runs with. The hub serves https with a certificate made for the run, so the browsers accept it.
+/**
+ * The spec run inside each browser container of test/e2e-containers/compose.yaml. No web server is started: the hub is a container of its own and serves the console. Chrome's default candidate handling is left alone (no flag hides or reveals local addresses), which is what a device on a real network runs with. The hub serves https with a certificate made for the run, so the browsers accept it.
+ */
 export default defineConfig({
   testDir: "./test/e2e-containers",
   // Outside the mounted workspace, so a run leaves nothing behind in it.

@@ -41,11 +41,16 @@ test("a console keeps reconnecting after the node has rotated past every hash in
       await handshakesSent(initiator),
       await handshakesSent(responder),
     ];
-    for (let rotation = 1; rotation <= ROTATIONS; rotation++) {
-      await test.step(`wait for rotation ${String(rotation)}`, async () => {
-        await node.nextRotation();
-      });
-    }
+    // Each rotation is waited for only once the one before it has happened, so they are awaited in turn.
+    await Array.from({ length: ROTATIONS }, (_, index) => index + 1).reduce(
+      async (previous, rotation) => {
+        await previous;
+        await test.step(`wait for rotation ${String(rotation)}`, async () => {
+          await node.nextRotation();
+        });
+      },
+      Promise.resolve(),
+    );
     // Every rotation ends the session and the console makes a new one, so each has to have succeeded, the last after the address's own hashes matched nothing.
     await test.step("both consoles reconnected every time", async () => {
       await expectReconnected(

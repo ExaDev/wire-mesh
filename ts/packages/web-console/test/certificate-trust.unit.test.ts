@@ -80,6 +80,7 @@ describe("observeCertificateChanges", () => {
         changes.push(change);
       },
     );
+
     return { memory: observeCertificateChanges(base, onChange), changes };
   }
 

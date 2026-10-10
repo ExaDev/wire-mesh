@@ -66,6 +66,7 @@ export function createGrantStore(
   storage: Readonly<KeyValueStorage>,
 ): GrantStore {
   const listeners = new Set<() => void>();
+
   return {
     async record(direction, token, at) {
       const claims = decodeGrantClaims(token);
@@ -82,8 +83,11 @@ export function createGrantStore(
     },
     async list() {
       const records: GrantRecord[] = [];
-      for (const key of await storage.keys(KEY_PREFIX)) {
-        const value = await storage.get(key);
+      const keys = await storage.keys(KEY_PREFIX);
+      const entries = await Promise.all(
+        keys.map(async (key) => ({ key, value: await storage.get(key) })),
+      );
+      for (const { key, value } of entries) {
         if (value === undefined) continue;
         const stored: unknown = decode(value, cdeDecodeOptions);
         if (!isStoredGrant(stored)) {
@@ -105,10 +109,12 @@ export function createGrantStore(
           recordedAt: stored.recordedAt,
         });
       }
+
       return records.sort((a, b) => b.recordedAt - a.recordedAt);
     },
     subscribe(listener) {
       listeners.add(listener);
+
       return () => {
         listeners.delete(listener);
       };

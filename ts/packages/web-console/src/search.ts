@@ -28,6 +28,7 @@ export function queryTerms(query: string): string[] {
 
 function matches(text: string, terms: readonly string[]): boolean {
   const haystack = text.toLowerCase();
+
   return terms.every((term) => haystack.includes(term));
 }
 
@@ -74,5 +75,6 @@ export function searchConversations(
       }
     });
   }
+
   return results.sort((a, b) => b.at - a.at).slice(0, MAX_SEARCH_RESULTS);
 }

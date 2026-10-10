@@ -28,6 +28,7 @@ function renderHealth(
   typeof renderHook<ReturnType<typeof useConnectionHealth>, unknown>
 > {
   const session = { sendPingMeasureRtt: ping };
+
   return renderHook(() => useConnectionHealth(session, connected, TIMING));
 }
 
@@ -44,8 +45,10 @@ function scripted(
   fallback: number,
 ): ReturnType<typeof vi.fn<Ping>> {
   const remaining = [...outcomes];
+
   return vi.fn<Ping>(async () => {
     const outcome = remaining.shift();
+
     return outcome === undefined ? fallback : outcome();
   });
 }

@@ -64,13 +64,11 @@ async function answeringHub(): Promise<{
   sentDataFrames: Parameters<MeshSession["sendDataFrame"]>[0][];
   sendDataFrame: MeshSession["sendDataFrame"];
 }> {
-  const grant = await mintRoomInviteGrant(
-    peer,
-    clock,
+  const grant = await mintRoomInviteGrant(peer, clock, {
     roomPath,
-    own.deviceId,
-    TOKEN_EXPIRES,
-  );
+    invitee: own.deviceId,
+    expires: TOKEN_EXPIRES,
+  });
   const sendManageRequest = vi.fn<SendManageRequest>(async (command) =>
     Promise.resolve(
       command.params.verb === "capability.request"
@@ -83,11 +81,13 @@ async function answeringHub(): Promise<{
     ),
   );
   const sentDataFrames: Parameters<MeshSession["sendDataFrame"]>[0][] = [];
+
   return {
     sendManageRequest,
     sentDataFrames,
     sendDataFrame: async (frame) => {
       sentDataFrames.push(frame);
+
       return Promise.resolve();
     },
   };
@@ -98,8 +98,15 @@ function render(): ReturnType<
 > {
   const store = createMessageStore(createMemoryStorage());
   const roomStorage = createMemoryStorage();
+
   return renderHook(() =>
-    useRoomMessaging(own, clock, store, roomStorage, capabilities.services),
+    useRoomMessaging({
+      identity: own,
+      clock,
+      messageStore: store,
+      roomStorage,
+      capabilities: capabilities.services,
+    }),
   );
 }
 
@@ -133,7 +140,13 @@ describe("a conversation over a hub", () => {
     const store = createMessageStore(createMemoryStorage());
     const roomStorage = createMemoryStorage();
     const gated = renderHook(() =>
-      useRoomMessaging(own, clock, store, roomStorage, own2.services),
+      useRoomMessaging({
+        identity: own,
+        clock,
+        messageStore: store,
+        roomStorage,
+        capabilities: own2.services,
+      }),
     );
     const hub = await answeringHub();
     act(() => {
@@ -203,13 +216,11 @@ describe("a conversation over a hub", () => {
         incomingManageRequests: incoming.stream,
       });
     });
-    const token = await mintRoomInviteGrant(
-      own,
-      clock,
+    const token = await mintRoomInviteGrant(own, clock, {
       roomPath,
-      peer.deviceId,
-      TOKEN_EXPIRES,
-    );
+      invitee: peer.deviceId,
+      expires: TOKEN_EXPIRES,
+    });
     const respond = vi.fn<IncomingManageRequest["respond"]>(async () =>
       Promise.resolve(),
     );
@@ -243,13 +254,11 @@ describe("a conversation over a hub", () => {
       });
     });
     const stranger = await createWebCryptoIdentity();
-    const tokenForSomeoneElse = await mintRoomInviteGrant(
-      own,
-      clock,
+    const tokenForSomeoneElse = await mintRoomInviteGrant(own, clock, {
       roomPath,
-      stranger.deviceId,
-      TOKEN_EXPIRES,
-    );
+      invitee: stranger.deviceId,
+      expires: TOKEN_EXPIRES,
+    });
     const respond = vi.fn<IncomingManageRequest["respond"]>(async () =>
       Promise.resolve(),
     );
@@ -361,7 +370,13 @@ describe("a conversation over a hub", () => {
     };
     const roomStorage = createMemoryStorage();
     const { result } = renderHook(() =>
-      useRoomMessaging(own, clock, store, roomStorage, services),
+      useRoomMessaging({
+        identity: own,
+        clock,
+        messageStore: store,
+        roomStorage,
+        capabilities: services,
+      }),
     );
     const hub = await answeringHub();
     act(() => {
@@ -425,6 +440,7 @@ describe("a conversation over a hub", () => {
       await waitFor(() => {
         expect(respond).toHaveBeenCalled();
       });
+
       return respond;
     };
 

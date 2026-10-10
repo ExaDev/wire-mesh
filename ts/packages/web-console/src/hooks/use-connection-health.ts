@@ -66,6 +66,7 @@ export function useConnectionHealth(
     }
     probe();
     const timer = setInterval(probe, timing.intervalMs);
+
     return () => {
       clearInterval(timer);
     };

@@ -103,6 +103,7 @@ async function codeFrom(
     { identity: issuer, clock },
   );
   if (!minted.ok) throw new Error(minted.error);
+
   return encodeGrantCode(minted.token);
 }
 

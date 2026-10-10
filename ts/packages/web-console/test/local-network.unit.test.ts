@@ -67,15 +67,17 @@ describe("explainLocalNetworkBlock", () => {
   });
 
   it("says nothing when the permission is granted or still to be asked", async () => {
-    for (const state of ["granted", "prompt"]) {
-      expect(
-        await explainLocalNetworkBlock(
-          "ws://192.168.1.5:8787",
-          PUBLIC_PAGE,
-          permissionAt(state),
-        ),
-      ).toBeUndefined();
-    }
+    await Promise.all(
+      ["granted", "prompt"].map(async (state) => {
+        expect(
+          await explainLocalNetworkBlock(
+            "ws://192.168.1.5:8787",
+            PUBLIC_PAGE,
+            permissionAt(state),
+          ),
+        ).toBeUndefined();
+      }),
+    );
   });
 
   it("says nothing for a public address, or when the page itself is on the local network", async () => {

@@ -28,6 +28,7 @@ function conversation(
   overrides: Partial<ConversationView> = {},
 ): ConversationView {
   const peer = digit.repeat(DEVICE_ID_HEX_LENGTH);
+
   return {
     roomPath: `${"1".repeat(DEVICE_ID_HEX_LENGTH)}+${peer}`,
     participants: [peer],
@@ -48,6 +49,7 @@ function notice(
   postedAt: number,
 ): ConversationView["notices"][number] {
   const content = new TextEncoder().encode(text);
+
   return {
     verified: true,
     contentType: "text/plain",

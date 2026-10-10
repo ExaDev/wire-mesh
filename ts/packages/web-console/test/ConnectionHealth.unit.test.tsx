@@ -37,6 +37,7 @@ function renderReconnecting(attempt: number, now: number): HTMLElement {
       />
     </MantineProvider>,
   );
+
   return screen.getByTestId("reconnect-status");
 }
 

@@ -48,6 +48,7 @@ export function wrapWebSocket(ws: Readonly<WebSocket>): Connection {
       // Only binary messages carry frames; a text message is a protocol violation on this connection, same class as undecodable bytes.
       failAll(new Error("expected a binary WebSocket message"));
       ws.close(CLOSE_PROTOCOL_ERROR, "protocol error");
+
       return;
     }
     let frame: Frame;
@@ -63,6 +64,7 @@ export function wrapWebSocket(ws: Readonly<WebSocket>): Connection {
           : new Error(`frame body failed to decode: ${String(error)}`),
       );
       ws.close(CLOSE_PROTOCOL_ERROR, "protocol error");
+
       return;
     }
     const waiter = waiters.shift();
@@ -94,6 +96,7 @@ export function wrapWebSocket(ws: Readonly<WebSocket>): Connection {
     if (ended) {
       return Promise.resolve({ value: undefined, done: true });
     }
+
     return new Promise((resolve, reject) => {
       waiters.push({ resolve, reject });
     });
@@ -105,11 +108,13 @@ export function wrapWebSocket(ws: Readonly<WebSocket>): Connection {
         return Promise.reject(new Error("connection is closed"));
       }
       ws.send(messageFromFrame(frame));
+
       return Promise.resolve();
     },
     receive: () => receiveStream,
     async close(): Promise<void> {
       ws.close(CLOSE_NORMAL);
+
       return Promise.resolve();
     },
   };
@@ -124,6 +129,7 @@ export function createBrowserTransport(): Transport {
       }
       const ws = new WebSocket(url);
       ws.binaryType = "arraybuffer";
+
       return new Promise<void>((resolve, reject) => {
         ws.addEventListener("open", () => {
           resolve();

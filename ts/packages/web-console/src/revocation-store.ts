@@ -66,6 +66,7 @@ async function loadStored(
     return "it is not a revocation entry";
   }
   const verdict = await view.record(parsed.data, { identity });
+
   return verdict.ok ? undefined : `it no longer verifies (${verdict.reason})`;
 }
 
@@ -88,18 +89,23 @@ export async function createRevocationStore(
       await storage.set(key, new Uint8Array(encode(entry, cdeEncodeOptions)));
       for (const listener of listeners) listener();
     }
+
     return verdict;
   }
 
-  let unreadable: readonly UnreadableRevocation[] = [];
-  for (const key of await storage.keys(KEY_PREFIX)) {
-    const value = await storage.get(key);
-    if (value === undefined) continue;
-    const reason = await loadStored(view, identity, value);
-    if (reason !== undefined) {
-      unreadable = [...unreadable, { key, reason }];
-    }
-  }
+  const storedKeys = await storage.keys(KEY_PREFIX);
+  const loaded = await Promise.all(
+    storedKeys.map(async (key) => {
+      const value = await storage.get(key);
+      if (value === undefined) return undefined;
+      const reason = await loadStored(view, identity, value);
+
+      return reason === undefined ? undefined : { key, reason };
+    }),
+  );
+  let unreadable: readonly UnreadableRevocation[] = loaded.filter(
+    (entry) => entry !== undefined,
+  );
 
   return {
     view,
@@ -111,6 +117,7 @@ export async function createRevocationStore(
     },
     subscribe(listener) {
       listeners.add(listener);
+
       return () => {
         listeners.delete(listener);
       };
@@ -128,6 +135,7 @@ export async function createRevocationStore(
           `the revocation this device signed does not verify (${verdict.reason})`,
         );
       }
+
       return entry;
     },
   };

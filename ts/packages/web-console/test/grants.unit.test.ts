@@ -38,6 +38,7 @@ async function grant(expires = NOW + LIFETIME): Promise<CapabilityToken> {
     expires,
   });
   if (!verdict.ok) throw new Error("expected the grant to mint");
+
   return verdict.token;
 }
 

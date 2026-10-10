@@ -24,6 +24,7 @@ export function createCertificateMemory(
   return {
     recall: async (node) => {
       const stored = await storage.get(KEY_PREFIX + node);
+
       return stored === undefined ? [] : decodeCertificateHashes(stored);
     },
     remember: async (node, hashes) => {

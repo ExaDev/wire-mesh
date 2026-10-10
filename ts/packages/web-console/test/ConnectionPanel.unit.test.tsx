@@ -36,6 +36,7 @@ async function failingSession(): Promise<Readonly<MeshSession>> {
   void session
     .connect(LOCAL_ADDRESS, ["core/management"])
     .catch(() => undefined);
+
   return session;
 }
 

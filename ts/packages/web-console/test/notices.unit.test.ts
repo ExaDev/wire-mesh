@@ -67,6 +67,7 @@ async function generateEs256Identity(): Promise<IdentityPort> {
     false,
     ["deriveBits"],
   );
+
   return createNodeIdentity(
     keyPair.privateKey,
     publicKeyBytes,
@@ -77,10 +78,12 @@ async function generateEs256Identity(): Promise<IdentityPort> {
 
 function memoryDelivery(delivered: readonly string[] = []): RoomKeyDelivery {
   const rooms = new Set(delivered);
+
   return {
     isDelivered: async (room) => Promise.resolve(rooms.has(room)),
     markDelivered: async (room) => {
       rooms.add(room);
+
       return Promise.resolve();
     },
   };
@@ -88,6 +91,7 @@ function memoryDelivery(delivered: readonly string[] = []): RoomKeyDelivery {
 
 function memoryKeyStore(): RoomKeyStore {
   const keys = new Map<string, Map<number, Uint8Array>>();
+
   return {
     async get(room, epoch) {
       return Promise.resolve(keys.get(room)?.get(epoch));
@@ -126,6 +130,7 @@ function fakeSession(): MeshSession & {
   const unimplemented = (member: string): never => {
     throw new Error(`the session double does not implement ${member}`);
   };
+
   return {
     sent,
     commands,
@@ -148,10 +153,12 @@ function fakeSession(): MeshSession & {
     close: async () => Promise.resolve(),
     sendDataFrame: async (frame: Frame) => {
       sent.push(frame);
+
       return Promise.resolve();
     },
     sendManageRequest: async (command: ManageCommand) => {
       commands.push(command);
+
       return Promise.resolve(
         refusal === undefined
           ? ({ result: "ok" } as const)
@@ -175,14 +182,17 @@ async function drain(
   memberWiring: NoticeWiring,
 ): Promise<void> {
   const MAX_DRAIN_ROUNDS = 8;
-  for (let round = 0; round < MAX_DRAIN_ROUNDS; round += 1) {
+  const round = async (roundsLeft: number): Promise<void> => {
+    if (roundsLeft === 0) return;
     const ownerFrames = ownerSession.sent.splice(0);
     const memberFrames = memberSession.sent.splice(0);
-    if (ownerFrames.length === 0 && memberFrames.length === 0) break;
+    if (ownerFrames.length === 0 && memberFrames.length === 0) return;
     for (const f of ownerFrames) memberWiring.handleFrame(f, memberSession);
     for (const f of memberFrames) ownerWiring.handleFrame(f, ownerSession);
     await flush();
-  }
+    await round(roundsLeft - 1);
+  };
+  await round(MAX_DRAIN_ROUNDS);
 }
 
 async function mintRoomMemberToken(
@@ -201,6 +211,7 @@ async function mintRoomMemberToken(
     delegationsRemaining: 0,
   });
   if (!verdict.ok) throw new Error(`mint failed: ${verdict.reason}`);
+
   return verdict.token;
 }
 
@@ -235,8 +246,8 @@ describe("bootstrapDmEpoch1", () => {
       delivery: memoryDelivery(),
     });
 
-    // The lower side stored its own epoch-1 key and sent exactly one rekey
-    // (a manage-request, recorded by the session double).
+    /* The lower side stored its own epoch-1 key and sent exactly one rekey
+       (a manage-request, recorded by the session double). */
     expect(await lowerKeys.currentEpoch(roomPath)).toBe(1);
     expect(lowerSession.commands).toHaveLength(1);
 
@@ -251,13 +262,15 @@ describe("bootstrapDmEpoch1", () => {
       revocation: createRevocationView(),
       ownRoomMemberToken: higherToken,
       onRekey: async (event: Readonly<RoomRekeyEvent>) => {
-        for (const [i, key] of event.contentKeys.entries()) {
-          await higherKeys.set(
-            roomPath,
-            event.keyEpoch - event.contentKeys.length + 1 + i,
-            key,
-          );
-        }
+        await Promise.all(
+          event.contentKeys.map(async (key, i) =>
+            higherKeys.set(
+              roomPath,
+              event.keyEpoch - event.contentKeys.length + 1 + i,
+              key,
+            ),
+          ),
+        );
       },
     });
     await handler({
@@ -332,6 +345,7 @@ describe("bootstrapDmEpoch1 redelivery", () => {
     const lower = aIsLower ? a : b;
     const higher = aIsLower ? b : a;
     const roomPath = `${deviceIdToHex(lower.deviceId)}+${deviceIdToHex(higher.deviceId)}`;
+
     return {
       lower,
       lowerToken: await mintRoomMemberToken(higher, lower, roomPath),
@@ -400,13 +414,15 @@ describe("createNoticeWiring", () => {
       revocation: createRevocationView(),
       ownRoomMemberToken: memberToken,
       onRekey: async (event: Readonly<RoomRekeyEvent>) => {
-        for (const [i, key] of event.contentKeys.entries()) {
-          await memberKeys.set(
-            roomPath,
-            event.keyEpoch - event.contentKeys.length + 1 + i,
-            key,
-          );
-        }
+        await Promise.all(
+          event.contentKeys.map(async (key, i) =>
+            memberKeys.set(
+              roomPath,
+              event.keyEpoch - event.contentKeys.length + 1 + i,
+              key,
+            ),
+          ),
+        );
       },
     })({
       requestId: 0,
@@ -448,10 +464,10 @@ describe("createNoticeWiring", () => {
     });
     await drain(ownerSession, ownerWiring, memberSession, memberWiring);
 
-    // The full catch-up round trip flowed (announce, request, entries --
-    // ownerSession.sent was drained into the member); assert on the
-    // member's received state: its storage holds the owner's entry and its
-    // read returns the decrypted notice.
+    /* The full catch-up round trip flowed (announce, request, entries --
+       ownerSession.sent was drained into the member); assert on the
+       member's received state: its storage holds the owner's entry and its
+       read returns the decrypted notice. */
     expect(memberChanges).toBeGreaterThan(0);
     const memberRead = await memberWiring.readRoom(roomPath, [owner.deviceId]);
     const replicated = memberRead.find(

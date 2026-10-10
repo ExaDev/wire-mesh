@@ -16,6 +16,7 @@ function requiredEnvironment(name: string): string {
   if (value === undefined || value === "") {
     throw new Error(`${name} must be set`);
   }
+
   return value;
 }
 
@@ -30,8 +31,10 @@ function launchArguments(): string[] {
   }
   if (process.env.TRUST_LAN_NODE === "spki") {
     const spki = readFileSync(LAN_NODE_SPKI_FILE, "utf8").trim();
+
     return [`--ignore-certificate-errors-spki-list=${spki}`];
   }
+
   return [];
 }
 
@@ -50,6 +53,7 @@ async function openConsole(): Promise<Page> {
     console.log(`[${role} console] ${message.text()}`);
   });
   await page.goto(cloudOrigin);
+
   return page;
 }
 
@@ -74,11 +78,15 @@ if (phase === "warm") {
         async () =>
           page.evaluate(async () => {
             const names = await caches.keys();
-            let entries = 0;
-            for (const name of names) {
-              entries += (await (await caches.open(name)).keys()).length;
-            }
-            return entries;
+            const counts = await Promise.all(
+              names.map(async (name) => {
+                const cache = await caches.open(name);
+
+                return (await cache.keys()).length;
+              }),
+            );
+
+            return counts.reduce((total, count) => total + count, 0);
           }),
         { timeout: STEP_TIMEOUT_MS },
       )

@@ -1,6 +1,6 @@
-// A real, checked-in end-to-end test for the actual console UI's room-messaging flow (wire-mesh#101) -- webrtc.spec.ts already proves the raw WebRTC/relay signaling works against a bare test harness page; this drives the real production App/ConnectionPanel/RoomPanel components instead, the way a person actually uses the console: two independent browser instances, each its own persisted identity, connect to a real relay, one clicks "Message" on the other's directory row and sends a message, the other approves the resulting request, and the message renders on the receiving side -- with no manually copy-pasted token anywhere in the flow.
-//
-// A conversation opens at once over the hub both browsers are connected to, and a direct WebRTC connection is negotiated in the background and takes over when it opens. Two cases pin both halves, each asserting every step unconditionally: with the flags in SAME_MACHINE_WEBRTC_ARGS, which let ICE complete on a single host, the conversation must end up direct; with UDP candidates forbidden, so no direct connection can open, the whole exchange must still work through the hub and stay there.
+/* A real, checked-in end-to-end test for the actual console UI's room-messaging flow (wire-mesh#101) -- webrtc.spec.ts already proves the raw WebRTC/relay signaling works against a bare test harness page; this drives the real production App/ConnectionPanel/RoomPanel components instead, the way a person actually uses the console: two independent browser instances, each its own persisted identity, connect to a real relay, one clicks "Message" on the other's directory row and sends a message, the other approves the resulting request, and the message renders on the receiving side -- with no manually copy-pasted token anywhere in the flow.
+
+   A conversation opens at once over the hub both browsers are connected to, and a direct WebRTC connection is negotiated in the background and takes over when it opens. Two cases pin both halves, each asserting every step unconditionally: with the flags in SAME_MACHINE_WEBRTC_ARGS, which let ICE complete on a single host, the conversation must end up direct; with UDP candidates forbidden, so no direct connection can open, the whole exchange must still work through the hub and stay there. */
 
 import {
   type Browser,
@@ -43,6 +43,7 @@ async function newDevicePage(browser: Readonly<Browser>): Promise<Page> {
   page.on("pageerror", (error) => {
     throw error;
   });
+
   return page;
 }
 
@@ -178,5 +179,6 @@ async function runRoomMessagingTest(
   await expect(pageB.getByText(/Waiting for .* to allow messages/)).toBeHidden({
     timeout: MESSAGE_RENDER_TIMEOUT_MS,
   });
+
   return [pageA, pageB];
 }

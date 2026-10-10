@@ -25,6 +25,7 @@ export function GrantDetails({
 }: Readonly<{ row: GrantRow }>): React.JSX.Element {
   const { claims } = row;
   const code = encodeGrantCode(row.token);
+
   return (
     <Stack gap={4} data-testid="grant-details">
       <Field label="Token id">

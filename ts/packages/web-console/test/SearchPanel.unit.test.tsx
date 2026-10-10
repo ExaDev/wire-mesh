@@ -39,8 +39,13 @@ function conversation(text: string): ConversationView {
 
 function renderSearch(
   conversations: readonly ConversationView[],
-  onSelect: (roomPath: string) => void = () => undefined,
-  store = memoryNameStore(),
+  {
+    onSelect = () => undefined,
+    store = memoryNameStore(),
+  }: {
+    onSelect?: (roomPath: string) => void;
+    store?: ReturnType<typeof memoryNameStore>;
+  } = {},
 ): void {
   render(
     <WithNames store={store}>
@@ -83,7 +88,7 @@ describe("SearchPanel", () => {
     await store.setPetname(PEER, "Ada");
     const onSelect = vi.fn<(roomPath: string) => void>();
     const view = conversation("lunch at the harbour");
-    renderSearch([view], onSelect, store);
+    renderSearch([view], { onSelect, store });
 
     search("harbour");
 

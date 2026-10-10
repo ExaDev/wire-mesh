@@ -33,6 +33,7 @@ function ReconnectStatus({
       ? undefined
       : statusSince + policy.delayMs(state.attempt);
   const due = retryAt === undefined ? 0 : retryAt - now;
+
   return (
     <Text size="sm" c="orange" data-testid="reconnect-status">
       {due > 0 ? `Retrying in ${formatRemaining(due)}` : "Retrying now"}{" "}
@@ -62,6 +63,7 @@ export function ConnectionHealth({
   if (state.status !== "connected") {
     return null;
   }
+
   return (
     <Group align="flex-end" gap="md" mb="sm">
       <RttSparkline samples={health.samples} />

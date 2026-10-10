@@ -41,6 +41,7 @@ async function renderPanel(): Promise<Rendered> {
       />
     </WithNames>,
   );
+
   return { storage, identity, save, reload };
 }
 

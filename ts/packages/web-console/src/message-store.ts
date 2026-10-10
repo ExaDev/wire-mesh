@@ -28,12 +28,14 @@ function messageKey(
   message: Readonly<StoredMessage>,
 ): string {
   const sentAtSegment = String(message.sentAt).padStart(SENT_AT_KEY_WIDTH, "0");
+
   return `${KEY_PREFIX}/${roomPath}/${sentAtSegment}-${bytesToHex(message.messageId)}`;
 }
 
 /** The room path a storage key belongs to: the key is `message/<roomPath>/<sentAt>-<messageId>`, and an owner-named room path itself contains a `/`, so the path is everything between the prefix and the final segment. */
 function roomPathOfKey(key: string): string {
   const withoutPrefix = key.slice(`${KEY_PREFIX}/`.length);
+
   return withoutPrefix.slice(0, withoutPrefix.lastIndexOf("/"));
 }
 
@@ -45,6 +47,7 @@ function isStoredMessage(value: unknown): value is StoredMessage {
   if (typeof value !== "object" || value === null) return false;
   if (!("direction" in value) || !("text" in value)) return false;
   if (!("messageId" in value) || !("sentAt" in value)) return false;
+
   return (
     isDirection(value.direction) &&
     typeof value.text === "string" &&
@@ -65,13 +68,16 @@ export function createMessageStore(
     },
     async roomPaths(): Promise<string[]> {
       const keys = await storage.keys(`${KEY_PREFIX}/`);
+
       return [...new Set(keys.map(roomPathOfKey))];
     },
     async list(roomPath): Promise<StoredMessage[]> {
       const keys = (await storage.keys(`${KEY_PREFIX}/${roomPath}/`)).sort();
       const messages: StoredMessage[] = [];
-      for (const key of keys) {
-        const value = await storage.get(key);
+      const entries = await Promise.all(
+        keys.map(async (key) => ({ key, value: await storage.get(key) })),
+      );
+      for (const { key, value } of entries) {
         if (value === undefined) continue;
         const decoded: unknown = decode(value, cdeDecodeOptions);
         if (!isStoredMessage(decoded)) {
@@ -79,6 +85,7 @@ export function createMessageStore(
         }
         messages.push(decoded);
       }
+
       return messages;
     },
   };

@@ -28,6 +28,7 @@ export interface RoomPanelProps {
 function routeLabel(via: ConversationView["via"]): string {
   if (via === "direct") return "direct";
   if (via === "hub") return "via hub";
+
   return "offline";
 }
 
@@ -39,6 +40,7 @@ export function RoomPanel({
   onDiscard,
 }: Readonly<RoomPanelProps>): React.JSX.Element {
   const names = usePeerNames();
+
   return (
     <Stack gap="xs">
       <Group justify="space-between">

@@ -16,9 +16,11 @@ export function useNow(
     const timer = setInterval(() => {
       setNow(clock.now());
     }, intervalMs);
+
     return () => {
       clearInterval(timer);
     };
   }, [clock, active, intervalMs]);
+
   return now;
 }

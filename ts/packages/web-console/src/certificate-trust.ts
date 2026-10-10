@@ -36,6 +36,7 @@ export function assessCertificates(
   if (trusted.length > 0) {
     return { kind: "known", node, trusted };
   }
+
   return { kind: "changed", node, remembered, presented };
 }
 
@@ -48,6 +49,7 @@ export function presentedCertificates(
   }
   try {
     const { url, sha256 } = parsePinnedAddress(address);
+
     return { node: new URL(url).host, sha256: [...sha256] };
   } catch {
     // Malformed pins are not something to trust or remember. The dial that follows rejects the address with the parser's own message, which the connection's status line reports.
@@ -99,5 +101,6 @@ export function formatFingerprint(sha256Hex: string): string {
       sha256Hex.slice(index, index + HEX_DIGITS_PER_BYTE).toUpperCase(),
     );
   }
+
   return pairs.join(":");
 }

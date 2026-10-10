@@ -1,8 +1,8 @@
-// A real, checked-in end-to-end test for the WebRTC data path -- the thing vitest cannot exercise at all, since neither RTCPeerConnection nor RTCDataChannel exists under Node (unlike WebSocket, which Node provides natively). Two genuinely separate Chromium Browser instances (each its own OS process, launched independently rather than sharing one process via two BrowserContexts) each load the real production mesh-session/webrtc-negotiation/webrtc-transport modules, connect to a real, unmodified wire-mesh relay (booted by playwright.config.ts's webServer, not a bespoke stand-in), and negotiate a real WebRTC data channel through it.
-//
-// core's relay-hub domain (shared by wire-mesh and cloudflare-hub) deliberately drops manage-request/manage-response frames sent directly to it -- see relay-hub.ts's own handleFrame, whose final branch comment says so. That is correct for relay-hub's actual job (gossip/relay-connect/ relay-data), and it is exactly why core/webrtc signaling addressed to a specific peer rides inside relay-data's own opaque payload instead (see mesh-session.ts's sendManageRequest targetDevice parameter): relay-data is the one frame kind relay-hub already forwards blindly between an established relay-connect pairing. This test's relay is the real thing, not a stand-in, specifically to prove the signaling traverses an unmodified relay-hub's real forwarding.
-//
-// Every assertion is unconditional: the signaling round trip must complete through the relay's real relay-data forwarding, and the data channel must then open on both sides. A run where ICE does not complete fails. Both browsers run on loopback with the flags in SAME_MACHINE_WEBRTC_ARGS, which is what lets ICE complete on a single host.
+/* A real, checked-in end-to-end test for the WebRTC data path -- the thing vitest cannot exercise at all, since neither RTCPeerConnection nor RTCDataChannel exists under Node (unlike WebSocket, which Node provides natively). Two genuinely separate Chromium Browser instances (each its own OS process, launched independently rather than sharing one process via two BrowserContexts) each load the real production mesh-session/webrtc-negotiation/webrtc-transport modules, connect to a real, unmodified wire-mesh relay (booted by playwright.config.ts's webServer, not a bespoke stand-in), and negotiate a real WebRTC data channel through it.
+
+   core's relay-hub domain (shared by wire-mesh and cloudflare-hub) deliberately drops manage-request/manage-response frames sent directly to it -- see relay-hub.ts's own handleFrame, whose final branch comment says so. That is correct for relay-hub's actual job (gossip/relay-connect/ relay-data), and it is exactly why core/webrtc signaling addressed to a specific peer rides inside relay-data's own opaque payload instead (see mesh-session.ts's sendManageRequest targetDevice parameter): relay-data is the one frame kind relay-hub already forwards blindly between an established relay-connect pairing. This test's relay is the real thing, not a stand-in, specifically to prove the signaling traverses an unmodified relay-hub's real forwarding.
+
+   Every assertion is unconditional: the signaling round trip must complete through the relay's real relay-data forwarding, and the data channel must then open on both sides. A run where ICE does not complete fails. Both browsers run on loopback with the flags in SAME_MACHINE_WEBRTC_ARGS, which is what lets ICE complete on a single host. */
 
 import {
   type Browser,
@@ -38,8 +38,10 @@ const SYNTHETIC_DEVICE_ID_LENGTH = 32;
 const SYNTHETIC_KEY_FILL_BYTE = 0xee;
 const SYNTHETIC_SIGNATURE_FILL_BYTE = 0xaa;
 const ED25519_PUBLIC_KEY_LENGTH = 32;
-const SIGNATURE_LENGTH = 64; // raw ES256/EdDSA signature length
-const EDDSA = -8; // COSE algorithm identifier for pure Ed25519 (RFC 9053)
+// raw ES256/EdDSA signature length
+const SIGNATURE_LENGTH = 64;
+// COSE algorithm identifier for pure Ed25519 (RFC 9053)
+const EDDSA = -8;
 
 interface FrameSummaryEntry {
   direction: "sent" | "received";
@@ -69,7 +71,7 @@ async function pollUntil<T>(
   description: string,
 ): Promise<T> {
   const deadline = Date.now() + timeoutMs;
-  for (;;) {
+  const attempt = async (): Promise<T> => {
     const result = await predicate();
     if (result !== undefined) {
       return result;
@@ -80,7 +82,11 @@ async function pollUntil<T>(
     await new Promise((resolve) => {
       setTimeout(resolve, POLL_INTERVAL_MS);
     });
-  }
+
+    return attempt();
+  };
+
+  return attempt();
 }
 
 /** A genuinely separate Chromium process, launched independently rather than as a second context inside a shared Browser, simulating one device -- separate storage/IndexedDB/identity, and no shared browser process either. */
@@ -103,6 +109,7 @@ async function newDevicePage(
   page.on("pageerror", (error) => {
     throw error;
   });
+
   return page;
 }
 
@@ -213,6 +220,7 @@ async function runNegotiationTest(
           entry.type === "manage-request" &&
           entry.verb === "webrtc.offer",
       );
+
       return aGotAnswer && bGotOffer
         ? { summaryA: currentSummaryA, summaryB: currentSummaryB }
         : undefined;
@@ -380,6 +388,7 @@ async function runMediaNegotiationTest(
       const bothHaveBothKinds = [currentKindsA, currentKindsB].every(
         (kinds) => kinds.includes("audio") && kinds.includes("video"),
       );
+
       return bothHaveBothKinds ? [currentKindsA, currentKindsB] : undefined;
     },
     NEGOTIATION_TIMEOUT_MS,

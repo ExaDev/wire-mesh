@@ -23,6 +23,27 @@ export const STREAM_OPEN_TIMEOUT_MS = 8000;
 
 const LISTEN_UNSUPPORTED = "the web console is a client only: it cannot listen";
 
+/** Reads a stream of byte chunks to its end, in order. */
+async function readChunks(
+  reader: Readonly<ReadableStreamDefaultReader<unknown>>,
+): Promise<Uint8Array[]> {
+  const chunks: Uint8Array[] = [];
+  const readNext = async (): Promise<void> => {
+    const chunk = await reader.read();
+    if (chunk.done) {
+      return;
+    }
+    if (!(chunk.value instanceof Uint8Array)) {
+      throw new Error("the announcement carried something other than bytes");
+    }
+    chunks.push(chunk.value);
+    await readNext();
+  };
+  await readNext();
+
+  return chunks;
+}
+
 /** Everything the node sent on the stream it opened for the purpose, joined. */
 async function readAnnouncement(
   session: Readonly<WebTransport>,
@@ -38,18 +59,8 @@ async function readAnnouncement(
   if (!(opened instanceof ReadableStream)) {
     throw new Error("the announcement stream is not a readable stream");
   }
-  const chunks: Uint8Array[] = [];
   const reader: ReadableStreamDefaultReader<unknown> = opened.getReader();
-  for (;;) {
-    const chunk = await reader.read();
-    if (chunk.done) {
-      break;
-    }
-    if (!(chunk.value instanceof Uint8Array)) {
-      throw new Error("the announcement carried something other than bytes");
-    }
-    chunks.push(chunk.value);
-  }
+  const chunks = await readChunks(reader);
   const joined = new Uint8Array(
     chunks.reduce((total, chunk) => total + chunk.length, 0),
   );
@@ -58,6 +69,7 @@ async function readAnnouncement(
     joined.set(chunk, offset);
     offset += chunk.length;
   }
+
   return decodeCertificateHashes(joined);
 }
 
@@ -82,6 +94,7 @@ async function openStream(
         "this browser cannot open a stream to this node: it is waiting for flow-control credit the node never grants, which is how Safari behaves with the node's HTTP/3 library (fails-components/webtransport#490); reach the node over wss:// instead",
       );
     }
+
     return opened;
   } finally {
     clearTimeout(timer);
@@ -126,6 +139,7 @@ export function createBrowserWebTransportTransport(
           await memory.remember(node, hashes);
         })
         .catch(() => undefined);
+
       return {
         ...connection,
         redialAddress: () =>

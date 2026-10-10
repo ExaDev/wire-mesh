@@ -1,6 +1,8 @@
 import type { ManifestOptions } from "vite-plugin-pwa";
 
-// Deployable from any static origin (see README), so start_url/scope are relative rather than root-absolute: an install served from a subpath still resolves both against its own location.
+/**
+ * Deployable from any static origin (see README), so start_url/scope are relative rather than root-absolute: an install served from a subpath still resolves both against its own location.
+ */
 export const pwaManifest: Partial<ManifestOptions> = {
   name: "wire-mesh console",
   short_name: "wire-mesh",

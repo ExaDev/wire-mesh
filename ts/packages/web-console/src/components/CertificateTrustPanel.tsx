@@ -30,6 +30,7 @@ function PromptAlert({
 }: Readonly<{ prompt: TrustPrompt }>): React.JSX.Element {
   const { assessment, decide } = prompt;
   const changed = assessment.kind === "changed";
+
   return (
     <Alert
       color={changed ? "red" : "blue"}
@@ -93,6 +94,7 @@ export function CertificateTrustPanel({
   if (prompts.length === 0 && undismissed.length === 0) {
     return null;
   }
+
   return (
     <Stack gap="sm" data-testid="certificate-trust">
       {prompts.map((prompt) => (

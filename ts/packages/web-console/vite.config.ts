@@ -37,10 +37,13 @@ function invokePostcssFactory(
   if (!isPostcssPlugin(plugin)) {
     throw new Error("PostCSS plugin factory did not return a plugin object");
   }
+
   return plugin;
 }
 
-// No dev proxy: the console takes full ws:// URLs and WebSocket connections are not same-origin-restricted, so `vite` (dev) serves the page and the page dials the node directly.
+/**
+ * No dev proxy: the console takes full ws:// URLs and WebSocket connections are not same-origin-restricted, so `vite` (dev) serves the page and the page dials the node directly.
+ */
 export default defineConfig({
   plugins: [
     react(),

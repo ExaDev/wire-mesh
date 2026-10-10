@@ -101,6 +101,7 @@ export type ConversationAction =
 /** Message order matches message-store.ts's own list order (sentAt, then message id), so a history load and a live message interleave the same way a reload would show them. */
 function compareMessages(a: StoredMessage, b: StoredMessage): number {
   if (a.sentAt !== b.sentAt) return a.sentAt - b.sentAt;
+
   return bytesToHex(a.messageId).localeCompare(bytesToHex(b.messageId));
 }
 
@@ -112,6 +113,7 @@ export function mergeMessages(
   const known = new Set(existing.map((m) => bytesToHex(m.messageId)));
   const added = incoming.filter((m) => !known.has(bytesToHex(m.messageId)));
   if (added.length === 0) return existing;
+
   return [...existing, ...added].sort(compareMessages);
 }
 
@@ -122,6 +124,7 @@ function update(
 ): ReadonlyMap<string, ConversationInternal> {
   const entry = state.get(roomPath);
   if (entry === undefined) return state;
+
   return new Map(state).set(roomPath, change(entry));
 }
 
@@ -153,6 +156,7 @@ function withRoutes(
 ): ConversationInternal {
   const via: ConversationVia | undefined =
     direct !== undefined ? "direct" : relay !== undefined ? "hub" : undefined;
+
   return {
     ...entry,
     direct,
@@ -171,6 +175,7 @@ export function reduceConversations(
       const entry =
         state.get(action.roomPath) ??
         blank(action.roomPath, action.participants);
+
       // A new direct connection starts with an empty notice board; the token and any pending request belong to the conversation and outlive the connection they arrived on.
       return new Map(state).set(action.roomPath, {
         ...withRoutes(entry, action.session, entry.relay),
@@ -182,6 +187,7 @@ export function reduceConversations(
       const entry =
         state.get(action.roomPath) ??
         blank(action.roomPath, action.participants);
+
       return new Map(state).set(
         action.roomPath,
         withRoutes(entry, entry.direct, action.route),
@@ -200,6 +206,7 @@ export function reduceConversations(
           );
         }
       }
+
       return next;
     }
     case "restored": {
@@ -210,6 +217,7 @@ export function reduceConversations(
           messages: mergeMessages(entry.messages, action.messages),
         }));
       }
+
       return new Map(state).set(action.roomPath, {
         ...blank(action.roomPath, action.participants),
         messages: mergeMessages([], action.messages),
@@ -224,6 +232,7 @@ export function reduceConversations(
       return update(state, action.roomPath, (entry) => {
         const messages = mergeMessages(entry.messages, [action.message]);
         const isNew = messages !== entry.messages;
+
         return {
           ...entry,
           messages,
@@ -267,6 +276,7 @@ export function reduceConversations(
         token: action.token,
       }));
   }
+
   return state;
 }
 
@@ -279,6 +289,7 @@ export function participantsOf(
   if (parsed.kind === "dm") {
     return parsed.participants.filter((hex) => hex !== ownDeviceHex);
   }
+
   return parsed.owner === ownDeviceHex ? [] : [parsed.owner];
 }
 
@@ -288,6 +299,7 @@ export function participantLabel(
   names: Readonly<{ labelOf: (deviceHex: string) => PeerLabel }>,
 ): string {
   if (view.participants.length === 0) return view.roomPath;
+
   return view.participants
     .map((hex) => labelText(names.labelOf(hex)))
     .join(", ");

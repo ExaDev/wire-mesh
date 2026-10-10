@@ -15,11 +15,13 @@ async function newConsole(
     throw error;
   });
   await page.goto(appUrl);
+
   return page;
 }
 
 async function ownDeviceId(page: Readonly<Page>): Promise<string> {
   await page.getByRole("button", { name: "Identity" }).click();
+
   return (await page.getByTestId("own-device-id").textContent()) ?? "";
 }
 

@@ -31,5 +31,6 @@ export function toDialAddress(address: string): string {
   const url = new URL(address);
   url.protocol = websocketScheme;
   url.hash = "";
+
   return url.toString();
 }

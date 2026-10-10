@@ -20,21 +20,31 @@ export async function heldRequestToken(
   capability: string,
   scope: Readonly<CapabilityScope>,
 ): Promise<CapabilityToken | undefined> {
-  for (const record of await grants.list()) {
+  const candidates = (await grants.list()).filter((record) => {
     const claims = record.claims;
     if (
       record.direction !== "held" ||
       claims.capability !== MANAGE_REQUEST_CAPABILITY
     ) {
-      continue;
+      return false;
     }
     const covered = claims["requests-capability"];
-    if (covered !== undefined && covered !== capability) continue;
-    if (!scopeNarrows(claims.scope, scope)) continue;
+    if (covered !== undefined && covered !== capability) return false;
+
+    return scopeNarrows(claims.scope, scope);
+  });
+  // In order, stopping at the first valid candidate: later ones are never judged.
+  const firstValid = async (
+    remaining: readonly (typeof candidates)[number][],
+  ): Promise<CapabilityToken | undefined> => {
+    const [record, ...rest] = remaining;
+    if (record === undefined) return undefined;
     const status = await grantStatus(record.token, verification);
-    if (status.kind === "valid") return record.token;
-  }
-  return undefined;
+
+    return status.kind === "valid" ? record.token : firstValid(rest);
+  };
+
+  return firstValid(candidates);
 }
 
 /** What a refusal of a capability request means to the person, telling a receiver's policy (it gates requests and this one did not qualify) apart from a person's no. */

@@ -50,5 +50,6 @@ export function AssertsSelfName({
       },
     ]);
   }, [deviceHex, selfName, observeDirectory]);
+
   return null;
 }
