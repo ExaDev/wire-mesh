@@ -60,6 +60,7 @@ export function resolveConsoleFile(
 
   const contentType = CONTENT_TYPES[extname(filePath)] ?? DEFAULT_CONTENT_TYPE;
   const body = readFileSync(filePath);
+
   return {
     body,
     contentType,

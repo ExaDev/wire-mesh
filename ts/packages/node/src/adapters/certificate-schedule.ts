@@ -35,6 +35,7 @@ function isStoredCertificate(value: unknown): value is StoredCertificate {
   if (typeof value !== "object" || value === null) {
     return false;
   }
+
   return (
     "certificatePem" in value &&
     typeof value.certificatePem === "string" &&
@@ -80,6 +81,7 @@ async function readStored(
   if (!Array.isArray(parsed) || !parsed.every(isStoredCertificate)) {
     throw new Error(`the stored ${STORAGE_KEY} are not in the expected shape`);
   }
+
   return parsed.map(fromStored);
 }
 
@@ -121,23 +123,29 @@ export async function advanceCertificateSchedule(
     startedIndex === -1
       ? [await mintPinnedCertificate(now, lifetimeMs)]
       : stillValid.slice(startedIndex);
-  while (certificates.length < ADVERTISED_CERTIFICATES + 1) {
+  const missing = ADVERTISED_CERTIFICATES + 1 - certificates.length;
+  if (missing > 0) {
     const last = certificates[certificates.length - 1];
     if (last === undefined) {
       throw new Error("the certificate schedule is empty");
     }
-    certificates.push(
-      await mintPinnedCertificate(
-        new Date(last.notBefore.getTime() + servingMs),
-        lifetimeMs,
+    // Each successor starts one serving period after its predecessor, so every start is known up front and the certificates can be minted together.
+    const successors = await Promise.all(
+      Array.from({ length: missing }, async (_, index) =>
+        mintPinnedCertificate(
+          new Date(last.notBefore.getTime() + servingMs * (index + 1)),
+          lifetimeMs,
+        ),
       ),
     );
+    certificates.push(...successors);
   }
   await writeStored(storage, certificates);
   const [serving, next] = certificates;
   if (serving === undefined || next === undefined) {
     throw new Error("the certificate schedule is empty");
   }
+
   return {
     serving,
     advertised: certificates.slice(0, ADVERTISED_CERTIFICATES),

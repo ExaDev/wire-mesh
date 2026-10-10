@@ -38,6 +38,7 @@ function toPem(label: string, der: Readonly<ArrayBuffer>): string {
   const base64 = Buffer.from(der).toString("base64");
   const lines =
     base64.match(new RegExp(`.{1,${String(PEM_LINE_LENGTH)}}`, "g")) ?? [];
+
   return `-----BEGIN ${label}-----\n${lines.join("\n")}\n-----END ${label}-----\n`;
 }
 
@@ -70,6 +71,7 @@ export async function mintPinnedCertificate(
     ],
   });
   const digest = await crypto.subtle.digest("SHA-256", certificate.rawData);
+
   return {
     certificatePem: certificate.toString("pem"),
     privateKeyPem: toPem(

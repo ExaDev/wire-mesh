@@ -1,6 +1,6 @@
 // Real, in-suite equivalent of cloudflare-hub/scripts/live-check.mjs: two genuine wire-mesh clients gossiping, relay-connecting, and exchanging relay-data through a real createRelayHub() wired over a real createNodeWebSocketTransport() listener -- the same health-check wiring server.ts itself uses, so this test also proves the plain-HTTP health path works on the same listener a WebSocket client connects to.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createRelayHub } from "wire-mesh-core/domain/relay-hub";
 import type { Frame } from "wire-mesh-core/generated/protocol";
 import { createNodeWebSocketTransport } from "../src/adapters/node-websocket-transport.js";
@@ -20,29 +20,31 @@ interface FrameQueue {
 
 function createFrameQueue(): FrameQueue {
   const frames: Frame[] = [];
+
   return {
     push(frame) {
       frames.push(frame);
     },
     async waitFor(expectedType) {
-      const started = Date.now();
-      for (;;) {
-        const index = frames.findIndex((frame) => frame.type === expectedType);
-        if (index !== -1) {
-          const [frame] = frames.splice(index, 1);
-          if (frame) {
-            return frame;
-          }
-        }
-        if (Date.now() - started > FRAME_WAIT_TIMEOUT_MS) {
-          throw new Error(
-            `timed out waiting for ${expectedType}; queue holds ${JSON.stringify(frames.map((frame) => frame.type))}`,
+      return vi.waitFor(
+        () => {
+          const index = frames.findIndex(
+            (frame) => frame.type === expectedType,
           );
-        }
-        await new Promise((resolve) => {
-          setTimeout(resolve, FRAME_POLL_INTERVAL_MS);
-        });
-      }
+          const [frame] = index === -1 ? [] : frames.splice(index, 1);
+          if (frame === undefined) {
+            throw new Error(
+              `timed out waiting for ${expectedType}; queue holds ${JSON.stringify(frames.map((queued) => queued.type))}`,
+            );
+          }
+
+          return frame;
+        },
+        {
+          timeout: FRAME_WAIT_TIMEOUT_MS,
+          interval: FRAME_POLL_INTERVAL_MS,
+        },
+      );
     },
   };
 }

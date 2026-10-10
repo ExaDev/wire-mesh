@@ -3,7 +3,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createNodeFsStorage } from "wire-mesh-core/adapters/node-fs-storage";
 import { createMailbox } from "wire-mesh-core/domain/hub-mailbox";
 import { createRelayHub } from "wire-mesh-core/domain/relay-hub";
@@ -33,19 +33,23 @@ async function client(address: string): Promise<{
   void (async () => {
     for await (const frame of connection.receive()) received.push(frame);
   })();
+
   return {
     connection,
     async next(type) {
-      const deadline = Date.now() + FRAME_WAIT_TIMEOUT_MS;
-      for (;;) {
-        const index = received.findIndex((frame) => frame.type === type);
-        const [frame] = index === -1 ? [] : received.splice(index, 1);
-        if (frame !== undefined) return frame;
-        if (Date.now() > deadline) throw new Error(`no ${type} frame arrived`);
-        await new Promise((resolve) => {
-          setTimeout(resolve, FRAME_POLL_INTERVAL_MS);
-        });
-      }
+      return vi.waitFor(
+        () => {
+          const index = received.findIndex((frame) => frame.type === type);
+          const [frame] = index === -1 ? [] : received.splice(index, 1);
+          if (frame === undefined) throw new Error(`no ${type} frame arrived`);
+
+          return frame;
+        },
+        {
+          timeout: FRAME_WAIT_TIMEOUT_MS,
+          interval: FRAME_POLL_INTERVAL_MS,
+        },
+      );
     },
   };
 }
@@ -60,6 +64,7 @@ async function serve(
       limits: nodeMailboxLimits,
     }),
   });
+
   return createNodeWebSocketTransport().listen("127.0.0.1:0", (connection) => {
     void hub.handleConnection(connection);
   });

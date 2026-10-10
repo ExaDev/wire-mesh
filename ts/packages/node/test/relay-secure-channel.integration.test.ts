@@ -79,6 +79,7 @@ async function twoSessionsThroughAHub(tamper: (frame: Frame) => Frame) {
   await new Promise((resolve) => {
     setTimeout(resolve, GOSSIP_SETTLE_MS);
   });
+
   return { seen, peerA, peerB, sessionA, sessionB, listener };
 }
 
@@ -89,8 +90,10 @@ describe("a request through a relay, end to end", () => {
     const received = (async () => {
       for await (const request of sessionB.incomingManageRequests) {
         await request.respond({ result: "ok" });
+
         return request;
       }
+
       return undefined;
     })();
 
@@ -129,6 +132,7 @@ describe("a request through a relay, end to end", () => {
         if (inner?.type !== "secure-data") return frame;
         const ciphertext = Uint8Array.from(inner.ciphertext);
         ciphertext[0] = (ciphertext[0] ?? 0) ^ LOW_BYTE_MASK;
+
         return {
           ...frame,
           payload: messageFromFrame({ ...inner, ciphertext }),

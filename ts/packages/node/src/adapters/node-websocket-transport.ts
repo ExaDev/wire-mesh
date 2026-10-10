@@ -23,6 +23,7 @@ const HTTP_NOT_FOUND = 404;
 
 function hostPortToWsUrl(address: string): string {
   const { host, port } = parseAddress(address);
+
   return `ws://${host}:${String(port)}`;
 }
 
@@ -31,6 +32,7 @@ function parseAddress(address: string): { host: string; port: number } {
   if (lastColon === -1) {
     throw new Error(`expected "host:port", got "${address}"`);
   }
+
   return {
     host: address.slice(0, lastColon),
     port: Number(address.slice(lastColon + 1)),
@@ -65,6 +67,7 @@ function decodeMessage(data: Uint8Array): Frame {
   if (!result.success) {
     throw new SchemaInvalidFrameError(result.error.message);
   }
+
   return result.data;
 }
 
@@ -73,6 +76,7 @@ function bytesFromRawData(data: RawData): Uint8Array {
   if (Array.isArray(data)) {
     throw new Error("expected a single WebSocket message, got fragments");
   }
+
   return new Uint8Array(data);
 }
 
@@ -106,6 +110,7 @@ export function wrapNodeWebSocket(ws: WebSocket): Connection {
       // A text message from a confused or hostile client is a protocol violation on this connection, same class as undecodable bytes.
       failAll(new Error("expected a binary WebSocket message"));
       ws.close(CLOSE_PROTOCOL_ERROR, "protocol error");
+
       return;
     }
     let frame: Frame;
@@ -121,6 +126,7 @@ export function wrapNodeWebSocket(ws: WebSocket): Connection {
           : new Error(`frame body failed to decode: ${String(error)}`),
       );
       ws.close(CLOSE_PROTOCOL_ERROR, "protocol error");
+
       return;
     }
     const waiter = waiters.shift();
@@ -147,6 +153,7 @@ export function wrapNodeWebSocket(ws: WebSocket): Connection {
           if (ended) {
             return { value: undefined, done: true };
           }
+
           return new Promise((resolve, reject) => {
             waiters.push({ resolve, reject });
           });
@@ -161,11 +168,13 @@ export function wrapNodeWebSocket(ws: WebSocket): Connection {
         return Promise.reject(new Error("connection is closed"));
       }
       ws.send(messageFromFrame(frame));
+
       return Promise.resolve();
     },
     receive: () => receiveStream,
     async close(): Promise<void> {
       ws.close(CLOSE_NORMAL);
+
       return Promise.resolve();
     },
   };
@@ -184,10 +193,10 @@ export function createNodeWebSocketTransport(
 ): Transport {
   return {
     async connect(address): Promise<Connection> {
-      // A URL-form address is used verbatim (wss:// included, so a client
-      // can dial a TLS-fronted hub such as a Workers custom domain); the
-      // bare host:port form keeps its plain-ws behaviour, matching what
-      // listen() itself serves.
+      /* A URL-form address is used verbatim (wss:// included, so a client
+         can dial a TLS-fronted hub such as a Workers custom domain); the
+         bare host:port form keeps its plain-ws behaviour, matching what
+         listen() itself serves. */
       const url = /^wss?:\/\/./.test(address);
       if (!url && !/^[^/]+:\d+$/.test(address)) {
         throw new Error(
@@ -195,6 +204,7 @@ export function createNodeWebSocketTransport(
         );
       }
       const target = url ? address : hostPortToWsUrl(address);
+
       return new Promise((resolve, reject) => {
         const ws = new WebSocket(target);
         ws.once("open", () => {
@@ -205,6 +215,7 @@ export function createNodeWebSocketTransport(
     },
     async listen(address, onConnection): Promise<Listener> {
       const { host, port } = parseAddress(address);
+
       return new Promise((resolve, reject) => {
         const requestHandler = (
           request: IncomingMessage,
@@ -212,6 +223,7 @@ export function createNodeWebSocketTransport(
         ): void => {
           if (options.onHttpRequest) {
             options.onHttpRequest(request, response);
+
             return;
           }
           response.writeHead(HTTP_NOT_FOUND).end();
@@ -235,6 +247,7 @@ export function createNodeWebSocketTransport(
           if (bound === null || typeof bound === "string") {
             // A TCP server's bound address is always an AddressInfo object; null only if the server were not listening, which cannot hold inside this listening callback.
             reject(new Error("listener did not report a bound address"));
+
             return;
           }
           const listener: Listener = {

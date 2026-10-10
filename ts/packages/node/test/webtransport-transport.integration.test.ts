@@ -39,8 +39,9 @@ describe("createWebTransportTransport", () => {
 
   afterEach(async () => {
     vi.useRealTimers();
-    await listener?.close();
+    const closing = listener;
     listener = undefined;
+    await closing?.close();
   });
 
   it(

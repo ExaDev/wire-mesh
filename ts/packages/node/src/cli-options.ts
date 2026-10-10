@@ -102,6 +102,7 @@ export class CliUsageError extends Error {
 
 function usageLabelOf(name: string, definition: FlagDefinition): string {
   const long = `--${name}${definition.valueName === undefined ? "" : ` <${definition.valueName}>`}`;
+
   return definition.short === undefined
     ? `    ${long}`
     : `-${definition.short}, ${long}`;
@@ -119,6 +120,7 @@ export function helpText(): string {
     }),
   );
   const labelWidth = Math.max(...rows.map((row) => row.label.length));
+
   return [
     "Usage: wire-mesh [options]",
     "",
@@ -145,6 +147,7 @@ function validatedCertificateLifetimeMs(
       `--certificate-lifetime expects a whole number of seconds from 1 to ${String(PINNED_CERTIFICATE_LIFETIME_MS / MILLISECONDS_PER_SECOND)}, got "${seconds}"`,
     );
   }
+
   return lifetimeMs;
 }
 
@@ -162,6 +165,7 @@ function validatedBindAddress(flag: string, address: string): string {
       `--${flag} expects host:port with a port from 0 to ${String(MAX_PORT)}, got "${address}"`,
     );
   }
+
   return address;
 }
 
@@ -203,6 +207,7 @@ export function parseCliArguments(argv: readonly string[]): CliCommand {
   ) {
     throw new CliUsageError("--certificate-lifetime needs --webtransport");
   }
+
   return {
     kind: "serve",
     bindAddress: validatedBindAddress("bind", values.bind),

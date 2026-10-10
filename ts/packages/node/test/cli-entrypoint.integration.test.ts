@@ -158,6 +158,7 @@ async function packageVersion(): Promise<string> {
   ) {
     throw new Error("package.json has no string version");
   }
+
   return manifest.version;
 }
 
