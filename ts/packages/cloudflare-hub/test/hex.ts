@@ -11,6 +11,7 @@ export function bytesFromHex(hex: string): Uint8Array<ArrayBuffer> {
       HEX_RADIX,
     );
   }
+
   return out;
 }
 
@@ -18,5 +19,6 @@ export function bytesFromHex(hex: string): Uint8Array<ArrayBuffer> {
 export function deviceIdFromFillHex(fillHex: string): Uint8Array<ArrayBuffer> {
   const out = new Uint8Array(SHA256_BYTE_LENGTH);
   out.fill(Number.parseInt(fillHex, HEX_RADIX));
+
   return out;
 }

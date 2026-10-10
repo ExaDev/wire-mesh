@@ -7,11 +7,13 @@ import {
 /** The parts of a Durable Object's storage the adapter uses, backed by a Map. Values are cloned on the way in and out, as the runtime's structured-clone storage does. */
 function fakeStorage(): DurableObjectKeyValues & { raw: Map<string, unknown> } {
   const raw = new Map<string, unknown>();
+
   return {
     raw,
     get: async (key) => Promise.resolve(structuredClone(raw.get(key))),
     put: async (key, value) => {
       raw.set(key, structuredClone(value));
+
       return Promise.resolve();
     },
     delete: async (key) => Promise.resolve(raw.delete(key)),

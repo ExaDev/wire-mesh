@@ -12,25 +12,31 @@ import { FakeWebSocket } from "./fake-web-socket.js";
 import { createTestPeer, hubVerifier } from "./signed-peers.js";
 
 const relayPayload = bytesFromHex("deadbeef");
-const CBOR_BREAK_BYTE = 0xff; // the CBOR break byte on its own: undecodable, the hostile-input case
+// the CBOR break byte on its own: undecodable, the hostile-input case
+const CBOR_BREAK_BYTE = 0xff;
 
 /** An in-memory Connection driving the hub through the port contract: queued inbound frames the test pushes, and a record of everything the hub sends back. */
 class FakeConnection {
   inbound: Frame[] = [];
+
   sent: Frame[] = [];
+
   private closed = false;
+
   private readonly wakeWaiters: (() => void)[] = [];
 
   get connection(): Readonly<Connection> {
     return {
       send: async (frame: Frame): Promise<void> => {
         this.sent.push(frame);
+
         return Promise.resolve();
       },
       receive: () => this.stream(),
       close: async (): Promise<void> => {
         this.closed = true;
         this.wake();
+
         return Promise.resolve();
       },
     };
@@ -45,6 +51,7 @@ class FakeConnection {
   async end(): Promise<void> {
     this.closed = true;
     this.wake();
+
     return Promise.resolve();
   }
 
@@ -67,18 +74,18 @@ class FakeConnection {
   }
 
   private async drain(): Promise<IteratorResult<Frame>> {
-    for (;;) {
-      const next = this.inbound.shift();
-      if (next !== undefined) {
-        return { value: next, done: false };
-      }
-      if (this.closed) {
-        return { value: undefined, done: true };
-      }
-      await new Promise<void>((resolve) => {
-        this.wakeWaiters.push(resolve);
-      });
+    const next = this.inbound.shift();
+    if (next !== undefined) {
+      return { value: next, done: false };
     }
+    if (this.closed) {
+      return { value: undefined, done: true };
+    }
+    await new Promise<void>((resolve) => {
+      this.wakeWaiters.push(resolve);
+    });
+
+    return this.drain();
   }
 }
 

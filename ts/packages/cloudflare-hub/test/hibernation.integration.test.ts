@@ -19,7 +19,9 @@ const relayPayload = bytesFromHex("deadbeef");
 /** A hibernating server socket as the runtime presents one: sends are recorded, and the attachment is round-tripped through structuredClone, the same serialisation the runtime applies to it. */
 class FakeHubSocket implements HubSocket {
   sent: Uint8Array[] = [];
+
   closed = false;
+
   private attachment: unknown = null;
 
   send(message: Uint8Array<ArrayBuffer>): void {
@@ -46,6 +48,7 @@ class FakeHubSocket implements HubSocket {
 
 function arrayBufferFor(frame: Frame): ArrayBuffer {
   const bytes = messageFromFrame(frame);
+
   return bytes.buffer.slice(
     bytes.byteOffset,
     bytes.byteOffset + bytes.byteLength,
@@ -73,6 +76,7 @@ async function pairedHub(
     a,
     arrayBufferFor({ type: "relay-connect", "target-device": peerB.device }),
   );
+
   return hub;
 }
 

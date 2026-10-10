@@ -16,14 +16,17 @@ import { createTestPeer } from "./signed-peers.js";
 /** Storage that is not the instance: a Map that the next hub instance is handed as well. */
 function sharedStorage(): KeyValueStorage {
   const values = new Map<string, Uint8Array<ArrayBuffer>>();
+
   return {
     get: async (key) => Promise.resolve(values.get(key)),
     set: async (key, value) => {
       values.set(key, value);
+
       return Promise.resolve();
     },
     delete: async (key) => {
       values.delete(key);
+
       return Promise.resolve();
     },
     keys: async (prefix) =>
@@ -33,19 +36,25 @@ function sharedStorage(): KeyValueStorage {
 
 class FakeHubSocket implements HubSocket {
   sent: Uint8Array[] = [];
+
   private attachment: unknown = null;
+
   send(message: Uint8Array<ArrayBuffer>): void {
     this.sent.push(message);
   }
+
   close(): void {
     return undefined;
   }
+
   serializeAttachment(value: unknown): void {
     this.attachment = structuredClone(value);
   }
+
   deserializeAttachment(): unknown {
     return this.attachment;
   }
+
   frames(): unknown[] {
     return this.sent.map((message) => decode(message));
   }
@@ -53,6 +62,7 @@ class FakeHubSocket implements HubSocket {
 
 function buffer(frame: Frame): ArrayBuffer {
   const bytes = messageFromFrame(frame);
+
   return bytes.buffer.slice(
     bytes.byteOffset,
     bytes.byteOffset + bytes.byteLength,

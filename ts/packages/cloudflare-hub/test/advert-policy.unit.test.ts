@@ -11,6 +11,7 @@ async function advertWith(
   extensions: Record<string, unknown>,
 ): Promise<PeerAdvert> {
   const identity = await createWebCryptoIdentity();
+
   return signPeerAdvert(identity, {
     device: identity.deviceId,
     addresses: ["203.0.113.5:4433"],

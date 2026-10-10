@@ -26,6 +26,7 @@ export function durableObjectStorage(
       if (!isBytes(value)) {
         throw new Error(`storage value at ${key} is not bytes`);
       }
+
       return value;
     },
     async set(key, value) {

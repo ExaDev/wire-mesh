@@ -2,8 +2,11 @@
 
 export class FakeWebSocket {
   binaryType = "arraybuffer";
+
   sent: ArrayBuffer[] = [];
+
   closed = false;
+
   private readonly listeners = new Map<
     string,
     ((event: { data?: unknown }) => void)[]
