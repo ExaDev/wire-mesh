@@ -61,5 +61,6 @@ export function findGrantCandidate(
       }
     }
   }
+
   return undefined;
 }

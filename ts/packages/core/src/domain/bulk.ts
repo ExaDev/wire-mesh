@@ -21,6 +21,7 @@ import type { IncomingManageRequest, MeshSession } from "./mesh-session.js";
 import type { Connection } from "../ports/transport.js";
 import type { KeyValueStorage } from "../ports/storage.js";
 import { bytesToHex } from "./device-id.js";
+import { eachInOrder } from "./sequential.js";
 
 const TRANSFER_ID_BYTE_LENGTH = 16;
 
@@ -31,6 +32,7 @@ export const BULK_READ_CAPABILITY = "bulk:read";
 function randomTransferId(): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(TRANSFER_ID_BYTE_LENGTH);
   crypto.getRandomValues(bytes);
+
   return bytes;
 }
 
@@ -43,6 +45,7 @@ async function digestOf(bytes: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
     "SHA-256",
     new Uint8Array(bytes).buffer,
   );
+
   return new Uint8Array(buffer);
 }
 
@@ -51,6 +54,7 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   for (let i = 0; i < a.length; i += 1) {
     if (a[i] !== b[i]) return false;
   }
+
   return true;
 }
 
@@ -62,12 +66,13 @@ function concatChunks(chunks: readonly Uint8Array[]): Uint8Array<ArrayBuffer> {
     out.set(chunk, offset);
     offset += chunk.length;
   }
+
   return out;
 }
 
-// ---------------------------------------------------------------------
-// Command builders
-// ---------------------------------------------------------------------
+/* ---------------------------------------------------------------------
+   Command builders
+   --------------------------------------------------------------------- */
 
 export function buildBulkOpenCommand(
   transferId: Uint8Array<ArrayBuffer>,
@@ -117,9 +122,9 @@ export function buildBulkCancelCommand(
   };
 }
 
-// ---------------------------------------------------------------------
-// Sender
-// ---------------------------------------------------------------------
+/* ---------------------------------------------------------------------
+   Sender
+   --------------------------------------------------------------------- */
 
 export interface BulkSendOutcome {
   status: "complete" | "incomplete" | "rejected";
@@ -223,21 +228,40 @@ export function createBulkSender(
     // Chunks sent but not yet covered by the receiver's own ack-seq -- needed because window is a byte credit while ack-seq is a chunk count, so "how many bytes are currently outstanding" can only be derived by tracking each unacked chunk's own length.
     const inFlight: { seq: number; length: number }[] = [];
 
+    /** Takes one ack's credit in: it replaces the window, and every chunk it covers is retired. */
+    const applyAck = (ack: Readonly<BulkAckFrame>): void => {
+      ackedCount = ack["ack-seq"];
+      window = ack.window;
+      // A chunk with seq s is covered once ackedCount > s (ack-seq counts persisted chunks, so ackedCount chunks 0..ackedCount-1 are durable).
+      for (
+        let head = inFlight[0];
+        head !== undefined && head.seq < ackedCount;
+        head = inFlight[0]
+      ) {
+        inFlight.shift();
+        bytesInFlight -= head.length;
+      }
+    };
+    const exceedsWindow = (length: number): boolean =>
+      bytesInFlight + length > window;
+    /** Takes acks until `length` more bytes fit in the window. */
+    const awaitCredit = async (length: number): Promise<void> => {
+      applyAck(await waitForAck(id));
+      if (exceedsWindow(length)) {
+        await awaitCredit(length);
+      }
+    };
+
     try {
       for await (const chunk of options.source(fromSeq)) {
         if (cancelled.has(id)) {
           return { status: "incomplete", ackedCount };
         }
-        while (bytesInFlight + chunk.length > window) {
-          const ack = await waitForAck(id);
-          ackedCount = ack["ack-seq"];
-          window = ack.window;
-          for (;;) {
-            const head = inFlight[0];
-            // A chunk with seq s is covered once ackedCount > s (ack-seq counts persisted chunks, so ackedCount chunks 0..ackedCount-1 are durable).
-            if (head === undefined || head.seq >= ackedCount) break;
-            inFlight.shift();
-            bytesInFlight -= head.length;
+        // The first ack is awaited here rather than inside awaitCredit: an ack arriving while nothing is waiting for one is dropped, and a connection that ends while nothing waits rejects nothing, so the turns between a chunk's send and the next registered wait are kept to the ones the loop itself takes.
+        if (exceedsWindow(chunk.length)) {
+          applyAck(await waitForAck(id));
+          if (exceedsWindow(chunk.length)) {
+            await awaitCredit(chunk.length);
           }
         }
         const dataFrame: BulkDataFrame = {
@@ -267,6 +291,7 @@ export function createBulkSender(
       digest,
     };
     await connection.send(endFrame);
+
     return { status: "complete", ackedCount: seq };
   }
 
@@ -276,6 +301,7 @@ export function createBulkSender(
     transferId: Uint8Array<ArrayBuffer>,
   ): Promise<BulkSendOutcome> {
     const ack = await waitForAck(transferIdHex(transferId));
+
     return stream(connection, transferId, ack["ack-seq"], ack.window);
   }
 
@@ -300,6 +326,7 @@ export function createBulkSender(
         const parsed = bulkCancelSchema.safeParse(incoming.command.params);
         if (!parsed.success) {
           await incoming.respond({ result: "error", code: "malformed" });
+
           return;
         }
         cancelled.add(transferIdHex(parsed.data["transfer-id"]));
@@ -331,11 +358,13 @@ export function createBulkSender(
           code: outcome.code,
         };
       }
+
       return resumeStream(connection, transferId);
     },
     async continueFrom(connection, transferId) {
       activeTransferId = transferIdHex(transferId);
       activeConnection = connection;
+
       return resumeStream(connection, transferId);
     },
     createResumeHandler(connection, onResumed) {
@@ -345,6 +374,7 @@ export function createBulkSender(
         const parsed = bulkResumeSchema.safeParse(incoming.command.params);
         if (!parsed.success) {
           await incoming.respond({ result: "error", code: "malformed" });
+
           return;
         }
         const { "transfer-id": transferId } = parsed.data;
@@ -353,6 +383,7 @@ export function createBulkSender(
             result: "error",
             code: "unknown_transfer",
           });
+
           return;
         }
         await incoming.respond({ result: "ok" });
@@ -365,9 +396,9 @@ export function createBulkSender(
   };
 }
 
-// ---------------------------------------------------------------------
-// Receiver
-// ---------------------------------------------------------------------
+/* ---------------------------------------------------------------------
+   Receiver
+   --------------------------------------------------------------------- */
 
 function openerKey(idHex: string): string {
   return `bulk/${idHex}/opener`;
@@ -462,9 +493,11 @@ export function storedTransferSource(
 ): (fromSeq: number) => AsyncIterable<Uint8Array<ArrayBuffer>> {
   const { storage, transferId } = options;
   const idHex = transferIdHex(transferId);
+
   return (fromSeq: number) => ({
     [Symbol.asyncIterator](): AsyncIterator<Uint8Array<ArrayBuffer>> {
       let seq = fromSeq;
+
       return {
         async next(): Promise<IteratorResult<Uint8Array<ArrayBuffer>>> {
           const ackedBytes = await storage.get(ackSeqKey(idHex));
@@ -480,6 +513,7 @@ export function storedTransferSource(
             );
           }
           seq += 1;
+
           return { value: chunk, done: false };
         },
       };
@@ -498,6 +532,7 @@ export function createBulkReceiver(
 
   async function readAckSeq(idHex: string): Promise<number> {
     const bytes = await storage.get(ackSeqKey(idHex));
+
     return bytes === undefined ? 0 : decodeUint(bytes);
   }
 
@@ -510,7 +545,8 @@ export function createBulkReceiver(
 
       if (frame.type === "bulk-data") {
         const ackedCount = await readAckSeq(idHex);
-        if (frame.seq !== ackedCount) return; // non-contiguous: dropped, per this receiver's own first-pass simplification (see bulk.ts's own header comment)
+        // non-contiguous: dropped, per this receiver's own first-pass simplification (see bulk.ts's own header comment)
+        if (frame.seq !== ackedCount) return;
         await storage.set(chunkKey(idHex, frame.seq), frame.bytes);
         const newAckedCount = ackedCount + 1;
         await storage.set(ackSeqKey(idHex), encodeUint(newAckedCount));
@@ -523,16 +559,20 @@ export function createBulkReceiver(
           window,
         };
         await connection.send(ackFrame);
+
         return;
       }
 
       // bulk-end: verify the claimed digest against every durably-persisted chunk before treating the transfer as genuinely complete (spec/bulk.cddl's own obligation 3).
       const ackedCount = await readAckSeq(idHex);
       const chunks: Uint8Array[] = [];
-      for (let seq = 0; seq < ackedCount; seq += 1) {
-        const chunk = await storage.get(chunkKey(idHex, seq));
-        if (chunk !== undefined) chunks.push(chunk);
-      }
+      await eachInOrder(
+        Array.from({ length: ackedCount }, (_, seq) => seq),
+        async (seq) => {
+          const chunk = await storage.get(chunkKey(idHex, seq));
+          if (chunk !== undefined) chunks.push(chunk);
+        },
+      );
       const digest = await digestOf(concatChunks(chunks));
       const ok = bytesEqual(digest, frame.digest);
       reg.onComplete?.({ ok, chunkCount: ackedCount });
@@ -544,6 +584,7 @@ export function createBulkReceiver(
         const parsed = bulkOpenSchema.safeParse(incoming.command.params);
         if (!parsed.success) {
           await incoming.respond({ result: "error", code: "malformed" });
+
           return;
         }
         const { "transfer-id": transferId } = parsed.data;
@@ -551,6 +592,7 @@ export function createBulkReceiver(
         const existingOpener = await storage.get(openerKey(idHex));
         if (existingOpener !== undefined) {
           await incoming.respond({ result: "error", code: "already_exists" });
+
           return;
         }
 
@@ -572,6 +614,7 @@ export function createBulkReceiver(
                   ? { message: decision.reason }
                   : {}),
               });
+
               return;
             }
             await storage.set(openerKey(idHex), openerDevice);
@@ -644,6 +687,7 @@ export function createBulkReceiver(
         window,
       };
       await connection.send(ackFrame);
+
       return { status: "ok" };
     },
     createCancelHandler() {
@@ -653,6 +697,7 @@ export function createBulkReceiver(
         const parsed = bulkCancelSchema.safeParse(incoming.command.params);
         if (!parsed.success) {
           await incoming.respond({ result: "error", code: "malformed" });
+
           return;
         }
         registrations.delete(transferIdHex(parsed.data["transfer-id"]));

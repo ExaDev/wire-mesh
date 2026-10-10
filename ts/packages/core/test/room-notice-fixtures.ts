@@ -20,6 +20,7 @@ let issuedNoticeIds = 0;
 /** A fresh, distinct notice-id per call -- the tests only need each notice to be distinguishable from the others, not any particular byte value. */
 export function nextNoticeId(): Uint8Array<ArrayBuffer> {
   issuedNoticeIds += 1;
+
   return buf([issuedNoticeIds]);
 }
 
@@ -68,5 +69,6 @@ export async function signRoomNotice(
     payload,
   ]);
   const signature = await identity.sign(toBeSigned);
+
   return [protectedHeader, {}, payload, signature];
 }

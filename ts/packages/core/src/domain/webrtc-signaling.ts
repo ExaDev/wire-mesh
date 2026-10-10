@@ -161,9 +161,11 @@ export function rtcIceCandidateInitFromWire(
 /** A fresh, independent, monotonically increasing negotiation-id source starting at 0, extracted as its own pure function so id allocation is testable without an RTCPeerConnection or any transport. */
 export function createNegotiationIdAllocator(): () => number {
   let next = 0;
+
   return (): number => {
     const id = next;
     next += 1;
+
     return id;
   };
 }
@@ -180,6 +182,7 @@ export async function authorizeIncomingOffer(
   if (!verdict.ok) {
     return false;
   }
+
   return (
     verdict.claims.capability === WEBRTC_SIGNAL_VERB &&
     verdict.claims.scope.kind === WEBRTC_SIGNAL_SCOPE.kind

@@ -1,8 +1,8 @@
-// Relay offers carried in peer-advert's open extension tail, so a node's relay capability is discovered by the gossip that already propagates adverts rather than only learned in-band from a relay-offer-frame on a connection already established (spec/transport.cddl's relay role). A client choosing a relay, rather than just using one it was given, reads this extension from the directory and knows which peers offer relay service at which addresses.
-//
-// The value is the identical address list relay-offer-frame itself carries (`[* tstr]`), under the `wire-mesh` domain the core's own gossiped facts already occupy (wire-mesh/version), per spec/CONVENTIONS.md's domain-qualification rule. It is deliberately a caller-supplied fact rather than a session-managed one: which addresses a deployment offers relay on is the operator's choice (an operator may gate relay use, the same way the spec leaves relay gating to an ordinary core/management verb), so the caller passes buildRelayOfferExtension's result to sendGossipUpdate exactly like a presence extension, and nothing here reserves the key against callers.
-//
-// Reading is fail-safe by design: an extension that is not an array of strings is treated as no offer at all rather than guessed at or thrown, because an offer is an opportunity a receiver may act on, never an obligation, and a malformed entry must not break directory rendering for the advert's other facts.
+/* Relay offers carried in peer-advert's open extension tail, so a node's relay capability is discovered by the gossip that already propagates adverts rather than only learned in-band from a relay-offer-frame on a connection already established (spec/transport.cddl's relay role). A client choosing a relay, rather than just using one it was given, reads this extension from the directory and knows which peers offer relay service at which addresses.
+
+   The value is the identical address list relay-offer-frame itself carries (`[* tstr]`), under the `wire-mesh` domain the core's own gossiped facts already occupy (wire-mesh/version), per spec/CONVENTIONS.md's domain-qualification rule. It is deliberately a caller-supplied fact rather than a session-managed one: which addresses a deployment offers relay on is the operator's choice (an operator may gate relay use, the same way the spec leaves relay gating to an ordinary core/management verb), so the caller passes buildRelayOfferExtension's result to sendGossipUpdate exactly like a presence extension, and nothing here reserves the key against callers.
+
+   Reading is fail-safe by design: an extension that is not an array of strings is treated as no offer at all rather than guessed at or thrown, because an offer is an opportunity a receiver may act on, never an obligation, and a malformed entry must not break directory rendering for the advert's other facts. */
 
 import type { PeerAdvert } from "../generated/protocol.js";
 
@@ -25,6 +25,7 @@ export function buildRelayOfferExtension(
       );
     }
   }
+
   return { [RELAY_OFFER_GOSSIP_KEY]: [...addresses] };
 }
 
@@ -42,5 +43,6 @@ export function readRelayOffer(
     addresses.push(entry);
   }
   if (addresses.length === 0) return undefined;
+
   return addresses;
 }

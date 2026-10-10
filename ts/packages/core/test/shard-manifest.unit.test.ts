@@ -95,7 +95,8 @@ describe("shard manifest entry codec", () => {
   });
 
   it("rejects malformed entry bytes loudly", () => {
-    const INVALID_CBOR_BYTE = 0xff; // not a valid CBOR major-type/length prefix
+    // not a valid CBOR major-type/length prefix
+    const INVALID_CBOR_BYTE = 0xff;
     expect(() =>
       decodeShardManifest(Uint8Array.from([INVALID_CBOR_BYTE])),
     ).toThrow();

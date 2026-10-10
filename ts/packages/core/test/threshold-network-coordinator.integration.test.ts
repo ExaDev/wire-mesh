@@ -45,6 +45,7 @@ const THIRD_DEVICE_BYTE = 3;
 function deviceId(byte: number): DeviceId {
   const bytes = new Uint8Array(DEVICE_ID_LENGTH);
   bytes[DEVICE_ID_LENGTH - 1] = byte;
+
   return bytes;
 }
 
@@ -76,6 +77,7 @@ function runDkg(deviceIds: readonly DeviceId[]): DkgParticipant[] {
     const othersRound1 = round1Entries.filter(
       (e) => !sameDeviceId(e.deviceId, p.deviceId),
     );
+
     return {
       deviceId: p.deviceId,
       ...dkgRound2(p.secretPackage, othersRound1),
@@ -103,6 +105,7 @@ function runDkg(deviceIds: readonly DeviceId[]): DkgParticipant[] {
     if (!inbox) {
       throw new Error("test fixture: missing DKG inbox");
     }
+
     return {
       deviceId: p.deviceId,
       round3: dkgRound3(p.secretPackage, othersRound1, inbox),
@@ -130,6 +133,7 @@ function createFakeBus(): {
       inbox = { waiters: [], backlog: [] };
       inboxes.set(hex, inbox);
     }
+
     return inbox;
   }
 
@@ -146,6 +150,7 @@ function createFakeBus(): {
         }
         const requestId = nextRequestId;
         nextRequestId += 1;
+
         return new Promise<ManageOutcome>((resolve) => {
           const incoming: IncomingManageRequest = {
             requestId,
@@ -154,6 +159,7 @@ function createFakeBus(): {
             ...(token !== undefined ? { token } : {}),
             respond: async (outcome: ManageOutcome): Promise<void> => {
               resolve(outcome);
+
               return Promise.resolve();
             },
           };

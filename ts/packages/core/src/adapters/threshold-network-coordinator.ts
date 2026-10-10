@@ -47,6 +47,7 @@ function isUint8Array(value: unknown): value is Uint8Array {
 
 function isDeviceIdShaped(value: unknown): value is DeviceId {
   const DEVICE_ID_BYTE_LENGTH = 32;
+
   return isUint8Array(value) && value.length === DEVICE_ID_BYTE_LENGTH;
 }
 
@@ -71,6 +72,7 @@ function parseCommitOk(
   ) {
     return undefined;
   }
+
   return { participant, hiding, binding };
 }
 
@@ -107,6 +109,7 @@ export function createThresholdNetworkCoordinator(
             if (!bytesEqual(parsed.participant, participant)) {
               return undefined;
             }
+
             return {
               deviceId: participant,
               value: combineCommitments(parsed.hiding, parsed.binding),
@@ -114,6 +117,7 @@ export function createThresholdNetworkCoordinator(
           },
         ),
       );
+
       return responses.filter(
         (entry): entry is SigningCommitmentEntry => entry !== undefined,
       );
@@ -122,6 +126,7 @@ export function createThresholdNetworkCoordinator(
     async signRound(sessionId, commitments) {
       const wireCommitments = commitments.map((entry: DeviceKeyed) => {
         const { hiding, binding } = splitCommitments(entry.value);
+
         return { participant: entry.deviceId, hiding, binding };
       });
       const command = buildSignCommand(sessionId, wireCommitments);
@@ -164,10 +169,12 @@ export function createThresholdNetworkCoordinator(
             ) {
               return undefined;
             }
+
             return { deviceId: participant, value: claims.share };
           },
         ),
       );
+
       return responses.filter(
         (entry): entry is SignatureShareEntry => entry !== undefined,
       );

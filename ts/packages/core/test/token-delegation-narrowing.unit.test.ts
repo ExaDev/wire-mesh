@@ -144,7 +144,8 @@ describe("verifyCapabilityToken - delegation narrowing", () => {
       bearer: delegate.deviceId,
       capability: "exec:pty",
       scope: { kind: "folder", path: "/work/subdir" },
-      expires: rootExpiry + HOUR_MS, // wider than the parent -- must be rejected
+      // wider than the parent -- must be rejected
+      expires: rootExpiry + HOUR_MS,
       parent: encodeBuf(root),
     };
     const payload = encodeBuf(claims);
@@ -259,6 +260,7 @@ describe("verifyCapabilityToken - delegation narrowing", () => {
       payload,
     ]);
     const signature = await identity.sign(toBeSigned);
+
     return [protectedHeader, {}, payload, signature];
   }
 
@@ -274,6 +276,7 @@ describe("verifyCapabilityToken - delegation narrowing", () => {
       expires: now + 2 * HOUR_MS,
     });
     const delegate = await generateEs256Identity();
+
     return signDelegated(bearerIdentity, {
       tokenId: nextTokenId(),
       bearer: delegate.deviceId,
@@ -599,6 +602,7 @@ describe("verifyCapabilityToken - delegation narrowing", () => {
       expires: now + 2 * HOUR_MS,
     });
     const delegate = await generateEs256Identity();
+
     return signDelegated(bearerIdentity, {
       tokenId: nextTokenId(),
       bearer: delegate.deviceId,

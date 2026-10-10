@@ -57,6 +57,7 @@ function fakeIncoming(command: ManageCommand): {
     scope,
     respond,
   };
+
   return { incoming, respond };
 }
 

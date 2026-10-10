@@ -1,6 +1,6 @@
-// Signing and verification for peer-advert (spec/transport.cddl), the one gossiped structure that travels beyond the connection it was sent on: a hub re-broadcasts what it receives, and a gateway forwards adverts for the local peers it fronts. Binding an advert to its arriving connection therefore cannot authenticate it: the signature is what ties an advert to the device it names, and `identity-key` travelling inside the signed content is what makes it self-certifying, so a receiver with no prior contact with that device and no directory to consult can still check it (wire-mesh#225).
-//
-// Kept as one pure module rather than a method on either consumer: the relay hub (which verifies before registering or re-broadcasting) and the mesh session (which verifies before applying an advert to its own directory) must agree byte-for-byte on what "valid" means, and a hub is a facilitator for the directory rather than an authority over it, so a receiver never delegates this check to whoever forwarded the advert.
+/* Signing and verification for peer-advert (spec/transport.cddl), the one gossiped structure that travels beyond the connection it was sent on: a hub re-broadcasts what it receives, and a gateway forwards adverts for the local peers it fronts. Binding an advert to its arriving connection therefore cannot authenticate it: the signature is what ties an advert to the device it names, and `identity-key` travelling inside the signed content is what makes it self-certifying, so a receiver with no prior contact with that device and no directory to consult can still check it (wire-mesh#225).
+
+   Kept as one pure module rather than a method on either consumer: the relay hub (which verifies before registering or re-broadcasting) and the mesh session (which verifies before applying an advert to its own directory) must agree byte-for-byte on what "valid" means, and a hub is a facilitator for the directory rather than an authority over it, so a receiver never delegates this check to whoever forwarded the advert. */
 
 import { cdeEncodeOptions, encode } from "cbor2";
 import type {
@@ -69,6 +69,7 @@ export function peerAdvertSigningInput(
   );
   input.set(PEER_ADVERT_SIGNING_CONTEXT, 0);
   input.set(encoded, PEER_ADVERT_SIGNING_CONTEXT.length);
+
   return input;
 }
 
@@ -78,6 +79,7 @@ export async function signPeerAdvert(
   advert: Readonly<UnsignedPeerAdvert>,
 ): Promise<PeerAdvert> {
   const signature = await identity.sign(peerAdvertSigningInput(advert));
+
   return { ...advert, [PEER_ADVERT_SIGNATURE_KEY]: signature };
 }
 
@@ -96,6 +98,7 @@ export async function verifyPeerAdvert(
     if (!bytesEqual(derived, advert.device)) {
       return false;
     }
+
     return await identity.verify(
       key,
       peerAdvertSigningInput(advert),

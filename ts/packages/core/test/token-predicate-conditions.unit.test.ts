@@ -54,6 +54,7 @@ async function signTokenWithRawConditions(
     payload,
   ]);
   const signature = await identity.sign(toBeSigned);
+
   return [protectedHeader, {}, payload, signature];
 }
 
@@ -110,6 +111,7 @@ describe("token-claims.conditions -- the generic predicate-list evaluator", () =
   function isThresholdPayload(payload: unknown): payload is ThresholdPayload {
     if (typeof payload !== "object" || payload === null) return false;
     if (!("value" in payload) || !("threshold" in payload)) return false;
+
     return (
       typeof payload.value === "number" && typeof payload.threshold === "number"
     );
@@ -121,6 +123,7 @@ describe("token-claims.conditions -- the generic predicate-list evaluator", () =
     if (!isThresholdPayload(payload)) {
       return { found: false };
     }
+
     return {
       found: true,
       value: { kind: "boolean", value: payload.value > payload.threshold },

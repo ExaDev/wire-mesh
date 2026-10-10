@@ -5,11 +5,15 @@
  */
 
 const BITS_PER_BYTE = 8;
-const AES_KEY_BYTE_LENGTH = 32; // AES-256
+// AES-256
+const AES_KEY_BYTE_LENGTH = 32;
 const AES_KEY_BIT_LENGTH = AES_KEY_BYTE_LENGTH * BITS_PER_BYTE;
-const GCM_IV_BYTE_LENGTH = 12; // 96-bit, the size AES-GCM is specified and optimised for
-const UINT32_BYTE_LENGTH = 4; // the room-path length prefix in hkdfInfo's own encoding
-const UINT64_BYTE_LENGTH = 8; // the key-epoch field in hkdfInfo's own encoding
+// 96-bit, the size AES-GCM is specified and optimised for
+const GCM_IV_BYTE_LENGTH = 12;
+// the room-path length prefix in hkdfInfo's own encoding
+const UINT32_BYTE_LENGTH = 4;
+// the key-epoch field in hkdfInfo's own encoding
+const UINT64_BYTE_LENGTH = 8;
 
 const HKDF_INFO_PREFIX = new TextEncoder().encode("wire-mesh/room-rekey/v1\0");
 
@@ -48,6 +52,7 @@ function hkdfInfo(
   info.set(roomBytes, offset);
   offset += roomBytes.length;
   info.set(keyEpoch, offset);
+
   return info;
 }
 
@@ -65,6 +70,7 @@ export async function deriveWrappingKey(
     false,
     ["deriveKey"],
   );
+
   return crypto.subtle.deriveKey(
     {
       name: "HKDF",
@@ -94,6 +100,7 @@ async function aesGcmEncrypt(
   const out = new Uint8Array(iv.length + ciphertext.length);
   out.set(iv, 0);
   out.set(ciphertext, iv.length);
+
   return out;
 }
 
@@ -106,6 +113,7 @@ async function aesGcmDecrypt(
   }
   const iv = ivAndCiphertext.slice(0, GCM_IV_BYTE_LENGTH);
   const ciphertext = ivAndCiphertext.slice(GCM_IV_BYTE_LENGTH);
+
   return new Uint8Array(
     await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext),
   );

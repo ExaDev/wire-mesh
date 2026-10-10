@@ -13,6 +13,7 @@ import {
   settle,
   type TestPeer,
 } from "./relay-hub-test-helpers.js";
+import { inSequence } from "./sequence.js";
 
 const relayPayload = bytesFromHex("deadbeef");
 
@@ -25,10 +26,10 @@ interface Member {
 /** Gossips each member's advert in the order given, settling after each so every advert has been verified and applied before the next reaches the hub. The hub verifies before it registers, so simultaneous pushes would race and leave the registration order, and with it every catch-up frame, undetermined. */
 async function gossipInOrder(members: readonly Member[]): Promise<void> {
   const connections = members.map((member) => member.connection);
-  for (const member of members) {
+  await inSequence(members, async (member) => {
     member.connection.push(member.peer.gossip);
     await settle(...connections);
-  }
+  });
 }
 
 /**
@@ -41,6 +42,7 @@ function gossipReceivedBy(
   const index = adverts.indexOf(own);
   const before = adverts.slice(0, index);
   const after = adverts.slice(index + 1);
+
   return [
     ...before.map((advert) => gossipFor(advert)),
     ...(before.length > 0 ? [gossipForMany(...before)] : []),

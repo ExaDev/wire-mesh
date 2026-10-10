@@ -51,6 +51,7 @@ export async function mintShareEnvelope(
   const signature = await personalIdentity.sign(
     sig1ToBeSigned(protectedHeader, payload),
   );
+
   return [protectedHeader, {}, payload, signature];
 }
 

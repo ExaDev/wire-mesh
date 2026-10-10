@@ -35,6 +35,7 @@ describe("createTcpTransport", () => {
         for await (const frame of connection.receive()) {
           frames.push(frame);
         }
+
         return frames;
       })().then(
         () => {

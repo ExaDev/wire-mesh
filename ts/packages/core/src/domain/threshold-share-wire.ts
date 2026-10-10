@@ -18,6 +18,7 @@ export function decodeShareEnvelopeBytes(
     return undefined;
   }
   const result = coseSign1Schema.safeParse(decoded);
+
   return result.success ? result.data : undefined;
 }
 

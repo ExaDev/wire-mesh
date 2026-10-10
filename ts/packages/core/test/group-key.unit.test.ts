@@ -11,9 +11,12 @@ import {
   wrapContentKey,
 } from "../src/domain/group-key.js";
 
-const DEVICE_ID_HEX_LENGTH = 32; // 64 hex chars = 32-byte device-id, hex-encoded (room-path's own owner-hex component)
-const SHARED_SECRET_BYTE_LENGTH = 32; // a P-256 ECDH shared secret's own byte length, standing in for a real one in these tests
-const CONTENT_KEY_BYTE_LENGTH = 32; // AES-256
+// 64 hex chars = 32-byte device-id, hex-encoded (room-path's own owner-hex component)
+const DEVICE_ID_HEX_LENGTH = 32;
+// a P-256 ECDH shared secret's own byte length, standing in for a real one in these tests
+const SHARED_SECRET_BYTE_LENGTH = 32;
+// AES-256
+const CONTENT_KEY_BYTE_LENGTH = 32;
 const LOW_BYTE_MASK = 0xff;
 
 const ROOM_PATH = `${"aa".repeat(DEVICE_ID_HEX_LENGTH)}/general`;

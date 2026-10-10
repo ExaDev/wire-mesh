@@ -16,6 +16,7 @@ export interface RelayPairings {
 
 export function createRelayPairings(): RelayPairings {
   const established = new Map<string, DeviceId>();
+
   return {
     has: (device) => established.has(deviceIdToHex(device)),
     add: (device) => {

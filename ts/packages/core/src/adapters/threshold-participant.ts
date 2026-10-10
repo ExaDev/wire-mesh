@@ -84,6 +84,7 @@ async function authorizeIncomingRequest(
   if (!verdict.ok) {
     return false;
   }
+
   return (
     verdict.claims.capability === THRESHOLD_SIGN_VERB &&
     verdict.claims.scope.kind === THRESHOLD_GROUP_SCOPE.kind
@@ -103,6 +104,7 @@ export function startThresholdParticipant(
     if (refusal !== undefined) {
       return refusal;
     }
+
     return options.authorise?.(subject) ?? { authorise: true };
   }
 
@@ -117,6 +119,7 @@ export function startThresholdParticipant(
   ): Promise<void> {
     if (params.deadline <= options.clock.now()) {
       await incoming.respond({ result: "error", code: "deadline-passed" });
+
       return;
     }
     const keyPackage = options.keyPackagesByGroup.get(
@@ -124,6 +127,7 @@ export function startThresholdParticipant(
     );
     if (keyPackage === undefined) {
       await incoming.respond({ result: "error", code: "unknown-group" });
+
       return;
     }
     const decision = decide(params.subject);
@@ -133,6 +137,7 @@ export function startThresholdParticipant(
         code: "refused",
         message: decision.reason,
       });
+
       return;
     }
 
@@ -173,6 +178,7 @@ export function startThresholdParticipant(
         message:
           "threshold.sign for a session-id with no prior threshold.commit",
       });
+
       return;
     }
 
@@ -187,6 +193,7 @@ export function startThresholdParticipant(
         message:
           "no persisted, unused nonce pair for this session -- already released, expired, or never persisted",
       });
+
       return;
     }
 

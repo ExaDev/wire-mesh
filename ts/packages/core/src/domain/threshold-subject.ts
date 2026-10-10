@@ -40,6 +40,7 @@ export function refuseUnrecognisedKind(
   if (known.includes(subject.kind)) {
     return undefined;
   }
+
   return {
     authorise: false,
     reason: `unrecognised threshold-subject.kind ${JSON.stringify(subject.kind)} -- refusing to sign`,

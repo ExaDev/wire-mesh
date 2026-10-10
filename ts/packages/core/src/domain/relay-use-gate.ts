@@ -19,6 +19,7 @@ export interface RelayUseAuthorizationTracker {
 /** An in-memory, per-connection authorization set. Keyed by Connection identity (reference equality), matching RelayHub's own registry -- a connection that reconnects is a new object and starts unauthorized again, exactly as a fresh relay-hub registration would. */
 export function createRelayUseAuthorizationTracker(): RelayUseAuthorizationTracker {
   const authorized = new Set<Readonly<Connection>>();
+
   return {
     isAuthorized: (connection) => authorized.has(connection),
     authorize: (connection) => {

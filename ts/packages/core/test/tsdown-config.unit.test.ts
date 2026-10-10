@@ -11,6 +11,7 @@ function isNeverBundled(id: string): boolean {
   if (!Array.isArray(neverBundle)) {
     throw new Error("tsdown.config.ts must list its neverBundle patterns");
   }
+
   return neverBundle.some(
     (pattern) => pattern instanceof RegExp && pattern.test(id),
   );

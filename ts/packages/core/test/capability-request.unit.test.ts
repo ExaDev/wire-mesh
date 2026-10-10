@@ -43,6 +43,7 @@ async function generateEs256Identity(): Promise<IdentityPort> {
   const publicKeyBytes = new Uint8Array(
     await webcrypto.subtle.exportKey("raw", keyPair.publicKey),
   );
+
   return createNodeIdentity(keyPair.privateKey, publicKeyBytes, ES256);
 }
 
@@ -59,8 +60,13 @@ function fakeSession(): MeshSession {
 
 function fakeIncoming(
   command: ManageCommand,
-  scope: Readonly<CapabilityScope> = TEST_SCOPE,
-  token?: CapabilityToken,
+  {
+    scope = TEST_SCOPE,
+    token,
+  }: Readonly<{
+    scope?: Readonly<CapabilityScope>;
+    token?: CapabilityToken;
+  }> = {},
 ): { incoming: IncomingManageRequest; respond: ReturnType<typeof vi.fn> } {
   const respond = vi.fn(async (): Promise<void> => Promise.resolve());
   const incoming: IncomingManageRequest = {
@@ -70,6 +76,7 @@ function fakeIncoming(
     ...(token !== undefined ? { token } : {}),
     respond,
   };
+
   return { incoming, respond };
 }
 
@@ -227,6 +234,7 @@ describe("createCapabilityRequestHandler", () => {
         : {}),
       onRequest,
     });
+
     return { handle, identity, bearer, onRequest };
   }
 
@@ -422,7 +430,7 @@ describe("createCapabilityRequestHandler", () => {
     });
     const { incoming } = fakeIncoming(
       buildCapabilityRequestCommand(TEST_CAPABILITY),
-      TEST_SCOPE,
+      { scope: TEST_SCOPE },
     );
 
     await handle(incoming);
@@ -454,8 +462,7 @@ describe("createCapabilityRequestHandler", () => {
     const token = await mintedRequestToken(identity, bearer.deviceId);
     const { incoming, respond } = fakeIncoming(
       buildCapabilityRequestCommand(TEST_CAPABILITY),
-      TEST_SCOPE,
-      token,
+      { scope: TEST_SCOPE, token },
     );
     await handle(incoming);
     expect(onRequest).toHaveBeenCalledTimes(1);
@@ -471,11 +478,10 @@ describe("createCapabilityRequestHandler", () => {
     const wrongScope = await mintedRequestToken(identity, bearer.deviceId, {
       scope: { kind: "room", path: "another-room" },
     });
-    const first = fakeIncoming(
-      buildCapabilityRequestCommand(TEST_CAPABILITY),
-      TEST_SCOPE,
-      wrongVerb,
-    );
+    const first = fakeIncoming(buildCapabilityRequestCommand(TEST_CAPABILITY), {
+      scope: TEST_SCOPE,
+      token: wrongVerb,
+    });
     await handle(first.incoming);
     expect(first.respond).toHaveBeenCalledWith({
       result: "error",
@@ -483,8 +489,7 @@ describe("createCapabilityRequestHandler", () => {
     });
     const second = fakeIncoming(
       buildCapabilityRequestCommand(TEST_CAPABILITY),
-      TEST_SCOPE,
-      wrongScope,
+      { scope: TEST_SCOPE, token: wrongScope },
     );
     await handle(second.incoming);
     expect(second.respond).toHaveBeenCalledWith({
@@ -506,8 +511,7 @@ describe("createCapabilityRequestHandler", () => {
     });
     const { incoming, respond } = fakeIncoming(
       buildCapabilityRequestCommand(TEST_CAPABILITY),
-      TEST_SCOPE,
-      token,
+      { scope: TEST_SCOPE, token },
     );
     await handle(incoming);
     expect(respond).toHaveBeenCalledWith({
@@ -526,8 +530,7 @@ describe("createCapabilityRequestHandler", () => {
     const token = await mintedRequestToken(identity, bearer.deviceId);
     const { incoming, respond } = fakeIncoming(
       buildCapabilityRequestCommand(TEST_CAPABILITY),
-      TEST_SCOPE,
-      token,
+      { scope: TEST_SCOPE, token },
     );
     await handle(incoming);
     if (seen === undefined) throw new Error("expected one request event");
@@ -561,6 +564,7 @@ describe("createCapabilityRequestHandler", () => {
         : {}),
     });
     if (!verdict.ok) throw new Error(`mint failed: ${verdict.reason}`);
+
     return verdict.token;
   }
 });
@@ -585,7 +589,7 @@ describe("round trip: requestCapability against createCapabilityRequestHandler",
     });
     const { incoming, respond } = fakeIncoming(
       buildCapabilityRequestCommand(TEST_CAPABILITY),
-      TEST_SCOPE,
+      { scope: TEST_SCOPE },
     );
 
     await handle(incoming);

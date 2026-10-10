@@ -23,14 +23,18 @@ const orphanPayload = bytesFromHex("aa");
 /** A Connection whose receive() stream delivers pushed frames until rejectNow(), then rejects -- the mid-stream hostile-input failure the real adapter produces for undecodable bytes. */
 class RejectingAfterFramesConnection {
   inbound: Frame[] = [];
+
   sent: Frame[] = [];
+
   private rejection: Error | null = null;
+
   private readonly wakeWaiters: (() => void)[] = [];
 
   get connection(): Readonly<Connection> {
     return {
       send: async (frame: Frame): Promise<void> => {
         this.sent.push(frame);
+
         return Promise.resolve();
       },
       receive: () => this.stream(),
@@ -69,18 +73,18 @@ class RejectingAfterFramesConnection {
   }
 
   private async step(): Promise<IteratorResult<Frame>> {
-    for (;;) {
-      const next = this.inbound.shift();
-      if (next !== undefined) {
-        return { value: next, done: false };
-      }
-      if (this.rejection !== null) {
-        throw this.rejection;
-      }
-      await new Promise<void>((resolve) => {
-        this.wakeWaiters.push(resolve);
-      });
+    const next = this.inbound.shift();
+    if (next !== undefined) {
+      return { value: next, done: false };
     }
+    if (this.rejection !== null) {
+      throw this.rejection;
+    }
+    await new Promise<void>((resolve) => {
+      this.wakeWaiters.push(resolve);
+    });
+
+    return this.step();
   }
 }
 

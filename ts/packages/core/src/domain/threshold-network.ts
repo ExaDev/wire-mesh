@@ -124,6 +124,10 @@ export function buildAbortCommand(
 }
 
 export interface KeygenRound1Options {
+  sessionId: bigint;
+  threshold: number;
+  participants: readonly DeviceId[];
+  commitment: readonly Uint8Array[];
   /** REQUIRED for a fresh DKG (existingGroupKey absent) -- load-bearing, not ceremonial: without it a participant broadcasting last could adaptively bias the resulting group key (the rogue-key attack). MAY be omitted for a reshare. */
   proofOfKnowledge?: Uint8Array;
   /** Present: this is a reshare of the named group's existing Ed25519 public key. Absent: a fresh DKG. Determines this command's own capability verb via keygenCapabilityVerb. */
@@ -132,13 +136,11 @@ export interface KeygenRound1Options {
 
 /** Round 1 of DKG or reshare: broadcasts this participant's own Feldman VSS commitment (and, for a fresh DKG, its Schnorr proof of knowledge) to every other participant. The capability verb is derived from `options.existingGroupKey`'s presence via keygenCapabilityVerb -- callers driving the rest of this same ceremony (round2, confirm) must pass the identical fresh-vs-reshare choice to those builders. */
 export function buildKeygenRound1Command(
-  sessionId: bigint,
-  threshold: number,
-  participants: readonly DeviceId[],
-  commitment: readonly Uint8Array[],
-  options: Readonly<KeygenRound1Options> = {},
+  options: Readonly<KeygenRound1Options>,
 ): ManageCommand {
+  const { sessionId, threshold, participants, commitment } = options;
   const isReshare = options.existingGroupKey !== undefined;
+
   return {
     verb: keygenCapabilityVerb(isReshare),
     params: {

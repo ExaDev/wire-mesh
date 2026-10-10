@@ -21,6 +21,7 @@ describe("redialAddress", () => {
         dialled.push(address);
         const fake = new FakeConnection();
         fakes.push(fake);
+
         // Only the first connection has learned a newer address; the second is dialled with it and learns nothing more.
         return Promise.resolve(
           dialled.length === 1
@@ -51,6 +52,7 @@ describe("redialAddress", () => {
         dialled.push(address);
         const fake = new FakeConnection();
         fakes.push(fake);
+
         return Promise.resolve(fake.connection);
       },
       listen: async () => Promise.reject(new Error("client-only transport")),

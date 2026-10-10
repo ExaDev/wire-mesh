@@ -24,6 +24,7 @@ const XOR_MASK = 0xff;
 function deviceId(byte: number): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(DEVICE_ID_LENGTH);
   bytes[DEVICE_ID_LENGTH - 1] = byte;
+
   return bytes;
 }
 

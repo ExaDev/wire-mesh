@@ -60,7 +60,9 @@ interface PendingWaiter<T> {
 /** One (verb-family, session-id)'s worth of per-sender-device delivery: a message that arrives before anyone is waiting for it is buffered; a waiter that arrives before the message does is queued. Mirrors mesh-session.ts's own backlog/waiter pattern for its incomingManageRequests iterator, scoped down to "exactly one value per device-id" rather than an ordered stream. */
 class PerDeviceCollector<T> {
   private readonly waiters = new Map<string, PendingWaiter<T>>();
+
   private readonly backlog = new Map<string, T>();
+
   private failure: Error | undefined;
 
   async awaitFrom(deviceHex: string): Promise<T> {
@@ -70,8 +72,10 @@ class PerDeviceCollector<T> {
     const buffered = this.backlog.get(deviceHex);
     if (buffered !== undefined) {
       this.backlog.delete(deviceHex);
+
       return buffered;
     }
+
     return new Promise((resolve, reject) => {
       this.waiters.set(deviceHex, { resolve, reject });
     });
@@ -198,13 +202,13 @@ export async function runFreshThresholdDkg(
 
   await Promise.all(
     options.otherParticipants.map(async (peer) => {
-      const command = buildKeygenRound1Command(
-        options.sessionId,
-        options.threshold,
-        allParticipants,
-        ownSplit.commitment,
-        { proofOfKnowledge: ownSplit.proofOfKnowledge },
-      );
+      const command = buildKeygenRound1Command({
+        sessionId: options.sessionId,
+        threshold: options.threshold,
+        participants: allParticipants,
+        commitment: ownSplit.commitment,
+        proofOfKnowledge: ownSplit.proofOfKnowledge,
+      });
       await options.session.sendManageRequest(
         command,
         scope,
@@ -223,6 +227,7 @@ export async function runFreshThresholdDkg(
           `threshold.keygen-round1 from ${deviceIdToHex(peer)} is missing proof-of-knowledge, REQUIRED for a fresh DKG`,
         );
       }
+
       return {
         deviceId: peer,
         value: combineRound1Package(
@@ -251,6 +256,7 @@ export async function runFreshThresholdDkg(
   const round2Entries: DeviceKeyed[] = await Promise.all(
     options.otherParticipants.map(async (peer): Promise<DeviceKeyed> => {
       const share = await collectors.round2.awaitFrom(deviceIdToHex(peer));
+
       return { deviceId: peer, value: Uint8Array.from(share) };
     }),
   );
@@ -308,9 +314,9 @@ export async function runFreshThresholdDkg(
   return round3;
 }
 
-// --- Reshare -------------------------------------------------------------
-//
-// Resharing has no single symmetric choreography the way fresh DKG does: only the T SURVIVORS dealt from an existing share broadcast round 1 and send round 2; every member of the NEW participant set (survivors staying on and brand-new joiners alike) must independently collect all T survivors' round1 broadcasts, derive the combined public key package, and combine whatever round2 shares it received. A device that is both a survivor AND a member of the new set runs BOTH contributeThresholdReshare and joinThresholdReshare concurrently; a survivor that is leaving runs only contributeThresholdReshare (and is done -- it has no new share, no confirm round to take part in); a brand-new device with no prior share runs only joinThresholdReshare.
+/* --- Reshare -------------------------------------------------------------
+
+   Resharing has no single symmetric choreography the way fresh DKG does: only the T SURVIVORS dealt from an existing share broadcast round 1 and send round 2; every member of the NEW participant set (survivors staying on and brand-new joiners alike) must independently collect all T survivors' round1 broadcasts, derive the combined public key package, and combine whatever round2 shares it received. A device that is both a survivor AND a member of the new set runs BOTH contributeThresholdReshare and joinThresholdReshare concurrently; a survivor that is leaving runs only contributeThresholdReshare (and is done -- it has no new share, no confirm round to take part in); a brand-new device with no prior share runs only joinThresholdReshare. */
 
 export interface ContributeThresholdReshareOptions {
   session: Readonly<ThresholdDkgTransport>;
@@ -363,6 +369,7 @@ export function computeReshareContribution(
   const shareToSelf = r1.outgoing.find((entry) =>
     bytesEqual(entry.deviceId, options.ownDeviceId),
   )?.value;
+
   return {
     commitment: r1.commitment,
     outgoing: r1.outgoing,
@@ -385,13 +392,13 @@ export async function sendReshareContribution(
   );
   await Promise.all(
     recipients.map(async (peer) => {
-      const command = buildKeygenRound1Command(
-        options.sessionId,
-        options.newThreshold,
-        options.newParticipants,
-        commitmentParts,
-        { existingGroupKey: options.existingGroupKey },
-      );
+      const command = buildKeygenRound1Command({
+        sessionId: options.sessionId,
+        threshold: options.newThreshold,
+        participants: options.newParticipants,
+        commitment: commitmentParts,
+        existingGroupKey: options.existingGroupKey,
+      });
       await options.session.sendManageRequest(
         command,
         scope,
@@ -427,6 +434,7 @@ export async function contributeThresholdReshare(
 ): Promise<ReshareContribution> {
   const contribution = computeReshareContribution(options);
   await sendReshareContribution(options, contribution);
+
   return contribution;
 }
 
@@ -471,6 +479,7 @@ export async function joinThresholdReshare(
   const otherSurvivorEntries: DeviceKeyed[] = await Promise.all(
     options.otherSurvivors.map(async (peer): Promise<DeviceKeyed> => {
       const payload = await collectors.round1.awaitFrom(deviceIdToHex(peer));
+
       return {
         deviceId: peer,
         value: reshareCombineCommitmentParts(payload.commitment),

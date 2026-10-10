@@ -45,6 +45,7 @@ export function createRevocationView(): RevocationView {
           existing.push(verdict.claims);
         }
       }
+
       return verdict;
     },
   };

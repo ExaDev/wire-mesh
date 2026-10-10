@@ -33,6 +33,7 @@ const ALG_ED25519 = -8;
 function deviceId(byte: number): DeviceId {
   const bytes = new Uint8Array(DEVICE_ID_LENGTH);
   bytes[DEVICE_ID_LENGTH - 1] = byte;
+
   return bytes;
 }
 
@@ -55,6 +56,7 @@ function createRelayBus(): {
       inbox = { waiters: [], backlog: [] };
       inboxes.set(hex, inbox);
     }
+
     return inbox;
   }
 
@@ -70,6 +72,7 @@ function createRelayBus(): {
         }
         const requestId = nextRequestId;
         nextRequestId += 1;
+
         return new Promise<ManageOutcome>((resolve) => {
           const incoming: IncomingManageRequest = {
             requestId,
@@ -78,6 +81,7 @@ function createRelayBus(): {
             fromDevice: self,
             respond: async (outcome: ManageOutcome): Promise<void> => {
               resolve(outcome);
+
               return Promise.resolve();
             },
           };

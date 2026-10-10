@@ -38,6 +38,7 @@ const THIRD_DEVICE_BYTE = 3;
 function deviceId(byte: number): DeviceId {
   const bytes = new Uint8Array(DEVICE_ID_LENGTH);
   bytes[DEVICE_ID_LENGTH - 1] = byte;
+
   return bytes;
 }
 
@@ -54,6 +55,7 @@ function forDevice<T extends { deviceId: DeviceId }>(
   if (!found) {
     throw new Error("test fixture: no entry for the given device-id");
   }
+
   return found;
 }
 
@@ -79,6 +81,7 @@ function runDkg(deviceIds: readonly DeviceId[]): Participant[] {
     const othersRound1 = round1Entries.filter(
       (e) => !sameDeviceId(e.deviceId, p.deviceId),
     );
+
     return {
       deviceId: p.deviceId,
       ...dkgRound2(p.secretPackage, othersRound1),
@@ -108,6 +111,7 @@ function runDkg(deviceIds: readonly DeviceId[]): Participant[] {
     if (!inbox) {
       throw new Error("test fixture: missing inbox for a DKG participant");
     }
+
     return {
       deviceId: p.deviceId,
       round1: forDevice(round1ByDevice, p.deviceId),
@@ -197,6 +201,7 @@ function twoSigners(
       "test fixture: expected at least two DKG participants to sign",
     );
   }
+
   return [alice, bob];
 }
 
@@ -368,6 +373,7 @@ describe("threshold-wasm: reshare", () => {
           "test fixture: missing received-shares bucket for a new participant",
         );
       }
+
       return bucket;
     }
 

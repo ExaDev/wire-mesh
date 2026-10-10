@@ -26,6 +26,7 @@ const EVENTS_THROUGH_CONNECT = 3;
 function isDirectoryEntry(value: unknown): value is DirectoryEntry {
   if (typeof value !== "object" || value === null) return false;
   if (!("device" in value) || !("advert" in value)) return false;
+
   return (
     value.device instanceof Uint8Array &&
     typeof value.advert === "object" &&
@@ -48,6 +49,7 @@ function directoryOf(event: unknown): readonly DirectoryEntry[] {
   if (!isDirectoryEntryList(directory)) {
     throw new Error("session event's directory is not a list of entries");
   }
+
   return directory;
 }
 
@@ -60,6 +62,7 @@ async function connectedSession(): Promise<
   const { transport, connection } = fakeTransport();
   const session = createMeshSession(transport, testIdentity, testClock);
   await session.connect("ws://node", LOCAL_DOMAINS);
+
   return { transport, connection, session };
 }
 

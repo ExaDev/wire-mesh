@@ -27,6 +27,7 @@ export function encodeLengthPrefixedFrame(frame: Frame): Uint8Array {
   const message = new Uint8Array(LENGTH_PREFIX_BYTES + body.length);
   new DataView(message.buffer).setUint32(0, body.length);
   message.set(body, LENGTH_PREFIX_BYTES);
+
   return message;
 }
 
@@ -37,7 +38,25 @@ function concat(
   const joined = new Uint8Array(first.length + second.length);
   joined.set(first);
   joined.set(second, first.length);
+
   return joined;
+}
+
+/** A reader's chunks as an async iterable, which ends with the stream and leaves releasing or cancelling the reader to its owner. */
+function chunksOf(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+): AsyncIterable<Uint8Array> {
+  return {
+    [Symbol.asyncIterator]: () => ({
+      next: async (): Promise<IteratorResult<Uint8Array, undefined>> => {
+        const chunk = await reader.read();
+
+        return chunk.done
+          ? { done: true, value: undefined }
+          : { done: false, value: chunk.value };
+      },
+    }),
+  };
 }
 
 /**
@@ -48,12 +67,8 @@ async function* readFrames(
 ): AsyncGenerator<Frame> {
   let buffered: Uint8Array = new Uint8Array(0);
   try {
-    for (;;) {
-      const chunk = await reader.read();
-      if (chunk.done) {
-        return;
-      }
-      buffered = concat(buffered, chunk.value);
+    for await (const chunk of chunksOf(reader)) {
+      buffered = concat(buffered, chunk);
       while (buffered.length >= LENGTH_PREFIX_BYTES) {
         const bodyLength = new DataView(
           buffered.buffer,
@@ -103,6 +118,7 @@ export function connectionFromByteStream(
     : Promise.resolve();
   // A failure to write the marker resurfaces on the first send, which awaits it.
   marked.catch(() => undefined);
+
   return {
     send: async (frame) => {
       await marked;

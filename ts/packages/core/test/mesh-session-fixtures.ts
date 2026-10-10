@@ -8,13 +8,16 @@ import type {
 } from "../src/ports/transport.js";
 import type { createMeshSession } from "../src/domain/mesh-session.js";
 import { peerAdvertFor } from "./relay-hub-test-helpers.js";
+import { repeatInSequence } from "./sequence.js";
 import { generateEd25519Identity } from "./tokens-fixtures.js";
 import packageJson from "../package.json" with { type: "json" };
 
 /** The same value mesh-session.ts's own OWN_VERSION reads -- asserted against here rather than a hardcoded literal so a self-advert/version.get expectation stays true regardless of what this package's own version happens to be. */
 export const OWN_VERSION = packageJson.version;
 
-// Real identities rather than device-ids invented from filler bytes: a session verifies every gossiped advert against the key it carries and drops one that does not verify (wire-mesh#225), so an advert naming a device no keypair produced would never reach the directory a test is asserting on. deviceA/B/C are the ids those identities derive, for tests that only need a device-id to point at.
+/**
+ * Real identities rather than device-ids invented from filler bytes: a session verifies every gossiped advert against the key it carries and drops one that does not verify (wire-mesh#225), so an advert naming a device no keypair produced would never reach the directory a test is asserting on. deviceA/B/C are the ids those identities derive, for tests that only need a device-id to point at.
+ */
 export const identityA = await generateEd25519Identity();
 export const identityB = await generateEd25519Identity();
 export const identityC = await generateEd25519Identity();
@@ -28,7 +31,9 @@ export const MS_PER_SECOND = 1000;
 export const TEST_CLOCK_NOW_MS = 1_700_000_000_000;
 export const testClock: Clock = { now: () => TEST_CLOCK_NOW_MS };
 
-// Event-stream positions: connect() emits connecting + connected, then a self-advert-sent tick, then one event per pushed frame, timeout, or failure.
+/**
+ * Event-stream positions: connect() emits connecting + connected, then a self-advert-sent tick, then one event per pushed frame, timeout, or failure.
+ */
 export const EVENTS_THROUGH_REMOTE_HANDSHAKE = 4;
 export const EVENTS_THROUGH_TIMEOUT = 4;
 export const EVENTS_THROUGH_THREE_GOSSIPS = 6;
@@ -38,7 +43,9 @@ export const SNAPSHOT_FIRST = 100;
 export const SNAPSHOT_SECOND = 200;
 export const SNAPSHOT_UPDATED = 300;
 
-// Reconnect-flow event-stream positions: each reconnect round emits connecting + connected(pending) + self-advert-sent, then either a further reconnecting (retrying) or closed (attempts exhausted) event.
+/**
+ * Reconnect-flow event-stream positions: each reconnect round emits connecting + connected(pending) + self-advert-sent, then either a further reconnecting (retrying) or closed (attempts exhausted) event.
+ */
 export const RECONNECT_DELAY_MS = 100;
 export const RECONNECT_MAX_ATTEMPTS = 2;
 /** Events up to and including the first failed dial's report: connecting, then reconnecting or closed. */
@@ -47,7 +54,9 @@ export const EVENTS_THROUGH_FIRST_RECONNECT = 4;
 export const EVENTS_PER_RECONNECT_ROUND = 4;
 export const EVENTS_THROUGH_STALE_TIMER_REGRESSION = 8;
 
-// capability-tokens/manage-request plumbing: arbitrary distinct signature/request-id byte values, and the manage-request's own reply-timeout duration.
+/**
+ * capability-tokens/manage-request plumbing: arbitrary distinct signature/request-id byte values, and the manage-request's own reply-timeout duration.
+ */
 export const TEST_TOKEN_SIGNATURE_BYTE = 3;
 export const TEST_INCOMING_REQUEST_ID = 7;
 export const OVERRIDE_TOKEN_BYTE = 9;
@@ -56,8 +65,11 @@ export const MANAGE_REQUEST_TIMEOUT_MS = 5000;
 /** An in-memory Connection the test drives: pushes arrive on the receive iteration, sends are recorded. */
 export class FakeConnection {
   sent: Frame[] = [];
+
   private readonly inbound: Frame[] = [];
+
   private ended = false;
+
   private failure: Error | null = null;
 
   /** Constructs a fake, already-authenticated connection whose own `peerDeviceId` is set from the start -- the transport-authenticated case topology self-advertisement's own `direct` field prefers over any gossip-derived guess (mesh-session.ts's directPeerDevice). Omit for the default, unauthenticated case every other test here relies on. */
@@ -67,12 +79,14 @@ export class FakeConnection {
     return {
       send: async (frame: Frame): Promise<void> => {
         this.sent.push(frame);
+
         return Promise.resolve();
       },
       receive: () => this.stream(),
       close: async (): Promise<void> => {
         this.ended = true;
         this.wake();
+
         return Promise.resolve();
       },
       ...(this.authenticatedPeerDeviceId !== undefined
@@ -119,21 +133,21 @@ export class FakeConnection {
   }
 
   private async nextFrame(): Promise<IteratorResult<Frame>> {
-    for (;;) {
-      const next = this.inbound.shift();
-      if (next !== undefined) {
-        return { value: next, done: false };
-      }
-      if (this.failure !== null) {
-        throw this.failure;
-      }
-      if (this.ended) {
-        return { value: undefined, done: true };
-      }
-      await new Promise<void>((resolve) => {
-        this.wakeWaiters.push(resolve);
-      });
+    const next = this.inbound.shift();
+    if (next !== undefined) {
+      return { value: next, done: false };
     }
+    if (this.failure !== null) {
+      throw this.failure;
+    }
+    if (this.ended) {
+      return { value: undefined, done: true };
+    }
+    await new Promise<void>((resolve) => {
+      this.wakeWaiters.push(resolve);
+    });
+
+    return this.nextFrame();
   }
 }
 
@@ -147,11 +161,13 @@ export function fakeTransport(authenticatedPeerDeviceId?: DeviceId): {
       if (address !== "ws://node") {
         return Promise.reject(new Error(`connect to ${address} failed`));
       }
+
       return Promise.resolve(connection.connection);
     },
     listen: async (): Promise<Listener> =>
       Promise.reject(new Error("client-only transport")),
   };
+
   return { transport, connection };
 }
 
@@ -168,11 +184,13 @@ export function multiConnectionTransport(): {
       }
       const next = new FakeConnection();
       connections.push(next);
+
       return Promise.resolve(next.connection);
     },
     listen: async (): Promise<Listener> =>
       Promise.reject(new Error("client-only transport")),
   };
+
   return { transport, connections };
 }
 
@@ -181,6 +199,7 @@ export function yielded<T>(result: IteratorResult<T>): T {
   if (result.done === true) {
     throw new Error("expected the iterator to yield a value, got done: true");
   }
+
   return result.value;
 }
 
@@ -208,11 +227,25 @@ export async function nthEvent(
 ): Promise<unknown> {
   const iterator = session.events[Symbol.asyncIterator]();
   let last: unknown = null;
-  for (let i = 0; i < count; i++) {
+  await repeatInSequence(count, async () => {
     const result = await iterator.next();
     last = result.value;
-  }
+  });
+
   return last;
+}
+
+/** Takes events from an iterator until none arrives within the short wait, and returns the last one taken (`newest` when none did). */
+export async function drainEvents<T>(
+  iterator: Readonly<AsyncIterator<T>>,
+  newest?: T,
+): Promise<T | undefined> {
+  const result = await withinShortWait(iterator.next());
+  if (result === TIMEOUT_MARKER) {
+    return newest;
+  }
+
+  return drainEvents(iterator, yielded(result));
 }
 
 /** A gossip frame carrying one properly signed advert for the given identity, so a session verifying it applies it rather than dropping it. */

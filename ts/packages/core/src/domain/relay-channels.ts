@@ -74,6 +74,7 @@ export function createRelayChannels(
           channels.delete(key);
         }
       });
+
     return entry;
   }
 
@@ -83,6 +84,7 @@ export function createRelayChannels(
       if (existing?.status === "established") {
         return existing.channel;
       }
+
       return (existing ?? start(peer)).settle.promise;
     },
     applyHello: async (hello) => {
@@ -107,6 +109,7 @@ export function createRelayChannels(
         if (channels.get(key) === entry) {
           channels.delete(key);
         }
+
         return;
       }
       channels.set(key, { status: "established", channel });
@@ -121,6 +124,7 @@ export function createRelayChannels(
         return undefined;
       }
       const frame = await entry.channel.open(data);
+
       return frame === undefined
         ? undefined
         : { frame, from: entry.channel.peer.deviceId };

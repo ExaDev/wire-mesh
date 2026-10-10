@@ -72,6 +72,7 @@ describe("verifyCapabilityToken - authorised-by", () => {
         ? { delegationsRemaining: overrides.delegationsRemaining }
         : {}),
     });
+
     return { token, tokenId };
   }
 
@@ -430,21 +431,27 @@ describe("verifyCapabilityToken - authorised-by", () => {
   });
 
   it("refuses a chain deeper than the bound", async () => {
-    let token = await signToken(owner, {
+    const root = signToken(owner, {
       tokenId: nextTokenId(),
       bearer: deputy.deviceId,
       scope: WORK_SCOPE,
       expires: NOW_MS + (DEPTH_CAP + 2) * HOUR_MS,
     });
-    for (let hop = 0; hop < DEPTH_CAP; hop += 1) {
-      token = await signToken(deputy, {
-        tokenId: nextTokenId(),
-        bearer: thirdParty.deviceId,
-        scope: WORK_SCOPE,
-        expires: NOW_MS + (DEPTH_CAP - hop) * HOUR_MS,
-        parent: encodeBuf(token),
-      });
-    }
+    // Each hop is signed over the token before it, so they are chained rather than run together.
+    const token = await Array.from(
+      { length: DEPTH_CAP },
+      (_, hop) => hop,
+    ).reduce(
+      async (parent, hop) =>
+        signToken(deputy, {
+          tokenId: nextTokenId(),
+          bearer: thirdParty.deviceId,
+          scope: WORK_SCOPE,
+          expires: NOW_MS + (DEPTH_CAP - hop) * HOUR_MS,
+          parent: encodeBuf(await parent),
+        }),
+      root,
+    );
 
     const verdict = await verifyCapabilityToken(token, options());
 
@@ -485,6 +492,7 @@ describe("mintCapabilityToken - authorisedBy", () => {
         : {}),
     });
     if (!verdict.ok) throw new Error(`mint failed: ${verdict.reason}`);
+
     return verdict.token;
   }
 
@@ -539,19 +547,21 @@ describe("mintCapabilityToken - authorisedBy", () => {
         reason: "authorisation_exceeds_authoriser",
       },
     ];
-    for (const testCase of cases) {
-      const verdict = await mintCapabilityToken({
-        identity: deputy,
-        clock: fixedClock(NOW_MS),
-        tokenId: nextTokenId(),
-        bearer: thirdParty.deviceId,
-        capability: testCase.capability,
-        scope: testCase.scope,
-        expires: testCase.expires,
-        authorisedBy: grant,
-      });
-      expect(verdict).toEqual({ ok: false, reason: testCase.reason });
-    }
+    await Promise.all(
+      cases.map(async (testCase) => {
+        const verdict = await mintCapabilityToken({
+          identity: deputy,
+          clock: fixedClock(NOW_MS),
+          tokenId: nextTokenId(),
+          bearer: thirdParty.deviceId,
+          capability: testCase.capability,
+          scope: testCase.scope,
+          expires: testCase.expires,
+          authorisedBy: grant,
+        });
+        expect(verdict).toEqual({ ok: false, reason: testCase.reason });
+      }),
+    );
   });
 
   it("refuses a mint the authoriser's subject-mode conditions bar, and one by a non-bearer of the authoriser", async () => {

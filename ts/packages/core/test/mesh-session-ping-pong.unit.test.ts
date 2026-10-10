@@ -23,6 +23,7 @@ function mutableClock(startMs: number): {
   advanceMs: (ms: number) => void;
 } {
   let now = startMs;
+
   return {
     clock: { now: () => now },
     advanceMs: (ms: number): void => {

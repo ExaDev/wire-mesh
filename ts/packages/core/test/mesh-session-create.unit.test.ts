@@ -23,6 +23,7 @@ import {
   EVENTS_THROUGH_PING_ROUND_TRIP,
   EVENTS_THROUGH_REMOTE_HANDSHAKE,
   EVENTS_THROUGH_THREE_GOSSIPS,
+  drainEvents,
   EVENTS_THROUGH_TIMEOUT,
   FakeConnection,
   MS_PER_SECOND,
@@ -45,6 +46,7 @@ import {
   withinShortWait,
   yielded,
 } from "./mesh-session-fixtures.js";
+import { repeatInSequence } from "./sequence.js";
 
 /** Returns the one advert a gossip frame carries, having asserted it verifies under the given identity's own key: i.e. it was really signed by that node rather than merely carrying signature-shaped bytes. */
 async function signedAdvertOf(
@@ -57,6 +59,7 @@ async function signedAdvertOf(
     throw new Error("expected the gossip frame to carry one advert");
   }
   expect(await verifyPeerAdvert(identity, advert)).toBe(true);
+
   return advert;
 }
 
@@ -345,31 +348,20 @@ describe("createMeshSession", () => {
     await session.connect("ws://node", ["core/data"]);
     await eventsDone;
 
-    // Enough frames past the window to prove the oldest were dropped, without
-    // making the test spend its time pushing frames nobody inspects.
+    /* Enough frames past the window to prove the oldest were dropped, without
+       making the test spend its time pushing frames nobody inspects. */
     const framesPastWindow = 20;
-    for (let i = 0; i < FRAME_LOG_WINDOW + framesPastWindow; i++) {
+    await repeatInSequence(FRAME_LOG_WINDOW + framesPastWindow, async () => {
       await session.sendGossipUpdate();
-    }
-    // Every send queued its own snapshot; drain the queue and keep the newest,
-    // since an earlier snapshot would still show the log mid-window.
+    });
+    /* Every send queued its own snapshot; drain the queue and keep the newest,
+       since an earlier snapshot would still show the log mid-window. */
     const eventsIterator = session.events[Symbol.asyncIterator]();
-    let newest:
-      | { frameLog: { direction: string; frame: { type: string } }[] }
-      | undefined;
-    for (;;) {
-      const result = await withinShortWait(eventsIterator.next());
-      if (result === TIMEOUT_MARKER) break;
-      newest = yielded(
-        result as IteratorResult<{
-          frameLog: { direction: string; frame: { type: string } }[];
-        }>,
-      );
-    }
+    const newest = await drainEvents(eventsIterator);
     expect(newest).toBeDefined();
     expect(newest?.frameLog).toHaveLength(FRAME_LOG_WINDOW);
-    // The window keeps the newest frames, so the last entry is the final gossip
-    // send and nothing from before the window survives.
+    /* The window keeps the newest frames, so the last entry is the final gossip
+       send and nothing from before the window survives. */
     expect(newest?.frameLog.at(-1)?.direction).toBe("sent");
     expect(newest?.frameLog.at(-1)?.frame.type).toBe("gossip");
     await session.close();
@@ -537,7 +529,8 @@ describe("createMeshSession", () => {
     const session = createMeshSession(transport, testIdentity, testClock);
     const eventsIterator = session.events[Symbol.asyncIterator]();
     const connectPromise = session.connect("ws://node", ["core/data"]);
-    await eventsIterator.next(); // connecting
+    // connecting
+    await eventsIterator.next();
     await session.close();
     const lateConnection = new FakeConnection();
     if (dialResolver.resolve === null)
@@ -575,9 +568,9 @@ describe("createMeshSession", () => {
     await session.connect("ws://node", ["core/data"]);
     connection.push(await gossipFor(identityA));
     await session.close();
-    for (let i = 0; i < EVENTS_THROUGH_FAILURE; i++) {
+    await repeatInSequence(EVENTS_THROUGH_FAILURE, async () => {
       await iterator.next();
-    }
+    });
     const result = await withinShortWait(iterator.next());
     expect(result).toBe(TIMEOUT_MARKER);
   });

@@ -12,6 +12,7 @@ export interface NodeFsStorageOptions {
 function isEnoent(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   if (!("code" in error)) return false;
+
   return error.code === "ENOENT";
 }
 
@@ -28,14 +29,16 @@ async function listAllRelativePaths(baseDir: string): Promise<string[]> {
     if (isEnoent(error)) return [];
     throw error;
   }
-  const files: string[] = [];
-  for (const entry of entries) {
-    const stat = await fs.stat(path.join(baseDir, entry)).catch(() => null);
-    if (stat?.isFile() === true) {
-      files.push(entry.split(path.sep).join("/"));
-    }
-  }
-  return files;
+  const stats = await Promise.all(
+    entries.map(async (entry) => ({
+      entry,
+      stat: await fs.stat(path.join(baseDir, entry)).catch(() => null),
+    })),
+  );
+
+  return stats
+    .filter(({ stat }) => stat?.isFile() === true)
+    .map(({ entry }) => entry.split(path.sep).join("/"));
 }
 
 export function createNodeFsStorage(
@@ -47,6 +50,7 @@ export function createNodeFsStorage(
     async get(key) {
       try {
         const contents = await fs.readFile(keyToFilePath(baseDir, key));
+
         return new Uint8Array(contents);
       } catch (error) {
         if (isEnoent(error)) return undefined;
@@ -67,6 +71,7 @@ export function createNodeFsStorage(
     },
     async keys(prefix) {
       const all = await listAllRelativePaths(baseDir);
+
       return all.filter((key) => key.startsWith(prefix));
     },
   };

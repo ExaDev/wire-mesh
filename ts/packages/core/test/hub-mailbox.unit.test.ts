@@ -44,6 +44,7 @@ function setup(limits: MailboxLimits = generousLimits) {
     mailbox.handle(sender, frame, (reason) => {
       refusals.push(reason);
     });
+
   return { storage, handle, refusals };
 }
 

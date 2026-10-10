@@ -40,6 +40,7 @@ export function decodeMessage(data: Readonly<ArrayBuffer>): Frame {
   if (!result.success) {
     throw new SchemaInvalidFrameError(result.error.message);
   }
+
   return result.data;
 }
 
@@ -52,5 +53,6 @@ export function tryDecodeFrame(bytes: Readonly<Uint8Array>): Frame | null {
     return null;
   }
   const result = frameSchema.safeParse(decoded);
+
   return result.success ? result.data : null;
 }

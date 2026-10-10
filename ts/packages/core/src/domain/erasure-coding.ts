@@ -40,6 +40,7 @@ const gfLog: number[] = Array.from({ length: GF_MAX_SHARDS + 1 }, () => 0);
 
 function gfMul(a: number, b: number): number {
   if (a === 0 || b === 0) return 0;
+
   return gfExp[(gfLog[a] ?? 0) + (gfLog[b] ?? 0)] ?? 0;
 }
 
@@ -74,11 +75,13 @@ function encodeMatrixRow(row: number, dataShards: number): number[] {
   const coefficients: number[] = Array.from({ length: dataShards }, () => 0);
   if (row < dataShards) {
     coefficients[row] = 1;
+
     return coefficients;
   }
   for (let column = 0; column < dataShards; column += 1) {
     coefficients[column] = gfInv(row ^ column);
   }
+
   return coefficients;
 }
 
@@ -91,6 +94,7 @@ function invertMatrix(matrix: readonly number[][]): number[][] {
       ...Array.from({ length: size }, () => 0),
     ];
     augmented[size + rowIndex] = 1;
+
     return augmented;
   });
   for (let column = 0; column < size; column += 1) {
@@ -131,6 +135,7 @@ function invertMatrix(matrix: readonly number[][]): number[][] {
       }
     }
   }
+
   return work.map((row) => row.slice(size));
 }
 
@@ -169,6 +174,7 @@ export async function encodeShards(
       }
     }
   }
+
   return Promise.resolve(shards);
 }
 
@@ -214,8 +220,8 @@ export async function decodeShards(
   // Recover the data shards' full byte content (not just the original prefix): the systematic rows let the all-data case pass through, any other mix goes through the inverted submatrix.
   const recovered: Uint8Array[] = [];
   if (chosen.every((entry) => entry.index < dataShards)) {
-    // All data shards survived: identity passthrough, in DATA-shard order
-    // (the caller's array order is arbitrary).
+    /* All data shards survived: identity passthrough, in DATA-shard order
+       (the caller's array order is arbitrary). */
     for (let dataIndex = 0; dataIndex < dataShards; dataIndex += 1) {
       const entry = chosen.find((candidate) => candidate.index === dataIndex);
       if (entry === undefined) {
@@ -261,5 +267,6 @@ export async function decodeShards(
     }
     stitched[position] = byte;
   }
+
   return Promise.resolve(stitched);
 }

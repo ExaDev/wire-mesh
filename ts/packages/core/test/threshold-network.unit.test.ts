@@ -36,6 +36,7 @@ const GROUP_KEY_FILL_BYTE = 7;
 function deviceId(byte: number): DeviceId {
   const bytes = new Uint8Array(DEVICE_ID_LENGTH);
   bytes[DEVICE_ID_LENGTH - 1] = byte;
+
   return bytes;
 }
 
@@ -99,13 +100,13 @@ describe("threshold-network: command builders and type guards", () => {
   });
 
   it("buildKeygenRound1Command carries the fresh-DKG shape with proof-of-knowledge, no existing-group-key", () => {
-    const command = buildKeygenRound1Command(
-      FRESH_DKG_SESSION_ID,
-      THRESHOLD,
-      [deviceId(1), deviceId(2)],
-      [new Uint8Array([1])],
-      { proofOfKnowledge: new Uint8Array([GROUP_DEVICE_BYTE]) },
-    );
+    const command = buildKeygenRound1Command({
+      sessionId: FRESH_DKG_SESSION_ID,
+      threshold: THRESHOLD,
+      participants: [deviceId(1), deviceId(2)],
+      commitment: [new Uint8Array([1])],
+      proofOfKnowledge: new Uint8Array([GROUP_DEVICE_BYTE]),
+    });
     expect(command.verb).toBe(THRESHOLD_KEYGEN_VERB);
     if (!isThresholdKeygenRound1(command.params)) {
       throw new Error("expected threshold.keygen-round1 params");
@@ -118,13 +119,13 @@ describe("threshold-network: command builders and type guards", () => {
 
   it("buildKeygenRound1Command carries the reshare shape with existing-group-key, no proof-of-knowledge required", () => {
     const groupKey = new Uint8Array(DEVICE_ID_LENGTH).fill(GROUP_KEY_FILL_BYTE);
-    const command = buildKeygenRound1Command(
-      RESHARE_SESSION_ID,
-      THRESHOLD,
-      [deviceId(1)],
-      [new Uint8Array([1])],
-      { existingGroupKey: groupKey },
-    );
+    const command = buildKeygenRound1Command({
+      sessionId: RESHARE_SESSION_ID,
+      threshold: THRESHOLD,
+      participants: [deviceId(1)],
+      commitment: [new Uint8Array([1])],
+      existingGroupKey: groupKey,
+    });
     expect(command.verb).toBe(THRESHOLD_RESHARE_VERB);
     if (!isThresholdKeygenRound1(command.params)) {
       throw new Error("expected threshold.keygen-round1 params");

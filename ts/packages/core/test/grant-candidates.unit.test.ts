@@ -15,7 +15,8 @@ import { syntheticAdvertProof } from "./synthetic-advert.js";
 const ROOM_SCOPE: CapabilityScope = { kind: "room", path: "team/general" };
 const ROOM_MEMBER = "room:member";
 
-const DEVICE_ID_HEX_LENGTH = 64; // 32 bytes, hex-encoded -- matches device-id.ts's own DEVICE_ID_HEX_LENGTH
+// 32 bytes, hex-encoded -- matches device-id.ts's own DEVICE_ID_HEX_LENGTH
+const DEVICE_ID_HEX_LENGTH = 64;
 const DEVICE_A = deviceIdFromHex("a".repeat(DEVICE_ID_HEX_LENGTH));
 const DEVICE_B = deviceIdFromHex("b".repeat(DEVICE_ID_HEX_LENGTH));
 

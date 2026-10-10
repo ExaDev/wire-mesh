@@ -52,6 +52,7 @@ export function generateCertFixture(): CertFixture {
       ...Buffer.from(jwk.x, "base64url"),
       ...Buffer.from(jwk.y, "base64url"),
     ]);
+
     return { certificatePem, privateKeyPem, rawPublicKey };
   } finally {
     rmSync(dir, { recursive: true, force: true });

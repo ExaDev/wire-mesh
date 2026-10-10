@@ -31,6 +31,7 @@ import type {
   DeviceId,
 } from "../src/generated/protocol.js";
 import type { IncomingManageRequest } from "../src/domain/mesh-session.js";
+import { inSequence } from "./sequence.js";
 
 const ES256 = -7;
 const HOUR_MS = 3_600_000;
@@ -64,6 +65,7 @@ async function generateEs256Identity(): Promise<IdentityPort> {
     false,
     ["deriveBits"],
   );
+
   return createNodeIdentity(
     keyPair.privateKey,
     publicKeyBytes,
@@ -88,12 +90,14 @@ async function mintRoomMemberToken(
     delegationsRemaining: 0,
   });
   if (!verdict.ok) throw new Error(`mint failed: ${verdict.reason}`);
+
   return verdict.token;
 }
 
 /** A minimal in-memory RoomKeyStore -- the same shape an application wires from createRoomRekeyHandler's onRekey events. */
 function memoryKeyStore(): RoomKeyStore {
   const keys = new Map<string, Map<number, Uint8Array>>();
+
   return {
     async get(room, epoch) {
       return Promise.resolve(keys.get(room)?.get(epoch));
@@ -112,15 +116,23 @@ function memoryKeyStore(): RoomKeyStore {
 }
 
 /** Delivers the real room.rekey handler path so the member's key store is populated exactly as an application's would be. */
-async function rekeyMember(
-  owner: IdentityPort,
-  member: IdentityPort,
-  memberToken: CapabilityToken,
-  roomPath: string,
-  epoch: number,
-  contentKey: Uint8Array,
-  memberKeys: Readonly<RoomKeyStore>,
-): Promise<void> {
+async function rekeyMember({
+  owner,
+  member,
+  memberToken,
+  roomPath,
+  epoch,
+  contentKey,
+  memberKeys,
+}: Readonly<{
+  owner: IdentityPort;
+  member: IdentityPort;
+  memberToken: CapabilityToken;
+  roomPath: string;
+  epoch: number;
+  contentKey: Uint8Array;
+  memberKeys: Readonly<RoomKeyStore>;
+}>): Promise<void> {
   const sharedSecret = await owner.deriveSharedSecret?.(member.identityKey);
   if (sharedSecret === undefined) throw new Error("no ECDH");
   const wrappingKey = await deriveWrappingKey(sharedSecret, {
@@ -140,13 +152,15 @@ async function rekeyMember(
     revocation: createRevocationView(),
     ownRoomMemberToken: memberToken,
     onRekey: async (event: Readonly<RoomRekeyEvent>) => {
-      for (const [i, key] of event.contentKeys.entries()) {
-        await memberKeys.set(
-          roomPath,
-          event.keyEpoch - event.contentKeys.length + 1 + i,
-          key,
-        );
-      }
+      await Promise.all(
+        event.contentKeys.map(async (key, i) =>
+          memberKeys.set(
+            roomPath,
+            event.keyEpoch - event.contentKeys.length + 1 + i,
+            key,
+          ),
+        ),
+      );
     },
   });
   await handler(incoming);
@@ -231,15 +245,15 @@ describe("createNoticeBoard", () => {
     // Member receives epoch 1 through the real handler path.
     const epochKey = generateContentKey();
     const memberKeys = memoryKeyStore();
-    await rekeyMember(
+    await rekeyMember({
       owner,
       member,
       memberToken,
       roomPath,
-      FIRST_EPOCH,
-      epochKey,
+      epoch: FIRST_EPOCH,
+      contentKey: epochKey,
       memberKeys,
-    );
+    });
 
     // Member posts encrypted to its own log.
     const memberStorage = createMemoryStorage();
@@ -316,15 +330,15 @@ describe("createNoticeBoard", () => {
       roomKeys: keyStore,
     });
 
-    // Well-formed-ish COSE array bytes with no valid signature over claims:
-    // array(4) [ bstr(0), map(0), bstr(4), bstr(1,2,3,4) ] -- a cose-sign1
-    // tuple shape whose payload is far too short to be real claims.
+    /* Well-formed-ish COSE array bytes with no valid signature over claims:
+       array(4) [ bstr(0), map(0), bstr(4), bstr(1,2,3,4) ] -- a cose-sign1
+       tuple shape whose payload is far too short to be real claims. */
     const CBOR_ARRAY_HEAD = 0x84;
     const CBOR_EMPTY_BSTR = 0x40;
     const CBOR_EMPTY_MAP = 0xa0;
     const CBOR_SHORT_BSTR = 0x44;
-    // Arbitrary filler bytes standing in for a bogus-signature bstr,
-    // spelled as text so no raw byte literals trip the magic-number rule.
+    /* Arbitrary filler bytes standing in for a bogus-signature bstr,
+       spelled as text so no raw byte literals trip the magic-number rule. */
     const FILLER_BYTES = Array.from("wxyz", (c) => c.charCodeAt(0));
     const garbage = Uint8Array.from([
       CBOR_ARRAY_HEAD,
@@ -390,6 +404,7 @@ describe("notices in a DM", () => {
       deviceIdToHex(first.deviceId) < deviceIdToHex(second.deviceId);
     const a = firstIsLower ? first : second;
     const b = firstIsLower ? second : first;
+
     return {
       a,
       b,
@@ -408,6 +423,7 @@ describe("notices in a DM", () => {
     const keys = memoryKeyStore();
     await keys.set(roomPath, FIRST_EPOCH, key);
     const storage = createMemoryStorage();
+
     return {
       board: createNoticeBoard({
         identity,
@@ -454,16 +470,25 @@ describe("notices in a DM", () => {
       plaintext: new TextEncoder().encode("self-issued"),
     });
 
-    for (const [poster, expected] of [
-      [granted, true],
-      [selfIssued, false],
-    ] as const) {
-      const reader = await boardFor(b, roomPath, key);
-      for (const entry of await readEntries(poster.storage, a.deviceId, 0)) {
-        await reader.board.ingestPeerEntry(a.deviceId, new Uint8Array(entry));
-      }
-      const read = await reader.board.readPeerNotices(a.deviceId, roomPath);
-      expect(read[0]?.verified).toBe(expected);
-    }
+    await inSequence(
+      [
+        [granted, true],
+        [selfIssued, false],
+      ] as const,
+      async ([poster, expected]) => {
+        const reader = await boardFor(b, roomPath, key);
+        await inSequence(
+          await readEntries(poster.storage, a.deviceId, 0),
+          async (entry) => {
+            await reader.board.ingestPeerEntry(
+              a.deviceId,
+              new Uint8Array(entry),
+            );
+          },
+        );
+        const read = await reader.board.readPeerNotices(a.deviceId, roomPath);
+        expect(read[0]?.verified).toBe(expected);
+      },
+    );
   });
 });

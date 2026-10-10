@@ -295,6 +295,7 @@ describe("capability tokens and manage-request plumbing", () => {
       IteratorResult<IncomingManageRequest>
     > => {
       const iterator = session.incomingManageRequests[Symbol.asyncIterator]();
+
       return iterator.next();
     })();
 

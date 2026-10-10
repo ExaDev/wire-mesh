@@ -54,6 +54,7 @@ async function topology(): Promise<Topology> {
   await settle(...everyone);
   behindConnection.push(behind.gossip);
   await settle(...everyone);
+
   return {
     gateway,
     upstream,

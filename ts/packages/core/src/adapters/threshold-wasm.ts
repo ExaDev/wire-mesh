@@ -50,6 +50,7 @@ function fromParallelArrays(
       value: toBufferSource(value),
     });
   }
+
   return result;
 }
 
@@ -67,6 +68,7 @@ export function dkgRound1(
   minSigners: number,
 ): DkgRound1Result {
   const out = wasm.dkg_round1(ownDeviceId, maxSigners, minSigners);
+
   return {
     secretPackage: toBufferSource(out.secretPackage),
     package: toBufferSource(out.package),
@@ -92,6 +94,7 @@ export function splitRound1Package(
     }
     commitment.push(toBufferSource(coefficient));
   }
+
   return {
     commitment,
     proofOfKnowledge: toBufferSource(out.proofOfKnowledge),
@@ -120,6 +123,7 @@ export function dkgRound2(
 ): DkgRound2Result {
   const [ids, packages] = toParallelArrays(round1);
   const out = wasm.dkg_round2(ownSecretPackage, ids, packages);
+
   return {
     secretPackage: toBufferSource(out.secretPackage),
     outgoing: fromParallelArrays(out.recipientIds, out.packages),
@@ -147,6 +151,7 @@ export function dkgRound3(
     ids2,
     packages2,
   );
+
   return {
     keyPackage: toBufferSource(out.keyPackage),
     publicKeyPackage: toBufferSource(out.publicKeyPackage),
@@ -160,6 +165,7 @@ export function dkgTranscriptDigest(
   groupVerifyingKey: Uint8Array,
 ): Uint8Array<ArrayBuffer> {
   const [ids, packages] = toParallelArrays(allRound1);
+
   return toBufferSource(
     wasm.dkg_transcript_digest(ids, packages, groupVerifyingKey),
   );
@@ -201,6 +207,7 @@ export function signingRound1Commit(
   ownKeyPackage: Uint8Array,
 ): SigningRound1Result {
   const out = wasm.signing_round1_commit(ownKeyPackage);
+
   return {
     nonces: toBufferSource(out.nonces),
     commitments: toBufferSource(out.commitments),
@@ -217,6 +224,7 @@ export function splitCommitments(
   commitments: Uint8Array,
 ): SplitCommitmentsResult {
   const out = wasm.split_commitments(commitments);
+
   return {
     hiding: toBufferSource(out.hiding),
     binding: toBufferSource(out.binding),
@@ -237,6 +245,7 @@ export function signingBuildPackage(
   message: Uint8Array,
 ): Uint8Array<ArrayBuffer> {
   const [ids, values] = toParallelArrays(commitments);
+
   return toBufferSource(wasm.signing_build_package(ids, values, message));
 }
 
@@ -260,6 +269,7 @@ export function signingAggregate(
   publicKeyPackage: Uint8Array,
 ): Uint8Array<ArrayBuffer> {
   const [ids, values] = toParallelArrays(shares);
+
   return toBufferSource(
     wasm.signing_aggregate(signingPackage, ids, values, publicKeyPackage),
   );
@@ -289,6 +299,7 @@ export function reshareRound1(
     [...newParticipantDeviceIds],
     newMinSigners,
   );
+
   return {
     commitment: toBufferSource(out.commitment),
     outgoing: fromParallelArrays(out.recipientIds, out.shares),
@@ -308,6 +319,7 @@ export function reshareSplitCommitment(
     }
     out.push(toBufferSource(part));
   }
+
   return out;
 }
 
@@ -331,6 +343,7 @@ export function reshareTranscriptDigest(
   groupVerifyingKey: Uint8Array,
 ): Uint8Array<ArrayBuffer> {
   const [ids, commitments] = toParallelArrays(survivorCommitments);
+
   return toBufferSource(
     wasm.reshare_transcript_digest(ids, commitments, groupVerifyingKey),
   );
@@ -349,6 +362,7 @@ export function reshareDerivePublicKeyPackage(
   const out = wasm.reshare_derive_public_key_package(combinedCommitment, [
     ...newParticipantDeviceIds,
   ]);
+
   return {
     publicKeyPackage: toBufferSource(out.publicKeyPackage),
     groupVerifyingKey: toBufferSource(out.groupVerifyingKey),

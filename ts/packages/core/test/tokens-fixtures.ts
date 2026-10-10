@@ -17,17 +17,27 @@ import type { RevocationCheck } from "../src/domain/tokens.js";
 export const ES256 = -7;
 export const EDDSA = -8;
 export const HOUR_MS = 3_600_000;
-export const REVOKED_SHORTLY_BEFORE_NOW_MS = 1_000; // revoked-at sits just before `now` in these tests -- the value only needs to be in the past, not any particular distance
-export const P256_SIGNATURE_BYTE_LENGTH = 64; // raw ECDSA P-256 signature length
-export const DEVICE_ID_BYTE_LENGTH = 32; // SHA-256 digest length
+/**
+ * revoked-at sits just before `now` in these tests -- the value only needs to be in the past, not any particular distance
+ */
+export const REVOKED_SHORTLY_BEFORE_NOW_MS = 1_000;
+// raw ECDSA P-256 signature length
+export const P256_SIGNATURE_BYTE_LENGTH = 64;
+// SHA-256 digest length
+export const DEVICE_ID_BYTE_LENGTH = 32;
 export const ROOM_MEMBER_ROOM_PATH =
-  "aa".repeat(DEVICE_ID_BYTE_LENGTH) + "/general"; // a syntactically valid owner-named room-path; the tests below never verify path ownership against a real device-id, only scope-narrowing between parent and child
-export const LOW_BYTE_MASK = 0xff; // XOR operand keeping the corrupted byte within one octet when tampering with a signature in tests
+  // a syntactically valid owner-named room-path; the tests below never verify path ownership against a real device-id, only scope-narrowing between parent and child
+  "aa".repeat(DEVICE_ID_BYTE_LENGTH) + "/general";
+/**
+ * XOR operand keeping the corrupted byte within one octet when tampering with a signature in tests
+ */
+export const LOW_BYTE_MASK = 0xff;
 
 let issuedTokenIds = 0;
 /** A fresh, distinct token-id per call -- the tests only need each token to be distinguishable from the others, not any particular byte value. */
 export function nextTokenId(): Uint8Array<ArrayBuffer> {
   issuedTokenIds += 1;
+
   return buf([issuedTokenIds]);
 }
 
@@ -51,6 +61,7 @@ export async function generateEs256Identity(): Promise<IdentityPort> {
   const publicKeyBytes = new Uint8Array(
     await webcrypto.subtle.exportKey("raw", keyPair.publicKey),
   );
+
   return createNodeIdentity(keyPair.privateKey, publicKeyBytes, ES256);
 }
 
@@ -65,6 +76,7 @@ export async function generateEd25519Identity(): Promise<IdentityPort> {
   const publicKeyBytes = new Uint8Array(
     await webcrypto.subtle.exportKey("raw", keyPair.publicKey),
   );
+
   return createNodeIdentity(keyPair.privateKey, publicKeyBytes, EDDSA);
 }
 
@@ -114,6 +126,7 @@ export async function signRevocationEntry(
     payload,
   ]);
   const signature = await identity.sign(toBeSigned);
+
   return [protectedHeader, {}, payload, signature];
 }
 
@@ -173,5 +186,6 @@ export async function signToken(
     payload,
   ]);
   const signature = await identity.sign(toBeSigned);
+
   return [protectedHeader, {}, payload, signature];
 }

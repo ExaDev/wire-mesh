@@ -11,7 +11,8 @@ import {
 } from "../src/domain/pinned-address.js";
 
 const HASH_BYTES = 32;
-const HASH_BYTE = 0xab; // the value of each byte of HASH_HEX
+// the value of each byte of HASH_HEX
+const HASH_BYTE = 0xab;
 const HASH_HEX = "ab".repeat(HASH_BYTES);
 
 describe("pinned addresses", () => {

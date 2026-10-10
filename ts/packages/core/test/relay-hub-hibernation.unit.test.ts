@@ -24,10 +24,17 @@ const relayPayload = bytesFromHex("deadbeef");
 /** Establishes the production pairing shape on a hub: both sides gossip, then a dials b. Returns the stable Connection objects, since FakeConnection's own getter hands back a fresh object on every access. */
 async function pairOver(
   hub: Readonly<RelayHub>,
-  a: FakeConnection,
-  peerA: TestPeer,
-  b: FakeConnection,
-  peerB: TestPeer,
+  {
+    a,
+    peerA,
+    b,
+    peerB,
+  }: Readonly<{
+    a: FakeConnection;
+    peerA: TestPeer;
+    b: FakeConnection;
+    peerB: TestPeer;
+  }>,
 ): Promise<{ aConnection: Connection; bConnection: Connection }> {
   const aConnection = a.connection;
   const bConnection = b.connection;
@@ -39,6 +46,7 @@ async function pairOver(
     type: "relay-connect",
     "target-device": peerB.device,
   });
+
   return { aConnection, bConnection };
 }
 
@@ -48,6 +56,7 @@ function wokenHubOver(
 ): ReturnType<typeof createRelayHub> {
   const hub = createRelayHub({ identity: hubVerifier });
   hub.restoreConnections(entries);
+
   return hub;
 }
 
@@ -59,6 +68,7 @@ function restoreEntryFor(
   if (state === undefined) {
     throw new Error("connection has no exportable relay state");
   }
+
   return { connection, state };
 }
 
@@ -69,13 +79,12 @@ describe("relay state across a hub instance being torn down", () => {
     const peerB = await createTestPeer();
     const a = new FakeConnection();
     const b = new FakeConnection();
-    const { aConnection, bConnection } = await pairOver(
-      established,
+    const { aConnection, bConnection } = await pairOver(established, {
       a,
       peerA,
       b,
       peerB,
-    );
+    });
 
     const woken = wokenHubOver([
       restoreEntryFor(established, aConnection),
@@ -188,7 +197,7 @@ describe("relay state across a hub instance being torn down", () => {
     const peerB = await createTestPeer();
     const a = new FakeConnection();
     const b = new FakeConnection();
-    const { aConnection } = await pairOver(established, a, peerA, b, peerB);
+    const { aConnection } = await pairOver(established, { a, peerA, b, peerB });
 
     const woken = wokenHubOver([restoreEntryFor(established, aConnection)]);
     a.sent.length = 0;
@@ -216,7 +225,7 @@ describe("relay state across a hub instance being torn down", () => {
     const peerB = await createTestPeer();
     const a = new FakeConnection();
     const b = new FakeConnection();
-    const { aConnection } = await pairOver(hub, a, peerA, b, peerB);
+    const { aConnection } = await pairOver(hub, { a, peerA, b, peerB });
 
     expect(hub.exportConnection(aConnection)).toEqual({
       device: peerA.device,
@@ -286,13 +295,12 @@ describe("onConnectionStateChanged", () => {
     });
     const a = new FakeConnection();
     const b = new FakeConnection();
-    const { aConnection, bConnection } = await pairOver(
-      hub,
+    const { aConnection, bConnection } = await pairOver(hub, {
       a,
       peerA,
       b,
       peerB,
-    );
+    });
 
     // Two gossip frames, then the relay-connect reporting the initiator and the target.
     expect(changed).toEqual([

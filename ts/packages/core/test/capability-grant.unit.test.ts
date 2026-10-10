@@ -41,6 +41,7 @@ async function generateEs256Identity(): Promise<IdentityPort> {
   const publicKeyBytes = new Uint8Array(
     await webcrypto.subtle.exportKey("raw", keyPair.publicKey),
   );
+
   return createNodeIdentity(keyPair.privateKey, publicKeyBytes, ES256);
 }
 
@@ -55,6 +56,7 @@ const neverRevoked: RevocationCheck = {
 let issuedTokenIds = 0;
 function nextTokenId(): Uint8Array<ArrayBuffer> {
   issuedTokenIds += 1;
+
   return Uint8Array.from([issuedTokenIds]);
 }
 
@@ -97,6 +99,7 @@ async function signToken(
     payload,
   ]);
   const signature = await identity.sign(toBeSigned);
+
   return [protectedHeader, {}, payload, signature];
 }
 
@@ -117,6 +120,7 @@ function fakeIncoming(
     scope,
     respond,
   };
+
   return { incoming, respond };
 }
 
@@ -213,6 +217,7 @@ describe("createCapabilityGrantHandler", () => {
       granterDevice: granter.deviceId,
       onGrant,
     });
+
     return { handle, granter, recipient, onGrant };
   }
 
@@ -236,6 +241,7 @@ describe("createCapabilityGrantHandler", () => {
       expires: overrides?.expires ?? NOW_MS + HOUR_MS,
     });
     if (!verdict.ok) throw new Error(`mint failed: ${verdict.reason}`);
+
     return verdict.token;
   }
 
@@ -478,6 +484,7 @@ describe("createCapabilityGrantHandler", () => {
     const token = await validGrantToken(granter, recipient);
     const respond = vi.fn(async (): Promise<void> => {
       calls.push("respond");
+
       return Promise.resolve();
     });
     const handle = createCapabilityGrantHandler({
@@ -535,6 +542,7 @@ describe("round trip: sendCapabilityGrant against createCapabilityGrantHandler",
       async (command): Promise<ManageOutcome> => {
         const { incoming, respond } = fakeIncoming(command, TEST_SCOPE);
         await handle(incoming);
+
         return respond.mock.calls[0]?.[0] as ManageOutcome;
       },
     );

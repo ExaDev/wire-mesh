@@ -64,6 +64,7 @@ async function generateEs256Identity(): Promise<IdentityPort> {
     false,
     ["deriveBits"],
   );
+
   return createNodeIdentity(
     keyPair.privateKey,
     publicKeyBytes,
@@ -75,6 +76,7 @@ async function generateEs256Identity(): Promise<IdentityPort> {
 let issuedTokenIds = 0;
 function nextTokenId(): Uint8Array<ArrayBuffer> {
   issuedTokenIds += 1;
+
   return Uint8Array.from([issuedTokenIds]);
 }
 
@@ -94,6 +96,7 @@ async function mintRoomMemberToken(
     delegationsRemaining: 0,
   });
   if (!verdict.ok) throw new Error(`mint failed: ${verdict.reason}`);
+
   return verdict.token;
 }
 
@@ -112,6 +115,7 @@ function fakeIncoming(
     scope,
     respond,
   };
+
   return { incoming, respond };
 }
 
@@ -166,16 +170,23 @@ describe("createRoomRekeyHandler", () => {
       ownRoomMemberToken: memberToken,
       onRekey,
     });
+
     return { owner, member, roomPath, handler, onRekey };
   }
 
-  async function ownerWraps(
-    owner: IdentityPort,
-    member: IdentityPort,
-    roomPath: string,
-    keyEpoch: number,
-    contentKey: Uint8Array,
-  ): Promise<Uint8Array> {
+  async function ownerWraps({
+    owner,
+    member,
+    roomPath,
+    keyEpoch,
+    contentKey,
+  }: Readonly<{
+    owner: IdentityPort;
+    member: IdentityPort;
+    roomPath: string;
+    keyEpoch: number;
+    contentKey: Uint8Array;
+  }>): Promise<Uint8Array> {
     if (owner.deriveSharedSecret === undefined) {
       throw new Error("owner identity must expose deriveSharedSecret");
     }
@@ -184,13 +195,20 @@ describe("createRoomRekeyHandler", () => {
       room: roomPath,
       keyEpoch,
     });
+
     return wrapContentKey(wrappingKey, contentKey);
   }
 
   it("unwraps a single-epoch (bare bstr) room.rekey and reports it via onRekey", async () => {
     const { owner, member, roomPath, handler, onRekey } = await setUp();
     const contentKey = generateContentKey();
-    const wrapped = await ownerWraps(owner, member, roomPath, 1, contentKey);
+    const wrapped = await ownerWraps({
+      owner,
+      member,
+      roomPath,
+      keyEpoch: 1,
+      contentKey,
+    });
     const { incoming, respond } = fakeIncoming(
       buildRoomRekeyCommand(1, wrapped),
       { kind: "room", path: roomPath },
@@ -210,8 +228,20 @@ describe("createRoomRekeyHandler", () => {
     const { owner, member, roomPath, handler, onRekey } = await setUp();
     const epoch1Key = generateContentKey();
     const epoch2Key = generateContentKey();
-    const wrapped1 = await ownerWraps(owner, member, roomPath, 1, epoch1Key);
-    const wrapped2 = await ownerWraps(owner, member, roomPath, 2, epoch2Key);
+    const wrapped1 = await ownerWraps({
+      owner,
+      member,
+      roomPath,
+      keyEpoch: 1,
+      contentKey: epoch1Key,
+    });
+    const wrapped2 = await ownerWraps({
+      owner,
+      member,
+      roomPath,
+      keyEpoch: 2,
+      contentKey: epoch2Key,
+    });
     const { incoming } = fakeIncoming(
       buildRoomRekeyCommand(2, [wrapped1, wrapped2]),
       { kind: "room", path: roomPath },
@@ -245,7 +275,13 @@ describe("createRoomRekeyHandler", () => {
       onRekey,
     });
     const contentKey = generateContentKey();
-    const wrapped = await ownerWraps(owner, member, roomPath, 1, contentKey);
+    const wrapped = await ownerWraps({
+      owner,
+      member,
+      roomPath,
+      keyEpoch: 1,
+      contentKey,
+    });
     const { incoming, respond } = fakeIncoming(
       buildRoomRekeyCommand(1, wrapped),
       { kind: "room", path: roomPath },
@@ -265,7 +301,13 @@ describe("createRoomRekeyHandler", () => {
     const { member, roomPath, handler, onRekey } = await setUp();
     const attacker = await generateEs256Identity();
     const contentKey = generateContentKey();
-    const wrapped = await ownerWraps(attacker, member, roomPath, 1, contentKey);
+    const wrapped = await ownerWraps({
+      owner: attacker,
+      member,
+      roomPath,
+      keyEpoch: 1,
+      contentKey,
+    });
     const { incoming, respond } = fakeIncoming(
       buildRoomRekeyCommand(1, wrapped),
       { kind: "room", path: roomPath },
@@ -287,13 +329,13 @@ describe("createRoomRekeyHandler", () => {
       "other",
     );
     const contentKey = generateContentKey();
-    const wrapped = await ownerWraps(
+    const wrapped = await ownerWraps({
       owner,
       member,
-      otherRoomPath,
-      1,
+      roomPath: otherRoomPath,
+      keyEpoch: 1,
       contentKey,
-    );
+    });
     const { incoming, respond } = fakeIncoming(
       buildRoomRekeyCommand(1, wrapped),
       { kind: "room", path: otherRoomPath },
@@ -349,7 +391,8 @@ describe("createRoomRekeyHandler", () => {
 
   it("refuses when the local identity has no deriveSharedSecret (e.g. an Ed25519-only identity)", async () => {
     const owner = await generateEs256Identity();
-    const member = await generateEs256Identity(); // ECDH-capable, but the handler below is built with a plain, non-ECDH identity for the *recipient* role
+    // ECDH-capable, but the handler below is built with a plain, non-ECDH identity for the *recipient* role
+    const member = await generateEs256Identity();
     const roomPath = ownerNamedRoomPath(
       deviceIdToHex(owner.deviceId),
       "general",
@@ -381,7 +424,13 @@ describe("createRoomRekeyHandler", () => {
       onRekey,
     });
     const contentKey = generateContentKey();
-    const wrapped = await ownerWraps(owner, member, roomPath, 1, contentKey);
+    const wrapped = await ownerWraps({
+      owner,
+      member,
+      roomPath,
+      keyEpoch: 1,
+      contentKey,
+    });
     const { incoming, respond } = fakeIncoming(
       buildRoomRekeyCommand(1, wrapped),
       { kind: "room", path: roomPath },
@@ -396,13 +445,13 @@ describe("createRoomRekeyHandler", () => {
     expect(onRekey).not.toHaveBeenCalled();
   });
 
-  // The DM bootstrap scenario wire-mesh#36's consumer work surfaced: in a DM,
-  // each participant's own held token chains to the OTHER side (I approve
-  // your join request, minting a grant rooted at me, held by you). The
-  // rekey handler must accept that root for a DM path -- both participants
-  // are named, equal authorities in the path itself, and the handler's real
-  // binding is the ECDH unwrap (a forged rekey needs the root's private key
-  // to produce unwrappable ciphertext), not the room.send-grade root rule.
+  /* The DM bootstrap scenario wire-mesh#36's consumer work surfaced: in a DM,
+     each participant's own held token chains to the OTHER side (I approve
+     your join request, minting a grant rooted at me, held by you). The
+     rekey handler must accept that root for a DM path -- both participants
+     are named, equal authorities in the path itself, and the handler's real
+     binding is the ECDH unwrap (a forged rekey needs the root's private key
+     to produce unwrappable ciphertext), not the room.send-grade root rule. */
   async function dmSetup(): Promise<{
     alice: IdentityPort;
     bob: IdentityPort;
@@ -416,13 +465,14 @@ describe("createRoomRekeyHandler", () => {
     const lower = aHex < bHex ? a : b;
     const higher = aHex < bHex ? b : a;
     const path = dmRoomPath(aHex, bHex);
+
     return { alice: lower, bob: higher, roomPath: path };
   }
 
   it("unwraps a DM epoch-1 rekey sent by the lower participant, whose root the higher side's own token chains to", async () => {
     const { alice, bob, roomPath } = await dmSetup();
-    // bob's own token: granted by alice (the DM convention -- each side's
-    // held token is rooted at the other).
+    /* bob's own token: granted by alice (the DM convention -- each side's
+       held token is rooted at the other). */
     const bobToken = await mintRoomMemberToken(alice, bob, roomPath);
     const onRekey = vi.fn<(event: Readonly<RoomRekeyEvent>) => void>();
     const handler = createRoomRekeyHandler({
@@ -433,7 +483,13 @@ describe("createRoomRekeyHandler", () => {
       onRekey,
     });
     const contentKey = generateContentKey();
-    const wrapped = await ownerWraps(alice, bob, roomPath, 1, contentKey);
+    const wrapped = await ownerWraps({
+      owner: alice,
+      member: bob,
+      roomPath,
+      keyEpoch: 1,
+      contentKey,
+    });
     const { incoming, respond } = fakeIncoming(
       buildRoomRekeyCommand(1, wrapped),
       { kind: "room", path: roomPath },
@@ -452,8 +508,8 @@ describe("createRoomRekeyHandler", () => {
   it("still refuses a DM rekey rooted at a stranger outside the path", async () => {
     const { alice, bob, roomPath } = await dmSetup();
     const stranger = await generateEs256Identity();
-    // bob's token granted by a stranger -- NOT a path participant. Even the
-    // rekey-scoped either-participant rule must refuse this root.
+    /* bob's token granted by a stranger -- NOT a path participant. Even the
+       rekey-scoped either-participant rule must refuse this root. */
     const bobToken = await mintRoomMemberToken(stranger, bob, roomPath);
     const onRekey = vi.fn<(event: Readonly<RoomRekeyEvent>) => void>();
     const handler = createRoomRekeyHandler({
@@ -464,10 +520,16 @@ describe("createRoomRekeyHandler", () => {
       onRekey,
     });
     const contentKey = generateContentKey();
-    // alice wraps (a genuine path participant) -- but bob's verified token
-    // roots at the stranger, so the derivation target is the stranger's key
-    // and the unwrap must fail.
-    const wrapped = await ownerWraps(alice, bob, roomPath, 1, contentKey);
+    /* alice wraps (a genuine path participant) -- but bob's verified token
+       roots at the stranger, so the derivation target is the stranger's key
+       and the unwrap must fail. */
+    const wrapped = await ownerWraps({
+      owner: alice,
+      member: bob,
+      roomPath,
+      keyEpoch: 1,
+      contentKey,
+    });
     const { incoming, respond } = fakeIncoming(
       buildRoomRekeyCommand(1, wrapped),
       { kind: "room", path: roomPath },

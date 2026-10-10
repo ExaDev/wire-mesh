@@ -90,15 +90,18 @@ export function createRoomRekeyHandler(
   ): Promise<void> {
     if (incoming.command.verb !== ROOM_MEMBER_CAPABILITY) {
       await incoming.respond({ result: "error", code: "malformed" });
+
       return;
     }
     const parsed = roomRekeySchema.safeParse(incoming.command.params);
     if (!parsed.success) {
       await incoming.respond({ result: "error", code: "malformed" });
+
       return;
     }
     if (incoming.scope.kind !== "room" || incoming.scope.path === undefined) {
       await incoming.respond({ result: "error", code: "scope_mismatch" });
+
       return;
     }
     const roomPath = incoming.scope.path;
@@ -109,19 +112,21 @@ export function createRoomRekeyHandler(
       revocation: options.revocation,
       expectedBearer: options.identity.deviceId,
       roomPath,
-      // The rekey-scoped DM root rule -- see VerifyRoomTokenOptions's own
-      // dmRootPolicy doc comment for why this caller may accept either path
-      // participant where room.send never may.
+      /* The rekey-scoped DM root rule -- see VerifyRoomTokenOptions's own
+         dmRootPolicy doc comment for why this caller may accept either path
+         participant where room.send never may. */
       dmRootPolicy: "either-participant",
     });
     if (!verdict.ok) {
       await incoming.respond({ result: "error", code: verdict.reason });
+
       return;
     }
 
     const deriveSharedSecret = options.identity.deriveSharedSecret;
     if (deriveSharedSecret === undefined) {
       await incoming.respond({ result: "error", code: "ecdh_unsupported" });
+
       return;
     }
 
@@ -140,11 +145,13 @@ export function createRoomRekeyHandler(
             room: roomPath,
             keyEpoch: firstEpoch + i,
           });
+
           return unwrapContentKey(wrappingKey, wrapped);
         }),
       );
     } catch {
       await incoming.respond({ result: "error", code: "unwrap_failed" });
+
       return;
     }
 

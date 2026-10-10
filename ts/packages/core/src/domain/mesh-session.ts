@@ -297,6 +297,7 @@ function createSessionCore(
     const requestId = nextRequestId;
     nextRequestId += 1;
     const token = tokenOverride ?? currentToken;
+
     return {
       type: "manage-request",
       "request-id": requestId,
@@ -311,6 +312,7 @@ function createSessionCore(
     if (connection === null || state.status !== "connected") {
       throw new Error("not connected");
     }
+
     return connection;
   }
 
@@ -325,6 +327,7 @@ function createSessionCore(
     }
     if (!viaRelay) {
       await connection.send(frame);
+
       return;
     }
     if (toDevice === undefined) {
@@ -385,6 +388,7 @@ function createSessionCore(
     };
     if (isVersionGetCommand(frame.command.params)) {
       void incoming.respond(versionGetOutcome());
+
       return;
     }
     incomingQueue.push(incoming);
@@ -397,6 +401,7 @@ function createSessionCore(
       if (inner?.type === "secure-hello") {
         recordFrame({ direction: "received", frame: inner });
         await relayChannels.applyHello(inner);
+
         return;
       }
       if (inner?.type === "secure-data") {
@@ -423,20 +428,22 @@ function createSessionCore(
               : {}),
           });
         }
+
         return;
       }
       recordFrame({ direction: "received", frame });
+
       return;
     }
     recordFrame({ direction: "received", frame });
     if (frame.type === "handshake") {
       applyRemoteHandshake(frame);
     } else if (frame.type === "gossip") {
-      for (const advert of frame.peers) {
-        // Verified here, never taken on the sender's word: an advert reaching this session was very often forwarded by a hub or a gateway rather than sent by the device it names, and a hub is a facilitator for the directory rather than an authority over it (wire-mesh#225). An advert that fails is dropped on its own; the frame's remaining entries are unaffected, since one forged entry says nothing about the others.
-        if (!(await verifyPeerAdvert(identity, advert))) {
-          continue;
-        }
+      // Verified here, never taken on the sender's word: an advert reaching this session was very often forwarded by a hub or a gateway rather than sent by the device it names, and a hub is a facilitator for the directory rather than an authority over it (wire-mesh#225). An advert that fails is dropped on its own; the frame's remaining entries are unaffected, since one forged entry says nothing about the others.
+      const verdicts = await Promise.all(
+        frame.peers.map(async (advert) => verifyPeerAdvert(identity, advert)),
+      );
+      for (const advert of frame.peers.filter((_, i) => verdicts[i] === true)) {
         // Latest advert per device wins, order preserved by first insertion -- a re-advert updates in place.
         directory.set(deviceIdToHex(advert.device), {
           device: advert.device,
@@ -543,6 +550,7 @@ function createSessionCore(
           );
         });
       }, reconnect.delayMs(currentAttempt));
+
       return;
     }
     state = { status: "closed", address, reason };
@@ -594,6 +602,7 @@ function createSessionCore(
       "snapshot-seconds": Math.floor(clock.now() / MS_PER_SECOND),
       "identity-key": identity.identityKey,
     });
+
     return { type: "gossip", peers: [advert] };
   }
 
@@ -657,6 +666,7 @@ function createSessionCore(
     const link = await dial(address);
     if (feedCancelled) {
       await link.close();
+
       return;
     }
     await wireUpConnection(link, address, localDomains);
@@ -696,6 +706,7 @@ function createSessionCore(
       },
       async sendPingMeasureRtt(timeoutMs?: number): Promise<number> {
         const link = requireConnectedLink();
+
         return pingRoundTrips.sendAndAwait(
           clock.now(),
           async () => {
@@ -742,11 +753,13 @@ function createSessionCore(
             throw error;
           }
           emit();
+
           return outcome;
         })();
         if (timeoutMs === undefined) {
           return exchange;
         }
+
         return Promise.race([
           exchange,
           new Promise<ManageOutcome>((resolve) => {
@@ -867,6 +880,7 @@ export function createMeshSession(
     addresses,
     onFrame,
   );
+
   return session;
 }
 
@@ -923,5 +937,6 @@ export async function acceptMeshSession(
     options.onSessionEnd,
   );
   await wireUpConnection(connection, options.label ?? "accepted", localDomains);
+
   return { ...session, peerDeviceId };
 }

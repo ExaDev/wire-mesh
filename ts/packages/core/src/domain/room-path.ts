@@ -22,6 +22,7 @@ export function ownerNamedRoomPath(owner: string, localName: string): string {
       `expected localName to match [A-Za-z0-9_-]+, got ${JSON.stringify(localName)}`,
     );
   }
+
   return `${owner}/${localName}`;
 }
 
@@ -32,6 +33,7 @@ export function dmRoomPath(a: string, b: string): string {
   if (a === b) {
     throw new Error(`a DM room path cannot name the same device twice (${a})`);
   }
+
   return a < b ? `${a}+${b}` : `${b}+${a}`;
 }
 
@@ -75,5 +77,6 @@ export function slugRoomName(name: string): string {
       `${JSON.stringify(name)} has no valid room-name characters to slug`,
     );
   }
+
   return slug;
 }
