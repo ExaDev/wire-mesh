@@ -1,3 +1,9 @@
+## [4.0.5](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.0.4...wire-mesh-core%404.0.5) (2026-10-19)
+
+### Bug Fixes
+
+* **core:** keep a device's newest advert when an older one arrives later ([e0b0a98](https://github.com/ExaDev/wire-mesh/commit/e0b0a987677ad426b0e824b5d70e1daffa303d28))
+
 ## [4.0.4](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.0.3...wire-mesh-core%404.0.4) (2026-10-10)
 
 ### Code Refactoring
