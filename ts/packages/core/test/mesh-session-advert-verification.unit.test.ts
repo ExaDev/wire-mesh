@@ -15,6 +15,7 @@ import {
   testIdentity,
 } from "./mesh-session-fixtures.js";
 import {
+  FIXTURE_SNAPSHOT_SECONDS,
   peerAdvertFor,
   withBrokenSignature,
 } from "./relay-hub-test-helpers.js";
@@ -104,6 +105,39 @@ describe("a mesh session verifies gossiped adverts before its directory sees the
 
     const event = await nthEvent(session, EVENTS_THROUGH_CONNECT + 1);
     expect(directoryOf(event)).toEqual([]);
+    await session.close();
+  });
+
+  it("keeps a device's newest advert when an older one arrives after it", async () => {
+    const { connection, session } = await connectedSession();
+    const older = await peerAdvertFor(identityA, FIXTURE_SNAPSHOT_SECONDS);
+    const newer = await peerAdvertFor(identityA, FIXTURE_SNAPSHOT_SECONDS + 1);
+    connection.push({ type: "gossip", peers: [newer] });
+    connection.push({ type: "gossip", peers: [older] });
+
+    const event = await nthEvent(session, EVENTS_THROUGH_CONNECT + 2);
+    expect(
+      directoryOf(event).map((entry) => entry.advert["snapshot-seconds"]),
+      "a replayed older advert must not replace the newer one",
+    ).toEqual([FIXTURE_SNAPSHOT_SECONDS + 1]);
+    await session.close();
+  });
+
+  it("replaces a device's advert with a newer one", async () => {
+    const { connection, session } = await connectedSession();
+    connection.push({
+      type: "gossip",
+      peers: [await peerAdvertFor(identityA, FIXTURE_SNAPSHOT_SECONDS)],
+    });
+    connection.push({
+      type: "gossip",
+      peers: [await peerAdvertFor(identityA, FIXTURE_SNAPSHOT_SECONDS + 1)],
+    });
+
+    const event = await nthEvent(session, EVENTS_THROUGH_CONNECT + 2);
+    expect(
+      directoryOf(event).map((entry) => entry.advert["snapshot-seconds"]),
+    ).toEqual([FIXTURE_SNAPSHOT_SECONDS + 1]);
     await session.close();
   });
 

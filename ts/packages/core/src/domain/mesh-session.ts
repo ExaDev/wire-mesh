@@ -444,11 +444,11 @@ function createSessionCore(
         frame.peers.map(async (advert) => verifyPeerAdvert(identity, advert)),
       );
       for (const advert of frame.peers.filter((_, i) => verdicts[i] === true)) {
-        // Latest advert per device wins, order preserved by first insertion -- a re-advert updates in place.
-        directory.set(deviceIdToHex(advert.device), {
-          device: advert.device,
-          advert,
-        });
+        // Newest advert per device wins, order preserved by first insertion -- a re-advert updates in place. Newest is by the device's own signed `snapshot-seconds`, never by arrival: a hub or gateway forwards adverts it holds from earlier, so an older one can arrive after a newer one, and applying it would roll the device back (and, on every later event, the same device alternates between its two versions).
+        const deviceHex = deviceIdToHex(advert.device);
+        const held = directory.get(deviceHex)?.advert["snapshot-seconds"];
+        if (held !== undefined && advert["snapshot-seconds"] < held) continue;
+        directory.set(deviceHex, { device: advert.device, advert });
         topology.recordAdvert(advert.device);
         onPeerAdvert?.(advert);
       }
