@@ -1,9 +1,14 @@
 // The memo's own policy, independent of what the verdicts are about: which entries it keeps under a byte budget, and what it does with an outcome that must not be kept.
 
-import { describe, expect, it } from "vitest";
-import { bytesKey, createVerdictCache } from "../src/domain/verdict-cache.js";
+import { describe, expect, it, vi } from "vitest";
+import {
+  bytesKey,
+  bytesKeyLength,
+  createVerdictCache,
+} from "../src/domain/verdict-cache.js";
 
-/** Characters in every key these tests build, so a budget can be stated in whole entries. */
+/** Bytes in the one part of every key these tests build. The key is that many characters behind a `6:` length prefix, so it is KEY_LENGTH characters and a budget can be stated in whole entries. */
+const PART_BYTES = 6;
 const KEY_LENGTH = 8;
 /** The cache charges this much per entry on top of its key's length. Restated here, not imported, so a change to it shows up as a failing test of the budget arithmetic. */
 const ENTRY_OVERHEAD = 16;
@@ -20,7 +25,9 @@ const OVERSIZED_KEY_LENGTH = 1000;
 const FIRST = 1;
 const SECOND = 2;
 const THIRD = 3;
-const keyOf = (n: number): string => String(n).padStart(KEY_LENGTH, "0");
+const keyOf = (n: number): readonly Uint8Array[] => [
+  new Uint8Array(PART_BYTES).fill(n),
+];
 
 /** A compute function that records how many times it ran. */
 function counted(verdict: boolean | undefined): {
@@ -65,13 +72,25 @@ describe("bytesKey", () => {
   });
 });
 
+describe("bytesKeyLength", () => {
+  it("is the length of the key bytesKey builds, without building it", () => {
+    const parts = [
+      Uint8Array.of(FIRST, SECOND),
+      new Uint8Array(LARGER_THAN_ONE_CHUNK),
+      new Uint8Array(),
+    ];
+
+    expect(bytesKeyLength(parts)).toBe(bytesKey(...parts).length);
+  });
+});
+
 describe("createVerdictCache", () => {
   it("computes a key once and answers repeats from memory", async () => {
     const cache = createVerdictCache(GENEROUS_BUDGET);
     const a = counted(true);
 
-    expect(await cache.verdict("k", a.compute)).toBe(true);
-    expect(await cache.verdict("k", a.compute)).toBe(true);
+    expect(await cache.verdict(keyOf(FIRST), a.compute)).toBe(true);
+    expect(await cache.verdict(keyOf(FIRST), a.compute)).toBe(true);
 
     expect(a.runs()).toBe(1);
   });
@@ -98,7 +117,7 @@ describe("createVerdictCache", () => {
     const cache = createVerdictCache(ENTRY_COST);
     const small = counted(true);
     const oversized = counted(false);
-    const hostile = "x".repeat(OVERSIZED_KEY_LENGTH);
+    const hostile = [new Uint8Array(OVERSIZED_KEY_LENGTH)];
 
     await cache.verdict(keyOf(FIRST), small.compute);
     expect(await cache.verdict(hostile, oversized.compute)).toBe(false);
@@ -109,12 +128,34 @@ describe("createVerdictCache", () => {
     expect(small.runs(), "and it did not push out a normal entry").toBe(1);
   });
 
+  it("decides an oversized input is uncacheable from its length alone, never building the key string", async () => {
+    const cache = createVerdictCache(ENTRY_COST);
+    const fromCharCode = vi.spyOn(String, "fromCharCode");
+    const oversized = counted(true);
+
+    await cache.verdict(
+      [new Uint8Array(OVERSIZED_KEY_LENGTH)],
+      oversized.compute,
+    );
+    const builtForOversized = fromCharCode.mock.calls.length;
+    await cache.verdict(keyOf(FIRST), counted(true).compute);
+    const builtForSmall = fromCharCode.mock.calls.length;
+    fromCharCode.mockRestore();
+
+    expect(builtForOversized, "no character was produced for it").toBe(0);
+    expect(
+      builtForSmall,
+      "an input within budget is still keyed",
+    ).toBeGreaterThan(0);
+    expect(oversized.runs()).toBe(1);
+  });
+
   it("reports an unsettled outcome as false to its callers but does not keep it", async () => {
     const cache = createVerdictCache(GENEROUS_BUDGET);
     const failing = counted(undefined);
 
-    expect(await cache.verdict("k", failing.compute)).toBe(false);
-    expect(await cache.verdict("k", failing.compute)).toBe(false);
+    expect(await cache.verdict(keyOf(FIRST), failing.compute)).toBe(false);
+    expect(await cache.verdict(keyOf(FIRST), failing.compute)).toBe(false);
 
     expect(failing.runs()).toBe(2);
   });

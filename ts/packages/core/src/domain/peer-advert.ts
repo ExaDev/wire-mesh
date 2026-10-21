@@ -10,11 +10,7 @@ import type {
 } from "../generated/protocol.js";
 import type { IdentityPort } from "../ports/identity.js";
 import { bytesEqual } from "./token-scope.js";
-import {
-  bytesKey,
-  createVerdictCache,
-  type VerdictCache,
-} from "./verdict-cache.js";
+import { createVerdictCache, type VerdictCache } from "./verdict-cache.js";
 
 const BYTES_PER_KIBIBYTE = 1024;
 const BYTES_PER_MEBIBYTE = BYTES_PER_KIBIBYTE * BYTES_PER_KIBIBYTE;
@@ -138,7 +134,7 @@ export async function verifyPeerAdvert(
   }
 
   return verdictCacheFor(identity).verdict(
-    bytesKey(advert[PEER_ADVERT_SIGNATURE_KEY], signedBytes),
+    [advert[PEER_ADVERT_SIGNATURE_KEY], signedBytes],
     async () => checkPeerAdvert(identity, advert, signedBytes),
   );
 }
