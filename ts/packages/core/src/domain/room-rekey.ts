@@ -25,6 +25,9 @@ import {
 import { deriveWrappingKey, unwrapContentKey } from "./group-key.js";
 import type { RevocationCheck } from "./tokens.js";
 
+/** The error code a room.rekey is answered with when it unwrapped but the recipient could not store the keys, so the sender knows the key is not held and sends it again. */
+export const REKEY_STORE_FAILED = "store_failed";
+
 /**
  * Builds a room.rekey command per room.cddl. The outer verb is room:member, the same "one resource, several inner verbs" pattern room.send/room.leave/room.members already establish -- not a new capability of its own.
  */
@@ -75,12 +78,12 @@ export interface CreateRoomRekeyHandlerOptions {
   revocation: RevocationCheck;
   /** This recipient's own currently-held room:member token for the room being rekeyed, verified fresh on every incoming room.rekey (not cached) -- see this module's own doc comment for why its certified root issuer-key is what the ECDH derivation uses, rather than a separately-tracked live-sender identity. */
   ownRoomMemberToken: CapabilityToken;
-  /** Called once per successfully unwrapped room.rekey, after the sender has been told it succeeded. May be asynchronous, as storing a key durably is; the handler waits for it, so a failure to store reaches whoever awaits the handler. */
+  /** Called once per successfully unwrapped room.rekey, before the sender is told it succeeded. May be asynchronous, as storing a key durably is; the handler waits for it and answers "ok" only once it has settled, and when it rejects the handler answers `store_failed` and rejects with the same error, so the failure reaches both the sender and whoever awaits the handler. */
   onRekey: (event: Readonly<RoomRekeyEvent>) => Promise<void> | void;
 }
 
 /**
- * Builds a reusable handler for one room's incoming room.rekey messages. Checks, in order: the outer verb is room:member (otherwise "malformed"); the params payload parses against room.rekey's own CDDL shape (otherwise "malformed"); the request's own scope is a room scope (otherwise "scope_mismatch"); ownRoomMemberToken independently passes every one of core/room's six verifier obligations, scoped to the incoming request's own room path (a failure responds with verifyRoomToken's own specific reason, e.g. "wrong_chain_root"/"wrong_scope_path"/"expired"); this identity actually supports deriveSharedSecret (otherwise "ecdh_unsupported" -- an Ed25519-only identity genuinely cannot participate). Only then does it derive the shared secret against the verified chain's own rootIssuerKey, derive one wrapping key per granted epoch (per the array-ordering convention: entry i is epoch i+1, counting back from key-epoch), and unwrap each -- a failure at that final cryptographic step (a forged sender, or genuine corruption) responds "unwrap_failed" rather than surfacing a partially-decoded result.
+ * Builds a reusable handler for one room's incoming room.rekey messages. Checks, in order: the outer verb is room:member (otherwise "malformed"); the params payload parses against room.rekey's own CDDL shape (otherwise "malformed"); the request's own scope is a room scope (otherwise "scope_mismatch"); ownRoomMemberToken independently passes every one of core/room's six verifier obligations, scoped to the incoming request's own room path (a failure responds with verifyRoomToken's own specific reason, e.g. "wrong_chain_root"/"wrong_scope_path"/"expired"); this identity actually supports deriveSharedSecret (otherwise "ecdh_unsupported" -- an Ed25519-only identity genuinely cannot participate). Only then does it derive the shared secret against the verified chain's own rootIssuerKey, derive one wrapping key per granted epoch (per the array-ordering convention: entry i is epoch i+1, counting back from key-epoch), and unwrap each -- a failure at that final cryptographic step (a forged sender, or genuine corruption) responds "unwrap_failed" rather than surfacing a partially-decoded result. The unwrapped keys are then handed to onRekey, and the sender is answered "ok" only once onRekey has stored them, or "store_failed" when it could not.
  */
 export function createRoomRekeyHandler(
   options: Readonly<CreateRoomRekeyHandlerOptions>,
@@ -155,7 +158,13 @@ export function createRoomRekeyHandler(
       return;
     }
 
+    // The keys are stored before the sender hears "ok", so "ok" means this side holds them: a sender that sends later traffic only after the answer can rely on the key being here when that traffic arrives, and a store that fails is answered as a failure the sender sends again, not an "ok" it records as delivered and never resends.
+    try {
+      await options.onRekey({ room: roomPath, keyEpoch, contentKeys });
+    } catch (error) {
+      await incoming.respond({ result: "error", code: REKEY_STORE_FAILED });
+      throw error;
+    }
     await incoming.respond({ result: "ok" });
-    await options.onRekey({ room: roomPath, keyEpoch, contentKeys });
   };
 }
