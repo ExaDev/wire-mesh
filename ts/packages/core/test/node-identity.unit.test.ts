@@ -6,7 +6,7 @@ import {
   verifyWithPublicKey,
 } from "../src/adapters/node-identity.js";
 import type { IdentityPort } from "../src/ports/identity.js";
-import { repeatInSequence } from "./sequence.js";
+import { inSequence, repeatInSequence } from "./sequence.js";
 import { generateEd25519Identity } from "./tokens-fixtures.js";
 
 const ES256 = -7;
@@ -159,7 +159,17 @@ describe("deriveDeviceId", () => {
 const IMPORT_ONCE = 1;
 const IMPORT_TWICE = 2;
 const KEY_REPEATS = 5;
-const SHORT_KEY_BYTES = Uint8Array.from("key");
+const ES256_KEY_BYTES = 65;
+/** The first byte of an uncompressed SEC1 point. */
+const UNCOMPRESSED_POINT_PREFIX = 4;
+const ED25519_KEY_BYTES = 32;
+/** An uncompressed P-256 point whose coordinates are not on the curve: the right length and prefix for ES256, so only the import itself can refuse it. */
+const OFF_CURVE_ES256_KEY = Uint8Array.of(
+  UNCOMPRESSED_POINT_PREFIX,
+  ...new Uint8Array(ES256_KEY_BYTES - 1).fill(1),
+);
+/** Larger than any valid public key, as a hostile gossiped advert can carry up to the relay's frame limit. */
+const OVERSIZED_KEY_BYTES = 1_000_000;
 const SAMPLE_MESSAGE = Uint8Array.from("message");
 
 describe("verifyWithPublicKey imports each public key once", () => {
@@ -185,8 +195,45 @@ describe("verifyWithPublicKey imports each public key once", () => {
     }
   });
 
+  it("refuses a key of the wrong size for its algorithm before encoding any of it", async () => {
+    const fromBuffer = vi.spyOn(Buffer, "from");
+    const importKey = vi.spyOn(webcrypto.subtle, "importKey");
+    const hostile = new Uint8Array(OVERSIZED_KEY_BYTES);
+
+    try {
+      await inSequence([ES256, EDDSA, 0], async (alg) => {
+        await expect(
+          verifyWithPublicKey(
+            { alg, "public-key": hostile },
+            SAMPLE_MESSAGE,
+            SAMPLE_MESSAGE,
+          ),
+        ).rejects.toThrow();
+      });
+      await expect(
+        verifyWithPublicKey(
+          { alg: EDDSA, "public-key": new Uint8Array(ED25519_KEY_BYTES - 1) },
+          SAMPLE_MESSAGE,
+          SAMPLE_MESSAGE,
+        ),
+      ).rejects.toThrow();
+
+      const encodedTheHostileKey = fromBuffer.mock.calls.some(
+        ([source]) =>
+          typeof source === "object" &&
+          "length" in source &&
+          source.length >= OVERSIZED_KEY_BYTES,
+      );
+      expect(encodedTheHostileKey, "no copy of the key was made").toBe(false);
+      expect(importKey, "nor was an import attempted").not.toHaveBeenCalled();
+    } finally {
+      fromBuffer.mockRestore();
+      importKey.mockRestore();
+    }
+  });
+
   it("does not keep a key that failed to import", async () => {
-    const bad = { alg: EDDSA, "public-key": SHORT_KEY_BYTES };
+    const bad = { alg: ES256, "public-key": OFF_CURVE_ES256_KEY };
     const importKey = vi.spyOn(webcrypto.subtle, "importKey");
 
     try {
