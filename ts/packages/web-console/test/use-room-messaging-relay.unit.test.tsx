@@ -195,12 +195,63 @@ describe("a conversation over a hub", () => {
 
     await act(async () => result.current.send(roomPath, "hello"));
 
-    expect(hub.sendManageRequest).toHaveBeenCalledTimes(2);
-    const [join, message] = hub.sendManageRequest.mock.calls;
-    expect(join?.[0].params.verb).toBe("capability.request");
-    expect(message?.[0].params.verb).toBe("room.send");
+    expect(
+      hub.sendManageRequest.mock.calls.map(([command]) => command.params.verb),
+    ).toEqual(["capability.request", "room.rekey", "room.send"]);
+    const [join, rekey, message] = hub.sendManageRequest.mock.calls;
     expect(join?.[2]).toEqual(peer.deviceId);
+    expect(rekey?.[2]).toEqual(peer.deviceId);
     expect(message?.[2]).toEqual(peer.deviceId);
+    const [conversation] = result.current.conversations;
+    expect(conversation?.messages.map((m) => m.text)).toEqual(["hello"]);
+    expect(conversation?.outgoing).toEqual([]);
+  });
+
+  it("sends the first message after joining only once the peer has answered the first epoch key", async () => {
+    const { result } = render();
+    const hub = await answeringHub();
+    const { promise: rekeyAnswered, resolve: answerRekey } =
+      Promise.withResolvers<Awaited<ReturnType<SendManageRequest>>>();
+    const answerOthers = hub.sendManageRequest.getMockImplementation();
+    if (answerOthers === undefined) throw new Error("the hub answers nothing");
+    hub.sendManageRequest.mockImplementation(async (...request) =>
+      request[0].params.verb === "room.rekey"
+        ? rekeyAnswered
+        : answerOthers(...request),
+    );
+    const verbs = (): unknown[] =>
+      hub.sendManageRequest.mock.calls.map(([command]) => command.params.verb);
+    act(() => {
+      result.current.openRelay(hub, peer.deviceId);
+    });
+
+    const sent = act(async () => result.current.send(roomPath, "hello"));
+    await waitFor(() => {
+      expect(verbs()).toContain("room.rekey");
+    });
+    expect(verbs()).not.toContain("room.send");
+
+    answerRekey({ result: "ok" });
+    await sent;
+    expect(verbs()).toEqual(["capability.request", "room.rekey", "room.send"]);
+  });
+
+  it("sends the first message even when the peer refuses the first epoch key", async () => {
+    const { result } = render();
+    const hub = await answeringHub();
+    const answerOthers = hub.sendManageRequest.getMockImplementation();
+    if (answerOthers === undefined) throw new Error("the hub answers nothing");
+    hub.sendManageRequest.mockImplementation(async (...request) =>
+      request[0].params.verb === "room.rekey"
+        ? Promise.resolve({ result: "error", code: "no_token" })
+        : answerOthers(...request),
+    );
+    act(() => {
+      result.current.openRelay(hub, peer.deviceId);
+    });
+
+    await act(async () => result.current.send(roomPath, "hello"));
+
     const [conversation] = result.current.conversations;
     expect(conversation?.messages.map((m) => m.text)).toEqual(["hello"]);
     expect(conversation?.outgoing).toEqual([]);

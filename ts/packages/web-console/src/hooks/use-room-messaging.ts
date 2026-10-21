@@ -496,10 +496,8 @@ export function useRoomMessaging({
         await rememberToken(roomPath, token);
         persist(grants.record("held", token, clock.now()));
         dispatch({ type: "token", roomPath, token });
-        /* Opportunistic DM bootstrap: once this side holds its join-grant,
-           the lower participant mints epoch 1 for the noticeboard. Fire-and-
-           observe rather than awaited -- messaging must not block on it. */
-        void deliverFirstEpoch(roomPath, token, { session, target }).catch(
+        // Once this side holds its join-grant, the lower participant hands the peer epoch 1 of the noticeboard before sending: the peer answers a room.rekey only once it has stored the key, so the peer holds the key by the time this message reaches it and can post a notice as soon as it reads the message. A refusal (the peer holds no token yet) does not stop the message: the key is sent again on the next decision or post.
+        await deliverFirstEpoch(roomPath, token, { session, target }).catch(
           () => undefined,
         );
       }
