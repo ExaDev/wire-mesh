@@ -25,6 +25,8 @@ const OVERSIZED_KEY_LENGTH = 1000;
 const FIRST = 1;
 const SECOND = 2;
 const THIRD = 3;
+const FOURTH = 4;
+const FIFTH = 5;
 const keyOf = (n: number): readonly Uint8Array[] => [
   new Uint8Array(PART_BYTES).fill(n),
 ];
@@ -148,6 +150,38 @@ describe("createVerdictCache", () => {
       "an input within budget is still keyed",
     ).toBeGreaterThan(0);
     expect(oversized.runs()).toBe(1);
+  });
+
+  it("stops keying new inputs once the keys still waiting on a verdict fill the budget, however many entries it keeps", async () => {
+    const cache = createVerdictCache(ROOM_FOR_TWO_ENTRIES);
+    const fromCharCode = vi.spyOn(String, "fromCharCode");
+    const finishers: (() => void)[] = [];
+    const deferred = async (): Promise<boolean> =>
+      new Promise<boolean>((resolve) => {
+        finishers.push(() => {
+          resolve(true);
+        });
+      });
+    const waiting = [FIRST, SECOND, THIRD, FOURTH].map(async (n) =>
+      cache.verdict(keyOf(n), deferred),
+    );
+
+    const keyedWhileWaiting = fromCharCode.mock.calls.length;
+    for (const finish of finishers) finish();
+    await Promise.all(waiting);
+    await cache.verdict(keyOf(FIFTH), counted(true).compute);
+    const keyedAfter = fromCharCode.mock.calls.length;
+    fromCharCode.mockRestore();
+
+    expect(keyedWhileWaiting, "only what fits the budget was keyed").toBe(
+      ROOM_FOR_TWO_ENTRIES / ENTRY_COST,
+    );
+    expect(finishers, "every input was still verified").toHaveLength(
+      waiting.length,
+    );
+    expect(keyedAfter, "settled keys free room for the next").toBe(
+      keyedWhileWaiting + 1,
+    );
   });
 
   it("reports an unsettled outcome as false to its callers but does not keep it", async () => {
