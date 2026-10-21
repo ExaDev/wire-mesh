@@ -214,6 +214,10 @@
       "import": "./dist/domain/topology-snapshot.mjs",
       "require": "./dist/domain/topology-snapshot.cjs"
     },
+    "./domain/verdict-cache": {
+      "import": "./dist/domain/verdict-cache.mjs",
+      "require": "./dist/domain/verdict-cache.cjs"
+    },
     "./domain/webrtc-signaling": {
       "import": "./dist/domain/webrtc-signaling.mjs",
       "require": "./dist/domain/webrtc-signaling.cjs"
