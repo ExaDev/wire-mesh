@@ -10,6 +10,41 @@ import type {
 } from "../generated/protocol.js";
 import type { IdentityPort } from "../ports/identity.js";
 import { bytesEqual } from "./token-scope.js";
+import {
+  bytesKey,
+  createVerdictCache,
+  type VerdictCache,
+} from "./verdict-cache.js";
+
+const BYTES_PER_KIBIBYTE = 1024;
+const BYTES_PER_MEBIBYTE = BYTES_PER_KIBIBYTE * BYTES_PER_KIBIBYTE;
+
+/** Sized so the budget below holds several thousand honest adverts: ample for a large local mesh and small beside a node's other working memory. */
+const VERDICT_BUDGET_MEBIBYTES = 8;
+
+/**
+ * The most a verifier's verdict memo may charge across all its entries, in bytes of key.
+ *
+ * A key is a signature plus the signed bytes, so an honest advert (a device id, a few addresses, a handful of gossip extensions) costs on the order of a kilobyte and this budget holds the current advert of every device a large local mesh gossips, plus the several generations a hub's catch-up frames can still replay. It is a budget in bytes rather than a count of entries because the signed bytes are attacker-sized up to the frame limit: a count would let a hostile peer pin that many frames in memory, where a byte budget makes the worst case this figure and refuses to keep any single advert larger than it.
+ */
+export const PEER_ADVERT_VERDICT_BUDGET_BYTES =
+  VERDICT_BUDGET_MEBIBYTES * BYTES_PER_MEBIBYTE;
+
+/**
+ * One memo per verifier object, held weakly so it lives exactly as long as the identity it serves. A verdict is a pure function of the advert's own bytes (the key and the signature both travel inside it), so every session and hub sharing one verifier shares the answers, and a fresh verifier (a test's fake, a second node identity) starts cold rather than inheriting another's.
+ */
+const verdictCaches = new WeakMap<object, VerdictCache>();
+
+function verdictCacheFor(identity: Readonly<PeerAdvertVerifier>): VerdictCache {
+  const existing = verdictCaches.get(identity);
+  if (existing !== undefined) {
+    return existing;
+  }
+  const created = createVerdictCache(PEER_ADVERT_VERDICT_BUDGET_BYTES);
+  verdictCaches.set(identity, created);
+
+  return created;
+}
 
 /** peer-advert's own signature field, the one entry the signature does not cover, named once here so the signing input and the reserved-extension-key guard cannot drift apart. */
 export const PEER_ADVERT_SIGNATURE_KEY = "signature";
@@ -87,11 +122,33 @@ export async function signPeerAdvert(
  * Both validity checks spec/transport.cddl states for a gossiped advert, in the order a verifier must apply them: the embedded identity-key self-certifies (sha256 of its public-key equals the advert's own `device`), and the signature verifies under that same key over peerAdvertSigningInput's bytes.
  *
  * Returns a verdict for every input, including a hostile one, and never throws. An advert's `alg` and `public-key` are attacker-chosen (identity-key constrains them to an int and a bstr, nothing more), so importing the key can legitimately fail for an algorithm no verifier implements or for key bytes of the wrong length. An unverifiable advert is a refused advert, exactly as if its signature had simply been wrong, which is why the import failure is turned into `false` here rather than propagated to a caller iterating a frame's other adverts.
+ *
+ * A hub re-broadcasts every advert it accepts to every other client and replays the whole directory to each sender, so one advert reaches a receiver several times and a mesh of N devices checks each advert on the order of N times per receiver. The two checks are pure functions of the advert's bytes, so the verdict for a given signature over given signed bytes is remembered (see PEER_ADVERT_VERDICT_BUDGET_BYTES) and a repeat costs one encoding rather than two digests and a public-key import and verification. Only a verdict the checks reached is remembered, a refusal included; a check that threw is not, because the same bytes might verify on a later attempt.
  */
 export async function verifyPeerAdvert(
   identity: Readonly<PeerAdvertVerifier>,
   advert: Readonly<PeerAdvert>,
 ): Promise<boolean> {
+  let signedBytes: Uint8Array<ArrayBuffer>;
+  try {
+    signedBytes = peerAdvertSigningInput(advert);
+  } catch {
+    // An advert whose content cannot be encoded can never have been signed, so it is refused like any other unverifiable one.
+    return false;
+  }
+
+  return verdictCacheFor(identity).verdict(
+    bytesKey(advert[PEER_ADVERT_SIGNATURE_KEY], signedBytes),
+    async () => checkPeerAdvert(identity, advert, signedBytes),
+  );
+}
+
+/** The uncached checks: true or false when they reached a verdict, undefined when verifying threw. */
+async function checkPeerAdvert(
+  identity: Readonly<PeerAdvertVerifier>,
+  advert: Readonly<PeerAdvert>,
+  signedBytes: Uint8Array<ArrayBuffer>,
+): Promise<boolean | undefined> {
   const key = advert[PEER_ADVERT_IDENTITY_KEY_KEY];
   try {
     const derived = await identity.deriveDeviceId(key["public-key"]);
@@ -101,10 +158,10 @@ export async function verifyPeerAdvert(
 
     return await identity.verify(
       key,
-      peerAdvertSigningInput(advert),
+      signedBytes,
       advert[PEER_ADVERT_SIGNATURE_KEY],
     );
   } catch {
-    return false;
+    return undefined;
   }
 }
