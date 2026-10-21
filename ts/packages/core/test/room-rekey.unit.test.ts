@@ -11,6 +11,7 @@ import {
   wrapContentKey,
 } from "../src/domain/group-key.js";
 import {
+  REKEY_STORE_FAILED,
   buildRoomRekeyCommand,
   createRoomRekeyHandler,
   sendRoomRekey,
@@ -221,6 +222,73 @@ describe("createRoomRekeyHandler", () => {
       room: roomPath,
       keyEpoch: 1,
       contentKeys: [contentKey],
+    });
+  });
+
+  it("answers ok only once onRekey has stored the keys", async () => {
+    const { owner, member, roomPath } = await setUp();
+    const wrapped = await ownerWraps({
+      owner,
+      member,
+      roomPath,
+      keyEpoch: 1,
+      contentKey: generateContentKey(),
+    });
+    const { promise: stored, resolve: finishStoring } =
+      Promise.withResolvers<undefined>();
+    const onRekey = vi.fn(async (): Promise<void> => {
+      await stored;
+    });
+    const handler = createRoomRekeyHandler({
+      identity: member,
+      clock: fixedClock(NOW_MS),
+      revocation: createRevocationView(),
+      ownRoomMemberToken: await mintRoomMemberToken(owner, member, roomPath),
+      onRekey,
+    });
+    const { incoming, respond } = fakeIncoming(
+      buildRoomRekeyCommand(1, wrapped),
+      { kind: "room", path: roomPath },
+    );
+
+    const handled = handler(incoming);
+    await vi.waitFor(() => {
+      expect(onRekey).toHaveBeenCalled();
+    });
+    expect(respond).not.toHaveBeenCalled();
+
+    finishStoring(undefined);
+    await handled;
+    expect(respond).toHaveBeenCalledWith({ result: "ok" });
+  });
+
+  it("answers store_failed and rejects when onRekey cannot store the keys", async () => {
+    const { owner, member, roomPath } = await setUp();
+    const wrapped = await ownerWraps({
+      owner,
+      member,
+      roomPath,
+      keyEpoch: 1,
+      contentKey: generateContentKey(),
+    });
+    const storeError = new Error("the key store refused the write");
+    const handler = createRoomRekeyHandler({
+      identity: member,
+      clock: fixedClock(NOW_MS),
+      revocation: createRevocationView(),
+      ownRoomMemberToken: await mintRoomMemberToken(owner, member, roomPath),
+      onRekey: async () => Promise.reject(storeError),
+    });
+    const { incoming, respond } = fakeIncoming(
+      buildRoomRekeyCommand(1, wrapped),
+      { kind: "room", path: roomPath },
+    );
+
+    await expect(handler(incoming)).rejects.toBe(storeError);
+    expect(respond).toHaveBeenCalledTimes(1);
+    expect(respond).toHaveBeenCalledWith({
+      result: "error",
+      code: REKEY_STORE_FAILED,
     });
   });
 
