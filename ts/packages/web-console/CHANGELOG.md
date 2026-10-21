@@ -1,3 +1,14 @@
+## [2.17.8](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.17.7...%40exadev%2Fwire-mesh-web-console%402.17.8) (2026-10-21)
+
+### Bug Fixes
+
+* **web-console:** hand the peer the first epoch key before the first message ([33d06e8](https://github.com/ExaDev/wire-mesh/commit/33d06e86b7c1b50ee85c87db2850dda02b2c259c)), closes [#338](https://github.com/ExaDev/wire-mesh/issues/338)
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 4.0.7
+
 ## [2.17.7](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.17.6...%40exadev%2Fwire-mesh-web-console%402.17.7) (2026-10-21)
 
 

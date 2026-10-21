@@ -1,3 +1,9 @@
+## [4.0.7](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.0.6...wire-mesh-core%404.0.7) (2026-10-21)
+
+### Bug Fixes
+
+* **core:** answer a room.rekey only once its keys are stored ([70831f5](https://github.com/ExaDev/wire-mesh/commit/70831f5e26a48c52489b5724fbe83664b350284c)), references [#338](https://github.com/ExaDev/wire-mesh/issues/338)
+
 ## [4.0.6](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.0.5...wire-mesh-core%404.0.6) (2026-10-21)
 
 ### Bug Fixes
