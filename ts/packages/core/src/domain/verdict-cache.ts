@@ -41,7 +41,7 @@ export interface VerdictCache {
   /**
    * The verdict for the bytes in `parts`, computing it with `compute` only when no live entry holds one. A concurrent caller for the same bytes shares the first caller's computation rather than starting another.
    *
-   * The key is built from `parts` only when the entry would fit the budget: an input whose key would exceed it is computed and never keyed, so an attacker-sized input costs no more than computing its verdict directly, with no copy of it as a string.
+   * The key is built from `parts` only when the entry would fit the budget, counting the keys of verdicts still being computed: an input that would not fit is computed and never keyed, so neither one attacker-sized input nor many concurrent ones cost more than computing their verdicts directly, with no copy of them as strings.
    *
    * `compute` resolves to a verdict to remember, or to `undefined` when the outcome was an error that a later attempt might not repeat: that outcome is returned to every waiting caller as `false` (the check did not succeed) but is not kept, so a transient failure is retried instead of being remembered as a refusal.
    */
@@ -67,6 +67,8 @@ export function createVerdictCache(budgetBytes: number): VerdictCache {
     { settled: Promise<boolean>; cost: number }
   >();
   let used = 0;
+  /** Key bytes charged to verdicts still being computed. An entry evicted while its verdict is pending is gone from `entries`, but the computation still holds its key until it settles, so `used` alone would let many concurrent large inputs each keep a key the budget no longer sees. */
+  let pending = 0;
 
   const forget = (key: string): void => {
     const entry = entries.get(key);
@@ -83,6 +85,10 @@ export function createVerdictCache(budgetBytes: number): VerdictCache {
       if (cost > budgetBytes) {
         return unsettledAsRefusal(compute);
       }
+      if (pending + cost > budgetBytes) {
+        // The keys of verdicts still being computed already fill the budget, so this input is verified directly rather than keyed. A repeat of a held input is then recomputed too, which only costs the verification the cache would have saved.
+        return unsettledAsRefusal(compute);
+      }
       const key = bytesKey(...parts);
       const held = entries.get(key);
       if (held !== undefined) {
@@ -92,15 +98,20 @@ export function createVerdictCache(budgetBytes: number): VerdictCache {
 
         return held.settled;
       }
-      const settled = compute().then((outcome) => {
-        if (outcome === undefined) {
-          forget(key);
+      pending += cost;
+      const settled = compute()
+        .then((outcome) => {
+          if (outcome === undefined) {
+            forget(key);
 
-          return false;
-        }
+            return false;
+          }
 
-        return outcome;
-      });
+          return outcome;
+        })
+        .finally(() => {
+          pending -= cost;
+        });
       entries.set(key, { settled, cost });
       used += cost;
       for (const oldest of entries.keys()) {
