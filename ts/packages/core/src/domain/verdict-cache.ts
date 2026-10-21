@@ -7,6 +7,18 @@ const ENTRY_OVERHEAD_BYTES = 16;
 const FROM_CHAR_CODE_CHUNK = 4096;
 
 /**
+ * How many characters bytesKey produces for these parts: each part's length in decimal, a colon, then one character per byte. Computed from the lengths alone, so a caller can refuse an oversized input before any character of its key exists.
+ */
+export function bytesKeyLength(parts: readonly Uint8Array[]): number {
+  let length = 0;
+  for (const part of parts) {
+    length += String(part.length).length + 1 + part.length;
+  }
+
+  return length;
+}
+
+/**
  * A string that is equal for two byte sequences exactly when the sequences are equal: one character per byte, so a Map can key on it without hashing or comparing byte arrays itself.
  */
 export function bytesKey(...parts: readonly Uint8Array[]): string {
@@ -27,18 +39,27 @@ export function bytesKey(...parts: readonly Uint8Array[]): string {
 /** A memo of in-flight and settled verdicts keyed by an opaque string. */
 export interface VerdictCache {
   /**
-   * The verdict for `key`, computing it with `compute` only when no live entry holds one. A concurrent caller for the same key shares the first caller's computation rather than starting another.
+   * The verdict for the bytes in `parts`, computing it with `compute` only when no live entry holds one. A concurrent caller for the same bytes shares the first caller's computation rather than starting another.
+   *
+   * The key is built from `parts` only when the entry would fit the budget: an input whose key would exceed it is computed and never keyed, so an attacker-sized input costs no more than computing its verdict directly, with no copy of it as a string.
    *
    * `compute` resolves to a verdict to remember, or to `undefined` when the outcome was an error that a later attempt might not repeat: that outcome is returned to every waiting caller as `false` (the check did not succeed) but is not kept, so a transient failure is retried instead of being remembered as a refusal.
    */
   verdict: (
-    key: string,
+    parts: readonly Uint8Array[],
     compute: () => Promise<boolean | undefined>,
   ) => Promise<boolean>;
 }
 
+/** An outcome that was not kept: the check's verdict, or false when it did not reach one. */
+async function unsettledAsRefusal(
+  compute: () => Promise<boolean | undefined>,
+): Promise<boolean> {
+  return (await compute()) ?? false;
+}
+
 /**
- * Builds a memo whose entries together never charge more than `budgetBytes`. The least recently used entry goes first when a new one would overflow; a key larger than the whole budget is computed but never kept, so one hostile oversized input cannot flush everything else.
+ * Builds a memo whose entries together never charge more than `budgetBytes`. The least recently used entry goes first when a new one would overflow; an input whose key is larger than the whole budget is computed but never kept, so one hostile oversized input cannot flush everything else.
  */
 export function createVerdictCache(budgetBytes: number): VerdictCache {
   const entries = new Map<
@@ -57,7 +78,12 @@ export function createVerdictCache(budgetBytes: number): VerdictCache {
   };
 
   return {
-    async verdict(key, compute) {
+    async verdict(parts, compute) {
+      const cost = bytesKeyLength(parts) + ENTRY_OVERHEAD_BYTES;
+      if (cost > budgetBytes) {
+        return unsettledAsRefusal(compute);
+      }
+      const key = bytesKey(...parts);
       const held = entries.get(key);
       if (held !== undefined) {
         // Re-inserted so Map iteration order is recency order.
@@ -66,7 +92,6 @@ export function createVerdictCache(budgetBytes: number): VerdictCache {
 
         return held.settled;
       }
-      const cost = key.length + ENTRY_OVERHEAD_BYTES;
       const settled = compute().then((outcome) => {
         if (outcome === undefined) {
           forget(key);
@@ -76,9 +101,6 @@ export function createVerdictCache(budgetBytes: number): VerdictCache {
 
         return outcome;
       });
-      if (cost > budgetBytes) {
-        return settled;
-      }
       entries.set(key, { settled, cost });
       used += cost;
       for (const oldest of entries.keys()) {
