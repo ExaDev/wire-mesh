@@ -1,10 +1,13 @@
 import { createHash, webcrypto } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createNodeIdentity,
   deriveDeviceId,
+  verifyWithPublicKey,
 } from "../src/adapters/node-identity.js";
 import type { IdentityPort } from "../src/ports/identity.js";
+import { repeatInSequence } from "./sequence.js";
+import { generateEd25519Identity } from "./tokens-fixtures.js";
 
 const ES256 = -7;
 const EDDSA = -8;
@@ -150,5 +153,53 @@ describe("deriveDeviceId", () => {
     const deviceId = await deriveDeviceId(publicKeyBytes);
 
     expect(deviceId).toEqual(expected);
+  });
+});
+
+const IMPORT_ONCE = 1;
+const IMPORT_TWICE = 2;
+const KEY_REPEATS = 5;
+const SHORT_KEY_BYTES = Uint8Array.from("key");
+const SAMPLE_MESSAGE = Uint8Array.from("message");
+
+describe("verifyWithPublicKey imports each public key once", () => {
+  it("does not re-import the key of a device it has already verified for", async () => {
+    const identity = await generateEd25519Identity();
+    const signature = await identity.sign(SAMPLE_MESSAGE);
+    const importKey = vi.spyOn(webcrypto.subtle, "importKey");
+
+    try {
+      await repeatInSequence(KEY_REPEATS, async () => {
+        expect(
+          await verifyWithPublicKey(
+            identity.identityKey,
+            SAMPLE_MESSAGE,
+            signature,
+          ),
+        ).toBe(true);
+      });
+
+      expect(importKey).toHaveBeenCalledTimes(IMPORT_ONCE);
+    } finally {
+      importKey.mockRestore();
+    }
+  });
+
+  it("does not keep a key that failed to import", async () => {
+    const bad = { alg: EDDSA, "public-key": SHORT_KEY_BYTES };
+    const importKey = vi.spyOn(webcrypto.subtle, "importKey");
+
+    try {
+      await expect(
+        verifyWithPublicKey(bad, SAMPLE_MESSAGE, SAMPLE_MESSAGE),
+      ).rejects.toThrow();
+      await expect(
+        verifyWithPublicKey(bad, SAMPLE_MESSAGE, SAMPLE_MESSAGE),
+      ).rejects.toThrow();
+
+      expect(importKey).toHaveBeenCalledTimes(IMPORT_TWICE);
+    } finally {
+      importKey.mockRestore();
+    }
   });
 });

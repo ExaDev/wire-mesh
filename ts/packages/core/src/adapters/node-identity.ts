@@ -20,7 +20,45 @@ function toBufferSource(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(bytes);
 }
 
+/**
+ * How many imported verification keys are kept. An imported key is a handle to a few dozen bytes of key material (only a key that imported successfully is kept, and a valid ES256 or Ed25519 public key is fixed-size), so the bound is on count: well above the devices of any plausible local mesh, so a mesh gossiping every few seconds finds its keys already imported rather than re-importing one per advert.
+ */
+const IMPORTED_KEY_CAPACITY = 1024;
+
+/** Least recently used first, by Map insertion order. Holds the pending promise so concurrent verifications of one device import its key once. */
+const importedKeys = new Map<string, Promise<webcrypto.CryptoKey>>();
+
+/** Equal for two identity-keys exactly when algorithm and key bytes are equal. */
+function importedKeyId(key: IdentityKey): string {
+  return `${String(key.alg)}:${Buffer.from(key["public-key"]).toString("base64")}`;
+}
+
 async function importPublicKey(key: IdentityKey): Promise<webcrypto.CryptoKey> {
+  const id = importedKeyId(key);
+  const held = importedKeys.get(id);
+  if (held !== undefined) {
+    importedKeys.delete(id);
+    importedKeys.set(id, held);
+
+    return held;
+  }
+  const pending = importPublicKeyUncached(key);
+  importedKeys.set(id, pending);
+  // A key that failed to import is not remembered: the bytes are attacker-chosen, so refusing to keep them is what bounds this map to genuine keys.
+  pending.catch(() => importedKeys.delete(id));
+  for (const oldest of importedKeys.keys()) {
+    if (importedKeys.size <= IMPORTED_KEY_CAPACITY) {
+      break;
+    }
+    importedKeys.delete(oldest);
+  }
+
+  return pending;
+}
+
+async function importPublicKeyUncached(
+  key: IdentityKey,
+): Promise<webcrypto.CryptoKey> {
   if (key.alg === ES256) {
     return webcrypto.subtle.importKey(
       "raw",
