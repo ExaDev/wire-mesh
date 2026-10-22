@@ -1,3 +1,25 @@
+## [4.0.7](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.0.6...wire-mesh-core%404.0.7) (2026-10-21)
+
+### Bug Fixes
+
+* **core:** answer a room.rekey only once its keys are stored ([70831f5](https://github.com/ExaDev/wire-mesh/commit/70831f5e26a48c52489b5724fbe83664b350284c)), references [#338](https://github.com/ExaDev/wire-mesh/issues/338)
+
+## [4.0.6](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.0.5...wire-mesh-core%404.0.6) (2026-10-21)
+
+### Bug Fixes
+
+* **core:** check a public key's size before encoding its import cache id ([3f5aaea](https://github.com/ExaDev/wire-mesh/commit/3f5aaea0a4bb7a67ddf6bc65c8233322ae370f99))
+* **core:** count keys still waiting on a verdict against the cache budget ([d9d0b8a](https://github.com/ExaDev/wire-mesh/commit/d9d0b8adc7381cb4ebeb66bc24df3b20eb2b05c0))
+* **core:** refuse an oversized advert before building its cache key ([168f87b](https://github.com/ExaDev/wire-mesh/commit/168f87b4afb83669355f41f94f532ce673ae9ea1))
+
+### Performance Improvements
+
+* **core:** remember peer-advert verdicts and imported verification keys ([fb270eb](https://github.com/ExaDev/wire-mesh/commit/fb270eb7e12fc2b6be32cf7c73fb833665e3a1c2))
+
+### Build System
+
+* **core:** regenerate the exports map for the verdict cache module ([786ec68](https://github.com/ExaDev/wire-mesh/commit/786ec685fcdd431aa4db8f4c02b6260316383723))
+
 ## [4.0.5](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.0.4...wire-mesh-core%404.0.5) (2026-10-19)
 
 ### Bug Fixes

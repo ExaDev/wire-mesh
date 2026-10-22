@@ -1,14 +1,14 @@
 {
   "name": "wire-mesh-sfu",
-  "version": "1.1.6",
+  "version": "1.1.8",
   "bin": {
     "wire-mesh-sfu": "./dist/server.mjs"
   },
   "dependencies": {
     "mediasoup": "3.26.0",
     "sdp-transform": "3.0.0",
-    "wire-mesh": "3.6.7",
-    "wire-mesh-core": "4.0.5",
+    "wire-mesh": "3.6.9",
+    "wire-mesh-core": "4.0.7",
     "ws": "8.21.3"
   },
   "devDependencies": {

@@ -5,6 +5,22 @@ import type { IdentityPort } from "../ports/identity.js";
 const ES256 = -7;
 const EDDSA = -8;
 
+/** An ES256 public key is an uncompressed SEC1 P-256 point: a 0x04 prefix, then the 32-byte X and Y coordinates. */
+const ES256_PUBLIC_KEY_BYTES = 65;
+/** An Ed25519 public key is its 32-byte compressed point. */
+const EDDSA_PUBLIC_KEY_BYTES = 32;
+
+/** The exact size of a public key for `alg`, throwing for an algorithm no verifier here implements. */
+function publicKeySize(alg: number): number {
+  if (alg === ES256) {
+    return ES256_PUBLIC_KEY_BYTES;
+  }
+  if (alg === EDDSA) {
+    return EDDSA_PUBLIC_KEY_BYTES;
+  }
+  throw new Error(`unsupported identity-key alg ${String(alg)}`);
+}
+
 function algParams(alg: number): EcdsaParams | { name: "Ed25519" } {
   if (alg === ES256) {
     return { name: "ECDSA", hash: "SHA-256" };
@@ -20,7 +36,51 @@ function toBufferSource(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(bytes);
 }
 
+/**
+ * How many imported verification keys are kept. An imported key is a handle to a few dozen bytes of key material (only a key that imported successfully is kept, and a valid ES256 or Ed25519 public key is fixed-size), so the bound is on count: well above the devices of any plausible local mesh, so a mesh gossiping every few seconds finds its keys already imported rather than re-importing one per advert.
+ */
+const IMPORTED_KEY_CAPACITY = 1024;
+
+/** Least recently used first, by Map insertion order. Holds the pending promise so concurrent verifications of one device import its key once. */
+const importedKeys = new Map<string, Promise<webcrypto.CryptoKey>>();
+
+/** Equal for two identity-keys exactly when algorithm and key bytes are equal. */
+function importedKeyId(key: IdentityKey): string {
+  return `${String(key.alg)}:${Buffer.from(key["public-key"]).toString("base64")}`;
+}
+
 async function importPublicKey(key: IdentityKey): Promise<webcrypto.CryptoKey> {
+  // Before the id is built: a gossiped advert's key bytes are attacker-sized up to the frame limit, and the id is a copy of them as a string. A key of the wrong size for its algorithm could never import, so refusing it here costs nothing a valid key needs.
+  if (key["public-key"].length !== publicKeySize(key.alg)) {
+    throw new Error(
+      `identity-key public-key is ${String(key["public-key"].length)} bytes, not the ${String(publicKeySize(key.alg))} an alg ${String(key.alg)} key has`,
+    );
+  }
+  const id = importedKeyId(key);
+  const held = importedKeys.get(id);
+  if (held !== undefined) {
+    importedKeys.delete(id);
+    importedKeys.set(id, held);
+
+    return held;
+  }
+  const pending = importPublicKeyUncached(key);
+  importedKeys.set(id, pending);
+  // A key that failed to import is not remembered: the bytes are attacker-chosen, so refusing to keep them is what bounds this map to genuine keys.
+  pending.catch(() => importedKeys.delete(id));
+  for (const oldest of importedKeys.keys()) {
+    if (importedKeys.size <= IMPORTED_KEY_CAPACITY) {
+      break;
+    }
+    importedKeys.delete(oldest);
+  }
+
+  return pending;
+}
+
+async function importPublicKeyUncached(
+  key: IdentityKey,
+): Promise<webcrypto.CryptoKey> {
   if (key.alg === ES256) {
     return webcrypto.subtle.importKey(
       "raw",
