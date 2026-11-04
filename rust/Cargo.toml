@@ -31,6 +31,8 @@ tokio = { version = "1", features = [
 ] }
 sha2 = "0.10"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
+# Zeroes the exported secret of a node identity when it is dropped.
+zeroize = "1"
 p256 = { version = "0.13", features = ["ecdsa", "ecdh"] }
 hkdf = "0.12"
 aes-gcm = "0.10"

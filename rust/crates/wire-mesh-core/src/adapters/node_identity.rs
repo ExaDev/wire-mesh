@@ -16,6 +16,7 @@ use rand::rngs::OsRng;
 use sha2::{Digest, Sha256};
 use wire_mesh_wire::identity::{DeviceId, IdentityKey};
 use wire_mesh_wire::tokens::CoseSign1;
+use zeroize::Zeroizing;
 
 use crate::domain::cose::sig_structure;
 use crate::ports::{CoreError, Identity};
@@ -56,6 +57,60 @@ impl NodeIdentity {
             public_key,
             IdentityKey::ALG_ES256,
         )
+    }
+
+    /// Restores the Ed25519 identity whose secret is `secret` (the bytes [`NodeIdentity::export_secret`] gave), so a node that restarts keeps its key and with it its device id. Exactly 32 bytes; any other length is an error.
+    pub fn from_ed25519_secret(secret: &[u8]) -> Result<Self, CoreError> {
+        let bytes: [u8; 32] = secret.try_into().map_err(|_| {
+            CoreError::Crypto(format!(
+                "an Ed25519 secret is 32 bytes, not {}",
+                secret.len()
+            ))
+        })?;
+        let bytes = Zeroizing::new(bytes);
+        let signing = SigningKey::from_bytes(&bytes);
+        let public_key = signing.verifying_key().as_bytes().to_vec();
+        Ok(NodeIdentity::from_signing(
+            SigningMaterial::Ed25519(signing),
+            public_key,
+            IdentityKey::ALG_ED25519,
+        ))
+    }
+
+    /// Restores the ES256 (P-256) identity whose secret scalar is `secret` (the bytes [`NodeIdentity::export_secret`] gave). Exactly 32 bytes that are a valid P-256 scalar (nonzero and below the group order); anything else is an error.
+    pub fn from_es256_secret(secret: &[u8]) -> Result<Self, CoreError> {
+        // p256 accepts a short slice and pads it, so the length is checked here: a stored secret that lost bytes must not restore as another key.
+        if secret.len() != 32 {
+            return Err(CoreError::Crypto(format!(
+                "a P-256 secret is 32 bytes, not {}",
+                secret.len()
+            )));
+        }
+        let key = p256::SecretKey::from_slice(secret)
+            .map_err(|e| CoreError::Crypto(format!("not a valid P-256 secret: {e}")))?;
+        let signing = P256SigningKey::from(&key);
+        let public_key = signing
+            .verifying_key()
+            .to_encoded_point(false)
+            .as_bytes()
+            .to_vec();
+        Ok(NodeIdentity::from_signing(
+            SigningMaterial::Es256(signing),
+            public_key,
+            IdentityKey::ALG_ES256,
+        ))
+    }
+
+    /// The 32-byte secret behind this identity, which [`NodeIdentity::from_ed25519_secret`] or [`NodeIdentity::from_es256_secret`] (by `identity_key().alg`) takes back. The buffer is zeroed when dropped. This type has no `Debug`, so the secret cannot reach a log through one; where the bytes are kept is the caller's to decide.
+    pub fn export_secret(&self) -> Zeroizing<[u8; 32]> {
+        match &self.signing {
+            SigningMaterial::Ed25519(key) => Zeroizing::new(key.to_bytes()),
+            SigningMaterial::Es256(key) => {
+                let mut bytes = Zeroizing::new([0u8; 32]);
+                bytes.copy_from_slice(&key.to_bytes()[..]);
+                bytes
+            }
+        }
     }
 
     fn from_signing(signing: SigningMaterial, public_key: Vec<u8>, alg: i64) -> Self {
@@ -252,5 +307,59 @@ mod tests {
         let ed25519 = NodeIdentity::generate_ed25519();
         let es256 = NodeIdentity::generate_es256();
         assert!(ed25519.derive_shared_secret(es256.identity_key()).is_err());
+    }
+    #[tokio::test]
+    async fn an_ed25519_identity_restored_from_its_secret_is_the_same_identity() {
+        let original = NodeIdentity::generate_ed25519();
+        let restored =
+            NodeIdentity::from_ed25519_secret(original.export_secret().as_slice()).unwrap();
+        assert_eq!(restored.device_id(), original.device_id());
+        assert_eq!(restored.identity_key(), original.identity_key());
+        // What one signs the other verifies, and the reverse.
+        let signature = original.sign(b"message").await.unwrap();
+        assert!(restored
+            .verify(original.identity_key(), b"message", &signature)
+            .await
+            .unwrap());
+        let signature = restored.sign(b"message").await.unwrap();
+        assert!(original
+            .verify(restored.identity_key(), b"message", &signature)
+            .await
+            .unwrap());
+    }
+
+    #[tokio::test]
+    async fn an_es256_identity_restored_from_its_secret_is_the_same_identity() {
+        let original = NodeIdentity::generate_es256();
+        let restored =
+            NodeIdentity::from_es256_secret(original.export_secret().as_slice()).unwrap();
+        assert_eq!(restored.device_id(), original.device_id());
+        assert_eq!(restored.identity_key(), original.identity_key());
+        let signature = original.sign(b"message").await.unwrap();
+        assert!(restored
+            .verify(original.identity_key(), b"message", &signature)
+            .await
+            .unwrap());
+    }
+
+    #[test]
+    fn a_secret_of_the_wrong_length_is_an_error() {
+        assert!(NodeIdentity::from_ed25519_secret(&[1u8; 31]).is_err());
+        assert!(NodeIdentity::from_ed25519_secret(&[1u8; 33]).is_err());
+        assert!(NodeIdentity::from_es256_secret(&[1u8; 31]).is_err());
+    }
+
+    #[test]
+    fn a_p256_secret_that_is_not_a_valid_scalar_is_an_error() {
+        // Zero is no scalar, and neither is a value at or above the group order.
+        assert!(NodeIdentity::from_es256_secret(&[0u8; 32]).is_err());
+        assert!(NodeIdentity::from_es256_secret(&[0xffu8; 32]).is_err());
+    }
+
+    #[test]
+    fn two_secrets_make_two_identities() {
+        let a = NodeIdentity::from_ed25519_secret(&[1u8; 32]).unwrap();
+        let b = NodeIdentity::from_ed25519_secret(&[2u8; 32]).unwrap();
+        assert_ne!(a.device_id(), b.device_id());
     }
 }
