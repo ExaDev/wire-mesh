@@ -21,6 +21,7 @@ futures-core = { workspace = true }
 tokio = { version = "1", features = ["sync", "macros", "rt"] }
 sha2 = { workspace = true }
 ed25519-dalek = { workspace = true }
+zeroize = { workspace = true }
 p256 = { workspace = true }
 hkdf = { workspace = true }
 aes-gcm = { workspace = true }

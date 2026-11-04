@@ -1269,6 +1269,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "wire-mesh-wire",
+ "zeroize",
 ]
 
 [[package]]
