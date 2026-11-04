@@ -6,6 +6,8 @@ compose=(docker compose -f compose.yaml)
 cleanup() { "${compose[@]}" down -v >/dev/null 2>&1; }
 trap cleanup EXIT
 cleanup
+# The hub and the certificate it waits for are started once, here: two `compose run` commands that each had to create them would race on the shared networks and containers and one would fail with a name conflict.
+"${compose[@]}" up -d --wait hub || exit 2
 pids=()
 for role in responder initiator; do
   "${compose[@]}" run --rm -T "$role" &
