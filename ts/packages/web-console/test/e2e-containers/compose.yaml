@@ -4,12 +4,12 @@
 #
 # The hub serves https and wss with a certificate made for the run, which the browsers are told to accept: the console needs Web Crypto, which a page served over plain http from a container name does not get.
 #
-# Run from ts/packages/web-console with `pnpm run test:e2e:containers` (one network) or `pnpm run test:e2e:containers:isolated` (two). It expects wire-mesh (packages/node) to have been built, since the hub is that build and it serves the console it carries.
+# Run from ts/packages/web-console with `pnpm run test:e2e:containers` (one network) or `pnpm run test:e2e:containers:isolated` (two), which both go through run.sh. It expects wire-mesh (packages/node) to have been built, since the hub is that build and it serves the console it carries.
 
 name: wire-mesh-two-containers
 
 services:
-  # Makes the certificate and then stays running: compose stops the whole run as soon as any container exits, so a service that finished would end it before the browsers started.
+  # Makes the certificate and then stays running, because the hub's service_healthy dependency needs a container that is still up.
   certs:
     image: mcr.microsoft.com/playwright:v1.63.0-noble
     command:
