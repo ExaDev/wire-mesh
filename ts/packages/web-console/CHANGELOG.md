@@ -1,3 +1,15 @@
+## [2.17.9](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.17.8...%40exadev%2Fwire-mesh-web-console%402.17.9) (2026-11-04)
+
+### Bug Fixes
+
+* **web-console:** require both browsers to pass in the two-containers e2e ([d811cd4](https://github.com/ExaDev/wire-mesh/commit/d811cd425f818d9574ef89c1fc5793c5d52fae5f))
+* **web-console:** start the e2e hub once before running both browsers ([c4bbe66](https://github.com/ExaDev/wire-mesh/commit/c4bbe664c3a58c104940a5ed86f94a41926a01b4))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 4.0.8
+
 ## [2.17.8](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.17.7...%40exadev%2Fwire-mesh-web-console%402.17.8) (2026-10-21)
 
 ### Bug Fixes

@@ -1,3 +1,9 @@
+## [4.0.8](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.0.7...wire-mesh-core%404.0.8) (2026-11-04)
+
+### Bug Fixes
+
+* **core:** clear settled manage-request timers ([6aae0a0](https://github.com/ExaDev/wire-mesh/commit/6aae0a0efee9a44b94612df6dd384c707d47f106))
+
 ## [4.0.7](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.0.6...wire-mesh-core%404.0.7) (2026-10-21)
 
 ### Bug Fixes
