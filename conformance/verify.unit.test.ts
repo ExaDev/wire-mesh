@@ -1,6 +1,6 @@
 // For every vector in every *.v1.json in this directory, confirms both directions independently: decoding wire_hex reproduces message exactly, and re-encoding message reproduces wire_hex exactly. adverts.v1.json's own extra fields (the signing input, and the verdict a verifier must reach) and secure-channel.v1.json's secure_channel section are deliberately not checked here: this package has no protocol implementation of its own to check them against, so they are the implementations' own conformance checks to run, and this suite covers only what every vector file shares.
 
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import { encode, decode, cdeEncodeOptions, cdeDecodeOptions } from "cbor2";
 import { fromWire, toWire, isVectorFile } from "@exadev/wire-mesh-conformance";
@@ -26,6 +26,19 @@ const files = readdirSync(new URL(".", import.meta.url))
 describe("the vector files", () => {
   it("are found", () => {
     expect(files.length).toBeGreaterThan(0);
+  });
+
+  it("registers only sections whose checking test exists", () => {
+    for (const sections of Object.values(SIDECAR_SECTIONS)) {
+      for (const test of Object.values(sections)) {
+        expect(existsSync(new URL(`../${test}`, import.meta.url)), test).toBe(
+          true,
+        );
+      }
+    }
+    expect(
+      Object.keys(SIDECAR_SECTIONS).filter((name) => !files.includes(name)),
+    ).toEqual([]);
   });
 
   for (const filename of files) {

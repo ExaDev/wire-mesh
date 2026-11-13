@@ -101,13 +101,36 @@ fn accounting_problems(
     problems
 }
 
+/// The directory the vector files are read from, resolved from `CARGO_MANIFEST_DIR` so the working directory never matters.
+fn vector_dir() -> PathBuf {
+    [env!("CARGO_MANIFEST_DIR"), "..", "..", "..", "conformance"]
+        .into_iter()
+        .collect()
+}
+
+/// What is wrong with the accounting of the real `conformance/` directory against [`CONSUMED`] and [`NOT_YET_CONSUMED`].
+fn directory_problems() -> Vec<String> {
+    accounting_problems(
+        &vector_files_in(&vector_dir()),
+        &CONSUMED,
+        &NOT_YET_CONSUMED,
+    )
+}
+
+/// The first top-level key of a vector file that this binary does not read.
+fn unread_top_level_key(parsed: &serde_json::Value) -> Option<&str> {
+    parsed
+        .as_object()?
+        .keys()
+        .map(String::as_str)
+        .find(|key| !CONSUMED_KEYS.contains(key))
+}
+
 #[tokio::main]
 async fn main() {
-    let vector_dir: PathBuf = [env!("CARGO_MANIFEST_DIR"), "..", "..", "..", "conformance"]
-        .into_iter()
-        .collect();
+    let vector_dir = vector_dir();
     let files = CONSUMED;
-    let problems = accounting_problems(&vector_files_in(&vector_dir), &CONSUMED, &NOT_YET_CONSUMED);
+    let problems = directory_problems();
     if !problems.is_empty() {
         for problem in &problems {
             eprintln!("{problem}");
@@ -174,13 +197,8 @@ struct AdvertExpectations {
 
 fn validate_vector_file(parsed: &serde_json::Value, file: &str) -> Vec<Vector> {
     let fail = |what: &str| -> ! { panic!("{file} is not a valid vector file: {what}") };
-    if let Some(object) = parsed.as_object() {
-        if let Some(key) = object
-            .keys()
-            .find(|key| !CONSUMED_KEYS.contains(&key.as_str()))
-        {
-            fail(&format!("top-level key {key} is not read by this binary"));
-        }
+    if let Some(key) = unread_top_level_key(parsed) {
+        fail(&format!("top-level key {key} is not read by this binary"));
     }
     let protocol_version = parsed
         .get("protocol_version")
@@ -490,5 +508,23 @@ mod tests {
             &[("b.v1.json", "x/y#1")],
         );
         assert!(problems.is_empty());
+    }
+
+    #[test]
+    fn the_real_directory_is_fully_accounted_for() {
+        assert_eq!(directory_problems(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_top_level_key_the_binary_does_not_read_is_found() {
+        let with_extra = serde_json::json!({
+            "protocol_version": 1,
+            "description": "d",
+            "vectors": [],
+            "extra_section": {},
+        });
+        assert_eq!(unread_top_level_key(&with_extra), Some("extra_section"));
+        let plain = serde_json::json!({ "protocol_version": 1, "description": "d", "vectors": [] });
+        assert_eq!(unread_top_level_key(&plain), None);
     }
 }

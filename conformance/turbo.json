@@ -25,7 +25,7 @@
     },
     "_test": {
       "dependsOn": ["_build"],
-      "inputs": ["verify.unit.test.ts", "*.v1.json"]
+      "inputs": ["*.unit.test.ts", "secure-channel-references.ts", "*.v1.json"]
     },
     "_typecheck": {
       "dependsOn": ["_build"],
