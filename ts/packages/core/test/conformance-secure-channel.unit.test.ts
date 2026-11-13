@@ -406,15 +406,17 @@ function publicKeyFromSecretHex(
 describe("secure-channel recorded intermediates are derived again", () => {
   it("gives each identity the public key its seed or scalar derives and the device-id that key hashes to", async () => {
     await Promise.all(
-      Object.entries(channelVectors.identities).map(async ([name, identity]) => {
-        expect(publicKeyFromSecretHex(identity), `${name} public key`).toBe(
-          identity.public_key_hex,
-        );
-        expect(
-          hexOf(await deriveDeviceId(bytesFromHex(identity.public_key_hex))),
-          name,
-        ).toBe(identity.device_id_hex);
-      }),
+      Object.entries(channelVectors.identities).map(
+        async ([name, identity]) => {
+          expect(publicKeyFromSecretHex(identity), `${name} public key`).toBe(
+            identity.public_key_hex,
+          );
+          expect(
+            hexOf(await deriveDeviceId(bytesFromHex(identity.public_key_hex))),
+            name,
+          ).toBe(identity.device_id_hex);
+        },
+      ),
     );
   });
 
@@ -428,10 +430,7 @@ describe("secure-channel recorded intermediates are derived again", () => {
         );
         if (identity.alg === EDDSA) {
           const key = createPrivateKey({
-            key: Buffer.from(
-              PKCS8_ED25519_PREFIX + identity.secret_hex,
-              "hex",
-            ),
+            key: Buffer.from(PKCS8_ED25519_PREFIX + identity.secret_hex, "hex"),
             format: "der",
             type: "pkcs8",
           });
@@ -675,7 +674,6 @@ describe("secure-channel establishment refuses an unusable ephemeral key", () =>
       // A hello refused at decoding never reaches establishment here. (Web Crypto's key import would take some of these, a compressed point for one, which is why the frame's size rule matters and why the stage is advisory.)
       if (!decodes) return;
 
-
       expect(
         await establishChannel(
           identity,
@@ -725,7 +723,7 @@ describe("secure-channel open sequences", () => {
         expect(String(wireCounter(step.secure_data_wire_hex)), label).toBe(
           step.counter,
         );
-        if (step.full_width_only === true) {
+        if (step.full_width_only) {
           // Past what this implementation holds exactly, the frame is refused at decoding rather than truncated; below it, the step depends on state a refused step would have left, so it is skipped.
           if (BigInt(step.counter) > BigInt(MAX_COUNTER)) {
             expect(
