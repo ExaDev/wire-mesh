@@ -303,6 +303,10 @@ jobs:
         working-directory: rust
         run: cargo deny check
 
+      - name: Prove the allowlist rejects a second version and a feature-gated crate
+        working-directory: rust
+        run: ./deny-selftest.sh
+
   required-checks:
     name: Required Checks
     needs:
