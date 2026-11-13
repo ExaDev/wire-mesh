@@ -620,3 +620,42 @@ export function sealFrom(
     innerWire(frame),
   );
 }
+
+const ED25519_P =
+  57896044618658097711785492504343953926634992332820282019728792003956564819949n;
+const ED25519_D =
+  37095705934669439343138083508754565189542113879843219016388785533085940283555n;
+const ZERO = 0n;
+const ONE = 1n;
+const TWO = 2n;
+const ED25519_SMALLEST_Y = 2n;
+const U64_MASK = 0xffffffffffffffffn;
+
+function modPow(base: bigint, exponent: bigint, modulus: bigint): bigint {
+  let result = ONE;
+  let b = base % modulus;
+  let e = exponent;
+  while (e > ZERO) {
+    if ((e & ONE) === ONE) result = (result * b) % modulus;
+    b = (b * b) % modulus;
+    e >>= ONE;
+  }
+
+  return result;
+}
+
+/** The little-endian encoding of the smallest y that is the y of no Ed25519 point: x^2 = (y^2 - 1) / (d y^2 + 1) has no square root modulo p (Euler's criterion). */
+export function ed25519NonPoint(): Buffer {
+  for (let y = ED25519_SMALLEST_Y; ; y += ONE) {
+    const numerator = (y * y - ONE + ED25519_P) % ED25519_P;
+    const denominator = (ED25519_D * y * y + ONE) % ED25519_P;
+    const xSquared =
+      (numerator * modPow(denominator, ED25519_P - TWO, ED25519_P)) % ED25519_P;
+    if (modPow(xSquared, (ED25519_P - ONE) / TWO, ED25519_P) !== ONE) {
+      const bytes = Buffer.alloc(SCALAR_BYTE_LENGTH);
+      bytes.writeBigUInt64LE(y & U64_MASK, 0);
+
+      return bytes;
+    }
+  }
+}

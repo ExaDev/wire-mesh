@@ -1,12 +1,18 @@
-/* Checks every vector in conformance/secure-channel.v1.json against the real secure channel, field by field:
+/* Checks every vector in conformance/secure-channel.v1.json against the real secure channel, field by field. The schemas below are strict, so a key the test does not know fails it. In summary:
 
-   - every recorded intermediate (identity device-ids, hello signing inputs, shared secrets, salts, HKDF infos, both direction keys, IVs and associated data) is derived again here from the vector's own scalars, seeds and fields with test-only Web Crypto calls and compared;
-   - each hello is verified and its verdict compared with the reason verifyHello reports;
+   - every recorded intermediate (each identity's public key and device-id from its seed or scalar, hello signing inputs, Ed25519 signatures, shared secrets, salts, HKDF infos, both direction keys, IVs and associated data) is derived again here from the vector's own scalars, seeds and fields and compared;
+   - each hello is verified and the reason verifyHello reports is compared with the one the vector expects (or one it lists as also acceptable);
    - each handshake is established from its fixed ephemeral keys, every sealed transcript frame is reproduced byte for byte and opened;
    - each establish verdict, and each open sequence step with its refusal reason, is checked against the real implementation.
 
-   The only vector fields not compared are the ones that name data the others already pin (such as names and the `synthetic` marker). A step marked `full_width_only` needs a counter wider than this implementation holds exactly: it is checked to be refused at decoding (never truncated) when its counter is above the bound, and skipped otherwise. */
+   Not compared, because they only name or label: every `name`, `inner_frame`, `sealed_vector` and `hello_vector` (used to look entries up), `synthetic` and the layout version (checked to be the one this test reads). An ES256 signature is only verified, never reproduced, as the vector file says. A step marked `full_width_only` needs a counter wider than this implementation holds exactly: its counter is compared with the one in its wire bytes, and when it is above the bound its frame is checked to be refused at decoding (never truncated); its expected class is not compared, and the steps after it are skipped. */
 
+import {
+  createECDH,
+  createPrivateKey,
+  createPublicKey,
+  sign as nodeSign,
+} from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -40,12 +46,16 @@ const GCM_IV_BYTE_LENGTH = 12;
 const IV_COUNTER_OFFSET = 4;
 const COUNTER_BYTE_LENGTH = 8;
 const KEY_BIT_LENGTH = 256;
+const EDDSA = -8;
+const LAYOUT_VERSION = 1;
+const PKCS8_ED25519_PREFIX = "302e020100300506032b657004220420";
 
 const hexString = z.string().regex(/^(?:[0-9a-f]{2})*$/);
+const counterString = z.string().regex(/^[0-9]+$/);
 
 const vectorSchema = z.object({ name: z.string(), wire_hex: hexString });
 
-const sideSchema = z.object({
+const sideSchema = z.strictObject({
   identity: z.string(),
   peer: z.string(),
   ephemeral_secret_hex: hexString,
@@ -53,12 +63,14 @@ const sideSchema = z.object({
   nonce_hex: hexString,
   signing_input_hex: hexString,
   signature_hex: hexString,
+  signature_verify_only: z.boolean(),
   hello_vector: z.string(),
 });
 
-const transcriptStepSchema = z.object({
+const transcriptStepSchema = z.strictObject({
   from: z.string(),
-  counter: z.number().int().nonnegative(),
+  counter: counterString,
+  inner_frame: z.string(),
   inner_wire_hex: hexString,
   iv_hex: hexString,
   aad_hex: hexString,
@@ -66,7 +78,7 @@ const transcriptStepSchema = z.object({
   sealed_vector: z.string(),
 });
 
-const keyScheduleSchema = z.object({
+const keyScheduleSchema = z.strictObject({
   low: z.string(),
   high: z.string(),
   shared_secret_hex: hexString,
@@ -77,38 +89,42 @@ const keyScheduleSchema = z.object({
   key_high_to_low_hex: hexString,
 });
 
-const handshakeSchema = z.object({
+const handshakeSchema = z.strictObject({
   name: z.string(),
   sides: z.tuple([sideSchema, sideSchema]),
   key_schedule: keyScheduleSchema,
   transcript: z.array(transcriptStepSchema),
 });
 
-const identitySchema = z.object({
+const identitySchema = z.strictObject({
   alg: z.number().int(),
   synthetic: z.literal(true),
+  secret_hex: hexString,
   public_key_hex: hexString,
   device_id_hex: hexString,
 });
 
-const helloVerdictSchema = z.object({
+const helloReason = z.enum([
+  "ok",
+  "wrong_recipient",
+  "unsupported_identity_alg",
+  "invalid_identity_key",
+  "bad_signature",
+]);
+
+const helloVerdictSchema = z.strictObject({
   name: z.string(),
   handshake: z.string(),
   receiver: z.string(),
   hello_vector: z.string(),
-  expected: z.enum([
-    "ok",
-    "wrong_recipient",
-    "unsupported_identity_alg",
-    "invalid_identity_key",
-    "bad_signature",
-  ]),
-  peer_device_id_hex: hexString.optional(),
-  signing_input_hex: hexString.optional(),
-  signature_hex: hexString.optional(),
+  expected: helloReason,
+  also_acceptable: z.array(helloReason),
+  peer_device_id_hex: hexString.nullable(),
+  signing_input_hex: hexString.nullable(),
+  signature_hex: hexString.nullable(),
 });
 
-const establishVerdictSchema = z.object({
+const establishVerdictSchema = z.strictObject({
   name: z.string(),
   handshake: z.string(),
   side: z.string(),
@@ -119,19 +135,22 @@ const establishVerdictSchema = z.object({
   stage_advisory: z.boolean(),
 });
 
-const stepSchema = z.object({
-  counter: z.string().regex(/^[0-9]+$/),
+const stepSchema = z.strictObject({
+  counter: counterString,
   secure_data_wire_hex: hexString,
   expected: z.discriminatedUnion("result", [
-    z.object({ result: z.literal("opened"), frame_wire_hex: hexString }),
-    z.object({ result: z.literal("replayed") }),
-    z.object({ result: z.literal("unauthentic") }),
-    z.object({ result: z.literal("undecodable") }),
+    z.strictObject({
+      result: z.literal("opened"),
+      frame_wire_hex: hexString,
+    }),
+    z.strictObject({ result: z.literal("replayed") }),
+    z.strictObject({ result: z.literal("unauthentic") }),
+    z.strictObject({ result: z.literal("undecodable") }),
   ]),
-  full_width_only: z.literal(true).optional(),
+  full_width_only: z.boolean(),
 });
 
-const sequenceSchema = z.object({
+const sequenceSchema = z.strictObject({
   name: z.string(),
   handshake: z.string(),
   sender: z.string(),
@@ -142,7 +161,8 @@ const sequenceSchema = z.object({
 
 const fileSchema = z.object({
   vectors: z.array(vectorSchema),
-  secure_channel: z.object({
+  secure_channel: z.strictObject({
+    layout_version: z.literal(LAYOUT_VERSION),
     identities: z.record(z.string(), identitySchema),
     handshakes: z.array(handshakeSchema),
     hello_verdicts: z.array(helloVerdictSchema),
@@ -362,18 +382,68 @@ async function sharedSecretHex(
   );
 }
 
+/** The public key a vector identity's seed (Ed25519) or scalar (ES256) derives, with test-only node:crypto calls. */
+function publicKeyFromSecretHex(
+  identity: z.infer<typeof identitySchema>,
+): string {
+  if (identity.alg === EDDSA) {
+    const jwk = createPublicKey(
+      createPrivateKey({
+        key: Buffer.from(PKCS8_ED25519_PREFIX + identity.secret_hex, "hex"),
+        format: "der",
+        type: "pkcs8",
+      }),
+    ).export({ format: "jwk" });
+
+    return Buffer.from(jwk.x ?? "", "base64url").toString("hex");
+  }
+  const ecdh = createECDH("prime256v1");
+  ecdh.setPrivateKey(Buffer.from(identity.secret_hex, "hex"));
+
+  return ecdh.getPublicKey().toString("hex");
+}
+
 describe("secure-channel recorded intermediates are derived again", () => {
-  it("gives each identity the device-id its public key hashes to", async () => {
+  it("gives each identity the public key its seed or scalar derives and the device-id that key hashes to", async () => {
     await Promise.all(
-      Object.entries(channelVectors.identities).map(
-        async ([name, identity]) => {
-          expect(
-            hexOf(await deriveDeviceId(bytesFromHex(identity.public_key_hex))),
-            name,
-          ).toBe(identity.device_id_hex);
-        },
-      ),
+      Object.entries(channelVectors.identities).map(async ([name, identity]) => {
+        expect(publicKeyFromSecretHex(identity), `${name} public key`).toBe(
+          identity.public_key_hex,
+        );
+        expect(
+          hexOf(await deriveDeviceId(bytesFromHex(identity.public_key_hex))),
+          name,
+        ).toBe(identity.device_id_hex);
+      }),
     );
+  });
+
+  it("reproduces every Ed25519 hello signature and marks exactly the ES256 ones verify-only", () => {
+    for (const handshake of channelVectors.handshakes) {
+      for (const side of handshake.sides) {
+        const identity = channelVectors.identities[side.identity];
+        if (identity === undefined) throw new Error("unknown identity");
+        expect(side.signature_verify_only, side.hello_vector).toBe(
+          identity.alg !== EDDSA,
+        );
+        if (identity.alg === EDDSA) {
+          const key = createPrivateKey({
+            key: Buffer.from(
+              PKCS8_ED25519_PREFIX + identity.secret_hex,
+              "hex",
+            ),
+            format: "der",
+            type: "pkcs8",
+          });
+          expect(
+            nodeSign(null, bytesFromHex(side.signing_input_hex), key).toString(
+              "hex",
+            ),
+            `${side.hello_vector} signature`,
+          ).toBe(side.signature_hex);
+        }
+      }
+    }
   });
 
   for (const handshake of channelVectors.handshakes) {
@@ -484,9 +554,14 @@ describe("secure-channel hello verdicts", () => {
           expect(hexOf(result.peer.deviceId)).toBe(verdict.peer_device_id_hex);
         }
       } else {
-        expect(result).toEqual({ ok: false, reason: verdict.expected });
+        // The reason is the expected one or one the vector lists as also acceptable.
+        const acceptable = [verdict.expected, ...verdict.also_acceptable];
+        expect(
+          result.ok ? "ok" : result.reason,
+          `${verdict.name} reason`,
+        ).toBeOneOf(acceptable);
       }
-      if (verdict.signing_input_hex !== undefined) {
+      if (verdict.signing_input_hex !== null) {
         const sender = await deriveDeviceId(
           hello["identity-key"]["public-key"],
         );
@@ -528,7 +603,7 @@ describe("secure-channel handshakes reproduce every sealed transcript frame", ()
         const frame = frameFromHex(step.inner_wire_hex);
 
         const sealed = await sender.seal(frame);
-        expect(sealed.counter, `${step.sealed_vector} counter`).toBe(
+        expect(String(sealed.counter), `${step.sealed_vector} counter`).toBe(
           step.counter,
         );
         expect(
@@ -550,6 +625,26 @@ describe("secure-channel handshakes reproduce every sealed transcript frame", ()
   }
 });
 
+/** A secure-hello read from its wire bytes without the size rules of the frame schema, so a hello whose ephemeral key is malformed can still be given to verifyHello. */
+function unsizedHello(wireHex: string): SecureHelloFrame {
+  const decoded: unknown = decode(bytesFromHex(wireHex), cdeDecodeOptions);
+  const parsed = z
+    .object({
+      type: z.literal("secure-hello"),
+      "ephemeral-key": z.instanceof(Uint8Array),
+      nonce: z.instanceof(Uint8Array),
+      "identity-key": z.object({
+        alg: z.number().int(),
+        "public-key": z.instanceof(Uint8Array),
+      }),
+      "to-device": z.instanceof(Uint8Array),
+      signature: z.instanceof(Uint8Array),
+    })
+    .parse(decoded);
+
+  return parsed;
+}
+
 describe("secure-channel establishment refuses an unusable ephemeral key", () => {
   for (const verdict of channelVectors.establish_verdicts) {
     it(verdict.name, async () => {
@@ -559,36 +654,54 @@ describe("secure-channel establishment refuses an unusable ephemeral key", () =>
         file.vectors,
         (v) => v.name === verdict.hello_vector,
       ).wire_hex;
-      const decoded = tryDecodeFrame(bytesFromHex(wire));
-      if (decoded?.type !== "secure-hello") {
-        // Refused while decoding: allowed only where the vector says the stage is advisory.
-        expect(
-          verdict.stage_advisory,
-          `${verdict.name} refused at decoding`,
-        ).toBe(true);
-
-        return;
-      }
-      if (!verdict.stage_advisory) {
-        expect(verdict.refused_at).toBe("establishment");
-      }
+      const hello = unsizedHello(wire);
+      expect(verdict.expected).toBe(
+        verdict.stage_advisory ? "refused" : "unusable_ephemeral_key",
+      );
+      expect(verdict.refused_at).toBe(
+        verdict.stage_advisory ? "decoding_or_establishment" : "establishment",
+      );
       const identity = identityPort(verdict.side);
-      const hellos = await verifyHello(identity, decoded);
-      // The hello is validly signed, so only the key exchange can refuse its ephemeral key.
+      // The hello verifies as a hello wherever the frame is decoded, since its signature covers whatever key bytes it carries.
+      const hellos = await verifyHello(identity, hello);
       expect(hellos.ok, `${verdict.name} hello verdict`).toBe(true);
       if (!hellos.ok) return;
+
+      // This implementation's frame schema has a size rule for the key, so a key that is not 65 bytes is refused while decoding. The stage may be either (the vector says so when it is advisory), and a hello refused only at establishment must decode.
+      const decodes = tryDecodeFrame(bytesFromHex(wire)) !== null;
+      if (!verdict.stage_advisory) {
+        expect(decodes, `${verdict.name} decodes`).toBe(true);
+      }
+      // A hello refused at decoding never reaches establishment here. (Web Crypto's key import would take some of these, a compressed point for one, which is why the frame's size rule matters and why the stage is advisory.)
+      if (!decodes) return;
+
 
       expect(
         await establishChannel(
           identity,
           await pendingFor(own),
-          decoded,
+          hello,
           hellos.peer,
         ),
       ).toBeUndefined();
     });
   }
 });
+
+/** The counter in a secure-data frame's wire bytes, read as an unsigned integer of any width. */
+function wireCounter(wireHex: string): bigint {
+  const decoded: unknown = decode(bytesFromHex(wireHex), cdeDecodeOptions);
+  if (
+    typeof decoded !== "object" ||
+    decoded === null ||
+    !("counter" in decoded) ||
+    (typeof decoded.counter !== "number" && typeof decoded.counter !== "bigint")
+  ) {
+    throw new Error("a secure-data frame without a counter");
+  }
+
+  return BigInt(decoded.counter);
+}
 
 describe("secure-channel open sequences", () => {
   for (const sequence of channelVectors.open_sequences) {
@@ -598,8 +711,20 @@ describe("secure-channel open sequences", () => {
         sequence.receiver,
       );
 
+      const receiverIsFirst =
+        handshakeNamed(sequence.handshake).sides[0].identity ===
+        sequence.receiver;
+      expect(sequence.sender).toBe(
+        handshakeNamed(sequence.handshake).sides[receiverIsFirst ? 1 : 0]
+          .identity,
+      );
+
       await inSequence(sequence.steps, async (step, index) => {
         const label = `${sequence.name} step ${String(index)}`;
+        // The step's counter and the one in its wire bytes are generated from one value; they must agree.
+        expect(String(wireCounter(step.secure_data_wire_hex)), label).toBe(
+          step.counter,
+        );
         if (step.full_width_only === true) {
           // Past what this implementation holds exactly, the frame is refused at decoding rather than truncated; below it, the step depends on state a refused step would have left, so it is skipped.
           if (BigInt(step.counter) > BigInt(MAX_COUNTER)) {

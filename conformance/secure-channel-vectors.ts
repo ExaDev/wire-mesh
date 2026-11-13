@@ -17,6 +17,7 @@ import {
   SCALAR_BYTE_LENGTH,
   associatedData,
   buildHandshake,
+  ed25519NonPoint,
   derSignature,
   flipFirstByte,
   flipLastByte,
@@ -40,6 +41,12 @@ import {
   type Hello,
   type Identity,
 } from "./secure-channel-crypto.ts";
+import {
+  assertReferencesResolve,
+  jsonArray,
+  jsonField,
+  LAYOUT_VERSION,
+} from "./secure-channel-references.ts";
 
 // An algorithm no verifier implements
 const UNKNOWN_ALG = -999;
@@ -150,7 +157,7 @@ function transcriptSteps(
       vector,
       step: {
         from: senderName,
-        counter,
+        counter: String(counter),
         inner_frame: frameName,
         inner_wire_hex: innerWire(frame).toString("hex"),
         iv_hex: ivFor(counter).toString("hex"),
@@ -260,7 +267,7 @@ function stepJson(step: OpenStep): JsonWire {
       typeof step.expected === "string"
         ? { result: step.expected }
         : { result: "opened", frame_wire_hex: step.expected.opened },
-    ...(step.fullWidthOnly === true ? { full_width_only: true } : {}),
+    full_width_only: step.fullWidthOnly === true,
   };
 }
 
@@ -518,6 +525,8 @@ interface HelloVerdict {
   receiver: string;
   message: JsonWire;
   expected: HelloExpectation;
+  /** Other reasons an implementation may give instead, where the spec leaves the reason open. */
+  alsoAcceptable?: readonly HelloExpectation[];
   peer?: Identity;
   /** Set when the hello was freshly signed for this case, so its signature is recorded and, for ES256, kept on regeneration. */
   signed?: Hello;
@@ -639,6 +648,21 @@ function helloVerdicts(handshake: Handshake): HelloVerdict[] {
       expected: "wrong_recipient",
     },
   ];
+  if (sideA.identity.alg === EDDSA) {
+    // 32 bytes that are not the encoding of an Ed25519 point. An implementation may refuse the key when it imports it (invalid_identity_key), or import it without checking and find the signature does not verify (bad_signature): the spec allows either.
+    verdicts.push({
+      name: "identity_key_not_a_point",
+      receiver,
+      message: helloMessage(hello, {
+        identityKey: {
+          alg: EDDSA,
+          "public-key": hex(ed25519NonPoint().toString("hex")),
+        },
+      }),
+      expected: "invalid_identity_key",
+      alsoAcceptable: ["bad_signature"],
+    });
+  }
   if (sideA.identity.alg === ES256) {
     // The spec's ES256 signature is the fixed-length raw r||s, and a verifier does not require the low-s form.
     verdicts.push(
@@ -753,15 +777,10 @@ export function secureChannelFile(frameVectors: readonly Vector[]): {
         receiver: verdict.receiver,
         hello_vector: name,
         expected: verdict.expected,
-        ...(verdict.peer === undefined
-          ? {}
-          : { peer_device_id_hex: verdict.peer.deviceId.toString("hex") }),
-        ...(verdict.signed === undefined
-          ? {}
-          : {
-              signing_input_hex: verdict.signed.signingInput.toString("hex"),
-              signature_hex: verdict.signed.signature.toString("hex"),
-            }),
+        also_acceptable: [...(verdict.alsoAcceptable ?? [])],
+        peer_device_id_hex: verdict.peer?.deviceId.toString("hex") ?? null,
+        signing_input_hex: verdict.signed?.signingInput.toString("hex") ?? null,
+        signature_hex: verdict.signed?.signature.toString("hex") ?? null,
       });
     }
   }
@@ -838,10 +857,22 @@ export function secureChannelFile(frameVectors: readonly Vector[]): {
     };
   }
 
+  assertReferencesResolve(vectors, [
+    ...handshakes.flatMap((h) => [
+      ...jsonArray(h.sides).map((side) => jsonField(side, "hello_vector")),
+      ...jsonArray(h.transcript).map((step) =>
+        jsonField(step, "sealed_vector"),
+      ),
+    ]),
+    ...helloVerdictJson.map((v) => jsonField(v, "hello_vector")),
+    ...establishVerdicts.map((v) => jsonField(v, "hello_vector")),
+  ]);
+
   return {
     vectors,
     extra: {
       secure_channel: {
+        layout_version: LAYOUT_VERSION,
         identities: identityJson,
         handshakes,
         hello_verdicts: helloVerdictJson,
