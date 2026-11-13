@@ -218,7 +218,10 @@ describe("verifyWithPublicKey reports a key it cannot use as an IdentityKeyError
         message,
         signature,
       ),
-    ).rejects.toMatchObject({ name: "IdentityKeyError", fault: "unsupported_alg" });
+    ).rejects.toMatchObject({
+      name: "IdentityKeyError",
+      fault: "unsupported_alg",
+    });
   });
 
   it("names a key of the wrong size, for each algorithm", async () => {

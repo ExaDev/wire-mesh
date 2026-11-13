@@ -10,11 +10,7 @@ describe("createBoundedLog", () => {
       log.record(entry);
     }
 
-    expect(log.entries()).toEqual([
-      WINDOW,
-      WINDOW + 1,
-      WINDOW + 2,
-    ]);
+    expect(log.entries()).toEqual([WINDOW, WINDOW + 1, WINDOW + 2]);
   });
 
   it("hands out a copy, so a caller cannot change the log", () => {
