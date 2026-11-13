@@ -485,7 +485,7 @@ pub async fn verify_capability_token(
                     if let Some(remaining) = claims.delegations_remaining {
                         if child_claims
                             .delegations_remaining
-                            .map_or(true, |child_value| child_value >= remaining)
+                            .is_none_or(|child_value| child_value >= remaining)
                         {
                             return TokenVerdict::Invalid(TokenRejection::NotNarrowed(
                                 "the child's delegations-remaining is not strictly less",
@@ -519,7 +519,7 @@ pub async fn verify_capability_token(
                     if let Some(remaining) = claims.delegations_remaining {
                         if child_claims
                             .delegations_remaining
-                            .map_or(true, |child_value| child_value >= remaining)
+                            .is_none_or(|child_value| child_value >= remaining)
                         {
                             return invalid(
                                 "the minted delegations-remaining is not strictly less",

@@ -318,18 +318,26 @@ fn json_to_cbor(value: &serde_json::Value) -> Result<CborValue, String> {
 }
 
 fn decode_hex(hex: &str) -> Result<Vec<u8>, String> {
-    if hex.len() % 2 != 0 {
+    if !hex.len().is_multiple_of(2) {
         return Err(format!("hex string has odd length {}", hex.len()));
     }
     let mut out = Vec::with_capacity(hex.len() / 2);
     let bytes = hex.as_bytes();
-    for pair in bytes.chunks_exact(2) {
-        let high = (pair[0] as char)
-            .to_digit(16)
-            .ok_or_else(|| format!("invalid hex byte '{}'", String::from_utf8_lossy(pair)))?;
-        let low = (pair[1] as char)
-            .to_digit(16)
-            .ok_or_else(|| format!("invalid hex byte '{}'", String::from_utf8_lossy(pair)))?;
+    // The length is even (checked above), so there is no remainder.
+    let (pairs, _) = bytes.as_chunks::<2>();
+    for pair in pairs {
+        let high = (pair[0] as char).to_digit(16).ok_or_else(|| {
+            format!(
+                "invalid hex byte '{}'",
+                String::from_utf8_lossy(pair.as_slice())
+            )
+        })?;
+        let low = (pair[1] as char).to_digit(16).ok_or_else(|| {
+            format!(
+                "invalid hex byte '{}'",
+                String::from_utf8_lossy(pair.as_slice())
+            )
+        })?;
         out.push(((high << 4) | low) as u8);
     }
     Ok(out)
