@@ -29,15 +29,15 @@ tokio = { version = "1", default-features = false, features = [
     "sync",
     "time",
 ] }
-sha2 = { version = "0.10", default-features = false, features = ["std"] }
+sha2 = { version = "0.11", default-features = false }
 ed25519-dalek = { version = "2", default-features = false, features = ["std", "fast", "zeroize", "rand_core"] }
 # Zeroes the exported secret of a node identity when it is dropped.
 # "serialization" gives the key and package types their serialize and deserialize methods, and "cheater-detection" makes aggregation name the participant that sent a bad share. frost-core is pinned to the version frost-ed25519 depends on.
 frost-ed25519 = { version = "2", default-features = false, features = ["std", "serialization", "cheater-detection"] }
 frost-core = { version = "2.2.0", default-features = false, features = ["std", "serialization", "cheater-detection"] }
 zeroize = { version = "1", default-features = false, features = ["alloc"] }
-p256 = { version = "0.13", default-features = false, features = ["std", "ecdsa", "ecdh"] }
-hkdf = { version = "0.12", default-features = false }
+p256 = { version = "0.14", default-features = false, features = ["std", "ecdsa", "ecdh"] }
+hkdf = { version = "0.13", default-features = false }
 aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
 # "std" and "std_rng" are what `OsRng` and `thread_rng` need.
 rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
