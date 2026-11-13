@@ -13,6 +13,7 @@ import type {
   SecureHelloFrame,
 } from "../generated/protocol.js";
 import { IdentityKeyError, type IdentityPort } from "../ports/identity.js";
+import { ChannelExhaustedError } from "./channel-exhausted-error.js";
 import { bytesEqual } from "./token-scope.js";
 
 const NONCE_BYTE_LENGTH = 16;
@@ -136,6 +137,7 @@ export async function verifyHello(
   hello: Readonly<SecureHelloFrame>,
 ): Promise<HelloVerdict> {
   const key = hello["identity-key"];
+  // Hashing the key cannot fail for a sound port. A port that fails here is failing itself, not the peer: the error propagates, and the caller (relay-channels.ts) drops the hello and reports it locally.
   const sender = await identity.deriveDeviceId(key["public-key"]);
   if (!bytesEqual(hello["to-device"], identity.deviceId)) {
     return { ok: false, reason: "wrong_recipient" };
@@ -192,14 +194,6 @@ export type OpenOutcome =
 
 /** The largest counter a channel uses: the counter is an unsigned 64-bit integer on the wire, and this implementation holds it as a JavaScript number, exact up to this value. A frame above it is refused at decoding, never truncated, and sealing refuses to go past it, never wraps. */
 export const MAX_COUNTER = Number.MAX_SAFE_INTEGER;
-
-/** Thrown by `seal` once the channel's send counter is spent: nothing more can be sealed on it, and a new handshake gives a fresh one. */
-export class ChannelExhaustedError extends Error {
-  constructor() {
-    super("the channel's send counter is exhausted");
-    this.name = "ChannelExhaustedError";
-  }
-}
 
 /**
  * Takes the next send counter from `next`, the counter the next seal would use: returns it with the counter that follows. Throws once `next` is past MAX_COUNTER, since a counter that cannot be held exactly would repeat an IV under the same key.
@@ -296,6 +290,11 @@ export async function establishChannelFrom(
     firstSendCounter?: number;
   }>,
 ): Promise<SecureChannel | undefined> {
+  if (!Number.isSafeInteger(firstSendCounter) || firstSendCounter < 0) {
+    throw new RangeError(
+      "firstSendCounter must be a non-negative safe integer",
+    );
+  }
   let secret: Uint8Array;
   try {
     const remoteKey = await crypto.subtle.importKey(

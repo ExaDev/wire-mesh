@@ -10,6 +10,7 @@ import {
   verifyWithPublicKey as verifyWithNodeIdentity,
 } from "wire-mesh-core/adapters/node-identity";
 import { bytesFromHex } from "./hex.js";
+import { IdentityKeyError } from "wire-mesh-core/ports/identity";
 
 const ES256 = -7;
 // a real COSE algorithm this adapter deliberately does not implement
@@ -116,5 +117,56 @@ describe("createWebCryptoIdentity", () => {
     await expect(
       verifyWithPublicKey(es512Key, message, signature),
     ).rejects.toThrow("unsupported identity-key alg -36");
+  });
+});
+
+describe("verifyWithPublicKey reports a key it cannot use as an IdentityKeyError", () => {
+  const EDDSA = -8;
+  const P256_POINT_BYTES = 65;
+  const SIGNATURE_BYTES = 64;
+  const KEY_BYTES = 32;
+  const SHORT_KEY_BYTES = 3;
+  const SEC1_UNCOMPRESSED = 4;
+  const message = new Uint8Array([1]);
+  const signature = new Uint8Array(SIGNATURE_BYTES);
+
+  it("names an unsupported algorithm", async () => {
+    await expect(
+      verifyWithPublicKey(
+        { alg: ES512, "public-key": new Uint8Array(KEY_BYTES) },
+        message,
+        signature,
+      ),
+    ).rejects.toMatchObject({ name: "IdentityKeyError", fault: "unsupported_alg" });
+  });
+
+  it("names a key of the wrong size, for each algorithm", async () => {
+    await Promise.all(
+      [ES256, EDDSA].map(async (alg) =>
+        expect(
+          verifyWithPublicKey(
+            { alg, "public-key": new Uint8Array(SHORT_KEY_BYTES) },
+            message,
+            signature,
+          ),
+          String(alg),
+        ).rejects.toMatchObject({ fault: "invalid_key" }),
+      ),
+    );
+  });
+
+  it("names an ES256 key that is not a point on the curve, with the Web Crypto error as its cause", async () => {
+    const offCurve = new Uint8Array(P256_POINT_BYTES).fill(1);
+    offCurve[0] = SEC1_UNCOMPRESSED;
+
+    const failure: unknown = await verifyWithPublicKey(
+      { alg: ES256, "public-key": offCurve },
+      message,
+      signature,
+    ).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(IdentityKeyError);
+    expect(failure).toMatchObject({ fault: "invalid_key" });
+    expect(failure instanceof Error ? failure.cause : undefined).toBeDefined();
   });
 });

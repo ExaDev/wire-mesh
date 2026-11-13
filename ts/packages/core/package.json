@@ -86,6 +86,10 @@
       "import": "./dist/domain/capability-request.mjs",
       "require": "./dist/domain/capability-request.cjs"
     },
+    "./domain/channel-exhausted-error": {
+      "import": "./dist/domain/channel-exhausted-error.mjs",
+      "require": "./dist/domain/channel-exhausted-error.cjs"
+    },
     "./domain/coordinator-election": {
       "import": "./dist/domain/coordinator-election.mjs",
       "require": "./dist/domain/coordinator-election.cjs"

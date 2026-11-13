@@ -7,6 +7,15 @@ import type {
 /** The highest protocol version this build of core understands. */
 export const SUPPORTED_PROTOCOL_VERSION: ProtocolVersion = 1;
 
+/** The handshake this side sends: the version it supports and the domains it offers. */
+export function localHandshake(domains: readonly string[]): HandshakeFrame {
+  return {
+    type: "handshake",
+    version: SUPPORTED_PROTOCOL_VERSION,
+    domains: [...domains],
+  };
+}
+
 /**
  * Domain names that must never be negotiated, per handshake.cddl: core/federation is retired (its string stays reserved, never reused) and "a peer must never advertise or negotiate it". Excluded here even if both peers advertise it -- two buggy advertisers must not end up speaking a dead domain.
  */
