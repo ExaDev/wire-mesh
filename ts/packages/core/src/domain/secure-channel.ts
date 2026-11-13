@@ -163,6 +163,23 @@ export interface SecureChannel {
   open: (data: Readonly<SecureDataFrame>) => Promise<Frame | undefined>;
 }
 
+/** The largest counter a channel uses: the counter is an unsigned 64-bit integer on the wire, and this implementation holds it as a JavaScript number, exact up to this value. A frame above it is refused at decoding, never truncated, and sealing refuses to go past it, never wraps. */
+export const MAX_COUNTER = Number.MAX_SAFE_INTEGER;
+
+/**
+ * Takes the next send counter from `next`, the counter the next seal would use: returns it with the counter that follows. Throws once `next` is past MAX_COUNTER, since a counter that cannot be held exactly would repeat an IV under the same key.
+ */
+export function claimSendCounter(next: number): {
+  readonly counter: number;
+  readonly next: number;
+} {
+  if (next > MAX_COUNTER) {
+    throw new Error("the channel's send counter is exhausted");
+  }
+
+  return { counter: next, next: next + 1 };
+}
+
 function ivFor(counter: number): Uint8Array<ArrayBuffer> {
   const iv = new Uint8Array(GCM_IV_BYTE_LENGTH);
   iv.set(counterBytes(counter), IV_COUNTER_OFFSET);
@@ -328,8 +345,9 @@ export async function establishChannel(
   return {
     peer,
     seal: async (frame) => {
-      const counter = nextSendCounter;
-      nextSendCounter += 1;
+      const claimed = claimSendCounter(nextSendCounter);
+      const counter = claimed.counter;
+      nextSendCounter = claimed.next;
       // Sealing is chained so frames leave in counter order even if the runtime finishes two encryptions out of order: the receiver refuses a counter it has already passed.
       const sealed = sealing.then(async () => sealAt(frame, counter));
       sealing = sealed.catch(() => undefined);
