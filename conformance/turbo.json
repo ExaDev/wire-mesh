@@ -9,7 +9,13 @@
     },
     "_generate": {
       "dependsOn": ["_build"],
-      "inputs": ["generate.ts"],
+      "inputs": [
+        "*.ts",
+        "!*.unit.test.ts",
+        "!eslint.config.ts",
+        "!tsdown.config.ts",
+        "secure-channel.v1.json"
+      ],
       "outputs": ["*.v1.json"]
     },
     "_lint": {
