@@ -309,6 +309,73 @@ describe("a channel", () => {
   });
 });
 
+describe("why a frame or a hello is refused", () => {
+  it("reports an unsupported identity-key algorithm apart from an unusable key", async () => {
+    const a = await generateEd25519Identity();
+    const b = await generateEd25519Identity();
+    const { hello } = await beginHandshake(a, b.deviceId);
+    const UNSUPPORTED_ALG = -999;
+
+    expect(
+      await verifyHello(b, {
+        ...hello,
+        "identity-key": { ...hello["identity-key"], alg: UNSUPPORTED_ALG },
+      }),
+    ).toEqual({ ok: false, reason: "unsupported_identity_alg" });
+    expect(
+      await verifyHello(b, {
+        ...hello,
+        "identity-key": {
+          ...hello["identity-key"],
+          "public-key": hello["identity-key"]["public-key"].slice(1),
+        },
+      }),
+    ).toEqual({ ok: false, reason: "invalid_identity_key" });
+  });
+
+  it("checks the recipient before the identity-key is used", async () => {
+    const a = await generateEd25519Identity();
+    const b = await generateEd25519Identity();
+    const c = await generateEd25519Identity();
+    const { hello } = await beginHandshake(a, c.deviceId);
+    const UNSUPPORTED_ALG = -999;
+
+    expect(
+      await verifyHello(b, {
+        ...hello,
+        "identity-key": { ...hello["identity-key"], alg: UNSUPPORTED_ALG },
+      }),
+    ).toEqual({ ok: false, reason: "wrong_recipient" });
+  });
+
+  it("names why a sealed frame did not open, replay before authentication", async () => {
+    const { atA, atB } = await connect(
+      await generateEd25519Identity(),
+      await generateEd25519Identity(),
+    );
+    const sealed = await atA.seal(request);
+    const altered = {
+      ...sealed,
+      ciphertext: flipFirstByte(sealed.ciphertext),
+    };
+
+    expect(await atB.openOutcome(altered)).toEqual({
+      ok: false,
+      reason: "unauthentic",
+    });
+    expect(await atB.openOutcome(sealed)).toEqual({ ok: true, frame: request });
+    expect(await atB.openOutcome(sealed)).toEqual({
+      ok: false,
+      reason: "replayed",
+    });
+    // Replay is checked first, so an altered frame at a counter already passed is replayed, not unauthentic.
+    expect(await atB.openOutcome(altered)).toEqual({
+      ok: false,
+      reason: "replayed",
+    });
+  });
+});
+
 describe("the send counter's bound", () => {
   it("hands out counters up to the largest exact integer and then refuses", () => {
     expect(claimSendCounter(0)).toEqual({ counter: 0, next: 1 });

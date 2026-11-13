@@ -1,6 +1,6 @@
 import { webcrypto } from "node:crypto";
 import type { DeviceId, IdentityKey } from "../generated/protocol.js";
-import type { IdentityPort } from "../ports/identity.js";
+import { IdentityKeyError, type IdentityPort } from "../ports/identity.js";
 
 const ES256 = -7;
 const EDDSA = -8;
@@ -18,7 +18,10 @@ function publicKeySize(alg: number): number {
   if (alg === EDDSA) {
     return EDDSA_PUBLIC_KEY_BYTES;
   }
-  throw new Error(`unsupported identity-key alg ${String(alg)}`);
+  throw new IdentityKeyError(
+    "unsupported_alg",
+    `unsupported identity-key alg ${String(alg)}`,
+  );
 }
 
 function algParams(alg: number): EcdsaParams | { name: "Ed25519" } {
@@ -28,7 +31,10 @@ function algParams(alg: number): EcdsaParams | { name: "Ed25519" } {
   if (alg === EDDSA) {
     return { name: "Ed25519" };
   }
-  throw new Error(`unsupported identity-key alg ${String(alg)}`);
+  throw new IdentityKeyError(
+    "unsupported_alg",
+    `unsupported identity-key alg ${String(alg)}`,
+  );
 }
 
 /** Copies into a fresh, non-shared, whole-buffer Uint8Array -- Web Crypto's BufferSource parameters reject a view over a SharedArrayBuffer or a sub-range view, neither of which a caller-supplied Uint8Array is guaranteed not to be. */
@@ -52,7 +58,8 @@ function importedKeyId(key: IdentityKey): string {
 async function importPublicKey(key: IdentityKey): Promise<webcrypto.CryptoKey> {
   // Before the id is built: a gossiped advert's key bytes are attacker-sized up to the frame limit, and the id is a copy of them as a string. A key of the wrong size for its algorithm could never import, so refusing it here costs nothing a valid key needs.
   if (key["public-key"].length !== publicKeySize(key.alg)) {
-    throw new Error(
+    throw new IdentityKeyError(
+      "invalid_key",
       `identity-key public-key is ${String(key["public-key"].length)} bytes, not the ${String(publicKeySize(key.alg))} an alg ${String(key.alg)} key has`,
     );
   }
@@ -99,7 +106,10 @@ async function importPublicKeyUncached(
       ["verify"],
     );
   }
-  throw new Error(`unsupported identity-key alg ${String(key.alg)}`);
+  throw new IdentityKeyError(
+    "unsupported_alg",
+    `unsupported identity-key alg ${String(key.alg)}`,
+  );
 }
 
 export async function deriveDeviceId(publicKey: Uint8Array): Promise<DeviceId> {

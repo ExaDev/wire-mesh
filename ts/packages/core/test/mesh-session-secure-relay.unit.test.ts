@@ -106,6 +106,36 @@ describe("a session reached through a relay", () => {
     await session.close();
   });
 
+  it("drops a sealed frame of a kind outside the manage and data frames, as spec obligation 5 says", async () => {
+    const { session, connection, incoming } = await connectedSession();
+    const logged: string[] = [];
+    void (async (): Promise<void> => {
+      for await (const event of session.events) {
+        logged.splice(
+          0,
+          logged.length,
+          ...event.frameLog
+            .filter((entry) => entry.direction === "received")
+            .map((entry) => entry.frame.type),
+        );
+      }
+    })();
+    const peer = new RelayPeer(identityA, testIdentity, connection);
+    await peer.openTowardSession();
+
+    await peer.deliver({ type: "ping" });
+    await peer.deliver(requestFrame(FIRST_REQUEST_ID));
+    await settle();
+
+    // The request after the ping is acted on and logged as received; the sealed ping, which opened under the channel, is neither.
+    expect(incoming.map((request) => request.requestId)).toEqual([
+      FIRST_REQUEST_ID,
+    ]);
+    expect(logged).toContain("manage-request");
+    expect(logged).not.toContain("ping");
+    await session.close();
+  });
+
   it("does not act on sealed data from a device it has no channel with", async () => {
     const { session, connection, incoming } = await connectedSession();
     const stranger = new RelayPeer(identityC, testIdentity, connection);

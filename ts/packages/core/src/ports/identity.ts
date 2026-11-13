@@ -1,5 +1,19 @@
 import type { DeviceId, IdentityKey } from "../generated/protocol.js";
 
+/** Why an identity-key could not be used: its algorithm is not one the implementation verifies, or its key bytes are not a valid key for that algorithm. */
+export type IdentityKeyFault = "unsupported_alg" | "invalid_key";
+
+/** Thrown by an IdentityPort's verify for an identity-key it cannot use at all, as opposed to a signature that does not verify (which returns false). Lets a caller tell the two faults apart without parsing a message. */
+export class IdentityKeyError extends Error {
+  readonly fault: IdentityKeyFault;
+
+  constructor(fault: IdentityKeyFault, message: string) {
+    super(message);
+    this.name = "IdentityKeyError";
+    this.fault = fault;
+  }
+}
+
 /**
  * Wraps the local node's own identity plus the signing/verification primitives capability-token handling needs -- never hardcoded to one crypto library's own API shape (Node's webcrypto, a WASM implementation, a hardware key, etc. can all satisfy this same contract).
  */

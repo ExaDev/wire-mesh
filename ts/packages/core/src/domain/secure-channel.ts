@@ -12,7 +12,7 @@ import type {
   SecureDataFrame,
   SecureHelloFrame,
 } from "../generated/protocol.js";
-import type { IdentityPort } from "../ports/identity.js";
+import { IdentityKeyError, type IdentityPort } from "../ports/identity.js";
 import { bytesEqual } from "./token-scope.js";
 
 const NONCE_BYTE_LENGTH = 16;
@@ -115,8 +115,15 @@ export async function beginHandshake(
   };
 }
 
+/**
+ * Why a hello was refused, in the order the checks run: the identity-key cannot be hashed (`identity_mismatch`), the hello is addressed to another device (`wrong_recipient`), the identity-key's algorithm is not supported (`unsupported_identity_alg`), the identity-key cannot be used to verify (`invalid_identity_key`, for instance a key of the wrong size or not a curve point), or the signature does not verify (`bad_signature`).
+ */
 export type HelloRefusal =
-  "identity_mismatch" | "wrong_recipient" | "bad_signature";
+  | "identity_mismatch"
+  | "wrong_recipient"
+  | "unsupported_identity_alg"
+  | "invalid_identity_key"
+  | "bad_signature";
 
 export type HelloVerdict =
   | { readonly ok: true; readonly peer: SecureChannelPeer }
@@ -130,11 +137,16 @@ export async function verifyHello(
   hello: Readonly<SecureHelloFrame>,
 ): Promise<HelloVerdict> {
   const key = hello["identity-key"];
+  let sender: DeviceId;
   try {
-    const sender = await identity.deriveDeviceId(key["public-key"]);
-    if (!bytesEqual(hello["to-device"], identity.deviceId)) {
-      return { ok: false, reason: "wrong_recipient" };
-    }
+    sender = await identity.deriveDeviceId(key["public-key"]);
+  } catch {
+    return { ok: false, reason: "identity_mismatch" };
+  }
+  if (!bytesEqual(hello["to-device"], identity.deviceId)) {
+    return { ok: false, reason: "wrong_recipient" };
+  }
+  try {
     const valid = await identity.verify(
       key,
       helloSigningInput(
@@ -149,8 +161,15 @@ export async function verifyHello(
     return valid
       ? { ok: true, peer: { deviceId: sender, identityKey: key } }
       : { ok: false, reason: "bad_signature" };
-  } catch {
-    return { ok: false, reason: "identity_mismatch" };
+  } catch (error) {
+    if (
+      error instanceof IdentityKeyError &&
+      error.fault === "unsupported_alg"
+    ) {
+      return { ok: false, reason: "unsupported_identity_alg" };
+    }
+
+    return { ok: false, reason: "invalid_identity_key" };
   }
 }
 
@@ -161,7 +180,18 @@ export interface SecureChannel {
   seal: (frame: Frame) => Promise<SecureDataFrame>;
   /** Opens a frame from the peer. Undefined when it does not open, is replayed or reordered, or does not decode as a frame; nothing else is ever returned. */
   open: (data: Readonly<SecureDataFrame>) => Promise<Frame | undefined>;
+  /** What `open` does, with the reason a frame was refused: `open` is exactly this with the reason dropped. */
+  openOutcome: (data: Readonly<SecureDataFrame>) => Promise<OpenOutcome>;
 }
+
+/**
+ * Why a sealed frame did not open, in the order the checks run: its counter is not above every counter already accepted (`replayed`, checked before decrypting, so a frame that is both replayed and altered is `replayed`), it does not authenticate under the channel's key and its own counter, IV and associated data (`unauthentic`), or it authenticates but its plaintext is not one frame (`undecodable`, the only refusal that consumes its counter).
+ */
+export type OpenRefusal = "replayed" | "unauthentic" | "undecodable";
+
+export type OpenOutcome =
+  | { readonly ok: true; readonly frame: Frame }
+  | { readonly ok: false; readonly reason: OpenRefusal };
 
 /** The largest counter a channel uses: the counter is an unsigned 64-bit integer on the wire, and this implementation holds it as a JavaScript number, exact up to this value. A frame above it is refused at decoding, never truncated, and sealing refuses to go past it, never wraps. */
 export const MAX_COUNTER = Number.MAX_SAFE_INTEGER;
@@ -314,8 +344,10 @@ export async function establishChannel(
 
   async function openOne(
     data: Readonly<SecureDataFrame>,
-  ): Promise<Frame | undefined> {
-    if (data.counter <= highestReceived) return undefined;
+  ): Promise<OpenOutcome> {
+    if (data.counter <= highestReceived) {
+      return { ok: false, reason: "replayed" };
+    }
     let plaintext: Uint8Array;
     try {
       plaintext = new Uint8Array(
@@ -334,13 +366,27 @@ export async function establishChannel(
         ),
       );
     } catch {
-      return undefined;
+      return { ok: false, reason: "unauthentic" };
     }
     // Advanced only after the frame authenticated, so a forged counter cannot lock out the real ones.
     highestReceived = Math.max(highestReceived, data.counter);
 
-    return tryDecodeFrame(plaintext) ?? undefined;
+    const frame = tryDecodeFrame(plaintext);
+
+    return frame === null
+      ? { ok: false, reason: "undecodable" }
+      : { ok: true, frame };
   }
+
+  const openOutcome = async (
+    data: Readonly<SecureDataFrame>,
+  ): Promise<OpenOutcome> => {
+    // Chained for the same reason as sealing: two frames opening at once must not both pass the counter check before either has advanced it.
+    const opened = opening.then(async () => openOne(data));
+    opening = opened.catch(() => undefined);
+
+    return opened;
+  };
 
   return {
     peer,
@@ -355,11 +401,10 @@ export async function establishChannel(
       return sealed;
     },
     open: async (data) => {
-      // Chained for the same reason: two frames opening at once must not both pass the counter check before either has advanced it.
-      const opened = opening.then(async () => openOne(data));
-      opening = opened.catch(() => undefined);
+      const outcome = await openOutcome(data);
 
-      return opened;
+      return outcome.ok ? outcome.frame : undefined;
     },
+    openOutcome,
   };
 }
