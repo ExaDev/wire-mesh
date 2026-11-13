@@ -1,9 +1,9 @@
 // A channel whose send counter is spent is dropped, so the next send to that peer starts a new handshake instead of failing for good.
 
 import { describe, expect, it } from "vitest";
+import { ChannelExhaustedError } from "../src/domain/channel-exhausted-error.js";
 import { createRelayChannels } from "../src/domain/relay-channels.js";
 import {
-  ChannelExhaustedError,
   MAX_COUNTER,
 } from "../src/domain/secure-channel.js";
 import type { Frame } from "../src/generated/protocol.js";
@@ -40,5 +40,6 @@ describe("a channel whose send counter is spent", () => {
     expect(second).not.toBe(first);
     const sealed = await second.seal(ping);
     expect(sealed.counter).toBe(MAX_COUNTER);
+    expect(await atB.open(sealed, a.deviceId)).toMatchObject({ frame: ping });
   });
 });

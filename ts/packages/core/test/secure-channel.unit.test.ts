@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildCapabilityRequestCommand } from "../src/domain/capability-request.js";
+import { ChannelExhaustedError } from "../src/domain/channel-exhausted-error.js";
 import {
   beginHandshake,
-  ChannelExhaustedError,
   claimSendCounter,
   establishChannel,
   establishChannelFrom,
@@ -27,6 +27,7 @@ const CONCURRENT_FRAME_COUNT = 24;
 const P256_UNCOMPRESSED_POINT_BYTE_LENGTH = 65;
 /** How many counters are claimed in the last stretch before the bound. */
 const COUNTERS_AT_THE_BOUND = 3;
+const FRACTIONAL_COUNTER = 1.5;
 const SEC1_UNCOMPRESSED_PREFIX = 4;
 
 const request: Frame = {
@@ -464,5 +465,35 @@ describe("a hello's identity-key faults", () => {
     };
 
     await expect(verifyHello(failing, hello)).rejects.toThrow(TypeError);
+  });
+});
+
+describe("the first send counter", () => {
+  it("must be a non-negative safe integer", async () => {
+    const a = await generateEd25519Identity();
+    const b = await generateEd25519Identity();
+    const pendingA = await beginHandshake(a, b.deviceId);
+    const pendingB = await beginHandshake(b, a.deviceId);
+    const peer = { deviceId: b.deviceId, identityKey: b.identityKey };
+
+    await Promise.all(
+      [
+        Number.NaN,
+        -1,
+        FRACTIONAL_COUNTER,
+        Number.POSITIVE_INFINITY,
+        MAX_COUNTER + 1,
+      ].map(async (bad) =>
+        expect(
+          establishChannelFrom(a, {
+            pending: pendingA,
+            remote: pendingB.hello,
+            peer,
+            firstSendCounter: bad,
+          }),
+          String(bad),
+        ).rejects.toThrow(RangeError),
+      ),
+    );
   });
 });

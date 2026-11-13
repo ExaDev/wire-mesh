@@ -136,6 +136,28 @@ describe("a session reached through a relay", () => {
     await session.close();
   });
 
+  it("does not let a failed answer to a version probe become an unhandled rejection", async () => {
+    const { session, connection } = await connectedSession();
+    const unhandled: unknown[] = [];
+    const record = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", record);
+    connection.rejectSends(new Error("the link stopped accepting writes"));
+
+    connection.push({
+      type: "manage-request",
+      "request-id": FIRST_REQUEST_ID,
+      command: { verb: "core:version", params: { verb: "version.get" } },
+      scope: { kind: "node" },
+    });
+    await settle();
+    process.off("unhandledRejection", record);
+
+    expect(unhandled).toEqual([]);
+    await session.close();
+  });
+
   it("does not act on sealed data from a device it has no channel with", async () => {
     const { session, connection, incoming } = await connectedSession();
     const stranger = new RelayPeer(identityC, testIdentity, connection);

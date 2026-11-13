@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+
+const UNSUPPORTED_ALG = -999;
+const KEY_BYTES = 32;
 import type { DeviceId } from "../src/generated/protocol.js";
 import {
   createThresholdIdentity,
@@ -214,6 +217,14 @@ describe("threshold-identity: createThresholdIdentity", () => {
       signature,
     );
     expect(ok).toBe(true);
+    // A key it cannot use is reported as such, not as a failure of this identity.
+    await expect(
+      identity.verify(
+        { alg: UNSUPPORTED_ALG, "public-key": new Uint8Array(KEY_BYTES) },
+        toBeSigned(subject),
+        signature,
+      ),
+    ).rejects.toMatchObject({ fault: "unsupported_alg" });
   });
 
   it("sign() always rejects -- signSubject is the only real entry point", async () => {

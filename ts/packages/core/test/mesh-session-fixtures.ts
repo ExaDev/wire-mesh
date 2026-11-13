@@ -72,12 +72,17 @@ export class FakeConnection {
 
   private failure: Error | null = null;
 
+  private sendFailure: Error | null = null;
+
   /** Constructs a fake, already-authenticated connection whose own `peerDeviceId` is set from the start -- the transport-authenticated case topology self-advertisement's own `direct` field prefers over any gossip-derived guess (mesh-session.ts's directPeerDevice). Omit for the default, unauthenticated case every other test here relies on. */
   constructor(private readonly authenticatedPeerDeviceId?: DeviceId) {}
 
   get connection(): Readonly<Connection> {
     return {
       send: async (frame: Frame): Promise<void> => {
+        if (this.sendFailure !== null) {
+          throw this.sendFailure;
+        }
         this.sent.push(frame);
 
         return Promise.resolve();
@@ -109,6 +114,11 @@ export class FakeConnection {
   push(frame: Frame): void {
     this.inbound.push(frame);
     this.wake();
+  }
+
+  /** Makes every later send reject with `error`, as a link that has stopped accepting writes does while its receive stream is still open. */
+  rejectSends(error: Error): void {
+    this.sendFailure = error;
   }
 
   fail(error: Error): void {

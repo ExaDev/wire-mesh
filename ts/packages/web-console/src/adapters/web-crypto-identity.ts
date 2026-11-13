@@ -2,7 +2,10 @@
 
 import { cdeDecodeOptions, cdeEncodeOptions, decode, encode } from "cbor2";
 import type { DeviceId, IdentityKey } from "wire-mesh-core/generated/protocol";
-import type { IdentityPort } from "wire-mesh-core/ports/identity";
+import {
+  IdentityKeyError,
+  type IdentityPort,
+} from "wire-mesh-core/ports/identity";
 import type { KeyValueStorage } from "wire-mesh-core/ports/storage";
 
 const ES256 = -7;
@@ -25,26 +28,35 @@ function toBufferSource(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(bytes);
 }
 
+/** Imports the raw public key, reporting an algorithm this adapter does not implement, and a key Web Crypto cannot import (the wrong size, or not a point on the curve), as an IdentityKeyError, so a caller can tell a key it cannot use from a failure of this adapter. An Ed25519 import does not check that the bytes are a curve point: such a key imports and every signature under it fails to verify. */
 async function importPublicKey(key: IdentityKey): Promise<CryptoKey> {
-  if (key.alg === ES256) {
-    return crypto.subtle.importKey(
+  const algorithm =
+    key.alg === ES256
+      ? { name: "ECDSA", namedCurve: "P-256" }
+      : key.alg === EDDSA
+        ? { name: "Ed25519" }
+        : undefined;
+  if (algorithm === undefined) {
+    throw new IdentityKeyError(
+      "unsupported_alg",
+      `unsupported identity-key alg ${String(key.alg)}`,
+    );
+  }
+  try {
+    return await crypto.subtle.importKey(
       "raw",
       toBufferSource(key["public-key"]),
-      { name: "ECDSA", namedCurve: "P-256" },
+      algorithm,
       false,
       ["verify"],
     );
-  }
-  if (key.alg === EDDSA) {
-    return crypto.subtle.importKey(
-      "raw",
-      toBufferSource(key["public-key"]),
-      { name: "Ed25519" },
-      false,
-      ["verify"],
+  } catch (cause) {
+    throw new IdentityKeyError(
+      "invalid_key",
+      `identity-key public-key does not import as an alg ${String(key.alg)} key`,
+      { cause },
     );
   }
-  throw new Error(`unsupported identity-key alg ${String(key.alg)}`);
 }
 
 export async function deriveDeviceId(publicKey: Uint8Array): Promise<DeviceId> {

@@ -13,6 +13,7 @@ const INTERNAL_MODULES = [
   "src/adapters/threshold-dkg.ts",
   "src/adapters/threshold-network-coordinator.ts",
   "src/adapters/threshold-participant.ts",
+  "src/domain/bounded-log.ts",
   "src/domain/own-version.ts",
   "src/domain/sequential.ts",
   "src/domain/relay-channels.ts",

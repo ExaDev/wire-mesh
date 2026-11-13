@@ -8,8 +8,8 @@ import type {
 } from "../generated/protocol.js";
 import type { IdentityPort } from "../ports/identity.js";
 import { deviceIdToHex } from "./device-id.js";
+import { ChannelExhaustedError } from "./channel-exhausted-error.js";
 import {
-  ChannelExhaustedError,
   beginHandshake,
   establishChannelFrom,
   verifyHello,
@@ -58,6 +58,8 @@ export function createRelayChannels(
   options: Readonly<{
     /** Where each channel's send counter starts: only for tests that must reach the counter's bound, see establishChannelFrom. */
     firstSendCounter?: number;
+    /** Told of a failure that is local to this side and is not the peer's doing: an identity port that failed while checking a hello. The hello is dropped and nothing is sent to the peer. */
+    onFault?: ((error: unknown) => void) | undefined;
   }> = {},
 ): RelayChannels {
   const channels = new Map<string, ChannelState>();
@@ -93,7 +95,15 @@ export function createRelayChannels(
       return (existing ?? start(peer)).settle.promise;
     },
     applyHello: async (hello) => {
-      const verdict = await verifyHello(identity, hello);
+      let verdict: Awaited<ReturnType<typeof verifyHello>>;
+      try {
+        verdict = await verifyHello(identity, hello);
+      } catch (error) {
+        // verifyHello gives a verdict for every hello whose key the port reports as unusable, and lets any other failure of the port out. Such a failure is this side's, not the peer's, and a hello must never take the session down: drop it, tell the owner locally, say nothing to the peer.
+        options.onFault?.(error);
+
+        return;
+      }
       if (!verdict.ok) {
         return;
       }
@@ -105,7 +115,9 @@ export function createRelayChannels(
         pending: await entry.pending,
         remote: hello,
         peer: verdict.peer,
-        ...options,
+        ...(options.firstSendCounter === undefined
+          ? {}
+          : { firstSendCounter: options.firstSendCounter }),
       });
       if (established === undefined) {
         entry.settle.reject(

@@ -18,14 +18,16 @@ import {
   type PeerAdvert,
   type ProtocolVersion,
   type RevocationAnnounceFrame,
+  type SecureHelloFrame,
   type RevocationEntry,
   type CoordinatorFrame,
   type TopologyPeers,
 } from "../generated/protocol.js";
-import { SUPPORTED_PROTOCOL_VERSION, negotiate } from "./handshake.js";
+import { localHandshake, negotiate } from "./handshake.js";
 import { deviceIdToHex } from "./device-id.js";
 import { createRelayPairings } from "./relay-pairing.js";
 import { createAsyncQueue } from "./async-queue.js";
+import { createBoundedLog } from "./bounded-log.js";
 import { createPingRoundTrips } from "./ping-round-trips.js";
 import { createTopologySnapshotTracker } from "./topology-snapshot.js";
 import {
@@ -180,14 +182,6 @@ export interface MeshSession {
   close: () => Promise<void>;
 }
 
-function localHandshake(domains: readonly string[]): HandshakeFrame {
-  return {
-    type: "handshake",
-    version: SUPPORTED_PROTOCOL_VERSION,
-    domains: [...domains],
-  };
-}
-
 interface SessionCore {
   session: MeshSession;
   /** Wires up an already-established connection directly, bypassing dial entirely -- the shared entry point both doConnect (after a successful dial) and acceptMeshSession (given a connection up front) converge on. */
@@ -217,20 +211,15 @@ function createSessionCore(
   ) => void | Promise<void>,
   /** Fired once this session's own connection.receive() stream ends, regardless of whether the session itself goes on to reconnect with a fresh connection -- the counterpart hook a RelayHub's own forgetConnection needs, since its registry and pairing state is keyed by this exact Connection instance and must be cleaned up when it specifically ends, not when the session as a whole gives up. */
   onSessionEnd?: (connection: Readonly<Connection>) => void,
+  /** Told of a failure that is local to this session and did not end it: an identity port that failed while checking a hello from a peer. The hello is dropped and the peer is told nothing. Omit for a caller with no use for it, exactly today's behaviour. */
+  onLocalFault?: (error: unknown) => void,
 ): SessionCore {
   let connection: Connection | null = null;
   let state: ConnectionState = { status: "idle" };
   let handshake: HandshakeStatus = { status: "pending" };
   const directory = new Map<string, DirectoryEntry>();
-  const frameLog: FrameLogEntry[] = [];
-
-  /** Keeps the frame log at its recent-activity window: newest entries at the end, the oldest dropped once the window is full. */
-  function recordFrame(entry: FrameLogEntry): void {
-    frameLog.push(entry);
-    if (frameLog.length > FRAME_LOG_WINDOW) {
-      frameLog.splice(0, frameLog.length - FRAME_LOG_WINDOW);
-    }
-  }
+  const frameLog = createBoundedLog<FrameLogEntry>(FRAME_LOG_WINDOW);
+  const recordFrame = frameLog.record;
   let feedCancelled = false;
   const eventQueue = createAsyncQueue<SessionEvent>();
   let handshakeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -256,13 +245,19 @@ function createSessionCore(
     }
   >();
   // The secure channel with each relay peer (spec/secure-channel.cddl); how a hello reaches the wire is the only thing this session contributes.
-  const relayChannels = createRelayChannels(identity, async (peer, hello) => {
+  const sendHello = async (
+    peer: DeviceId,
+    hello: SecureHelloFrame,
+  ): Promise<void> => {
     if (connection === null) {
       throw new Error("not connected");
     }
     recordFrame({ direction: "sent", frame: hello });
     await connection.send(wrapRelayData(hello, peer));
     emit();
+  };
+  const relayChannels = createRelayChannels(identity, sendHello, {
+    onFault: onLocalFault,
   });
   const incomingQueue = createAsyncQueue<IncomingManageRequest>();
   const revocationQueue = createAsyncQueue<RevocationEntry>();
@@ -274,7 +269,7 @@ function createSessionCore(
     return {
       state,
       directory: [...directory.values()],
-      frameLog: [...frameLog],
+      frameLog: frameLog.entries(),
     };
   }
 
@@ -875,6 +870,8 @@ export function createMeshSession(
     connection: Readonly<Connection>,
     frame: Frame,
   ) => void | Promise<void>,
+  /** Told of a failure that is local to this session and did not end it: an identity port that failed while checking a hello from a peer. The hello is dropped and the peer is told nothing. Omit for a caller with no use for it: the failure is then not reported anywhere. */
+  onLocalFault?: (error: unknown) => void,
 ): MeshSession {
   const { session } = createSessionCore(
     identity,
@@ -884,6 +881,8 @@ export function createMeshSession(
     onPeerAdvert,
     addresses,
     onFrame,
+    undefined,
+    onLocalFault,
   );
 
   return session;
