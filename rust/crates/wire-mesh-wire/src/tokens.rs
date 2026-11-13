@@ -838,7 +838,7 @@ mod tests {
 
         // Text form decodes into extra, re-encodes as text, and is still readable through the accessors: {"1": -7, "4": h'11'*32}.
         let mut text_form: Vec<u8> = vec![0xa2, 0x61, b'1', 0x26, 0x61, b'4', 0x58, 0x20];
-        text_form.extend(core::iter::repeat(0x11).take(32));
+        text_form.extend(core::iter::repeat_n(0x11, 32));
         let decoded: CoseTokenHeaders = minicbor::decode(&text_form).expect("decode");
         assert_eq!(decoded.alg(), Some(-7));
         assert_eq!(decoded.kid(), Some(vec![0x11; 32].as_slice()));
