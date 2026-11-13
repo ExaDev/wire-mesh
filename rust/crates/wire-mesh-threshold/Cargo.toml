@@ -11,9 +11,9 @@ repository.workspace = true
 wire-mesh-wire = { path = "../wire-mesh-wire" }
 # default-features = false: this crate never touches TCP transport (only node_identity's standalone functions and the Identity trait), and keeping wire-mesh-core's own "net" feature (tokio::net, pulling in mio) off here is what lets wire-mesh-threshold-wasm's wasm32-unknown-unknown build succeed at all -- mio has no support for that target.
 wire-mesh-core = { path = "../wire-mesh-core", default-features = false }
-frost-ed25519 = { version = "2", default-features = false, features = ["std"] }
+frost-ed25519 = { workspace = true }
 # frost-ed25519's own `keys` module re-exports SecretShare/KeyPackage/ PublicKeyPackage/VerifiableSecretSharingCommitment as ciphersuite-fixed type aliases but NOT CoefficientCommitment -- reshare.rs needs that one type directly (to sum T survivors' broadcast commitment vectors), so it is named as `frost_core::keys::CoefficientCommitment<frost_ed25519::Ed25519Sha512>`, pinned to the identical version frost-ed25519 itself depends on.
-frost-core = { version = "2.2.0", default-features = false, features = ["std"] }
+frost-core = { workspace = true }
 # Pinned to the exact version frost-core/frost-ed25519 2.2.0 themselves depend on (see rust/Cargo.lock) -- used ONLY for two things, both already fully audited operations, never hand-rolled curve/field arithmetic: (a) raw Scalar arithmetic (add/mul/invert) to compute a public Lagrange coefficient over public participant identifiers (src/lagrange.rs, which mirrors frost-core's own internals-gated algorithm verbatim), and (b) converting between that raw Scalar and frost-ed25519's own public SigningKey/SigningShare byte encodings, since frost-core gates the equivalent typed conversion behind its own unstable "internals" feature.
 curve25519-dalek = { version = "4.1.3", default-features = false }
 rand = { workspace = true }

@@ -284,6 +284,10 @@ jobs:
         working-directory: rust
         run: cargo run --bin conformance-check
 
+      - name: Check each workspace member on its own
+        working-directory: rust
+        run: ./check-members.sh
+
   cargo-deny:
     name: cargo-deny
     runs-on: ubuntu-latest
