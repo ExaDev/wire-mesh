@@ -9,6 +9,7 @@
     "generate.ts",
     "verify.unit.test.ts",
     "tsdown.config.ts",
-    "eslint.config.ts"
+    "eslint.config.ts",
+    "secure-channel-references.unit.test.ts"
   ]
 }
