@@ -11,7 +11,7 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.88"
 license = "MIT"
 # None of the crates is on crates.io. cargo-deny treats a path dependency with no version in a publishable crate as a wildcard, so this is what lets `wildcards = "deny"` hold for third-party dependencies only; publishing a crate removes it for that crate.
 publish = false

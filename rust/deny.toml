@@ -7,7 +7,7 @@ all-features = true
 version = 2
 yanked = "deny"
 ignore = [
-    { id = "RUSTSEC-2023-0089", reason = "atomic-polyfill is flagged as unmaintained, not as vulnerable. frost-core reaches it through postcard and heapless 0.7 for a polyfill of atomics on targets that lack them, and none of this workspace's own code calls it. Remove this entry when frost-core stops depending on postcard 1 with heapless 0.7." },
+    { id = "RUSTSEC-2023-0089", reason = "atomic-polyfill is flagged as unmaintained, not as vulnerable. frost-core reaches it through postcard and heapless for a polyfill of atomics on targets that lack them, and none of this workspace's own code calls it. Remove this entry when frost-core stops depending on that path." },
 ]
 
 [licenses]
@@ -38,16 +38,16 @@ multiple-versions = "deny"
 wildcards = "deny"
 allow-wildcard-paths = true
 skip = [
-    { crate = "base16ct@0.2.0", reason = "the frost and ed25519 line still uses the older RustCrypto release that p256 0.14 has left behind" },
-    { crate = "block-buffer@0.10.4", reason = "older digest generation, kept by ed25519-dalek, frost-ed25519 and aes-gcm" },
-    { crate = "cpufeatures@0.2.17", reason = "older release kept by aes, polyval and curve25519-dalek" },
-    { crate = "crypto-common@0.1.6", reason = "older digest generation, kept by ed25519-dalek, frost-ed25519 and aes-gcm" },
-    { crate = "digest@0.10.7", reason = "older generation kept by ed25519-dalek, frost-ed25519 and aes-gcm; sha2, hkdf and p256 use 0.11" },
-    { crate = "getrandom@0.2.17", reason = "rand 0.8 and the ed25519 and frost line stay on getrandom 0.2; p256 0.14 reaches getrandom 0.4" },
-    { crate = "rand_core@0.6.4", reason = "rand 0.8, ed25519-dalek and frost stay on rand_core 0.6; p256 0.14 uses 0.10" },
-    { crate = "sha2@0.10.9", reason = "ed25519-dalek and frost-ed25519 stay on the older digest generation" },
-    { crate = "signature@2.2.0", reason = "ed25519 stays on signature 2 while p256 0.14 uses signature 3" },
-    { crate = "syn@2.0.119", reason = "proc-macro crates move to syn 3 at different times" },
+    { crate = "base16ct@0.2.0", reason = "older release kept by serdect" },
+    { crate = "block-buffer@0.10.4", reason = "older release kept by digest" },
+    { crate = "cpufeatures@0.2.17", reason = "older release kept by aes, curve25519-dalek, polyval, sha2" },
+    { crate = "crypto-common@0.1.6", reason = "older release kept by aead, cipher, digest, universal-hash" },
+    { crate = "digest@0.10.7", reason = "older release kept by curve25519-dalek, sha2" },
+    { crate = "getrandom@0.2.17", reason = "older release kept by rand_core" },
+    { crate = "rand_core@0.6.4", reason = "older release kept by many dependencies, first of them curve25519-dalek, ed25519-dalek, frost-core" },
+    { crate = "sha2@0.10.9", reason = "older release kept by ed25519-dalek, frost-ed25519" },
+    { crate = "signature@2.2.0", reason = "older release kept by ed25519" },
+    { crate = "syn@2.0.119", reason = "older release kept by many dependencies, first of them curve25519-dalek-derive, derive-getters, visibility" },
 ]
 # Every crate in the dependency graph on every target and feature set. Direct dependencies state their purpose; the others name the crates that pull them in.
 allow = [
@@ -138,7 +138,7 @@ allow = [
     { crate = "proc-macro2", reason = "shared by many dependencies, first of them async-trait, curve25519-dalek-derive, derive-getters" },
     { crate = "quote", reason = "shared by many dependencies, first of them async-trait, curve25519-dalek-derive, derive-getters" },
     { crate = "r-efi", reason = "pulled in by getrandom" },
-    { crate = "rand", reason = "operating system randomness for key and nonce generation" },
+    { crate = "rand", reason = "operating system randomness for identity keys, and thread_rng for nonces and group keys" },
     { crate = "rand_chacha", reason = "pulled in by rand" },
     { crate = "rand_core", reason = "shared by many dependencies, first of them crypto-bigint, crypto-common, curve25519-dalek" },
     { crate = "rfc6979", reason = "pulled in by ecdsa" },

@@ -16,9 +16,9 @@ jobs:
     name: CDDL Validate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version-file: .tool-versions
 
@@ -67,13 +67,13 @@ jobs:
     name: Conformance Verify
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
         with:
           package_json_file: conformance/package.json
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version-file: .tool-versions
           cache: pnpm
@@ -112,23 +112,23 @@ jobs:
     name: ts/ Verify
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
         with:
           package_json_file: ts/package.json
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version-file: .tool-versions
           cache: pnpm
           cache-dependency-path: ts/pnpm-lock.yaml
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           targets: wasm32-unknown-unknown
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: rust
           # The release job below runs this same toolchain-plus-wasm-build sequence and must not pay a cold `cargo install` on every push to main. rust-cache keys its entry by job id unless shared-key is set, so without a key shared with that job the two would keep entirely separate caches. What makes the shared entry worth having is cache-bin, on by default, which stores ~/.cargo/bin: with it warm the install step below resolves in no time at all rather than compiling wasm-bindgen-cli from source.
@@ -184,13 +184,13 @@ jobs:
     name: web-console E2E (WebRTC)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
         with:
           package_json_file: ts/package.json
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version-file: .tool-versions
           cache: pnpm
@@ -218,13 +218,13 @@ jobs:
     # Bounded well above a normal run: a compose run that never sees a container exit would otherwise hold the runner for the platform's default limit.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
         with:
           package_json_file: ts/package.json
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version-file: .tool-versions
           cache: pnpm
@@ -255,6 +255,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
+        with:
+          tool: just@1.59.0
 
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
@@ -287,8 +291,26 @@ jobs:
         run: cargo run --bin conformance-check
 
       - name: Check each workspace member on its own
+        run: just rust-members
+
+  rust-version:
+    name: rust-version floor
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # The toolchain is the workspace's declared rust-version; check-deny-policy.py fails when the two differ, or when the declared version is not the highest any dependency needs.
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: "1.88"
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: rust
+
+      - name: Check the workspace at the declared rust-version
         working-directory: rust
-        run: ./check-members.sh
+        run: cargo check --locked --workspace
 
   cargo-deny:
     name: cargo-deny
@@ -296,23 +318,20 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      # Prebuilt binary at an exact version: compiling cargo-deny from source on every run would dominate this job.
+      # Prebuilt binaries at exact versions: compiling them from source on every run would dominate this job.
       - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
-          tool: cargo-deny@0.20.2
+          tool: cargo-deny@0.20.2,just@1.59.0
 
       # Advisories are checked by rust-advisories.yml, outside the required checks, so a newly published advisory cannot change this verdict for an unrelated change.
       - name: Check the crate allowlist, licences and sources
-        working-directory: rust
-        run: cargo deny check bans licenses sources
+        run: just rust-deny
 
       - name: Check that the policy files say what is true
-        working-directory: rust
-        run: ./check-deny-policy.py
+        run: just rust-deny-policy
 
-      - name: Prove the allowlist rejects a second version and a feature-gated crate
-        working-directory: rust
-        run: ./deny-selftest.sh
+      - name: Prove the policy rejects what it should
+        run: just rust-deny-selftest
 
   required-checks:
     name: Required Checks
@@ -324,6 +343,7 @@ jobs:
         web-console-e2e,
         web-console-e2e-containers,
         rust-verify,
+        rust-version,
         cargo-deny,
       ]
     if: always()
@@ -359,23 +379,23 @@ jobs:
       # main's ruleset requires every change to land through a pull request, and the default GITHUB_TOKEN is not one of its bypass actors. The orchestrator's release commit is a direct push to main, so it needs a token from an actor the ruleset does allow through: the org-wide "exadev" GitHub App, added as an Integration bypass actor on this repository's ruleset.
       - name: Generate a token for the release push
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
         with:
           client-id: Iv23liLMzahHqi38Qo4c
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # ref: main, not the bare event SHA. The orchestrator pushes to the current branch by name, so a detached HEAD stops the run with a WorkspaceStateError rather than pushing HEAD:HEAD. fetch-depth: 0 because each package's release range is analysed from its own last matching tag.
           ref: main
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
         with:
           package_json_file: ts/package.json
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version-file: .tool-versions
           # Do NOT set registry-url: it writes an .npmrc containing an _authToken line, and that line wins over the OIDC token exchange, so the setting that looks like it configures the registry is exactly the one that would stop trusted publishing working.
@@ -383,11 +403,11 @@ jobs:
       - name: Upgrade npm for OIDC trusted publishing (needs npm CLI >=11.5.1)
         run: npm install -g npm@latest
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           targets: wasm32-unknown-unknown
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: rust
           # Deliberately the same key the ts/ Verify job uses, so this job restores the cache that job already populated in this very run rather than building its own. Release only ever runs after Required Checks, which waits on ts/ Verify, so the entry is always there to restore by the time this step runs.
@@ -454,7 +474,7 @@ jobs:
     steps:
       - name: Generate a token for the dispatch
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
         with:
           # The ExaDev Sync app, installed on every repository in the organisation. Its id is public, so it is written out here rather than read from a variable.
           app-id: "4816274"

@@ -30,6 +30,22 @@ lint:
 rust-members:
     cd rust && ./check-members.sh
 
+# Check the rust/ crate allowlist, licences and sources. CI runs this same recipe.
+rust-deny:
+    cd rust && cargo deny check bans licenses sources
+
+# Check rust/ advisories against the live advisory database. Kept apart from rust-deny because a newly published advisory changes its verdict with no change to the repository.
+rust-advisories:
+    cd rust && cargo deny check advisories
+
+# Check that deny.toml and the workflows that enforce it say what is true.
+rust-deny-policy:
+    cd rust && ./check-deny-policy.py
+
+# Prove the cargo-deny policy rejects a second version, a feature-gated crate, a wildcard requirement and a git source.
+rust-deny-selftest:
+    cd rust && ./deny-selftest.sh
+
 # Typecheck ts/ (conformance/'s own typecheck already runs as part of `just conformance`;
 # rust/ has none separate from `cargo build`/`cargo clippy`). CI's ts/ Verify job runs this
 # between lint and build -- a type error caught only here, not by build or test, is exactly
