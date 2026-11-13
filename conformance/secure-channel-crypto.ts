@@ -30,7 +30,7 @@ const IV_COUNTER_OFFSET = GCM_IV_BYTE_LENGTH - COUNTER_BYTE_LENGTH;
 const ED25519_SEED_BYTE_LENGTH = 32;
 // COSE algorithm identifiers (RFC 9053)
 export const EDDSA = -8;
-const ES256 = -7;
+export const ES256 = -7;
 const LOW_BYTE_MASK = 0xff;
 const FILE_NAME = "secure-channel.v1.json";
 
@@ -59,7 +59,10 @@ function sha256(bytes: Uint8Array): Buffer {
   return createHash("sha256").update(bytes).digest();
 }
 
-function counterBytes(counter: number): Buffer {
+/** A channel counter: a bigint where it may exceed what a JavaScript number holds exactly. */
+export type Counter = bigint | number;
+
+function counterBytes(counter: Counter): Buffer {
   const bytes = Buffer.alloc(COUNTER_BYTE_LENGTH);
   bytes.writeBigUInt64BE(BigInt(counter));
 
@@ -144,6 +147,61 @@ function es256Identity(name: string, scalarFillHex: string): Identity {
     deviceId: sha256(publicKey),
     privateKey,
   };
+}
+
+const HEX_RADIX = 16;
+const HALF_DIVISOR = 2n;
+const DER_SEQUENCE_TAG = 0x30;
+const DER_INTEGER_TAG = 0x02;
+const DER_SIGN_BIT = 0x80;
+
+/** The order of the P-256 group: an ECDSA signature (r, s) and (r, n - s) verify for the same input. */
+const P256_ORDER = BigInt(
+  "0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
+);
+const P256_SCALAR_HEX_LENGTH = SCALAR_BYTE_LENGTH * 2;
+
+/** The form of an ECDSA signature whose s is above half the group order: the signature itself when it already is, and otherwise its twin with s replaced by n - s. Both verify for the same input, so a verifier that requires the low-s form refuses this one. */
+export function highSForm(rawSignature: Buffer): Buffer {
+  const r = rawSignature.subarray(0, SCALAR_BYTE_LENGTH);
+  const s = BigInt(
+    "0x" + rawSignature.subarray(SCALAR_BYTE_LENGTH).toString("hex"),
+  );
+  if (s > P256_ORDER / HALF_DIVISOR) {
+    return rawSignature;
+  }
+
+  return Buffer.concat([
+    r,
+    Buffer.from(
+      (P256_ORDER - s)
+        .toString(HEX_RADIX)
+        .padStart(P256_SCALAR_HEX_LENGTH, "0"),
+      "hex",
+    ),
+  ]);
+}
+
+/** A raw r||s ECDSA signature re-encoded as the ASN.1 DER SEQUENCE of two INTEGERs, the form the spec does not use. */
+export function derSignature(rawSignature: Buffer): Buffer {
+  const integer = (bytes: Buffer): Buffer => {
+    let start = 0;
+    while (start < bytes.length - 1 && bytes[start] === 0) start += 1;
+    let body = bytes.subarray(start);
+    if ((body[0] ?? 0) >= DER_SIGN_BIT)
+      body = Buffer.concat([Buffer.from([0]), body]);
+
+    return Buffer.concat([Buffer.from([DER_INTEGER_TAG, body.length]), body]);
+  };
+  const content = Buffer.concat([
+    integer(rawSignature.subarray(0, SCALAR_BYTE_LENGTH)),
+    integer(rawSignature.subarray(SCALAR_BYTE_LENGTH)),
+  ]);
+
+  return Buffer.concat([
+    Buffer.from([DER_SEQUENCE_TAG, content.length]),
+    content,
+  ]);
 }
 
 /** Ed25519 signs deterministically (RFC 8032); ES256 yields raw r||s (IEEE P1363) with a fresh nonce on every call. */
@@ -481,7 +539,7 @@ export function sendKey(handshake: Handshake, sender: Identity): Buffer {
     : handshake.keyHighToLow;
 }
 
-export function ivFor(counter: number): Buffer {
+export function ivFor(counter: Counter): Buffer {
   const iv = Buffer.alloc(GCM_IV_BYTE_LENGTH);
   counterBytes(counter).copy(iv, IV_COUNTER_OFFSET);
 
@@ -491,7 +549,7 @@ export function ivFor(counter: number): Buffer {
 export function associatedData(
   sender: Buffer,
   recipient: Buffer,
-  counter: number,
+  counter: Counter,
 ): Buffer {
   return Buffer.concat([
     DATA_CONTEXT,
@@ -504,7 +562,7 @@ export function associatedData(
 /** AES-256-GCM output: ciphertext followed by the 16-byte tag. */
 export function gcmSeal(
   key: Buffer,
-  counter: number,
+  counter: Counter,
   aad: Buffer,
   plaintext: Buffer,
 ): Buffer {
@@ -529,11 +587,28 @@ export function sealedFrame(counter: number, ciphertext: Buffer): JsonWire {
   };
 }
 
+/** The canonical wire bytes, as hex, of a secure-data frame whose counter may be any unsigned 64-bit value. */
+export function secureDataWireHex(
+  counter: Counter,
+  ciphertext: Buffer,
+): string {
+  return Buffer.from(
+    encode(
+      {
+        type: "secure-data",
+        counter: Number.isSafeInteger(counter) ? counter : BigInt(counter),
+        ciphertext: Uint8Array.from(ciphertext),
+      },
+      cdeEncodeOptions,
+    ),
+  ).toString("hex");
+}
+
 /** Seals `frame` as `sender` would, to the other end of the handshake, under the given counter. */
 export function sealFrom(
   handshake: Handshake,
   sender: Identity,
-  counter: number,
+  counter: Counter,
   frame: JsonWire,
 ): Buffer {
   const recipient = otherEnd(handshake, sender);

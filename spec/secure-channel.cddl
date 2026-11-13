@@ -37,6 +37,19 @@
 ; has one outstanding treats the received hello as the answer. Two sides that
 ; open at once therefore agree without either one answering the other.
 ;
+; The signature is made with the identity key's own algorithm. For ES256
+; (alg -7) it is the fixed-length 64-byte r || s, each a 32-byte big-endian
+; integer, and not the ASN.1 DER form; a verifier does not require the low-s
+; form, so a signature and its high-s twin both verify. For EdDSA (alg -8) it
+; is the 64-byte Ed25519 signature.
+;
+; The ephemeral key is a SEC1 uncompressed P-256 point of exactly 65 bytes.
+; A hello whose ephemeral key is any other encoding, or is not a point on the
+; curve, still verifies as a hello (its signature covers whatever bytes it
+; carries); the channel is then refused when it is established. An
+; implementation MAY refuse such a key earlier, while decoding, so the stage is
+; not part of the contract; that the channel is refused is.
+;
 ; Key schedule. Let lo and hi be the two device-ids in bytewise order and
 ; nonce-lo and nonce-hi the nonces carried by the hellos of the devices those
 ; ids name. The shared secret is the 32-byte ECDH result of the two ephemeral
@@ -56,6 +69,33 @@
 ;
 ;   "wire-mesh/secure-data/v1" 0x00 || sender-device || recipient-device ||
 ;   counter (big-endian uint64)
+;
+; The counter is an unsigned 64-bit integer. An implementation whose counter
+; type is narrower MUST refuse a frame whose counter it cannot hold exactly,
+; and MUST NOT truncate it. A sender MUST NOT wrap or repeat a counter: it
+; refuses to seal once its next counter would exceed what it can hold exactly,
+; and the channel then sends no more frames. The counter 2^64 - 1 is the last a full
+; width sender uses.
+;
+; Order of the checks on a received secure-data-frame, which fixes the reason
+; a frame that fails more than one of them is refused for: first its counter
+; (it must be greater than every counter already accepted, else it is
+; replayed, and this is checked before the frame is decrypted, so an altered
+; frame at a counter already passed is replayed); then its authenticity (it
+; must open under the receive key with its own counter as IV and associated
+; data, else it is unauthentic, which includes a ciphertext shorter than the
+; 16-byte tag); then its plaintext (it must be exactly one canonical frame,
+; else it is undecodable). Only the last consumes its counter: a frame that
+; authenticates but does not decode counts as received. No window is kept, so
+; a counter that jumps ahead is accepted and everything behind it is then
+; replayed.
+;
+; Order of the checks on a received hello: its identity-key must hash to a
+; device-id; its `to-device` must be the receiver's own, else the hello is
+; wrong_recipient; its identity-key's algorithm must be supported
+; (unsupported_identity_alg) and the key usable (invalid_identity_key, for
+; instance the wrong size or not a curve point); its signature must verify
+; (bad_signature).
 ;
 ; Verifier obligations, none of which the grammar can express:
 ;

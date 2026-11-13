@@ -13,13 +13,16 @@ import {
 } from "@exadev/wire-mesh-conformance";
 import {
   EDDSA,
+  ES256,
   SCALAR_BYTE_LENGTH,
   associatedData,
   buildHandshake,
+  derSignature,
   flipFirstByte,
   flipLastByte,
   gcmSeal,
   helloMessage,
+  highSForm,
   identities,
   identityNamed,
   innerWire,
@@ -28,16 +31,23 @@ import {
   otherEnd,
   sealFrom,
   sealedFrame,
+  secureDataWireHex,
   sendKey,
   wireHex,
+  type Counter,
   type EphemeralInputs,
   type Handshake,
   type Hello,
   type Identity,
 } from "./secure-channel-crypto.ts";
 
-// An algorithm no verifier implements, for the identity_mismatch case
+// An algorithm no verifier implements
 const UNKNOWN_ALG = -999;
+// A frame's ciphertext cut to fewer bytes than a GCM tag holds
+const SHORT_CIPHERTEXT_BYTE_LENGTH = 8;
+const COMPRESSED_PREFIX = 0x02;
+// What a verifier does with the high-s twin of a valid ES256 signature: ECDSA verification accepts it
+const HIGH_S_TWIN_VERDICT = "ok";
 // A counter far above anything a test channel has seen, for the forged-counter case
 const FORGED_HIGH_COUNTER = 1000;
 const FORGED_CIPHERTEXT_BYTE_LENGTH = 40;
@@ -217,8 +227,11 @@ function handshakeJson(
 type OpenVerdict = "replayed" | "unauthentic" | "undecodable";
 
 interface OpenStep {
+  counter: Counter;
   secureDataWireHex: string;
   expected: OpenVerdict | { opened: string };
+  /** Set when the step needs a counter wider than the exact range of a JavaScript number, or state a refused earlier step would have left. An implementation whose counter is narrower refuses the frame (it must not truncate it) and skips the steps after it. */
+  fullWidthOnly?: boolean;
 }
 
 function opened(frame: JsonWire): { opened: string } {
@@ -226,23 +239,28 @@ function opened(frame: JsonWire): { opened: string } {
 }
 
 function dataStep(
-  counter: number,
+  counter: Counter,
   ciphertext: Buffer,
   expected: OpenStep["expected"],
+  fullWidthOnly = false,
 ): OpenStep {
   return {
-    secureDataWireHex: wireHex(sealedFrame(counter, ciphertext)),
+    counter,
+    secureDataWireHex: secureDataWireHex(counter, ciphertext),
     expected,
+    ...(fullWidthOnly ? { fullWidthOnly } : {}),
   };
 }
 
 function stepJson(step: OpenStep): JsonWire {
   return {
+    counter: String(step.counter),
     secure_data_wire_hex: step.secureDataWireHex,
     expected:
       typeof step.expected === "string"
         ? { result: step.expected }
         : { result: "opened", frame_wire_hex: step.expected.opened },
+    ...(step.fullWidthOnly === true ? { full_width_only: true } : {}),
   };
 }
 
@@ -252,8 +270,46 @@ interface Sequence {
   sender: string;
   receiver: string;
   steps: readonly OpenStep[];
-  /** A frame kind spec obligation 5 forbids inside a channel: it opens, the session then drops it, and a sealing implementation must refuse to produce it. */
-  notSealable: boolean;
+  /** A frame kind spec obligation 5 says the receiver drops after opening it: it opens at the channel, and the session does not act on it. */
+  receiverDropsAfterOpen: boolean;
+}
+
+/* The counter's byte positions: every one of the eight is non-zero in WIDE_COUNTER (0x0102030405 fills the low five)
+   and in MAX_COUNTER_U64 (all eight). */
+const WIDE_COUNTER = 0x0102030405n;
+const MAX_EXACT_COUNTER = BigInt(Number.MAX_SAFE_INTEGER);
+const COUNTER_STEP = 1n;
+const FIRST_INEXACT_COUNTER = MAX_EXACT_COUNTER + COUNTER_STEP;
+
+/** The counter one below `counter`. */
+function below(counter: bigint): bigint {
+  return counter - COUNTER_STEP;
+}
+const MAX_COUNTER_U64 = 0xffffffffffffffffn;
+// A wide counter with a distinct value in each of the eight bytes
+const DISTINCT_BYTES_COUNTER = 0x0102030405060708n;
+
+/** The plaintexts that authenticate but are not one frame, each a different way of being wrong. */
+function undecodablePlaintexts(): readonly (readonly [string, Buffer])[] {
+  const ping = Buffer.from(encode(toWire({ type: "ping" }), cdeEncodeOptions));
+
+  return [
+    [
+      "unknown_frame_type",
+      Buffer.from(encode(toWire({ type: "no-such-frame" }), cdeEncodeOptions)),
+    ],
+    // A known kind with a required field missing
+    [
+      "known_kind_missing_fields",
+      Buffer.from(encode(toWire({ type: "data-have" }), cdeEncodeOptions)),
+    ],
+    // map(1) with its length in the one-byte form instead of the shortest
+    ["non_canonical_length", Buffer.from("b80164747970656470696e67", "hex")],
+    // The indefinite-length map form
+    ["indefinite_length_map", Buffer.from("bf64747970656470696e67ff", "hex")],
+    ["trailing_bytes", Buffer.concat([ping, Buffer.from([0])])],
+    ["empty_plaintext", Buffer.alloc(0)],
+  ];
 }
 
 function sequencesFor(
@@ -264,59 +320,105 @@ function sequencesFor(
 ): Sequence[] {
   const receiver = otherEnd(handshake, sender);
   const suffix = `${handshake.name}_${sender.name}_to_${receiver.name}`;
-  const seal = (counter: number, inner: JsonWire = frame): Buffer =>
+  const seal = (counter: Counter, inner: JsonWire = frame): Buffer =>
     sealFrom(handshake, sender, counter, inner);
+  const sealPlaintext = (
+    counter: Counter,
+    plaintext: Buffer,
+    options: Readonly<{ key?: Buffer; recipient?: Identity }> = {},
+  ): Buffer =>
+    gcmSeal(
+      options.key ?? sendKey(handshake, sender),
+      counter,
+      associatedData(
+        sender.deviceId,
+        (options.recipient ?? receiver).deviceId,
+        counter,
+      ),
+      plaintext,
+    );
   const sequence = (
     name: string,
     steps: readonly OpenStep[],
-    notSealable = false,
+    receiverDropsAfterOpen = false,
   ): Sequence => ({
     name: `${name}_${suffix}`,
     handshake: handshake.name,
     sender: sender.name,
     receiver: receiver.name,
     steps,
-    notSealable,
+    receiverDropsAfterOpen,
   });
   const genuine = seal(0);
+  const genuineOpens = dataStep(0, genuine, opened(frame));
   const sequences: Sequence[] = [
     sequence("tampered_ciphertext_byte", [
       dataStep(0, flipFirstByte(genuine), "unauthentic"),
-      dataStep(0, genuine, opened(frame)),
+      genuineOpens,
     ]),
     sequence("tampered_tag_byte", [
       dataStep(0, flipLastByte(genuine), "unauthentic"),
-      dataStep(0, genuine, opened(frame)),
+      genuineOpens,
+    ]),
+    // The tag is the last 16 bytes: dropping one byte, keeping fewer bytes than a tag, and no bytes at all.
+    sequence("truncated_tag", [
+      dataStep(0, genuine.subarray(0, genuine.length - 1), "unauthentic"),
+      genuineOpens,
+    ]),
+    sequence("ciphertext_shorter_than_a_tag", [
+      dataStep(
+        0,
+        genuine.subarray(0, SHORT_CIPHERTEXT_BYTE_LENGTH),
+        "unauthentic",
+      ),
+      genuineOpens,
+    ]),
+    sequence("empty_ciphertext", [
+      dataStep(0, Buffer.alloc(0), "unauthentic"),
+      genuineOpens,
     ]),
     // The counter is in the IV and the associated data, so a ciphertext presented under another counter does not authenticate.
     sequence("tampered_counter", [
       dataStep(OTHER_COUNTER, genuine, "unauthentic"),
-      dataStep(0, genuine, opened(frame)),
+      genuineOpens,
     ]),
     // Sealed under the right key and counter, but with associated data naming a different recipient.
     sequence("tampered_associated_data", [
       dataStep(
         0,
-        gcmSeal(
-          sendKey(handshake, sender),
-          0,
-          associatedData(sender.deviceId, identityNamed("c").deviceId, 0),
-          innerWire(frame),
-        ),
+        sealPlaintext(0, innerWire(frame), {
+          recipient: identityNamed("c"),
+        }),
         "unauthentic",
       ),
-      dataStep(0, genuine, opened(frame)),
+      genuineOpens,
     ]),
-    // The receiver's own frame reflected back at it is sealed under the other direction's key.
-    sequence("wrong_key_reflected", [
+    // Only the key differs from a genuine frame: sealed under the key of the other direction, with this direction's counter, IV and associated data.
+    sequence("wrong_direction_key", [
+      dataStep(
+        0,
+        sealPlaintext(0, innerWire(frame), {
+          key: sendKey(handshake, receiver),
+        }),
+        "unauthentic",
+      ),
+      genuineOpens,
+    ]),
+    // The receiver's own frame sent back at it: the other direction's key, and associated data naming the receiver as sender.
+    sequence("reflected_frame", [
       dataStep(0, sealFrom(handshake, receiver, 0, frame), "unauthentic"),
-      dataStep(0, genuine, opened(frame)),
+      genuineOpens,
     ]),
     sequence("replayed_counter", [
-      dataStep(0, genuine, opened(frame)),
+      genuineOpens,
       dataStep(0, genuine, "replayed"),
     ]),
-    // A gap is accepted and going back is not.
+    // Replay is checked before the frame is authenticated, so an altered frame at a counter already accepted is replayed, not unauthentic.
+    sequence("unauthentic_at_a_passed_counter", [
+      genuineOpens,
+      dataStep(0, flipFirstByte(genuine), "replayed"),
+    ]),
+    // A gap is accepted and going back is not; there is no window.
     sequence("out_of_order_counter", [
       dataStep(SKIPPED_AHEAD, seal(SKIPPED_AHEAD), opened(frame)),
       dataStep(SKIPPED_OVER, seal(SKIPPED_OVER), "replayed"),
@@ -329,27 +431,64 @@ function sequencesFor(
         Buffer.alloc(FORGED_CIPHERTEXT_BYTE_LENGTH, FORGED_FILL),
         "unauthentic",
       ),
-      dataStep(0, genuine, opened(frame)),
+      genuineOpens,
     ]),
-    // Authenticates but is not a frame: the counter is consumed all the same.
-    sequence("undecodable_plaintext_consumes_counter", [
+    // Counters that fill the IV and associated data's counter bytes beyond the low byte, in both a counter a JavaScript number holds and one it does not.
+    sequence("counter_in_every_low_byte", [
+      dataStep(WIDE_COUNTER, seal(WIDE_COUNTER), opened(frame)),
+      dataStep(below(WIDE_COUNTER), seal(below(WIDE_COUNTER)), "replayed"),
+    ]),
+    sequence("largest_exact_counter", [
+      dataStep(MAX_EXACT_COUNTER, seal(MAX_EXACT_COUNTER), opened(frame)),
       dataStep(
-        0,
-        gcmSeal(
-          sendKey(handshake, sender),
-          0,
-          associatedData(sender.deviceId, receiver.deviceId, 0),
-          Buffer.from(
-            encode(toWire({ type: "no-such-frame" }), cdeEncodeOptions),
-          ),
-        ),
-        "undecodable",
+        below(MAX_EXACT_COUNTER),
+        seal(below(MAX_EXACT_COUNTER)),
+        "replayed",
       ),
-      dataStep(0, genuine, "replayed"),
-      dataStep(1, seal(1), opened(frame)),
     ]),
+    sequence("counter_beyond_exact_range", [
+      dataStep(
+        FIRST_INEXACT_COUNTER,
+        seal(FIRST_INEXACT_COUNTER),
+        opened(frame),
+        true,
+      ),
+      dataStep(MAX_EXACT_COUNTER, seal(MAX_EXACT_COUNTER), "replayed", true),
+    ]),
+    sequence("counter_with_a_distinct_byte_in_all_eight_positions", [
+      dataStep(
+        DISTINCT_BYTES_COUNTER,
+        seal(DISTINCT_BYTES_COUNTER),
+        opened(frame),
+        true,
+      ),
+      dataStep(
+        below(DISTINCT_BYTES_COUNTER),
+        seal(below(DISTINCT_BYTES_COUNTER)),
+        "replayed",
+        true,
+      ),
+    ]),
+    sequence("largest_counter", [
+      dataStep(MAX_COUNTER_U64, seal(MAX_COUNTER_U64), opened(frame), true),
+      dataStep(
+        below(MAX_COUNTER_U64),
+        seal(below(MAX_COUNTER_U64)),
+        "replayed",
+        true,
+      ),
+    ]),
+    // Authenticates but is not a frame, in six ways: the counter is consumed each time, so the genuine frame at that counter is then replayed.
+    ...undecodablePlaintexts().map(([name, plaintext]) =>
+      sequence(`undecodable_${name}`, [
+        dataStep(0, sealPlaintext(0, plaintext), "undecodable"),
+        dataStep(0, genuine, "replayed"),
+        dataStep(1, seal(1), opened(frame)),
+      ]),
+    ),
+    // A kind the receiver does not act on (spec obligation 5): it opens at the channel, and the session drops it.
     sequence(
-      "not_sealable_kind",
+      "kind_outside_obligation_5",
       [dataStep(0, seal(0, { type: "ping" }), opened({ type: "ping" }))],
       true,
     ),
@@ -359,7 +498,7 @@ function sequencesFor(
     sequences.push(
       sequence("wrong_channel", [
         dataStep(0, sealFrom(wrongChannel, sender, 0, frame), "unauthentic"),
-        dataStep(0, genuine, opened(frame)),
+        genuineOpens,
       ]),
     );
   }
@@ -367,17 +506,24 @@ function sequencesFor(
   return sequences;
 }
 
+type HelloExpectation =
+  | "ok"
+  | "wrong_recipient"
+  | "unsupported_identity_alg"
+  | "invalid_identity_key"
+  | "bad_signature";
+
 interface HelloVerdict {
   name: string;
   receiver: string;
   message: JsonWire;
-  expected: "ok" | "wrong_recipient" | "bad_signature" | "identity_mismatch";
+  expected: HelloExpectation;
   peer?: Identity;
   /** Set when the hello was freshly signed for this case, so its signature is recorded and, for ES256, kept on regeneration. */
   signed?: Hello;
 }
 
-/** Hellos from the first side of `handshake`, delivered to its second side. */
+/** Hellos from the first side of `handshake`, delivered to its second side unless a case says otherwise. */
 function helloVerdicts(handshake: Handshake): HelloVerdict[] {
   const [sideA, sideB] = handshake.sides;
   const hello = sideA.hello;
@@ -398,8 +544,11 @@ function helloVerdicts(handshake: Handshake): HelloVerdict[] {
     nonce: hello.nonce,
     signer: outsider,
   });
-
-  return [
+  const unknownAlgKey: JsonWire = {
+    alg: UNKNOWN_ALG,
+    "public-key": hex(sideA.identity.publicKey.toString("hex")),
+  };
+  const verdicts: HelloVerdict[] = [
     {
       name: "valid",
       receiver,
@@ -413,6 +562,13 @@ function helloVerdicts(handshake: Handshake): HelloVerdict[] {
       receiver,
       message: helloMessage(addressedToOutsider),
       signed: addressedToOutsider,
+      expected: "wrong_recipient",
+    },
+    // The first side's own hello delivered back to it: addressed to the other side, so not to the receiver.
+    {
+      name: "reflected_to_its_sender",
+      receiver: sideA.identity.name,
+      message: helloMessage(hello),
       expected: "wrong_recipient",
     },
     // A relay substituting its own ephemeral key invalidates the signature.
@@ -440,19 +596,14 @@ function helloVerdicts(handshake: Handshake): HelloVerdict[] {
       }),
       expected: "bad_signature",
     },
-    // An algorithm no verifier implements: verification throws, which is reported as a mismatch, not a bad signature.
+    // An algorithm no verifier implements.
     {
-      name: "unknown_identity_alg",
+      name: "unsupported_identity_alg",
       receiver,
-      message: helloMessage(hello, {
-        identityKey: {
-          alg: UNKNOWN_ALG,
-          "public-key": hex(sideA.identity.publicKey.toString("hex")),
-        },
-      }),
-      expected: "identity_mismatch",
+      message: helloMessage(hello, { identityKey: unknownAlgKey }),
+      expected: "unsupported_identity_alg",
     },
-    // A public key of the wrong size for its algorithm cannot import.
+    // A public key of the wrong size for its algorithm cannot be used.
     {
       name: "identity_key_wrong_size",
       receiver,
@@ -464,9 +615,61 @@ function helloVerdicts(handshake: Handshake): HelloVerdict[] {
           ),
         },
       }),
-      expected: "identity_mismatch",
+      expected: "invalid_identity_key",
+    },
+    // The right size for ES256, but not a point on the curve.
+    {
+      name: "identity_key_not_on_curve",
+      receiver,
+      message: helloMessage(hello, {
+        identityKey: {
+          alg: ES256,
+          "public-key": hex(offCurvePoint().toString("hex")),
+        },
+      }),
+      expected: "invalid_identity_key",
+    },
+    // Wrong in two ways at once: addressed to someone else and with an unsupported algorithm. The recipient is checked first.
+    {
+      name: "wrong_recipient_and_unsupported_alg",
+      receiver,
+      message: helloMessage(addressedToOutsider, {
+        identityKey: unknownAlgKey,
+      }),
+      expected: "wrong_recipient",
     },
   ];
+  if (sideA.identity.alg === ES256) {
+    // The spec's ES256 signature is the fixed-length raw r||s, and a verifier does not require the low-s form.
+    verdicts.push(
+      {
+        name: "der_encoded_signature",
+        receiver,
+        message: helloMessage(hello, {
+          signature: derSignature(hello.signature),
+        }),
+        expected: "bad_signature",
+      },
+      {
+        name: "high_s_signature",
+        receiver,
+        message: helloMessage(hello, { signature: highSForm(hello.signature) }),
+        expected: HIGH_S_TWIN_VERDICT,
+        peer: sideA.identity,
+      },
+    );
+  }
+
+  return verdicts;
+}
+
+/** A 65-byte SEC1-looking value that is not on the P-256 curve. */
+function offCurvePoint(): Buffer {
+  return Buffer.concat([
+    Buffer.from([SEC1_UNCOMPRESSED_PREFIX]),
+    Buffer.alloc(SCALAR_BYTE_LENGTH, OFF_CURVE_X_FILL),
+    Buffer.alloc(SCALAR_BYTE_LENGTH, OFF_CURVE_Y_FILL),
+  ]);
 }
 
 /** Fixed scalar and nonce fills: made up, one distinct pair per channel end. */
@@ -563,35 +766,55 @@ export function secureChannelFile(frameVectors: readonly Vector[]): {
     }
   }
 
-  // An ephemeral key with the right length and prefix that is not on the curve, validly signed: only the key exchange can refuse it.
+  // Hellos that are validly signed but carry an ephemeral key that cannot be used. Every one of them verifies as a hello, so only establishing the channel can refuse the key.
   const origin = ed25519.sides[0];
-  const offCurve = Buffer.concat([
-    Buffer.from([SEC1_UNCOMPRESSED_PREFIX]),
-    Buffer.alloc(SCALAR_BYTE_LENGTH, OFF_CURVE_X_FILL),
-    Buffer.alloc(SCALAR_BYTE_LENGTH, OFF_CURVE_Y_FILL),
-  ]);
-  const offCurveHello = makeHello({
-    name: "establish_ephemeral_key_not_on_curve",
-    from: origin.identity,
-    to: origin.peer.deviceId,
-    ephemeralPublic: offCurve,
-    nonce: origin.hello.nonce,
-  });
-  const offCurveMessage = helloMessage(offCurveHello);
-  vectors.push({
-    name: offCurveHello.name,
-    message: offCurveMessage,
-    wire_hex: wireHex(offCurveMessage),
-  });
-  const establishVerdicts: JsonWire[] = [
-    {
-      name: "ephemeral_key_not_on_curve",
-      handshake: ed25519.name,
-      side: origin.peer.name,
-      hello_vector: offCurveHello.name,
-      expected: "unusable_ephemeral_key",
-    },
+  const realPoint = origin.hello.ephemeralPublic;
+  const establishCases: readonly (readonly [string, Buffer, boolean])[] = [
+    // 65 bytes with the uncompressed prefix, the right length, not on the curve: a conformant implementation reaches establishment and refuses there.
+    ["not_on_curve", offCurvePoint(), true],
+    // Wrong encodings of a valid point or of nothing: the CDDL's size rule may refuse them while decoding, or establishment may, so the stage is advisory.
+    ["identity_encoding", Buffer.from([0]), false],
+    [
+      "compressed_point",
+      Buffer.concat([
+        Buffer.from([COMPRESSED_PREFIX]),
+        realPoint.subarray(1, 1 + SCALAR_BYTE_LENGTH),
+      ]),
+      false,
+    ],
+    ["missing_prefix", realPoint.subarray(1), false],
+    [
+      "uncompressed_prefix_one_byte_short",
+      realPoint.subarray(0, realPoint.length - 1),
+      false,
+    ],
   ];
+  const establishVerdicts: JsonWire[] = establishCases.map(
+    ([name, key, exactSize]) => {
+      const helloName = `establish_ephemeral_key_${name}`;
+      const bad = makeHello({
+        name: helloName,
+        from: origin.identity,
+        to: origin.peer.deviceId,
+        ephemeralPublic: key,
+        nonce: origin.hello.nonce,
+      });
+      const message = helloMessage(bad);
+      vectors.push({ name: helloName, message, wire_hex: wireHex(message) });
+
+      return {
+        name: `ephemeral_key_${name}`,
+        handshake: ed25519.name,
+        side: origin.peer.name,
+        hello_vector: helloName,
+        // The hello itself verifies as ok wherever it is decoded; the refusal is the key exchange's.
+        hello_verdict: "ok",
+        expected: exactSize ? "unusable_ephemeral_key" : "refused",
+        refused_at: exactSize ? "establishment" : "decoding_or_establishment",
+        stage_advisory: !exactSize,
+      };
+    },
+  );
 
   const sequences: Sequence[] = [];
   for (const handshake of [ed25519, es256]) {
@@ -608,6 +831,7 @@ export function secureChannelFile(frameVectors: readonly Vector[]): {
     identityJson[identity.name] = {
       alg: identity.alg,
       // Made-up test material: an Ed25519 seed or an ES256 private scalar. Never a real key.
+      synthetic: true,
       secret_hex: identity.secretHex,
       public_key_hex: identity.publicKey.toString("hex"),
       device_id_hex: identity.deviceId.toString("hex"),
@@ -628,7 +852,7 @@ export function secureChannelFile(frameVectors: readonly Vector[]): {
           sender: s.sender,
           receiver: s.receiver,
           steps: s.steps.map(stepJson),
-          not_sealable_after_open: s.notSealable,
+          receiver_drops_after_open: s.receiverDropsAfterOpen,
         })),
       },
     },
