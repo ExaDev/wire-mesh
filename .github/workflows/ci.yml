@@ -284,6 +284,21 @@ jobs:
         working-directory: rust
         run: cargo run --bin conformance-check
 
+  cargo-deny:
+    name: cargo-deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Prebuilt binary at an exact version: compiling cargo-deny from source on every run would dominate this job.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.20.2
+
+      - name: Check advisories, licences, sources and the crate allowlist
+        working-directory: rust
+        run: cargo deny check
+
   required-checks:
     name: Required Checks
     needs:
@@ -294,6 +309,7 @@ jobs:
         web-console-e2e,
         web-console-e2e-containers,
         rust-verify,
+        cargo-deny,
       ]
     if: always()
     runs-on: ubuntu-latest

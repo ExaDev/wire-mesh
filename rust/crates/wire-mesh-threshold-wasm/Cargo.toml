@@ -15,14 +15,14 @@ crate-type = ["cdylib", "rlib"]
 wire-mesh-threshold = { path = "../wire-mesh-threshold" }
 wire-mesh-wire = { path = "../wire-mesh-wire" }
 frost-ed25519 = "2"
-wasm-bindgen = "0.2"
-js-sys = "0.3"
+wasm-bindgen = { version = "0.2", default-features = false, features = ["std"] }
+js-sys = { version = "0.3", default-features = false, features = ["std"] }
 rand = { workspace = true }
 # getrandom underlies rand::rngs::OsRng; on wasm32-unknown-unknown it has no OS entropy source of its own and needs its "js" backend feature enabled by the FINAL crate (per getrandom's own documented usage) to pull entropy from the browser/Node WebCrypto API instead. Native-target builds (`cargo build`/`clippy`/`test` from the workspace root) ignore this feature entirely -- it only takes effect for the wasm32 target.
-getrandom = { version = "0.2", features = ["js"] }
+getrandom = { version = "0.2", default-features = false, features = ["js"] }
 
 [dev-dependencies]
-wasm-bindgen-test = "0.3"
+wasm-bindgen-test = { version = "0.3", default-features = false, features = ["std"] }
 
 [lints.rust]
 # wasm-bindgen's own macro-generated FFI glue needs unsafe at the wasm boundary; the workspace-wide `unsafe_code = "deny"` exists for hand-written business logic, not this crate's necessarily-unsafe JS/wasm interop surface -- every actual line of domain logic still lives in, and is tested in, wire-mesh-threshold, which keeps the deny.
