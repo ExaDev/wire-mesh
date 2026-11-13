@@ -3,9 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { ChannelExhaustedError } from "../src/domain/channel-exhausted-error.js";
 import { createRelayChannels } from "../src/domain/relay-channels.js";
-import {
-  MAX_COUNTER,
-} from "../src/domain/secure-channel.js";
+import { MAX_COUNTER } from "../src/domain/secure-channel.js";
 import type { Frame } from "../src/generated/protocol.js";
 import { generateEd25519Identity } from "./tokens-fixtures.js";
 
