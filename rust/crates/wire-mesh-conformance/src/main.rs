@@ -20,6 +20,13 @@
 //!    and encoded, pinning the JSON-to-wire convention itself, not just
 //!    the frozen bytes.
 //!
+//! Every `conformance/*.v1.json` is accounted for: it is either checked by
+//! this binary ([`CONSUMED`]) or listed with its tracking issue in
+//! [`NOT_YET_CONSUMED`], and a file in neither, or a listed file that no
+//! longer exists, fails the run. A consumed file may carry only the
+//! top-level keys this binary reads, so a new section cannot be ignored
+//! silently.
+//!
 //! Vector files are resolved from `CARGO_MANIFEST_DIR` so the working
 //! directory never matters. Any failure prints the vector's name and how
 //! it differs, and exits non-zero.
@@ -34,17 +41,82 @@ use wire_mesh_wire::transport::{peer_advert_signing_input, PeerAdvert};
 use wire_mesh_wire::value::{CanonicalMap, CborValue};
 use wire_mesh_wire::{decode_frame, encode_frame, minicbor};
 
+/// The vector files this binary checks, each with the top-level keys it reads.
+const CONSUMED: [&str; 4] = [
+    "frames.v1.json",
+    "handshake.v1.json",
+    "tokens.v1.json",
+    "adverts.v1.json",
+];
+
+/// The top-level keys of a consumed file: the ones `validate_vector_file` reads.
+const CONSUMED_KEYS: [&str; 3] = ["protocol_version", "description", "vectors"];
+
+/// Vector files this binary does not check yet, each with the issue that tracks checking it. The run reports them as not consumed and fails if a file is missing from here and from [`CONSUMED`].
+const NOT_YET_CONSUMED: [(&str, &str); 1] = [("secure-channel.v1.json", "ExaDev/wire-mesh#270")];
+
+/// Every `*.v1.json` in `dir`, by file name.
+fn vector_files_in(dir: &std::path::Path) -> Vec<String> {
+    let mut found: Vec<String> = std::fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("cannot list {}: {e}", dir.display()))
+        .map(|entry| {
+            entry
+                .unwrap_or_else(|e| panic!("cannot read an entry of {}: {e}", dir.display()))
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .filter(|name| name.ends_with(".v1.json"))
+        .collect();
+    found.sort();
+    found
+}
+
+/// What is wrong with how the files in the directory are accounted for: a file nobody checks or lists, and a listed file that is not there. Empty when every file is consumed or registered.
+fn accounting_problems(
+    present: &[String],
+    consumed: &[&str],
+    not_yet: &[(&str, &str)],
+) -> Vec<String> {
+    let mut problems = Vec::new();
+    for file in present {
+        let is_consumed = consumed.contains(&file.as_str());
+        let registered = not_yet.iter().any(|(name, _)| name == file);
+        if !is_consumed && !registered {
+            problems.push(format!(
+                "{file} is neither consumed by this binary nor listed in NOT_YET_CONSUMED"
+            ));
+        }
+        if is_consumed && registered {
+            problems.push(format!(
+                "{file} is both consumed and listed as not yet consumed"
+            ));
+        }
+    }
+    for name in consumed.iter().chain(not_yet.iter().map(|(name, _)| name)) {
+        if !present.iter().any(|file| file == name) {
+            problems.push(format!("{name} is listed but there is no such file"));
+        }
+    }
+    problems
+}
+
 #[tokio::main]
 async fn main() {
     let vector_dir: PathBuf = [env!("CARGO_MANIFEST_DIR"), "..", "..", "..", "conformance"]
         .into_iter()
         .collect();
-    let files = [
-        "frames.v1.json",
-        "handshake.v1.json",
-        "tokens.v1.json",
-        "adverts.v1.json",
-    ];
+    let files = CONSUMED;
+    let problems = accounting_problems(&vector_files_in(&vector_dir), &CONSUMED, &NOT_YET_CONSUMED);
+    if !problems.is_empty() {
+        for problem in &problems {
+            eprintln!("{problem}");
+        }
+        std::process::exit(1);
+    }
+    for (file, issue) in NOT_YET_CONSUMED {
+        println!("NOT CONSUMED  {file} (tracked in {issue})");
+    }
     // Any identity will do as a verifier: a peer-advert is self-certifying, so it is checked against the key it carries and this one's own key is never involved.
     let verifier = NodeIdentity::generate_ed25519();
     let mut total = 0usize;
@@ -102,6 +174,14 @@ struct AdvertExpectations {
 
 fn validate_vector_file(parsed: &serde_json::Value, file: &str) -> Vec<Vector> {
     let fail = |what: &str| -> ! { panic!("{file} is not a valid vector file: {what}") };
+    if let Some(object) = parsed.as_object() {
+        if let Some(key) = object
+            .keys()
+            .find(|key| !CONSUMED_KEYS.contains(&key.as_str()))
+        {
+            fail(&format!("top-level key {key} is not read by this binary"));
+        }
+    }
     let protocol_version = parsed
         .get("protocol_version")
         .unwrap_or_else(|| fail("missing protocol_version"))
@@ -367,5 +447,48 @@ mod tests {
         assert!(
             json_to_cbor(&serde_json::from_str::<serde_json::Value>("1.5").expect("json")).is_err()
         );
+    }
+
+    fn names(files: &[&str]) -> Vec<String> {
+        files.iter().map(|file| (*file).to_owned()).collect()
+    }
+
+    #[test]
+    fn a_file_that_is_neither_consumed_nor_listed_is_reported() {
+        let problems =
+            accounting_problems(&names(&["a.v1.json", "b.v1.json"]), &["a.v1.json"], &[]);
+        assert_eq!(problems.len(), 1);
+        assert!(problems[0].starts_with("b.v1.json"));
+    }
+
+    #[test]
+    fn a_listed_file_that_is_missing_is_reported() {
+        let problems = accounting_problems(
+            &names(&["a.v1.json"]),
+            &["a.v1.json"],
+            &[("gone.v1.json", "x/y#1")],
+        );
+        assert_eq!(problems.len(), 1);
+        assert!(problems[0].starts_with("gone.v1.json"));
+    }
+
+    #[test]
+    fn a_file_both_consumed_and_listed_is_reported() {
+        let problems = accounting_problems(
+            &names(&["a.v1.json"]),
+            &["a.v1.json"],
+            &[("a.v1.json", "x/y#1")],
+        );
+        assert_eq!(problems.len(), 1);
+    }
+
+    #[test]
+    fn consumed_and_registered_files_are_accepted() {
+        let problems = accounting_problems(
+            &names(&["a.v1.json", "b.v1.json"]),
+            &["a.v1.json"],
+            &[("b.v1.json", "x/y#1")],
+        );
+        assert!(problems.is_empty());
     }
 }

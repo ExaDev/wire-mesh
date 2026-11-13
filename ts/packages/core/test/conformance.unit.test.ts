@@ -1,6 +1,6 @@
 // This package's own conformance-check: every vector in conformance/'s golden files decodes to something the generated schemas accept, and re-encoding the validated value reproduces the recorded wire_hex exactly. Mirrors cddl.js's own round-trip test, but here the schemas come from this package's real dependency on cddl.js plus its committed src/generated/protocol.ts, not a local emitModule() call.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { cdeDecodeOptions, cdeEncodeOptions, decode, encode } from "cbor2";
@@ -81,6 +81,48 @@ function roundTrip(
     `re-encoding "${vector.name}" did not reproduce wire_hex`,
   ).toBe(vector.wire_hex);
 }
+
+/** Every vector file in conformance/ is checked by this file or by the test named for it here: a file in neither fails, so a new file cannot go unchecked here. */
+const CHECKED_HERE = [
+  "frames.v1.json",
+  "handshake.v1.json",
+  "tokens.v1.json",
+  "adverts.v1.json",
+];
+const CHECKED_ELSEWHERE: Readonly<Record<string, string>> = {
+  "secure-channel.v1.json": "conformance-secure-channel.unit.test.ts",
+};
+
+describe("every vector file is checked by this package", () => {
+  const directory = fileURLToPath(
+    new URL("../../../../conformance/", import.meta.url),
+  );
+  const present = readdirSync(directory)
+    .filter((name) => name.endsWith(".v1.json"))
+    .sort();
+
+  it("lists no file that is neither checked here nor by a named test", () => {
+    expect(
+      present.filter(
+        (name) => !CHECKED_HERE.includes(name) && !(name in CHECKED_ELSEWHERE),
+      ),
+    ).toEqual([]);
+  });
+
+  it("names only files that exist, and tests that exist", () => {
+    expect(
+      [...CHECKED_HERE, ...Object.keys(CHECKED_ELSEWHERE)].filter(
+        (name) => !present.includes(name),
+      ),
+    ).toEqual([]);
+    for (const test of Object.values(CHECKED_ELSEWHERE)) {
+      expect(
+        existsSync(fileURLToPath(new URL(test, import.meta.url))),
+        test,
+      ).toBe(true);
+    }
+  });
+});
 
 describe("frame vectors decode and re-encode byte-exactly through frameSchema", () => {
   for (const vector of [

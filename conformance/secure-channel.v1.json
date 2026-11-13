@@ -700,6 +700,31 @@
       "wire_hex": "a664747970656c7365637572652d68656c6c6f656e6f6e636550a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0697369676e61747572655840fe22cceac1a4e109999c8f1377b985a18db71e47d09dcb2fed32127c3241c1b76c866de287b1c9bbe376a5b719c88183fb1bd46d63db471266aff795a23e610269746f2d646576696365582024b03a0e3818a49e05631efc80768d08e32a81a944748730f14f613af9e909a66c6964656e746974792d6b6579a263616c673903e66a7075626c69632d6b65795820bc7cbcb5636375fa1d82434d466724d92377f53b980695dd49d26d0ce12205a56d657068656d6572616c2d6b65795841040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794"
     },
     {
+      "name": "verdict_ed25519_identity_key_not_a_point",
+      "message": {
+        "type": "secure-hello",
+        "ephemeral-key": {
+          "hex": "040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794"
+        },
+        "nonce": {
+          "hex": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
+        },
+        "identity-key": {
+          "alg": -8,
+          "public-key": {
+            "hex": "0200000000000000000000000000000000000000000000000000000000000000"
+          }
+        },
+        "to-device": {
+          "hex": "b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6"
+        },
+        "signature": {
+          "hex": "f072bad2755a9ee71f518ea76a230b5798b7531c1532eac6dab69836158e894dbdb1a9ac6eb4a11b2e9129b465c243d05cf18081e44687d14d721c6c7cb8930b"
+        }
+      },
+      "wire_hex": "a664747970656c7365637572652d68656c6c6f656e6f6e636550a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0697369676e61747572655840f072bad2755a9ee71f518ea76a230b5798b7531c1532eac6dab69836158e894dbdb1a9ac6eb4a11b2e9129b465c243d05cf18081e44687d14d721c6c7cb8930b69746f2d6465766963655820b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd66c6964656e746974792d6b6579a263616c67276a7075626c69632d6b6579582002000000000000000000000000000000000000000000000000000000000000006d657068656d6572616c2d6b65795841040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794"
+    },
+    {
       "name": "verdict_es256_valid",
       "message": {
         "type": "secure-hello",
@@ -1126,6 +1151,7 @@
     }
   ],
   "secure_channel": {
+    "layout_version": 1,
     "identities": {
       "a": {
         "alg": -8,
@@ -1196,7 +1222,7 @@
         "transcript": [
           {
             "from": "a",
-            "counter": 0,
+            "counter": "0",
             "inner_frame": "manage_request_with_token",
             "inner_wire_hex": "a564747970656e6d616e6167652d726571756573746573636f7065a1646b696e64646e6f646565746f6b656e845828a2613126613458201111111111111111111111111111111111111111111111111111111111111111a059010fa76573636f7065a2646b696e6466666f6c6465726470617468652f776f726b6662656172657258202222222222222222222222222222222222222222222222222222222222222222666973737565725820111111111111111111111111111111111111111111111111111111111111111167657870697265731b000001b8dac5b40068746f6b656e2d696450010101010101010101010101010101016a6361706162696c69747968657865633a7074796a6973737565722d6b6579a263616c67266a7075626c69632d6b6579584104aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff67636f6d6d616e64a264766572626d7765627274633a7369676e616c66706172616d73a3637364707832763d300d0a6f3d2d203436313137333137203220494e20495034203132372e302e302e310d0a733d2d0d0a743d3020300d0a64766572626c7765627274632e6f666665726e6e65676f74696174696f6e2d6964016a726571756573742d696403",
             "iv_hex": "000000000000000000000000",
@@ -1206,7 +1232,7 @@
           },
           {
             "from": "b",
-            "counter": 0,
+            "counter": "0",
             "inner_frame": "manage_response_ok",
             "inner_wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a166726573756c74626f6b6a726571756573742d696407",
             "iv_hex": "000000000000000000000000",
@@ -1216,7 +1242,7 @@
           },
           {
             "from": "a",
-            "counter": 1,
+            "counter": "1",
             "inner_frame": "data_have",
             "inner_wire_hex": "a364706565725820730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8647479706569646174612d6861766568686561642d7365711880",
             "iv_hex": "000000000000000000000001",
@@ -1226,7 +1252,7 @@
           },
           {
             "from": "b",
-            "counter": 1,
+            "counter": "1",
             "inner_frame": "data_request",
             "inner_wire_hex": "a364706565725820730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a864747970656c646174612d726571756573746866726f6d2d7365711864",
             "iv_hex": "000000000000000000000001",
@@ -1236,7 +1262,7 @@
           },
           {
             "from": "a",
-            "counter": 2,
+            "counter": "2",
             "inner_frame": "manage_request_without_token",
             "inner_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407",
             "iv_hex": "000000000000000000000002",
@@ -1246,7 +1272,7 @@
           },
           {
             "from": "b",
-            "counter": 2,
+            "counter": "2",
             "inner_frame": "data_entries",
             "inner_wire_hex": "a464706565725820730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a864747970656c646174612d656e747269657367656e74726965738243aabbcc44ddeeff006866726f6d2d7365711864",
             "iv_hex": "000000000000000000000002",
@@ -1256,7 +1282,7 @@
           },
           {
             "from": "b",
-            "counter": 3,
+            "counter": "3",
             "inner_frame": "manage_response_error",
             "inner_wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a364636f64656c73636f70652d64656e69656466726573756c74656572726f72676d6573736167657822746f6b656e20646f6573206e6f7420617574686f72697365207468697320706174686a726571756573742d696408",
             "iv_hex": "000000000000000000000003",
@@ -1266,7 +1292,7 @@
           },
           {
             "from": "a",
-            "counter": 3,
+            "counter": "3",
             "inner_frame": "data_request",
             "inner_wire_hex": "a364706565725820730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a864747970656c646174612d726571756573746866726f6d2d7365711864",
             "iv_hex": "000000000000000000000003",
@@ -1276,7 +1302,7 @@
           },
           {
             "from": "b",
-            "counter": 4,
+            "counter": "4",
             "inner_frame": "data_have",
             "inner_wire_hex": "a364706565725820730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8647479706569646174612d6861766568686561642d7365711880",
             "iv_hex": "000000000000000000000004",
@@ -1325,7 +1351,7 @@
         "transcript": [
           {
             "from": "e",
-            "counter": 0,
+            "counter": "0",
             "inner_frame": "manage_request_with_token",
             "inner_wire_hex": "a564747970656e6d616e6167652d726571756573746573636f7065a1646b696e64646e6f646565746f6b656e845828a2613126613458201111111111111111111111111111111111111111111111111111111111111111a059010fa76573636f7065a2646b696e6466666f6c6465726470617468652f776f726b6662656172657258202222222222222222222222222222222222222222222222222222222222222222666973737565725820111111111111111111111111111111111111111111111111111111111111111167657870697265731b000001b8dac5b40068746f6b656e2d696450010101010101010101010101010101016a6361706162696c69747968657865633a7074796a6973737565722d6b6579a263616c67266a7075626c69632d6b6579584104aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff67636f6d6d616e64a264766572626d7765627274633a7369676e616c66706172616d73a3637364707832763d300d0a6f3d2d203436313137333137203220494e20495034203132372e302e302e310d0a733d2d0d0a743d3020300d0a64766572626c7765627274632e6f666665726e6e65676f74696174696f6e2d6964016a726571756573742d696403",
             "iv_hex": "000000000000000000000000",
@@ -1335,7 +1361,7 @@
           },
           {
             "from": "a",
-            "counter": 0,
+            "counter": "0",
             "inner_frame": "manage_response_ok",
             "inner_wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a166726573756c74626f6b6a726571756573742d696407",
             "iv_hex": "000000000000000000000000",
@@ -1345,7 +1371,7 @@
           },
           {
             "from": "e",
-            "counter": 1,
+            "counter": "1",
             "inner_frame": "data_have",
             "inner_wire_hex": "a364706565725820730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8647479706569646174612d6861766568686561642d7365711880",
             "iv_hex": "000000000000000000000001",
@@ -1355,7 +1381,7 @@
           },
           {
             "from": "a",
-            "counter": 1,
+            "counter": "1",
             "inner_frame": "data_request",
             "inner_wire_hex": "a364706565725820730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a864747970656c646174612d726571756573746866726f6d2d7365711864",
             "iv_hex": "000000000000000000000001",
@@ -1365,7 +1391,7 @@
           },
           {
             "from": "e",
-            "counter": 2,
+            "counter": "2",
             "inner_frame": "manage_request_without_token",
             "inner_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407",
             "iv_hex": "000000000000000000000002",
@@ -1375,7 +1401,7 @@
           },
           {
             "from": "a",
-            "counter": 2,
+            "counter": "2",
             "inner_frame": "data_entries",
             "inner_wire_hex": "a464706565725820730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a864747970656c646174612d656e747269657367656e74726965738243aabbcc44ddeeff006866726f6d2d7365711864",
             "iv_hex": "000000000000000000000002",
@@ -1385,7 +1411,7 @@
           },
           {
             "from": "a",
-            "counter": 3,
+            "counter": "3",
             "inner_frame": "manage_response_error",
             "inner_wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a364636f64656c73636f70652d64656e69656466726573756c74656572726f72676d6573736167657822746f6b656e20646f6573206e6f7420617574686f72697365207468697320706174686a726571756573742d696408",
             "iv_hex": "000000000000000000000003",
@@ -1395,7 +1421,7 @@
           },
           {
             "from": "e",
-            "counter": 3,
+            "counter": "3",
             "inner_frame": "data_request",
             "inner_wire_hex": "a364706565725820730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a864747970656c646174612d726571756573746866726f6d2d7365711864",
             "iv_hex": "000000000000000000000003",
@@ -1405,7 +1431,7 @@
           },
           {
             "from": "a",
-            "counter": 4,
+            "counter": "4",
             "inner_frame": "data_have",
             "inner_wire_hex": "a364706565725820730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8647479706569646174612d6861766568686561642d7365711880",
             "iv_hex": "000000000000000000000004",
@@ -1454,7 +1480,7 @@
         "transcript": [
           {
             "from": "a",
-            "counter": 0,
+            "counter": "0",
             "inner_frame": "manage_request_with_token",
             "inner_wire_hex": "a564747970656e6d616e6167652d726571756573746573636f7065a1646b696e64646e6f646565746f6b656e845828a2613126613458201111111111111111111111111111111111111111111111111111111111111111a059010fa76573636f7065a2646b696e6466666f6c6465726470617468652f776f726b6662656172657258202222222222222222222222222222222222222222222222222222222222222222666973737565725820111111111111111111111111111111111111111111111111111111111111111167657870697265731b000001b8dac5b40068746f6b656e2d696450010101010101010101010101010101016a6361706162696c69747968657865633a7074796a6973737565722d6b6579a263616c67266a7075626c69632d6b6579584104aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb5840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff67636f6d6d616e64a264766572626d7765627274633a7369676e616c66706172616d73a3637364707832763d300d0a6f3d2d203436313137333137203220494e20495034203132372e302e302e310d0a733d2d0d0a743d3020300d0a64766572626c7765627274632e6f666665726e6e65676f74696174696f6e2d6964016a726571756573742d696403",
             "iv_hex": "000000000000000000000000",
@@ -1464,7 +1490,7 @@
           },
           {
             "from": "b",
-            "counter": 0,
+            "counter": "0",
             "inner_frame": "manage_response_ok",
             "inner_wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a166726573756c74626f6b6a726571756573742d696407",
             "iv_hex": "000000000000000000000000",
@@ -1474,7 +1500,7 @@
           },
           {
             "from": "a",
-            "counter": 1,
+            "counter": "1",
             "inner_frame": "data_have",
             "inner_wire_hex": "a364706565725820730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8647479706569646174612d6861766568686561642d7365711880",
             "iv_hex": "000000000000000000000001",
@@ -1484,7 +1510,7 @@
           },
           {
             "from": "b",
-            "counter": 1,
+            "counter": "1",
             "inner_frame": "data_request",
             "inner_wire_hex": "a364706565725820730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a864747970656c646174612d726571756573746866726f6d2d7365711864",
             "iv_hex": "000000000000000000000001",
@@ -1494,7 +1520,7 @@
           },
           {
             "from": "a",
-            "counter": 2,
+            "counter": "2",
             "inner_frame": "manage_request_without_token",
             "inner_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407",
             "iv_hex": "000000000000000000000002",
@@ -1504,7 +1530,7 @@
           },
           {
             "from": "b",
-            "counter": 2,
+            "counter": "2",
             "inner_frame": "data_entries",
             "inner_wire_hex": "a464706565725820730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a864747970656c646174612d656e747269657367656e74726965738243aabbcc44ddeeff006866726f6d2d7365711864",
             "iv_hex": "000000000000000000000002",
@@ -1514,7 +1540,7 @@
           },
           {
             "from": "b",
-            "counter": 3,
+            "counter": "3",
             "inner_frame": "manage_response_error",
             "inner_wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a364636f64656c73636f70652d64656e69656466726573756c74656572726f72676d6573736167657822746f6b656e20646f6573206e6f7420617574686f72697365207468697320706174686a726571756573742d696408",
             "iv_hex": "000000000000000000000003",
@@ -1524,7 +1550,7 @@
           },
           {
             "from": "a",
-            "counter": 3,
+            "counter": "3",
             "inner_frame": "data_request",
             "inner_wire_hex": "a364706565725820730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a864747970656c646174612d726571756573746866726f6d2d7365711864",
             "iv_hex": "000000000000000000000003",
@@ -1534,7 +1560,7 @@
           },
           {
             "from": "b",
-            "counter": 4,
+            "counter": "4",
             "inner_frame": "data_have",
             "inner_wire_hex": "a364706565725820730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8647479706569646174612d6861766568686561642d7365711880",
             "iv_hex": "000000000000000000000004",
@@ -1552,7 +1578,10 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_valid",
         "expected": "ok",
-        "peer_device_id_hex": "730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8"
+        "also_acceptable": [],
+        "peer_device_id_hex": "730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8",
+        "signing_input_hex": null,
+        "signature_hex": null
       },
       {
         "name": "verdict_ed25519_addressed_to_outsider",
@@ -1560,6 +1589,8 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_addressed_to_outsider",
         "expected": "wrong_recipient",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a824b03a0e3818a49e05631efc80768d08e32a81a944748730f14f613af9e909a6",
         "signature_hex": "fe22cceac1a4e109999c8f1377b985a18db71e47d09dcb2fed32127c3241c1b76c866de287b1c9bbe376a5b719c88183fb1bd46d63db471266aff795a23e6102"
       },
@@ -1568,14 +1599,22 @@
         "handshake": "ed25519",
         "receiver": "a",
         "hello_vector": "verdict_ed25519_reflected_to_its_sender",
-        "expected": "wrong_recipient"
+        "expected": "wrong_recipient",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
+        "signing_input_hex": null,
+        "signature_hex": null
       },
       {
         "name": "verdict_ed25519_ephemeral_key_swapped",
         "handshake": "ed25519",
         "receiver": "b",
         "hello_vector": "verdict_ed25519_ephemeral_key_swapped",
-        "expected": "bad_signature"
+        "expected": "bad_signature",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
+        "signing_input_hex": null,
+        "signature_hex": null
       },
       {
         "name": "verdict_ed25519_signed_by_outsider",
@@ -1583,6 +1622,8 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_signed_by_outsider",
         "expected": "bad_signature",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
         "signature_hex": "3eaf6b576e668ef9ddedeaf5ae88500952d873ec50c8dacbd77782ff24b1344877a842d63dfbf73e8ae8c44cd66c5061205134a05a2e7074d5fca13e4358530a"
       },
@@ -1591,35 +1632,68 @@
         "handshake": "ed25519",
         "receiver": "b",
         "hello_vector": "verdict_ed25519_signature_byte_flipped",
-        "expected": "bad_signature"
+        "expected": "bad_signature",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
+        "signing_input_hex": null,
+        "signature_hex": null
       },
       {
         "name": "verdict_ed25519_unsupported_identity_alg",
         "handshake": "ed25519",
         "receiver": "b",
         "hello_vector": "verdict_ed25519_unsupported_identity_alg",
-        "expected": "unsupported_identity_alg"
+        "expected": "unsupported_identity_alg",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
+        "signing_input_hex": null,
+        "signature_hex": null
       },
       {
         "name": "verdict_ed25519_identity_key_wrong_size",
         "handshake": "ed25519",
         "receiver": "b",
         "hello_vector": "verdict_ed25519_identity_key_wrong_size",
-        "expected": "invalid_identity_key"
+        "expected": "invalid_identity_key",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
+        "signing_input_hex": null,
+        "signature_hex": null
       },
       {
         "name": "verdict_ed25519_identity_key_not_on_curve",
         "handshake": "ed25519",
         "receiver": "b",
         "hello_vector": "verdict_ed25519_identity_key_not_on_curve",
-        "expected": "invalid_identity_key"
+        "expected": "invalid_identity_key",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
+        "signing_input_hex": null,
+        "signature_hex": null
       },
       {
         "name": "verdict_ed25519_wrong_recipient_and_unsupported_alg",
         "handshake": "ed25519",
         "receiver": "b",
         "hello_vector": "verdict_ed25519_wrong_recipient_and_unsupported_alg",
-        "expected": "wrong_recipient"
+        "expected": "wrong_recipient",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
+        "signing_input_hex": null,
+        "signature_hex": null
+      },
+      {
+        "name": "verdict_ed25519_identity_key_not_a_point",
+        "handshake": "ed25519",
+        "receiver": "b",
+        "hello_vector": "verdict_ed25519_identity_key_not_a_point",
+        "expected": "invalid_identity_key",
+        "also_acceptable": [
+          "bad_signature"
+        ],
+        "peer_device_id_hex": null,
+        "signing_input_hex": null,
+        "signature_hex": null
       },
       {
         "name": "verdict_es256_valid",
@@ -1627,7 +1701,10 @@
         "receiver": "a",
         "hello_vector": "verdict_es256_valid",
         "expected": "ok",
-        "peer_device_id_hex": "1eb2fb86691cdf34135617553ade70c37343aa971164967ac76b47fc8c5e7e3e"
+        "also_acceptable": [],
+        "peer_device_id_hex": "1eb2fb86691cdf34135617553ade70c37343aa971164967ac76b47fc8c5e7e3e",
+        "signing_input_hex": null,
+        "signature_hex": null
       },
       {
         "name": "verdict_es256_addressed_to_outsider",
@@ -1635,6 +1712,8 @@
         "receiver": "a",
         "hello_vector": "verdict_es256_addressed_to_outsider",
         "expected": "wrong_recipient",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f7631000451a7580833898ea1b183cbd7350a4099078c6ef1c1e18e970cd7683035f25e7d0110522712b0b5a7cff081685486984a94e6831edac46e7360fa9d834a7a81a1c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c01eb2fb86691cdf34135617553ade70c37343aa971164967ac76b47fc8c5e7e3e24b03a0e3818a49e05631efc80768d08e32a81a944748730f14f613af9e909a6",
         "signature_hex": "80c9b65dea0dada3c5e98d4f378123a6939319487cc51695fcad27a20e7069784a5dfe7a1a12774636892dbb92b707cb49fa28e5362bb4212406f6be6006724c"
       },
@@ -1643,14 +1722,22 @@
         "handshake": "es256",
         "receiver": "e",
         "hello_vector": "verdict_es256_reflected_to_its_sender",
-        "expected": "wrong_recipient"
+        "expected": "wrong_recipient",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
+        "signing_input_hex": null,
+        "signature_hex": null
       },
       {
         "name": "verdict_es256_ephemeral_key_swapped",
         "handshake": "es256",
         "receiver": "a",
         "hello_vector": "verdict_es256_ephemeral_key_swapped",
-        "expected": "bad_signature"
+        "expected": "bad_signature",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
+        "signing_input_hex": null,
+        "signature_hex": null
       },
       {
         "name": "verdict_es256_signed_by_outsider",
@@ -1658,6 +1745,8 @@
         "receiver": "a",
         "hello_vector": "verdict_es256_signed_by_outsider",
         "expected": "bad_signature",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f7631000451a7580833898ea1b183cbd7350a4099078c6ef1c1e18e970cd7683035f25e7d0110522712b0b5a7cff081685486984a94e6831edac46e7360fa9d834a7a81a1c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c01eb2fb86691cdf34135617553ade70c37343aa971164967ac76b47fc8c5e7e3e730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8",
         "signature_hex": "be4541f57edfbb2c6382355613de3a352a3717a8152b029eb7c1c49d1dc2847af11ab11634ea6ae4f9a8bc856ccbd8b56bee1efb4296131df1aef843f41d770e"
       },
@@ -1666,42 +1755,66 @@
         "handshake": "es256",
         "receiver": "a",
         "hello_vector": "verdict_es256_signature_byte_flipped",
-        "expected": "bad_signature"
+        "expected": "bad_signature",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
+        "signing_input_hex": null,
+        "signature_hex": null
       },
       {
         "name": "verdict_es256_unsupported_identity_alg",
         "handshake": "es256",
         "receiver": "a",
         "hello_vector": "verdict_es256_unsupported_identity_alg",
-        "expected": "unsupported_identity_alg"
+        "expected": "unsupported_identity_alg",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
+        "signing_input_hex": null,
+        "signature_hex": null
       },
       {
         "name": "verdict_es256_identity_key_wrong_size",
         "handshake": "es256",
         "receiver": "a",
         "hello_vector": "verdict_es256_identity_key_wrong_size",
-        "expected": "invalid_identity_key"
+        "expected": "invalid_identity_key",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
+        "signing_input_hex": null,
+        "signature_hex": null
       },
       {
         "name": "verdict_es256_identity_key_not_on_curve",
         "handshake": "es256",
         "receiver": "a",
         "hello_vector": "verdict_es256_identity_key_not_on_curve",
-        "expected": "invalid_identity_key"
+        "expected": "invalid_identity_key",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
+        "signing_input_hex": null,
+        "signature_hex": null
       },
       {
         "name": "verdict_es256_wrong_recipient_and_unsupported_alg",
         "handshake": "es256",
         "receiver": "a",
         "hello_vector": "verdict_es256_wrong_recipient_and_unsupported_alg",
-        "expected": "wrong_recipient"
+        "expected": "wrong_recipient",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
+        "signing_input_hex": null,
+        "signature_hex": null
       },
       {
         "name": "verdict_es256_der_encoded_signature",
         "handshake": "es256",
         "receiver": "a",
         "hello_vector": "verdict_es256_der_encoded_signature",
-        "expected": "bad_signature"
+        "expected": "bad_signature",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
+        "signing_input_hex": null,
+        "signature_hex": null
       },
       {
         "name": "verdict_es256_high_s_signature",
@@ -1709,7 +1822,10 @@
         "receiver": "a",
         "hello_vector": "verdict_es256_high_s_signature",
         "expected": "ok",
-        "peer_device_id_hex": "1eb2fb86691cdf34135617553ade70c37343aa971164967ac76b47fc8c5e7e3e"
+        "also_acceptable": [],
+        "peer_device_id_hex": "1eb2fb86691cdf34135617553ade70c37343aa971164967ac76b47fc8c5e7e3e",
+        "signing_input_hex": null,
+        "signature_hex": null
       }
     ],
     "establish_verdicts": [
@@ -1776,7 +1892,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae706f893ea50247400ceffbcebdf7ad44ea257af3c4af6f7b7f6039a1c06ab5e403ab9ab5712deb80e8ff6b5a1efdcb3096e3497ae7d197863351d98d74cd0869fe27e6844af68ff16e3676194b309e339177dfbb871e4705fc5cf4871743f9143f79d9bc68792aa96e170467978d8cb72af63ecb8a99089aef81d6ea7c0355ee883e1c3e857ed33ad129777894ffaa5c76ff66b2016e56b2d66a6a285289e66d364e2d7e78ea8dca6de4c4d6b34d",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -1784,7 +1901,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -1800,7 +1918,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae8f6f893ea50247400ceffbcebdf7ad44ea257af3c4af6f7b7f6039a1c06ab5e403ab9ab5712deb80e8ff6b5a1efdcb3096e3497ae7d197863351d98d74cd0869fe27e6844af68ff16e3676194b309e339177dfbb871e4705fc5cf4871743f9143f79d9bc68792aa96e170467978d8cb72af63ecb8a99089aef81d6ea7c0355ee883e1c3e857ed33ad129777894ffaa5c76ff66b2016e56b2d66a6a285289e66d364e2d7e78ea8dca6de4c4d6b3b2",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -1808,7 +1927,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -1824,7 +1944,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ad8f6f893ea50247400ceffbcebdf7ad44ea257af3c4af6f7b7f6039a1c06ab5e403ab9ab5712deb80e8ff6b5a1efdcb3096e3497ae7d197863351d98d74cd0869fe27e6844af68ff16e3676194b309e339177dfbb871e4705fc5cf4871743f9143f79d9bc68792aa96e170467978d8cb72af63ecb8a99089aef81d6ea7c0355ee883e1c3e857ed33ad129777894ffaa5c76ff66b2016e56b2d66a6a285289e66d364e2d7e78ea8dca6de4c4d6b3",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -1832,7 +1953,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -1848,7 +1970,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a63697068657274657874488f6f893ea5024740",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -1856,7 +1979,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -1872,7 +1996,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787440",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -1880,7 +2005,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -1896,7 +2022,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572056a6369706865727465787458ae8f6f893ea50247400ceffbcebdf7ad44ea257af3c4af6f7b7f6039a1c06ab5e403ab9ab5712deb80e8ff6b5a1efdcb3096e3497ae7d197863351d98d74cd0869fe27e6844af68ff16e3676194b309e339177dfbb871e4705fc5cf4871743f9143f79d9bc68792aa96e170467978d8cb72af63ecb8a99089aef81d6ea7c0355ee883e1c3e857ed33ad129777894ffaa5c76ff66b2016e56b2d66a6a285289e66d364e2d7e78ea8dca6de4c4d6b34d",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -1904,7 +2031,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -1920,7 +2048,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae8f6f893ea50247400ceffbcebdf7ad44ea257af3c4af6f7b7f6039a1c06ab5e403ab9ab5712deb80e8ff6b5a1efdcb3096e3497ae7d197863351d98d74cd0869fe27e6844af68ff16e3676194b309e339177dfbb871e4705fc5cf4871743f9143f79d9bc68792aa96e170467978d8cb72af63ecb8a99089aef81d6ea7c0355ee883e1c3e857ed33ad129777894ffaa5c76ff66b2016e56b2d66a6a285289436243fe7b9990a61a65183be882ec89",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -1928,7 +2057,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -1944,7 +2074,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aef3941d69f0f8442145c0b6636f133d4ce483604287a6960862d629cf3eab0c8a864c34e1164f0f662f3987ab05f9134c918ade57e2364d51e8cd7f2524b96e0ba8695bea483783cb78651303190287c3b30b6125b1a0e1b3ce65cc930ff69dd2846c991596e3d137197a5fe866fa7a619684b947644d2cd8aac38e02361f309ddf7a89ac6eeee6f8d54d04fdce59115dda830ac58b451d00ff1e98d0847c1fdd8ee4e2b99e2189b2bfa003d79fce",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -1952,7 +2083,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -1968,7 +2100,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aef3941d69f0f8442145c0b6636f133d4ce483604287a6960862d629cf3eab0c8a864c34e1164f0f662f3987ab05f9134c918ade57e2364d51e8cd7f2524b96e0ba8695bea483783cb78651303190287c3b30b6125b1a0e1b3ce65cc930ff69dd2846c991596e3d137197a5fe866fa7a619684b947644d2cd8aac38e02361f309ddf7a89ac6eeee6f8d54d04fdce59115dda830ac58b451d00ff1e98d0847c35dda9d3e75a7a0e4bd329cecd81346d",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -1976,7 +2109,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -1993,14 +2127,16 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae8f6f893ea50247400ceffbcebdf7ad44ea257af3c4af6f7b7f6039a1c06ab5e403ab9ab5712deb80e8ff6b5a1efdcb3096e3497ae7d197863351d98d74cd0869fe27e6844af68ff16e3676194b309e339177dfbb871e4705fc5cf4871743f9143f79d9bc68792aa96e170467978d8cb72af63ecb8a99089aef81d6ea7c0355ee883e1c3e857ed33ad129777894ffaa5c76ff66b2016e56b2d66a6a285289e66d364e2d7e78ea8dca6de4c4d6b34d",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2017,14 +2153,16 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae706f893ea50247400ceffbcebdf7ad44ea257af3c4af6f7b7f6039a1c06ab5e403ab9ab5712deb80e8ff6b5a1efdcb3096e3497ae7d197863351d98d74cd0869fe27e6844af68ff16e3676194b309e339177dfbb871e4705fc5cf4871743f9143f79d9bc68792aa96e170467978d8cb72af63ecb8a99089aef81d6ea7c0355ee883e1c3e857ed33ad129777894ffaa5c76ff66b2016e56b2d66a6a285289e66d364e2d7e78ea8dca6de4c4d6b34d",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2041,14 +2179,16 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572016a6369706865727465787458ae2eec004cb01d906b17c5dcc36aea37ef75cfa7e787868b53407a9413d4beec88e13eaed14a0275bb2420ee16e8a821a6fce01a75949af7e0fa84d90a6cafa26410276cc2e076bf55f1b850c3d047d4a2aec459ec2446fbf644902a7bca52a0eb17cfdc1aef30755fe14fcbe827e992aeffc4952c1dca5e4bd3d46f00ea9d048bd5bc3354416f99869fa271094216fa43b1a8a0fc52e1e561aad3e7b195997e79461d9fb1072f66e11707ee336bbd",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "3",
@@ -2056,7 +2196,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2072,7 +2213,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e7465721903e86a6369706865727465787458285a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -2080,7 +2222,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2097,14 +2240,16 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "4328719364",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e7465721b00000001020304046a6369706865727465787458ae08abd23fa403129ef02c38e2b51ebdfacfdc07f2a6d02ff0d692c47682e0b098ab1bc58ef858931d934bbfc60e1dbd134c2c57633c286a7d1cd7b659c1470fc49ef367d281e945fa156dc988494e156385ee64e978c69e2190853697bb007930380d192760549e0322d6e5f1f987815cd92bc925c8156385feba363d0f0c5ede7c18cc618ef451b0c6641f67574c1c32e3a2efb44568ea511454c859c10a7b035cb81274348efeff92d4b1ae41b9",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2121,14 +2266,16 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "9007199254740990",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e7465721b001ffffffffffffe6a6369706865727465787458ae22c4cfca3a6a9ce6016b4663e8a9483b72f3ce8c30863fed10fb425a0170f06f0801b08d06429389bba6e8b62ad82df35c6b5a0412a325e79ff8af0840b6959dd8ebfadded55eb60624389bd56d021faba98970694e48dd53a81dc1a7b02cd5d7c853f60f45deade85f5664ef480b11781dd50197c5a8c33ba9e37b907a3354bd34402f756d5997fd3637cb7e8c5bf16393873c432e2ba941c57e6447f6af09735a0cdada85c7479d3392d028029",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2222,14 +2369,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458248a6f893ea502444302ace9dcbbb2f247e93172e507cc6797207e39cf289ee9797eba1277",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae8f6f893ea50247400ceffbcebdf7ad44ea257af3c4af6f7b7f6039a1c06ab5e403ab9ab5712deb80e8ff6b5a1efdcb3096e3497ae7d197863351d98d74cd0869fe27e6844af68ff16e3676194b309e339177dfbb871e4705fc5cf4871743f9143f79d9bc68792aa96e170467978d8cb72af63ecb8a99089aef81d6ea7c0355ee883e1c3e857ed33ad129777894ffaa5c76ff66b2016e56b2d66a6a285289e66d364e2d7e78ea8dca6de4c4d6b34d",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -2237,7 +2386,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2253,14 +2403,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458208a6f893ea50240490cf5fb84b0bba944797c65ebd8b0cc3d9f68d235e78f84b0",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae8f6f893ea50247400ceffbcebdf7ad44ea257af3c4af6f7b7f6039a1c06ab5e403ab9ab5712deb80e8ff6b5a1efdcb3096e3497ae7d197863351d98d74cd0869fe27e6844af68ff16e3676194b309e339177dfbb871e4705fc5cf4871743f9143f79d9bc68792aa96e170467978d8cb72af63ecb8a99089aef81d6ea7c0355ee883e1c3e857ed33ad129777894ffaa5c76ff66b2016e56b2d66a6a285289e66d364e2d7e78ea8dca6de4c4d6b34d",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -2268,7 +2420,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2284,14 +2437,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a63697068657274657874581c930a9933ac174c491de8f4ce4873efa55d1568309b6fad7194b9f291",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae8f6f893ea50247400ceffbcebdf7ad44ea257af3c4af6f7b7f6039a1c06ab5e403ab9ab5712deb80e8ff6b5a1efdcb3096e3497ae7d197863351d98d74cd0869fe27e6844af68ff16e3676194b309e339177dfbb871e4705fc5cf4871743f9143f79d9bc68792aa96e170467978d8cb72af63ecb8a99089aef81d6ea7c0355ee883e1c3e857ed33ad129777894ffaa5c76ff66b2016e56b2d66a6a285289e66d364e2d7e78ea8dca6de4c4d6b34d",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -2299,7 +2454,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2315,14 +2471,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a63697068657274657874581c946f893ea5024d5d04effd56077b6143ded3c4a97e7ff4ed91cc008f",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae8f6f893ea50247400ceffbcebdf7ad44ea257af3c4af6f7b7f6039a1c06ab5e403ab9ab5712deb80e8ff6b5a1efdcb3096e3497ae7d197863351d98d74cd0869fe27e6844af68ff16e3676194b309e339177dfbb871e4705fc5cf4871743f9143f79d9bc68792aa96e170467978d8cb72af63ecb8a99089aef81d6ea7c0355ee883e1c3e857ed33ad129777894ffaa5c76ff66b2016e56b2d66a6a285289e66d364e2d7e78ea8dca6de4c4d6b34d",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -2330,7 +2488,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2346,14 +2505,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a63697068657274657874581c8a6f893ea5024d5d04effda9dfdf1259bdee4dc32c391eb515c53cc5",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae8f6f893ea50247400ceffbcebdf7ad44ea257af3c4af6f7b7f6039a1c06ab5e403ab9ab5712deb80e8ff6b5a1efdcb3096e3497ae7d197863351d98d74cd0869fe27e6844af68ff16e3676194b309e339177dfbb871e4705fc5cf4871743f9143f79d9bc68792aa96e170467978d8cb72af63ecb8a99089aef81d6ea7c0355ee883e1c3e857ed33ad129777894ffaa5c76ff66b2016e56b2d66a6a285289e66d364e2d7e78ea8dca6de4c4d6b34d",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -2361,7 +2522,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2377,14 +2539,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a63697068657274657874501733d033b04a42cfb28b0a0abe14d677",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae8f6f893ea50247400ceffbcebdf7ad44ea257af3c4af6f7b7f6039a1c06ab5e403ab9ab5712deb80e8ff6b5a1efdcb3096e3497ae7d197863351d98d74cd0869fe27e6844af68ff16e3676194b309e339177dfbb871e4705fc5cf4871743f9143f79d9bc68792aa96e170467978d8cb72af63ecb8a99089aef81d6ea7c0355ee883e1c3e857ed33ad129777894ffaa5c76ff66b2016e56b2d66a6a285289e66d364e2d7e78ea8dca6de4c4d6b34d",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -2392,7 +2556,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2409,7 +2574,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a164747970656470696e67"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": true
@@ -2425,7 +2591,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae5168cd72d5e6f4bb5837667f844103dfbf36cc1d96df33e42253fc6c82919914db2466a73cb6fbd5c28c5b08081d0d58a9f28f32da72e8f867af30b4a9258c9cba1f7b2cc6de43fcad40ee045ac8818e4bd9177cf152b505fcbd87e2a4aac0a80393e09b5ce50eacac79539f297052d041440551070e1dd3b0c9d89a8d3293710889344c608d63e8a5aa562f8ff7ed5cf6a968a659d03462e96f166755648db173040e4e6666d817d69a8262687c",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -2433,7 +2600,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2449,7 +2617,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae0c941d69f0f8442145c0b6636f133d4ce483604287a6960862d629cf3eab0c8a864c34e1164f0f662f3987ab05f9134c918ade57e2364d51e8cd7f2524b96e0ba8695bea483783cb78651303190287c3b30b6125b1a0e1b3ce65cc930ff69dd2846c991596e3d137197a5fe866fa7a619684b947644d2cd8aac38e02361f309ddf7a89ac6eeee6f8d54d04fdce59115dda830ac58b451d00ff1e98d0847c35dda9d3e75a7a0e4bd329cecd81346d",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -2457,7 +2626,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2473,7 +2643,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aef3941d69f0f8442145c0b6636f133d4ce483604287a6960862d629cf3eab0c8a864c34e1164f0f662f3987ab05f9134c918ade57e2364d51e8cd7f2524b96e0ba8695bea483783cb78651303190287c3b30b6125b1a0e1b3ce65cc930ff69dd2846c991596e3d137197a5fe866fa7a619684b947644d2cd8aac38e02361f309ddf7a89ac6eeee6f8d54d04fdce59115dda830ac58b451d00ff1e98d0847c35dda9d3e75a7a0e4bd329cecd813492",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -2481,7 +2652,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2497,7 +2669,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458adf3941d69f0f8442145c0b6636f133d4ce483604287a6960862d629cf3eab0c8a864c34e1164f0f662f3987ab05f9134c918ade57e2364d51e8cd7f2524b96e0ba8695bea483783cb78651303190287c3b30b6125b1a0e1b3ce65cc930ff69dd2846c991596e3d137197a5fe866fa7a619684b947644d2cd8aac38e02361f309ddf7a89ac6eeee6f8d54d04fdce59115dda830ac58b451d00ff1e98d0847c35dda9d3e75a7a0e4bd329cecd8134",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -2505,7 +2678,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2521,7 +2695,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787448f3941d69f0f84421",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -2529,7 +2704,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2545,7 +2721,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787440",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -2553,7 +2730,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2569,7 +2747,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572056a6369706865727465787458aef3941d69f0f8442145c0b6636f133d4ce483604287a6960862d629cf3eab0c8a864c34e1164f0f662f3987ab05f9134c918ade57e2364d51e8cd7f2524b96e0ba8695bea483783cb78651303190287c3b30b6125b1a0e1b3ce65cc930ff69dd2846c991596e3d137197a5fe866fa7a619684b947644d2cd8aac38e02361f309ddf7a89ac6eeee6f8d54d04fdce59115dda830ac58b451d00ff1e98d0847c35dda9d3e75a7a0e4bd329cecd81346d",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -2577,7 +2756,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2593,7 +2773,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aef3941d69f0f8442145c0b6636f133d4ce483604287a6960862d629cf3eab0c8a864c34e1164f0f662f3987ab05f9134c918ade57e2364d51e8cd7f2524b96e0ba8695bea483783cb78651303190287c3b30b6125b1a0e1b3ce65cc930ff69dd2846c991596e3d137197a5fe866fa7a619684b947644d2cd8aac38e02361f309ddf7a89ac6eeee6f8d54d04fdce59115dda830ac58b451d00ff1e98d0847c883a34975f06537b89133f4ee62c7ab9",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -2601,7 +2782,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2617,7 +2799,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae8f6f893ea50247400ceffbcebdf7ad44ea257af3c4af6f7b7f6039a1c06ab5e403ab9ab5712deb80e8ff6b5a1efdcb3096e3497ae7d197863351d98d74cd0869fe27e6844af68ff16e3676194b309e339177dfbb871e4705fc5cf4871743f9143f79d9bc68792aa96e170467978d8cb72af63ecb8a99089aef81d6ea7c0355ee883e1c3e857ed33ad129777894ffaa5c76ff66b2016e56b2d66a6a28528980059cba9cb4d4c804b128a2e98247d7",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -2625,7 +2808,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2641,7 +2825,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae8f6f893ea50247400ceffbcebdf7ad44ea257af3c4af6f7b7f6039a1c06ab5e403ab9ab5712deb80e8ff6b5a1efdcb3096e3497ae7d197863351d98d74cd0869fe27e6844af68ff16e3676194b309e339177dfbb871e4705fc5cf4871743f9143f79d9bc68792aa96e170467978d8cb72af63ecb8a99089aef81d6ea7c0355ee883e1c3e857ed33ad129777894ffaa5c76ff66b2016e56b2d66a6a285289e66d364e2d7e78ea8dca6de4c4d6b34d",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -2649,7 +2834,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2666,14 +2852,16 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aef3941d69f0f8442145c0b6636f133d4ce483604287a6960862d629cf3eab0c8a864c34e1164f0f662f3987ab05f9134c918ade57e2364d51e8cd7f2524b96e0ba8695bea483783cb78651303190287c3b30b6125b1a0e1b3ce65cc930ff69dd2846c991596e3d137197a5fe866fa7a619684b947644d2cd8aac38e02361f309ddf7a89ac6eeee6f8d54d04fdce59115dda830ac58b451d00ff1e98d0847c35dda9d3e75a7a0e4bd329cecd81346d",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2690,14 +2878,16 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae0c941d69f0f8442145c0b6636f133d4ce483604287a6960862d629cf3eab0c8a864c34e1164f0f662f3987ab05f9134c918ade57e2364d51e8cd7f2524b96e0ba8695bea483783cb78651303190287c3b30b6125b1a0e1b3ce65cc930ff69dd2846c991596e3d137197a5fe866fa7a619684b947644d2cd8aac38e02361f309ddf7a89ac6eeee6f8d54d04fdce59115dda830ac58b451d00ff1e98d0847c35dda9d3e75a7a0e4bd329cecd81346d",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2714,14 +2904,16 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572016a6369706865727465787458aec92a8ff3741b14ed65c086054b30b667d60882d9518fd77e02594c2c6c17fbede0c842964ead4148d68f40374f1c5c3f0d71eea3f94db9825f95299bf6614b0ad0b082e7c191b16fcae5a1b9d699ba00ae5942c73421a1022e404c5b004851b9f52695a6addf6a660595786347511fa56ab1a49b92f0ed35c9eab3a0c16ef6a08a09f7436ce1f1951197beed337102e6fd69cbae64e8c4441f2deedddceeeefa878b72eb8239579c7bdc25a93a37",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "3",
@@ -2729,7 +2921,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2745,7 +2938,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e7465721903e86a6369706865727465787458285a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -2753,7 +2947,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2770,14 +2965,16 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "4328719364",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e7465721b00000001020304046a6369706865727465787458ae198160f994e972fa32ad27d441320a3c418963811e78f659631644e5062816b37f56554bc3e7f5b0eb713192fffba7285805475cba6a6067fbc1a3005267b8ecd5ae121c12f7ff4dda343048f39253e1b05343a86d423db3990ba24515481e15f6ab94442df875525c92aff14372254fed6a25b62ac04672f348718c5bbfaa1c33fa15575d680e6fdbe7c02dddb9a5e49cf818c165dfed1a9198b5d06151d866d63b7bb788b732a627fdccdc84ec",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2794,14 +2991,16 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "9007199254740990",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e7465721b001ffffffffffffe6a6369706865727465787458ae83fb3c74935aff7f3120b8e0e4aeab7ac67ae63dac9e197aab73cbe3e242e13c25aae21ecd0de1d4107a356e57be92b7c67424843d50b303fc07b10bcbdc5321dbbfb8aa857a6094d3e41af146bd45a3e770b1c9c5354893df1ad67f8001d10993ac98b9b916d864e1f52ebbdce5e4b4f1e0a845ff633f471e7a95e5090f03d5f289a65e244b69b36b704fc28fc2cd240cb7cdca8afb0ca8347710c6cc483a13e2eb8605378c4b5506441e8eaf36",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2895,14 +3094,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a636970686572746578745824f6941d69f0f847224b83a4716956624fe7976854378d3608713fadc63523d5a9fd315cc1",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aef3941d69f0f8442145c0b6636f133d4ce483604287a6960862d629cf3eab0c8a864c34e1164f0f662f3987ab05f9134c918ade57e2364d51e8cd7f2524b96e0ba8695bea483783cb78651303190287c3b30b6125b1a0e1b3ce65cc930ff69dd2846c991596e3d137197a5fe866fa7a619684b947644d2cd8aac38e02361f309ddf7a89ac6eeee6f8d54d04fdce59115dda830ac58b451d00ff1e98d0847c35dda9d3e75a7a0e4bd329cecd81346d",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -2910,7 +3111,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2926,14 +3128,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a636970686572746578745820f6941d69f0f8432845dab629625f394c22b9300c42b5d0b67fb51f5cec08cf60",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aef3941d69f0f8442145c0b6636f133d4ce483604287a6960862d629cf3eab0c8a864c34e1164f0f662f3987ab05f9134c918ade57e2364d51e8cd7f2524b96e0ba8695bea483783cb78651303190287c3b30b6125b1a0e1b3ce65cc930ff69dd2846c991596e3d137197a5fe866fa7a619684b947644d2cd8aac38e02361f309ddf7a89ac6eeee6f8d54d04fdce59115dda830ac58b451d00ff1e98d0847c35dda9d3e75a7a0e4bd329cecd81346d",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -2941,7 +3145,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2957,14 +3162,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a63697068657274657874581ceff10d64f9ed4f2854c7b9638d09826f530722d8f1f2ecd234b94d0b",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aef3941d69f0f8442145c0b6636f133d4ce483604287a6960862d629cf3eab0c8a864c34e1164f0f662f3987ab05f9134c918ade57e2364d51e8cd7f2524b96e0ba8695bea483783cb78651303190287c3b30b6125b1a0e1b3ce65cc930ff69dd2846c991596e3d137197a5fe866fa7a619684b947644d2cd8aac38e02361f309ddf7a89ac6eeee6f8d54d04fdce59115dda830ac58b451d00ff1e98d0847c35dda9d3e75a7a0e4bd329cecd81346d",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -2972,7 +3179,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -2988,14 +3196,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a63697068657274657874581ce8941d69f0f84e3c4dc0b0fbdfcd50ba1f2a8b11e38e73ef2f60b399",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aef3941d69f0f8442145c0b6636f133d4ce483604287a6960862d629cf3eab0c8a864c34e1164f0f662f3987ab05f9134c918ade57e2364d51e8cd7f2524b96e0ba8695bea483783cb78651303190287c3b30b6125b1a0e1b3ce65cc930ff69dd2846c991596e3d137197a5fe866fa7a619684b947644d2cd8aac38e02361f309ddf7a89ac6eeee6f8d54d04fdce59115dda830ac58b451d00ff1e98d0847c35dda9d3e75a7a0e4bd329cecd81346d",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -3003,7 +3213,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3019,14 +3230,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a63697068657274657874581cf6941d69f0f84e3c4dc0b004a45a54bdc0fb823c1036818f5fcecdf8",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aef3941d69f0f8442145c0b6636f133d4ce483604287a6960862d629cf3eab0c8a864c34e1164f0f662f3987ab05f9134c918ade57e2364d51e8cd7f2524b96e0ba8695bea483783cb78651303190287c3b30b6125b1a0e1b3ce65cc930ff69dd2846c991596e3d137197a5fe866fa7a619684b947644d2cd8aac38e02361f309ddf7a89ac6eeee6f8d54d04fdce59115dda830ac58b451d00ff1e98d0847c35dda9d3e75a7a0e4bd329cecd81346d",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -3034,7 +3247,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3050,14 +3264,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a636970686572746578745022ac24f47c1ad95bc6a6f2539b7b50a6",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aef3941d69f0f8442145c0b6636f133d4ce483604287a6960862d629cf3eab0c8a864c34e1164f0f662f3987ab05f9134c918ade57e2364d51e8cd7f2524b96e0ba8695bea483783cb78651303190287c3b30b6125b1a0e1b3ce65cc930ff69dd2846c991596e3d137197a5fe866fa7a619684b947644d2cd8aac38e02361f309ddf7a89ac6eeee6f8d54d04fdce59115dda830ac58b451d00ff1e98d0847c35dda9d3e75a7a0e4bd329cecd81346d",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -3065,7 +3281,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3082,7 +3299,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a164747970656470696e67"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": true
@@ -3098,7 +3316,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae9415e82a8139d341317d6999f15cf478a97af556b2fd19143139ae9f9c1a7c24bbfdd0c0985be18a8ecab5b57e6b40c69e065d992a1b41d9dfd9448257bb61eabb55aa29eb06e21af7da3f151bb352159f494fdbbd5a3b2e568d31319979a5663a8acefc7daa457086aaa9858f35fc156a27443f277774b014024024857989aad3ae86557ca44c403d9a40c1ceec8efc514333b24cb68da19e26dc2f3fa6355eef0980fd407e93444c9065a70ed3",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -3106,7 +3325,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3122,7 +3342,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aeac2951fe144df42d5285ab7f00cd9f0505ca5c6f1b8f8479d4927397473deccdcd09eb7bd7376d035a611f9c2fe5c27532de387dbfbe65a2234dbefd8bacfc1e9fadab692b4c85bb76dea3bb028f4b46917ecb90dadb0272496cf3d92152f3b384508fc6097cef2f2547cbe1aae05d44c2aea79d16adfbce76ed9ccf91f4604ec63bd5b80ce0f960e44d6ce903d95eb5c5b5788281c10da76c1fa93263649c7bfeed58617a21b9b0a30c06f86d42",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -3130,7 +3351,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3146,7 +3368,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae532951fe144df42d5285ab7f00cd9f0505ca5c6f1b8f8479d4927397473deccdcd09eb7bd7376d035a611f9c2fe5c27532de387dbfbe65a2234dbefd8bacfc1e9fadab692b4c85bb76dea3bb028f4b46917ecb90dadb0272496cf3d92152f3b384508fc6097cef2f2547cbe1aae05d44c2aea79d16adfbce76ed9ccf91f4604ec63bd5b80ce0f960e44d6ce903d95eb5c5b5788281c10da76c1fa93263649c7bfeed58617a21b9b0a30c06f86dbd",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -3154,7 +3377,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3170,7 +3394,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ad532951fe144df42d5285ab7f00cd9f0505ca5c6f1b8f8479d4927397473deccdcd09eb7bd7376d035a611f9c2fe5c27532de387dbfbe65a2234dbefd8bacfc1e9fadab692b4c85bb76dea3bb028f4b46917ecb90dadb0272496cf3d92152f3b384508fc6097cef2f2547cbe1aae05d44c2aea79d16adfbce76ed9ccf91f4604ec63bd5b80ce0f960e44d6ce903d95eb5c5b5788281c10da76c1fa93263649c7bfeed58617a21b9b0a30c06f86d",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -3178,7 +3403,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3194,7 +3420,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787448532951fe144df42d",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -3202,7 +3429,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3218,7 +3446,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787440",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -3226,7 +3455,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3242,7 +3472,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572056a6369706865727465787458ae532951fe144df42d5285ab7f00cd9f0505ca5c6f1b8f8479d4927397473deccdcd09eb7bd7376d035a611f9c2fe5c27532de387dbfbe65a2234dbefd8bacfc1e9fadab692b4c85bb76dea3bb028f4b46917ecb90dadb0272496cf3d92152f3b384508fc6097cef2f2547cbe1aae05d44c2aea79d16adfbce76ed9ccf91f4604ec63bd5b80ce0f960e44d6ce903d95eb5c5b5788281c10da76c1fa93263649c7bfeed58617a21b9b0a30c06f86d42",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -3250,7 +3481,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3266,7 +3498,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae532951fe144df42d5285ab7f00cd9f0505ca5c6f1b8f8479d4927397473deccdcd09eb7bd7376d035a611f9c2fe5c27532de387dbfbe65a2234dbefd8bacfc1e9fadab692b4c85bb76dea3bb028f4b46917ecb90dadb0272496cf3d92152f3b384508fc6097cef2f2547cbe1aae05d44c2aea79d16adfbce76ed9ccf91f4604ec63bd5b80ce0f960e44d6ce903d95eb5c5b5788281c10da76c1fa93263648222c53ba90c56cae7e05f320cc51dc0",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -3274,7 +3507,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3290,7 +3524,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aeeadc2951a03260ba4f324227c09c13c3dc97d0e6eb15900df70b66911dce264e76040d8d7cedf2b324c9579514be8ce0f722f02140787a22b69c69f49809eaf9b246a894f40a9995682f930b11ba01513cb37b4c99fb56b8b63bb3923f293ec44b5844a5b80416f89367409f4ce3fe7bdbf9011c831930075fb1ca9f05915afdb522db4f7798882515ee2861734e56592266e4a8ed8ae0ebbfad33a399becc7090c8dcf4460be16ffb0689ea01ae",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -3298,7 +3533,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3314,7 +3550,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aeeadc2951a03260ba4f324227c09c13c3dc97d0e6eb15900df70b66911dce264e76040d8d7cedf2b324c9579514be8ce0f722f02140787a22b69c69f49809eaf9b246a894f40a9995682f930b11ba01513cb37b4c99fb56b8b63bb3923f293ec44b5844a5b80416f89367409f4ce3fe7bdbf9011c831930075fb1ca9f05915afdb522db4f7798882515ee2861734e56592266e4a8ed8ae0ebbfad33a399bedc1dda6cd4f2bf8dee3255dece331461",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -3322,7 +3559,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3339,14 +3577,16 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae532951fe144df42d5285ab7f00cd9f0505ca5c6f1b8f8479d4927397473deccdcd09eb7bd7376d035a611f9c2fe5c27532de387dbfbe65a2234dbefd8bacfc1e9fadab692b4c85bb76dea3bb028f4b46917ecb90dadb0272496cf3d92152f3b384508fc6097cef2f2547cbe1aae05d44c2aea79d16adfbce76ed9ccf91f4604ec63bd5b80ce0f960e44d6ce903d95eb5c5b5788281c10da76c1fa93263649c7bfeed58617a21b9b0a30c06f86d42",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3363,14 +3603,16 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aeac2951fe144df42d5285ab7f00cd9f0505ca5c6f1b8f8479d4927397473deccdcd09eb7bd7376d035a611f9c2fe5c27532de387dbfbe65a2234dbefd8bacfc1e9fadab692b4c85bb76dea3bb028f4b46917ecb90dadb0272496cf3d92152f3b384508fc6097cef2f2547cbe1aae05d44c2aea79d16adfbce76ed9ccf91f4604ec63bd5b80ce0f960e44d6ce903d95eb5c5b5788281c10da76c1fa93263649c7bfeed58617a21b9b0a30c06f86d42",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3387,14 +3629,16 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572016a6369706865727465787458ae2051e9d7a498bbce03d40d2ddb1d38298d2d7bc7a91d601dc9944c8265ecfe196e4eb0e1aab3d66565ee99ffcc5952da8fa59e8cf99b710ab174ee2daf32e87d192d4afd525ccb5f154d6d7baa0bda654b8afbff1c8d13b05a42834ecf8016da3aa456f9c513de80af4b924f4c266e45bde29eba5e1b0644fd47569fdd72dd1b7e7dd9e5f6254904128ef0e40f162f64480db05b301859f50818198dde27128ac8133e8d115be802330b2e1efc0c",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "3",
@@ -3402,7 +3646,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3418,7 +3663,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e7465721903e86a6369706865727465787458285a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -3426,7 +3672,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3443,14 +3690,16 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "4328719364",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e7465721b00000001020304046a6369706865727465787458ae0ec411d0382db7af6182e2648f2a6fd2129c484b3702ba017b38983aba659535abf5cfb816e5e8b09b0fe16bf1abf3e4f69f051cc9499fd6c8d1cebb3f7201fa6a3f2a78df54b1463f73a603ba5f97f7f013afbda8aaecc83329bc0a7b176f0640149c2bb542079ea703abb3909522694c9c03ed13e25d3126066a4bd59d7eb0b3de07e0ce3ca9dc61a8520376e9837c6e56634d0eaf7b42fbe4b3acaa0e028646e0dd1b7b8f35960cac8b920384",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3467,14 +3716,16 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "9007199254740990",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e7465721b001ffffffffffffe6a6369706865727465787458ae595cc696d7b03866cc6f3a6c13ef81bf5289fbbf10534fd19bc479e7d25a139e3c016f80b38ac542bdf58e966e06ea271eb104b6c46c68d30d15df6df34ac05f43bb7ae08c2e57392e35ea1d780b395845f32a5303da9a35295e097f671f8599fedb2cea62fa463f8b04a2f0af5465c56437f352e9ca1a058c2387669b154cd1381ac13a6415270a3436251eccce8ebcaa941112aa610347caf43b8d14df694b31a3be33bcf1991a27a8d55eb339",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3568,14 +3819,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a636970686572746578745824562951fe144df72e5cc6b96d0688c00606de54790705a16da461ce1a5771601ff934648d",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae532951fe144df42d5285ab7f00cd9f0505ca5c6f1b8f8479d4927397473deccdcd09eb7bd7376d035a611f9c2fe5c27532de387dbfbe65a2234dbefd8bacfc1e9fadab692b4c85bb76dea3bb028f4b46917ecb90dadb0272496cf3d92152f3b384508fc6097cef2f2547cbe1aae05d44c2aea79d16adfbce76ed9ccf91f4604ec63bd5b80ce0f960e44d6ce903d95eb5c5b5788281c10da76c1fa93263649c7bfeed58617a21b9b0a30c06f86d42",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -3583,7 +3836,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3599,14 +3853,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a636970686572746578745820562951fe144df324529fab350d819b05f7895d29d8c01536ed70bcfb27b48fa2",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae532951fe144df42d5285ab7f00cd9f0505ca5c6f1b8f8479d4927397473deccdcd09eb7bd7376d035a611f9c2fe5c27532de387dbfbe65a2234dbefd8bacfc1e9fadab692b4c85bb76dea3bb028f4b46917ecb90dadb0272496cf3d92152f3b384508fc6097cef2f2547cbe1aae05d44c2aea79d16adfbce76ed9ccf91f4604ec63bd5b80ce0f960e44d6ce903d95eb5c5b5788281c10da76c1fa93263649c7bfeed58617a21b9b0a30c06f86d42",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -3614,7 +3870,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3630,14 +3887,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a63697068657274657874581c4f4c41f31d58ff244382a47f21e502ddc635b8e2548c2c3b853c4a9b",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae532951fe144df42d5285ab7f00cd9f0505ca5c6f1b8f8479d4927397473deccdcd09eb7bd7376d035a611f9c2fe5c27532de387dbfbe65a2234dbefd8bacfc1e9fadab692b4c85bb76dea3bb028f4b46917ecb90dadb0272496cf3d92152f3b384508fc6097cef2f2547cbe1aae05d44c2aea79d16adfbce76ed9ccf91f4604ec63bd5b80ce0f960e44d6ce903d95eb5c5b5788281c10da76c1fa93263649c7bfeed58617a21b9b0a30c06f86d42",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -3645,7 +3904,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3661,14 +3921,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a63697068657274657874581c482951fe144dfe305a85ade75bc80f93792647a7e80a17c2bfd85b13",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae532951fe144df42d5285ab7f00cd9f0505ca5c6f1b8f8479d4927397473deccdcd09eb7bd7376d035a611f9c2fe5c27532de387dbfbe65a2234dbefd8bacfc1e9fadab692b4c85bb76dea3bb028f4b46917ecb90dadb0272496cf3d92152f3b384508fc6097cef2f2547cbe1aae05d44c2aea79d16adfbce76ed9ccf91f4604ec63bd5b80ce0f960e44d6ce903d95eb5c5b5788281c10da76c1fa93263649c7bfeed58617a21b9b0a30c06f86d42",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -3676,7 +3938,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3692,14 +3955,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a63697068657274657874581c562951fe144dfe305a85ad18725e8ba6ef88d30a6fe589ffcaeef67b",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae532951fe144df42d5285ab7f00cd9f0505ca5c6f1b8f8479d4927397473deccdcd09eb7bd7376d035a611f9c2fe5c27532de387dbfbe65a2234dbefd8bacfc1e9fadab692b4c85bb76dea3bb028f4b46917ecb90dadb0272496cf3d92152f3b384508fc6097cef2f2547cbe1aae05d44c2aea79d16adfbce76ed9ccf91f4604ec63bd5b80ce0f960e44d6ce903d95eb5c5b5788281c10da76c1fa93263649c7bfeed58617a21b9b0a30c06f86d42",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -3707,7 +3972,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3723,14 +3989,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a63697068657274657874504b227eb8593936c145585ed8acc90483",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae532951fe144df42d5285ab7f00cd9f0505ca5c6f1b8f8479d4927397473deccdcd09eb7bd7376d035a611f9c2fe5c27532de387dbfbe65a2234dbefd8bacfc1e9fadab692b4c85bb76dea3bb028f4b46917ecb90dadb0272496cf3d92152f3b384508fc6097cef2f2547cbe1aae05d44c2aea79d16adfbce76ed9ccf91f4604ec63bd5b80ce0f960e44d6ce903d95eb5c5b5788281c10da76c1fa93263649c7bfeed58617a21b9b0a30c06f86d42",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -3738,7 +4006,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3755,7 +4024,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a164747970656470696e67"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": true
@@ -3771,7 +4041,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae15dc2951a03260ba4f324227c09c13c3dc97d0e6eb15900df70b66911dce264e76040d8d7cedf2b324c9579514be8ce0f722f02140787a22b69c69f49809eaf9b246a894f40a9995682f930b11ba01513cb37b4c99fb56b8b63bb3923f293ec44b5844a5b80416f89367409f4ce3fe7bdbf9011c831930075fb1ca9f05915afdb522db4f7798882515ee2861734e56592266e4a8ed8ae0ebbfad33a399bedc1dda6cd4f2bf8dee3255dece331461",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -3779,7 +4050,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3795,7 +4067,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aeeadc2951a03260ba4f324227c09c13c3dc97d0e6eb15900df70b66911dce264e76040d8d7cedf2b324c9579514be8ce0f722f02140787a22b69c69f49809eaf9b246a894f40a9995682f930b11ba01513cb37b4c99fb56b8b63bb3923f293ec44b5844a5b80416f89367409f4ce3fe7bdbf9011c831930075fb1ca9f05915afdb522db4f7798882515ee2861734e56592266e4a8ed8ae0ebbfad33a399bedc1dda6cd4f2bf8dee3255dece33149e",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -3803,7 +4076,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3819,7 +4093,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458adeadc2951a03260ba4f324227c09c13c3dc97d0e6eb15900df70b66911dce264e76040d8d7cedf2b324c9579514be8ce0f722f02140787a22b69c69f49809eaf9b246a894f40a9995682f930b11ba01513cb37b4c99fb56b8b63bb3923f293ec44b5844a5b80416f89367409f4ce3fe7bdbf9011c831930075fb1ca9f05915afdb522db4f7798882515ee2861734e56592266e4a8ed8ae0ebbfad33a399bedc1dda6cd4f2bf8dee3255dece3314",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -3827,7 +4102,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3843,7 +4119,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787448eadc2951a03260ba",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -3851,7 +4128,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3867,7 +4145,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787440",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -3875,7 +4154,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3891,7 +4171,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572056a6369706865727465787458aeeadc2951a03260ba4f324227c09c13c3dc97d0e6eb15900df70b66911dce264e76040d8d7cedf2b324c9579514be8ce0f722f02140787a22b69c69f49809eaf9b246a894f40a9995682f930b11ba01513cb37b4c99fb56b8b63bb3923f293ec44b5844a5b80416f89367409f4ce3fe7bdbf9011c831930075fb1ca9f05915afdb522db4f7798882515ee2861734e56592266e4a8ed8ae0ebbfad33a399bedc1dda6cd4f2bf8dee3255dece331461",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -3899,7 +4180,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3915,7 +4197,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aeeadc2951a03260ba4f324227c09c13c3dc97d0e6eb15900df70b66911dce264e76040d8d7cedf2b324c9579514be8ce0f722f02140787a22b69c69f49809eaf9b246a894f40a9995682f930b11ba01513cb37b4c99fb56b8b63bb3923f293ec44b5844a5b80416f89367409f4ce3fe7bdbf9011c831930075fb1ca9f05915afdb522db4f7798882515ee2861734e56592266e4a8ed8ae0ebbfad33a399be8756b584fcff0a693306bb7f2b5a3747",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -3923,7 +4206,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3939,7 +4223,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae532951fe144df42d5285ab7f00cd9f0505ca5c6f1b8f8479d4927397473deccdcd09eb7bd7376d035a611f9c2fe5c27532de387dbfbe65a2234dbefd8bacfc1e9fadab692b4c85bb76dea3bb028f4b46917ecb90dadb0272496cf3d92152f3b384508fc6097cef2f2547cbe1aae05d44c2aea79d16adfbce76ed9ccf91f4604ec63bd5b80ce0f960e44d6ce903d95eb5c5b5788281c10da76c1fa9326364632908b26c920bfeb8e743d314a14ee9",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -3947,7 +4232,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3963,7 +4249,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae532951fe144df42d5285ab7f00cd9f0505ca5c6f1b8f8479d4927397473deccdcd09eb7bd7376d035a611f9c2fe5c27532de387dbfbe65a2234dbefd8bacfc1e9fadab692b4c85bb76dea3bb028f4b46917ecb90dadb0272496cf3d92152f3b384508fc6097cef2f2547cbe1aae05d44c2aea79d16adfbce76ed9ccf91f4604ec63bd5b80ce0f960e44d6ce903d95eb5c5b5788281c10da76c1fa93263649c7bfeed58617a21b9b0a30c06f86d42",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -3971,7 +4258,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -3988,14 +4276,16 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aeeadc2951a03260ba4f324227c09c13c3dc97d0e6eb15900df70b66911dce264e76040d8d7cedf2b324c9579514be8ce0f722f02140787a22b69c69f49809eaf9b246a894f40a9995682f930b11ba01513cb37b4c99fb56b8b63bb3923f293ec44b5844a5b80416f89367409f4ce3fe7bdbf9011c831930075fb1ca9f05915afdb522db4f7798882515ee2861734e56592266e4a8ed8ae0ebbfad33a399bedc1dda6cd4f2bf8dee3255dece331461",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -4012,14 +4302,16 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae15dc2951a03260ba4f324227c09c13c3dc97d0e6eb15900df70b66911dce264e76040d8d7cedf2b324c9579514be8ce0f722f02140787a22b69c69f49809eaf9b246a894f40a9995682f930b11ba01513cb37b4c99fb56b8b63bb3923f293ec44b5844a5b80416f89367409f4ce3fe7bdbf9011c831930075fb1ca9f05915afdb522db4f7798882515ee2861734e56592266e4a8ed8ae0ebbfad33a399bedc1dda6cd4f2bf8dee3255dece331461",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -4036,14 +4328,16 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572016a6369706865727465787458aee53b9464672625d742bbc9de177e1ad77fdde080b84b29db43ff01350d4c8de0911e2a5d7fe03fdc9525c8d29c3955dfe2573fb154dc953a0f526487b34b520908ecb627b081549b07d00988379e79b59e646c05c64ed28a5513d0a0273bb2261f1df5b26d6cfe18773f1434605fb65d809f7cf8c23129bc15714a215c18a5f4d03ef7268a9ff0a9d9413dabd510127e60106c26e74aedf7ead7bdb3300bdc0d08891470afefbaebd7da3c8c9ff0",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "3",
@@ -4051,7 +4345,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -4067,7 +4362,8 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e7465721903e86a6369706865727465787458285a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
             "expected": {
               "result": "unauthentic"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
@@ -4075,7 +4371,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -4092,14 +4389,16 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "4328719364",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e7465721b00000001020304046a6369706865727465787458aefcf26d0bcf22a1ad7b6e09b5c92c7a3ef04399326b1175e370968437d9223137a0230bf8e9aa78f2c7117e8527ec986fc0cf8bbb7b104cd51e1383c744a16469fae333b64140d7672d86d2ead3f4702932f1265deb8949a3f33213ad913965faed6886df65c5d29164202c2642c5f36694b4bf3a0ad0c307000c7d7b2b0c1c27c26ae9d5c53ac615c674255f5fe6e3f65810bfc25dddf19f12856d62d7271ea4b068790ea0a2908b7e6678b74495",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -4116,14 +4415,16 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "9007199254740990",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e7465721b001ffffffffffffe6a6369706865727465787458aebf30d9af35f77a24899cf73e19a542c1f55d0ff55f28b2646b1b058a2b6b9a309f7034256540b4f8c0f2810a6f493fdbd9b5838b717dd30f58846d812baa73c8584a481dee7cad0b76fc5b328f4052b574dbae871f0282e132c7b871416b94564cb399f368b1c90c89047a3c8366680fe36ad649c56366cb7c815215fa8b0bc0ca8569a80f1ab8d460bf793c059e13d25890a5196689366d2c64952c7f7fed73295d378e0c8500ae510c016b03b4",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -4217,14 +4518,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a636970686572746578745824efdc2951a03263b941715035c6d94cc0df83d8f05ae0d617ca518d9a98e33fcc7b5db942",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aeeadc2951a03260ba4f324227c09c13c3dc97d0e6eb15900df70b66911dce264e76040d8d7cedf2b324c9579514be8ce0f722f02140787a22b69c69f49809eaf9b246a894f40a9995682f930b11ba01513cb37b4c99fb56b8b63bb3923f293ec44b5844a5b80416f89367409f4ce3fe7bdbf9011c831930075fb1ca9f05915afdb522db4f7798882515ee2861734e56592266e4a8ed8ae0ebbfad33a399bedc1dda6cd4f2bf8dee3255dece331461",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -4232,7 +4535,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -4248,14 +4552,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a636970686572746578745820efdc2951a03267b34f28426dcdd017c33f866853b7ae10fe86a1d4f6e12dea1e",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aeeadc2951a03260ba4f324227c09c13c3dc97d0e6eb15900df70b66911dce264e76040d8d7cedf2b324c9579514be8ce0f722f02140787a22b69c69f49809eaf9b246a894f40a9995682f930b11ba01513cb37b4c99fb56b8b63bb3923f293ec44b5844a5b80416f89367409f4ce3fe7bdbf9011c831930075fb1ca9f05915afdb522db4f7798882515ee2861734e56592266e4a8ed8ae0ebbfad33a399bedc1dda6cd4f2bf8dee3255dece331461",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -4263,7 +4569,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -4279,14 +4586,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a63697068657274657874581cf6b9395ca9276bb35e354d27d6455f8e67952b1b205ea44d5285eebe",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aeeadc2951a03260ba4f324227c09c13c3dc97d0e6eb15900df70b66911dce264e76040d8d7cedf2b324c9579514be8ce0f722f02140787a22b69c69f49809eaf9b246a894f40a9995682f930b11ba01513cb37b4c99fb56b8b63bb3923f293ec44b5844a5b80416f89367409f4ce3fe7bdbf9011c831930075fb1ca9f05915afdb522db4f7798882515ee2861734e56592266e4a8ed8ae0ebbfad33a399bedc1dda6cd4f2bf8dee3255dece331461",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -4294,7 +4603,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -4310,14 +4620,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a63697068657274657874581cf1dc2951a0326aa7473244bfdaa987b368ca718c24c0e8fcf9b1dee2",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aeeadc2951a03260ba4f324227c09c13c3dc97d0e6eb15900df70b66911dce264e76040d8d7cedf2b324c9579514be8ce0f722f02140787a22b69c69f49809eaf9b246a894f40a9995682f930b11ba01513cb37b4c99fb56b8b63bb3923f293ec44b5844a5b80416f89367409f4ce3fe7bdbf9011c831930075fb1ca9f05915afdb522db4f7798882515ee2861734e56592266e4a8ed8ae0ebbfad33a399bedc1dda6cd4f2bf8dee3255dece331461",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -4325,7 +4637,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -4341,14 +4654,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a63697068657274657874581cefdc2951a0326aa7473244400fbab4ec45bd0bb652ec3a7beed35709",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aeeadc2951a03260ba4f324227c09c13c3dc97d0e6eb15900df70b66911dce264e76040d8d7cedf2b324c9579514be8ce0f722f02140787a22b69c69f49809eaf9b246a894f40a9995682f930b11ba01513cb37b4c99fb56b8b63bb3923f293ec44b5844a5b80416f89367409f4ce3fe7bdbf9011c831930075fb1ca9f05915afdb522db4f7798882515ee2861734e56592266e4a8ed8ae0ebbfad33a399bedc1dda6cd4f2bf8dee3255dece331461",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -4356,7 +4671,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -4372,14 +4688,16 @@
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787450f5bac280d156b1ff526757110447202a",
             "expected": {
               "result": "undecodable"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aeeadc2951a03260ba4f324227c09c13c3dc97d0e6eb15900df70b66911dce264e76040d8d7cedf2b324c9579514be8ce0f722f02140787a22b69c69f49809eaf9b246a894f40a9995682f930b11ba01513cb37b4c99fb56b8b63bb3923f293ec44b5844a5b80416f89367409f4ce3fe7bdbf9011c831930075fb1ca9f05915afdb522db4f7798882515ee2861734e56592266e4a8ed8ae0ebbfad33a399bedc1dda6cd4f2bf8dee3255dece331461",
             "expected": {
               "result": "replayed"
-            }
+            },
+            "full_width_only": false
           },
           {
             "counter": "1",
@@ -4387,7 +4705,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": false
@@ -4404,7 +4723,8 @@
             "expected": {
               "result": "opened",
               "frame_wire_hex": "a164747970656470696e67"
-            }
+            },
+            "full_width_only": false
           }
         ],
         "receiver_drops_after_open": true

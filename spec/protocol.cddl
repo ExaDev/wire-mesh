@@ -1059,16 +1059,20 @@ room-notice-claims = {
 ;
 ; The signature is made with the identity key's own algorithm. For ES256
 ; (alg -7) it is the fixed-length 64-byte r || s, each a 32-byte big-endian
-; integer, and not the ASN.1 DER form; a verifier does not require the low-s
-; form, so a signature and its high-s twin both verify. For EdDSA (alg -8) it
-; is the 64-byte Ed25519 signature.
+; integer, and not the ASN.1 DER form. A verifier MUST accept a signature
+; whether its s is in the low or the high half of the group order, since both
+; verify as ECDSA signatures. For EdDSA (alg -8) it is the 64-byte Ed25519
+; signature.
 ;
-; The ephemeral key is a SEC1 uncompressed P-256 point of exactly 65 bytes.
-; A hello whose ephemeral key is any other encoding, or is not a point on the
-; curve, still verifies as a hello (its signature covers whatever bytes it
-; carries); the channel is then refused when it is established. An
-; implementation MAY refuse such a key earlier, while decoding, so the stage is
-; not part of the contract; that the channel is refused is.
+; The ephemeral key is a SEC1 uncompressed P-256 point of exactly 65 bytes, and
+; the grammar says so. A hello whose key is any other length or encoding (a
+; compressed point, say), or is not a point on the curve, is not usable, and
+; the channel MUST be refused. The signature covers whatever bytes the hello
+; carries, so such a hello still verifies as a hello wherever it is decoded;
+; an implementation that checks the size while decoding the frame refuses it
+; there and never reaches verification, and one that does not refuses it when
+; the channel is established. Which stage refuses is not part of the contract;
+; that the channel is refused is.
 ;
 ; Key schedule. Let lo and hi be the two device-ids in bytewise order and
 ; nonce-lo and nonce-hi the nonces carried by the hellos of the devices those
@@ -1105,24 +1109,37 @@ room-notice-claims = {
 ; must open under the receive key with its own counter as IV and associated
 ; data, else it is unauthentic, which includes a ciphertext shorter than the
 ; 16-byte tag); then its plaintext (it must be exactly one canonical frame,
-; else it is undecodable). Only the last consumes its counter: a frame that
-; authenticates but does not decode counts as received. No window is kept, so
-; a counter that jumps ahead is accepted and everything behind it is then
-; replayed.
+; else it is undecodable). A frame that is replayed or unauthentic leaves the
+; channel's state unchanged. A frame that authenticates counts as received,
+; and its counter is consumed, whether or not its plaintext decodes: the
+; undecodable refusal is the only refusal that consumes a counter. No window
+; is kept, so a counter that jumps ahead is accepted and everything behind it
+; is then replayed.
 ;
-; Order of the checks on a received hello: its identity-key must hash to a
-; device-id; its `to-device` must be the receiver's own, else the hello is
-; wrong_recipient; its identity-key's algorithm must be supported
-; (unsupported_identity_alg) and the key usable (invalid_identity_key, for
-; instance the wrong size or not a curve point); its signature must verify
-; (bad_signature).
+; Order of the checks on a received hello. The sender's device-id is derived
+; from the hello's identity-key, so no check can refuse a hello for not
+; matching a device-id. The checks are, in order: the hello's `to-device` must
+; be the receiver's own (else wrong_recipient); the identity-key's algorithm
+; must be supported (else unsupported_identity_alg) and the key must be a
+; usable key for it (else invalid_identity_key, for instance the wrong size or
+; not a curve point); the signature must verify (else bad_signature). Two
+; orders are pinned by vectors: the recipient before the identity-key checks (a
+; hello addressed elsewhere with an unsupported algorithm is wrong_recipient),
+; and key usability before the signature (a hello whose key is unusable and
+; whose signature is another key's is invalid_identity_key). A key's algorithm
+; is supported or not whatever else is wrong with it, so that check has no
+; order against key usability to pin. Where an implementation
+; does not check that a key is a point when it imports it (an Ed25519 public
+; key, in Node's Web Crypto), such a key gives bad_signature instead of
+; invalid_identity_key, and either is conformant.
 ;
 ; Verifier obligations, none of which the grammar can express:
 ;
-; 1. A hello MUST be refused unless its identity-key hashes to a device-id
-;    (self-certification, as everywhere else), its signature verifies under
-;    that key over the input above, and its `to-device` is the receiver's own
-;    device-id.
+; 1. A hello MUST be refused unless its signature verifies under its
+;    identity-key over the input above and its `to-device` is the receiver's
+;    own device-id. The sender is the device-id that identity-key hashes to
+;    (self-certification, as everywhere else), so it is derived and never
+;    claimed.
 ; 2. The identity a request is attributed to is the one a hello authenticated,
 ;    never the `from-device` a relay stamps on `relay-data`. That field only
 ;    says which channel to try.

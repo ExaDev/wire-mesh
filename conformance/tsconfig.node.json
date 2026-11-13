@@ -3,6 +3,7 @@
   "include": [
     "adverts.ts",
     "secure-channel-crypto.ts",
+    "secure-channel-references.ts",
     "secure-channel-vectors.ts",
     "vector-files.ts",
     "generate.ts",
