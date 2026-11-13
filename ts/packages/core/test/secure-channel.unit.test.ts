@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { buildCapabilityRequestCommand } from "../src/domain/capability-request.js";
 import {
   beginHandshake,
+  ChannelExhaustedError,
   claimSendCounter,
   establishChannel,
+  establishChannelFrom,
   MAX_COUNTER,
   verifyHello,
   type SecureChannel,
@@ -25,6 +27,7 @@ const CONCURRENT_FRAME_COUNT = 24;
 const P256_UNCOMPRESSED_POINT_BYTE_LENGTH = 65;
 /** How many counters are claimed in the last stretch before the bound. */
 const COUNTERS_AT_THE_BOUND = 3;
+const SEC1_UNCOMPRESSED_PREFIX = 4;
 
 const request: Frame = {
   type: "manage-request",
@@ -381,7 +384,7 @@ describe("the send counter's bound", () => {
     expect(claimSendCounter(0)).toEqual({ counter: 0, next: 1 });
     const last = claimSendCounter(MAX_COUNTER);
     expect(last).toEqual({ counter: MAX_COUNTER, next: MAX_COUNTER + 1 });
-    expect(() => claimSendCounter(last.next)).toThrow(/exhausted/);
+    expect(() => claimSendCounter(last.next)).toThrow(ChannelExhaustedError);
   });
 
   it("never gives two sends the same counter at the bound", () => {
@@ -394,6 +397,72 @@ describe("the send counter's bound", () => {
     }
 
     expect(seen.size).toBe(COUNTERS_AT_THE_BOUND);
-    expect(() => claimSendCounter(next)).toThrow();
+    expect(() => claimSendCounter(next)).toThrow(ChannelExhaustedError);
+  });
+});
+
+describe("sealing at the send counter's bound", () => {
+  it("seals the last counter, which the peer opens, and then refuses", async () => {
+    const a = await generateEd25519Identity();
+    const b = await generateEd25519Identity();
+    const pendingA = await beginHandshake(a, b.deviceId);
+    const pendingB = await beginHandshake(b, a.deviceId);
+    const atA = await establishChannelFrom(a, {
+      pending: pendingA,
+      remote: pendingB.hello,
+      peer: { deviceId: b.deviceId, identityKey: b.identityKey },
+      firstSendCounter: MAX_COUNTER - 1,
+    });
+    const atB = await establishChannel(b, pendingB, pendingA.hello, {
+      deviceId: a.deviceId,
+      identityKey: a.identityKey,
+    });
+    if (atA === undefined || atB === undefined) throw new Error("no channel");
+
+    const secondLast = await atA.seal(request);
+    const last = await atA.seal(request);
+
+    expect([secondLast.counter, last.counter]).toEqual([
+      MAX_COUNTER - 1,
+      MAX_COUNTER,
+    ]);
+    expect(await atB.open(last)).toEqual(request);
+    await expect(atA.seal(request)).rejects.toThrow(ChannelExhaustedError);
+    await expect(atA.seal(request)).rejects.toThrow(ChannelExhaustedError);
+  });
+});
+
+describe("a hello's identity-key faults", () => {
+  it("reports an ES256 key that is not a curve point as an unusable key, through the real identity adapter", async () => {
+    const a = await generateEs256Identity();
+    const b = await generateEd25519Identity();
+    const { hello } = await beginHandshake(a, b.deviceId);
+    const offCurve = new Uint8Array(P256_UNCOMPRESSED_POINT_BYTE_LENGTH).fill(
+      1,
+    );
+    offCurve[0] = SEC1_UNCOMPRESSED_PREFIX;
+
+    expect(
+      await verifyHello(b, {
+        ...hello,
+        "identity-key": {
+          alg: hello["identity-key"].alg,
+          "public-key": offCurve,
+        },
+      }),
+    ).toEqual({ ok: false, reason: "invalid_identity_key" });
+  });
+
+  it("lets a failure of the identity port propagate instead of reporting it as a verdict on the peer", async () => {
+    const a = await generateEd25519Identity();
+    const b = await generateEd25519Identity();
+    const { hello } = await beginHandshake(a, b.deviceId);
+    const failing: IdentityPort = {
+      ...b,
+      verify: async () =>
+        Promise.reject(new TypeError("the hardware key went away")),
+    };
+
+    await expect(verifyHello(failing, hello)).rejects.toThrow(TypeError);
   });
 });

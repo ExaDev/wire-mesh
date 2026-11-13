@@ -116,10 +116,9 @@ export async function beginHandshake(
 }
 
 /**
- * Why a hello was refused, in the order the checks run: the identity-key cannot be hashed (`identity_mismatch`), the hello is addressed to another device (`wrong_recipient`), the identity-key's algorithm is not supported (`unsupported_identity_alg`), the identity-key cannot be used to verify (`invalid_identity_key`, for instance a key of the wrong size or not a curve point), or the signature does not verify (`bad_signature`).
+ * Why a hello was refused, in the order the checks run: the hello is addressed to another device (`wrong_recipient`), the identity-key's algorithm is not supported (`unsupported_identity_alg`), the identity-key is not a usable key for its algorithm (`invalid_identity_key`, for instance the wrong size or not a curve point), or the signature does not verify (`bad_signature`). The sender's device-id is derived from the identity-key, so there is no check that could refuse a hello for not matching one.
  */
 export type HelloRefusal =
-  | "identity_mismatch"
   | "wrong_recipient"
   | "unsupported_identity_alg"
   | "invalid_identity_key"
@@ -130,19 +129,14 @@ export type HelloVerdict =
   | { readonly ok: false; readonly reason: HelloRefusal };
 
 /**
- * Checks a received hello: its identity key must hash to a device-id (which is then the peer), it must be addressed to this device, and its signature must verify under that key over the input spec/secure-channel.cddl defines. Never throws: a hostile hello gets a verdict.
+ * Checks a received hello: it must be addressed to this device, its identity key must be a usable key, and its signature must verify under that key over the input spec/secure-channel.cddl defines. A hostile hello gets a verdict. An error from the identity port that is not an IdentityKeyError is a failure of the port, not a verdict about the peer, and propagates.
  */
 export async function verifyHello(
   identity: Readonly<IdentityPort>,
   hello: Readonly<SecureHelloFrame>,
 ): Promise<HelloVerdict> {
   const key = hello["identity-key"];
-  let sender: DeviceId;
-  try {
-    sender = await identity.deriveDeviceId(key["public-key"]);
-  } catch {
-    return { ok: false, reason: "identity_mismatch" };
-  }
+  const sender = await identity.deriveDeviceId(key["public-key"]);
   if (!bytesEqual(hello["to-device"], identity.deviceId)) {
     return { ok: false, reason: "wrong_recipient" };
   }
@@ -162,14 +156,17 @@ export async function verifyHello(
       ? { ok: true, peer: { deviceId: sender, identityKey: key } }
       : { ok: false, reason: "bad_signature" };
   } catch (error) {
-    if (
-      error instanceof IdentityKeyError &&
-      error.fault === "unsupported_alg"
-    ) {
-      return { ok: false, reason: "unsupported_identity_alg" };
+    if (!(error instanceof IdentityKeyError)) {
+      throw error;
     }
 
-    return { ok: false, reason: "invalid_identity_key" };
+    return {
+      ok: false,
+      reason:
+        error.fault === "unsupported_alg"
+          ? "unsupported_identity_alg"
+          : "invalid_identity_key",
+    };
   }
 }
 
@@ -196,6 +193,14 @@ export type OpenOutcome =
 /** The largest counter a channel uses: the counter is an unsigned 64-bit integer on the wire, and this implementation holds it as a JavaScript number, exact up to this value. A frame above it is refused at decoding, never truncated, and sealing refuses to go past it, never wraps. */
 export const MAX_COUNTER = Number.MAX_SAFE_INTEGER;
 
+/** Thrown by `seal` once the channel's send counter is spent: nothing more can be sealed on it, and a new handshake gives a fresh one. */
+export class ChannelExhaustedError extends Error {
+  constructor() {
+    super("the channel's send counter is exhausted");
+    this.name = "ChannelExhaustedError";
+  }
+}
+
 /**
  * Takes the next send counter from `next`, the counter the next seal would use: returns it with the counter that follows. Throws once `next` is past MAX_COUNTER, since a counter that cannot be held exactly would repeat an IV under the same key.
  */
@@ -204,7 +209,7 @@ export function claimSendCounter(next: number): {
   readonly next: number;
 } {
   if (next > MAX_COUNTER) {
-    throw new Error("the channel's send counter is exhausted");
+    throw new ChannelExhaustedError();
   }
 
   return { counter: next, next: next + 1 };
@@ -271,6 +276,26 @@ export async function establishChannel(
   remote: Readonly<SecureHelloFrame>,
   peer: Readonly<SecureChannelPeer>,
 ): Promise<SecureChannel | undefined> {
+  return establishChannelFrom(identity, { pending, remote, peer });
+}
+
+/**
+ * establishChannel with its inputs in one object, and the one extra that tests need: where this end's send counter starts. This module is not a published entry (it is in tsdown.config.ts's INTERNAL_MODULES) and the session never passes `firstSendCounter`, so every real channel starts at 0; a test passes a counter near MAX_COUNTER to reach the bound without sealing 2^53 frames.
+ */
+export async function establishChannelFrom(
+  identity: Readonly<IdentityPort>,
+  {
+    pending,
+    remote,
+    peer,
+    firstSendCounter = 0,
+  }: Readonly<{
+    pending: Readonly<PendingHandshake>;
+    remote: Readonly<SecureHelloFrame>;
+    peer: Readonly<SecureChannelPeer>;
+    firstSendCounter?: number;
+  }>,
+): Promise<SecureChannel | undefined> {
   let secret: Uint8Array;
   try {
     const remoteKey = await crypto.subtle.importKey(
@@ -314,7 +339,7 @@ export async function establishChannel(
   const sendKey = localIsLow ? lowToHigh : highToLow;
   const receiveKey = localIsLow ? highToLow : lowToHigh;
 
-  let nextSendCounter = 0;
+  let nextSendCounter = firstSendCounter;
   let highestReceived = -1;
   let sealing: Promise<unknown> = Promise.resolve();
   let opening: Promise<unknown> = Promise.resolve();

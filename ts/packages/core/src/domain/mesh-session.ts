@@ -387,7 +387,8 @@ function createSessionCore(
       },
     };
     if (isVersionGetCommand(frame.command.params)) {
-      void incoming.respond(versionGetOutcome());
+      // Nothing else owns this promise. A failed answer to a version probe is the asker's timeout to handle, and must not surface as an unhandled rejection.
+      void incoming.respond(versionGetOutcome()).catch(() => undefined);
 
       return;
     }

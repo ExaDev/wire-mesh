@@ -85,26 +85,36 @@ async function importPublicKey(key: IdentityKey): Promise<webcrypto.CryptoKey> {
   return pending;
 }
 
+/** Imports the raw public key, reporting a key the algorithm cannot import (not a point on the curve, for ES256) as an IdentityKeyError rather than the Web Crypto error it arrives as. An Ed25519 import does not check that the bytes are a curve point: such a key imports, and every signature under it fails to verify. */
+async function importRawPublicKey(
+  key: IdentityKey,
+  algorithm: webcrypto.EcKeyImportParams | webcrypto.Algorithm,
+): Promise<webcrypto.CryptoKey> {
+  try {
+    return await webcrypto.subtle.importKey(
+      "raw",
+      toBufferSource(key["public-key"]),
+      algorithm,
+      false,
+      ["verify"],
+    );
+  } catch (cause) {
+    throw new IdentityKeyError(
+      "invalid_key",
+      `identity-key public-key does not import as an alg ${String(key.alg)} key`,
+      { cause },
+    );
+  }
+}
+
 async function importPublicKeyUncached(
   key: IdentityKey,
 ): Promise<webcrypto.CryptoKey> {
   if (key.alg === ES256) {
-    return webcrypto.subtle.importKey(
-      "raw",
-      toBufferSource(key["public-key"]),
-      { name: "ECDSA", namedCurve: "P-256" },
-      false,
-      ["verify"],
-    );
+    return importRawPublicKey(key, { name: "ECDSA", namedCurve: "P-256" });
   }
   if (key.alg === EDDSA) {
-    return webcrypto.subtle.importKey(
-      "raw",
-      toBufferSource(key["public-key"]),
-      { name: "Ed25519" },
-      false,
-      ["verify"],
-    );
+    return importRawPublicKey(key, { name: "Ed25519" });
   }
   throw new IdentityKeyError(
     "unsupported_alg",
