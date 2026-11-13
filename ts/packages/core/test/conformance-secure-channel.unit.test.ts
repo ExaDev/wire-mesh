@@ -1,6 +1,11 @@
-/* Checks every vector in conformance/secure-channel.v1.json against the real secure channel: each hello is verified and each handshake established from its fixed ephemeral keys, every sealed frame of the transcripts is reproduced byte for byte and opened, and each negative sequence is opened in order. The key schedule's intermediate secrets are not observable through Web Crypto (its keys are non-extractable), so they are pinned through the ciphertexts they produce.
+/* Checks every vector in conformance/secure-channel.v1.json against the real secure channel, field by field:
 
-   This channel's `open` answers a frame or undefined, so replayed, unauthentic and undecodable are not told apart here: each is checked as "does not open", and what separates them is checked through the later steps of the same sequence (a replayed or consumed counter must stop a genuine frame that carries it, a forged one must not). The Rust implementation, whose errors are distinct, checks the class as well. */
+   - every recorded intermediate (identity device-ids, hello signing inputs, shared secrets, salts, HKDF infos, both direction keys, IVs and associated data) is derived again here from the vector's own scalars, seeds and fields with test-only Web Crypto calls and compared;
+   - each hello is verified and its verdict compared with the reason verifyHello reports;
+   - each handshake is established from its fixed ephemeral keys, every sealed transcript frame is reproduced byte for byte and opened;
+   - each establish verdict, and each open sequence step with its refusal reason, is checked against the real implementation.
+
+   The only vector fields not compared are the ones that name data the others already pin (such as names and the `synthetic` marker). A step marked `full_width_only` needs a counter wider than this implementation holds exactly: it is checked to be refused at decoding (never truncated) when its counter is above the bound, and skipped otherwise. */
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -11,9 +16,11 @@ import {
   deriveDeviceId,
   verifyWithPublicKey,
 } from "../src/adapters/node-identity.js";
+import { tryDecodeFrame } from "../src/adapters/frame-codec.js";
 import { isDataFrame } from "../src/domain/hub-mailbox.js";
 import {
   establishChannel,
+  MAX_COUNTER,
   verifyHello,
   type PendingHandshake,
   type SecureChannel,
@@ -29,6 +36,10 @@ import { bytesFromHex } from "./hex.js";
 import { inSequence } from "./sequence.js";
 
 const COORDINATE_BYTE_LENGTH = 32;
+const GCM_IV_BYTE_LENGTH = 12;
+const IV_COUNTER_OFFSET = 4;
+const COUNTER_BYTE_LENGTH = 8;
+const KEY_BIT_LENGTH = 256;
 
 const hexString = z.string().regex(/^(?:[0-9a-f]{2})*$/);
 
@@ -40,6 +51,7 @@ const sideSchema = z.object({
   ephemeral_secret_hex: hexString,
   ephemeral_public_hex: hexString,
   nonce_hex: hexString,
+  signing_input_hex: hexString,
   signature_hex: hexString,
   hello_vector: z.string(),
 });
@@ -48,18 +60,33 @@ const transcriptStepSchema = z.object({
   from: z.string(),
   counter: z.number().int().nonnegative(),
   inner_wire_hex: hexString,
+  iv_hex: hexString,
+  aad_hex: hexString,
   ciphertext_hex: hexString,
   sealed_vector: z.string(),
+});
+
+const keyScheduleSchema = z.object({
+  low: z.string(),
+  high: z.string(),
+  shared_secret_hex: hexString,
+  salt_hex: hexString,
+  info_low_to_high_hex: hexString,
+  info_high_to_low_hex: hexString,
+  key_low_to_high_hex: hexString,
+  key_high_to_low_hex: hexString,
 });
 
 const handshakeSchema = z.object({
   name: z.string(),
   sides: z.tuple([sideSchema, sideSchema]),
+  key_schedule: keyScheduleSchema,
   transcript: z.array(transcriptStepSchema),
 });
 
 const identitySchema = z.object({
   alg: z.number().int(),
+  synthetic: z.literal(true),
   public_key_hex: hexString,
   device_id_hex: hexString,
 });
@@ -72,10 +99,13 @@ const helloVerdictSchema = z.object({
   expected: z.enum([
     "ok",
     "wrong_recipient",
+    "unsupported_identity_alg",
+    "invalid_identity_key",
     "bad_signature",
-    "identity_mismatch",
   ]),
   peer_device_id_hex: hexString.optional(),
+  signing_input_hex: hexString.optional(),
+  signature_hex: hexString.optional(),
 });
 
 const establishVerdictSchema = z.object({
@@ -83,10 +113,14 @@ const establishVerdictSchema = z.object({
   handshake: z.string(),
   side: z.string(),
   hello_vector: z.string(),
-  expected: z.literal("unusable_ephemeral_key"),
+  hello_verdict: z.literal("ok"),
+  expected: z.enum(["unusable_ephemeral_key", "refused"]),
+  refused_at: z.enum(["establishment", "decoding_or_establishment"]),
+  stage_advisory: z.boolean(),
 });
 
 const stepSchema = z.object({
+  counter: z.string().regex(/^[0-9]+$/),
   secure_data_wire_hex: hexString,
   expected: z.discriminatedUnion("result", [
     z.object({ result: z.literal("opened"), frame_wire_hex: hexString }),
@@ -94,14 +128,16 @@ const stepSchema = z.object({
     z.object({ result: z.literal("unauthentic") }),
     z.object({ result: z.literal("undecodable") }),
   ]),
+  full_width_only: z.literal(true).optional(),
 });
 
 const sequenceSchema = z.object({
   name: z.string(),
   handshake: z.string(),
+  sender: z.string(),
   receiver: z.string(),
   steps: z.array(stepSchema),
-  not_sealable_after_open: z.boolean(),
+  receiver_drops_after_open: z.boolean(),
 });
 
 const fileSchema = z.object({
@@ -245,13 +281,202 @@ function handshakeNamed(name: string): z.infer<typeof handshakeSchema> {
   return lookup(channelVectors.handshakes, (h) => h.name === name);
 }
 
+const encoder = new TextEncoder();
+const HELLO_CONTEXT = encoder.encode("wire-mesh/secure-hello/v1\0");
+const DATA_CONTEXT = encoder.encode("wire-mesh/secure-data/v1\0");
+
+function concat(...parts: readonly Uint8Array[]): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(
+    parts.reduce((total, part) => total + part.length, 0),
+  );
+  let offset = 0;
+  for (const part of parts) {
+    out.set(part, offset);
+    offset += part.length;
+  }
+
+  return out;
+}
+
+function counterBytes(counter: bigint): Uint8Array<ArrayBuffer> {
+  const bytes = new Uint8Array(COUNTER_BYTE_LENGTH);
+  new DataView(bytes.buffer).setBigUint64(0, counter, false);
+
+  return bytes;
+}
+
+function identityDeviceId(name: string): Uint8Array<ArrayBuffer> {
+  return identityPort(name).deviceId;
+}
+
+async function hkdfKeyHex(
+  secret: Uint8Array,
+  salt: Uint8Array,
+  info: Uint8Array,
+): Promise<string> {
+  const material = await crypto.subtle.importKey(
+    "raw",
+    Uint8Array.from(secret),
+    "HKDF",
+    false,
+    ["deriveBits"],
+  );
+
+  return hexOf(
+    new Uint8Array(
+      await crypto.subtle.deriveBits(
+        {
+          name: "HKDF",
+          hash: "SHA-256",
+          salt: Uint8Array.from(salt),
+          info: Uint8Array.from(info),
+        },
+        material,
+        KEY_BIT_LENGTH,
+      ),
+    ),
+  );
+}
+
+async function sharedSecretHex(
+  own: z.infer<typeof sideSchema>,
+  remote: z.infer<typeof sideSchema>,
+): Promise<string> {
+  const { privateKey } = await pendingFor(own);
+  const remotePublic = await crypto.subtle.importKey(
+    "raw",
+    bytesFromHex(remote.ephemeral_public_hex),
+    { name: "ECDH", namedCurve: "P-256" },
+    false,
+    [],
+  );
+
+  return hexOf(
+    new Uint8Array(
+      await crypto.subtle.deriveBits(
+        { name: "ECDH", public: remotePublic },
+        privateKey,
+        KEY_BIT_LENGTH,
+      ),
+    ),
+  );
+}
+
+describe("secure-channel recorded intermediates are derived again", () => {
+  it("gives each identity the device-id its public key hashes to", async () => {
+    await Promise.all(
+      Object.entries(channelVectors.identities).map(
+        async ([name, identity]) => {
+          expect(
+            hexOf(await deriveDeviceId(bytesFromHex(identity.public_key_hex))),
+            name,
+          ).toBe(identity.device_id_hex);
+        },
+      ),
+    );
+  });
+
+  for (const handshake of channelVectors.handshakes) {
+    it(`${handshake.name}: signing inputs, shared secret, salt, infos and keys`, async () => {
+      const [first, second] = handshake.sides;
+      const schedule = handshake.key_schedule;
+
+      for (const side of handshake.sides) {
+        expect(
+          side.signing_input_hex,
+          `${side.hello_vector} signing input`,
+        ).toBe(
+          hexOf(
+            concat(
+              HELLO_CONTEXT,
+              bytesFromHex(side.ephemeral_public_hex),
+              bytesFromHex(side.nonce_hex),
+              identityDeviceId(side.identity),
+              identityDeviceId(side.peer),
+            ),
+          ),
+        );
+      }
+
+      const secret = await sharedSecretHex(first, second);
+      expect(secret).toBe(schedule.shared_secret_hex);
+      expect(await sharedSecretHex(second, first)).toBe(secret);
+
+      const lowSide = lookup(
+        handshake.sides,
+        (s) => s.identity === schedule.low,
+      );
+      const highSide = lookup(
+        handshake.sides,
+        (s) => s.identity === schedule.high,
+      );
+      const lowId = identityDeviceId(schedule.low);
+      const highId = identityDeviceId(schedule.high);
+      expect(
+        Buffer.compare(lowId, highId),
+        "low sorts before high",
+      ).toBeLessThan(0);
+      const salt = concat(
+        bytesFromHex(lowSide.nonce_hex),
+        bytesFromHex(highSide.nonce_hex),
+      );
+      expect(schedule.salt_hex).toBe(hexOf(salt));
+
+      const channelContext = encoder.encode("wire-mesh/secure-channel/v1\0");
+      const infoLowToHigh = concat(
+        channelContext,
+        lowId,
+        highId,
+        encoder.encode("lo-to-hi"),
+      );
+      const infoHighToLow = concat(
+        channelContext,
+        lowId,
+        highId,
+        encoder.encode("hi-to-lo"),
+      );
+      expect(schedule.info_low_to_high_hex).toBe(hexOf(infoLowToHigh));
+      expect(schedule.info_high_to_low_hex).toBe(hexOf(infoHighToLow));
+      const secretBytes = bytesFromHex(secret);
+      expect(await hkdfKeyHex(secretBytes, salt, infoLowToHigh)).toBe(
+        schedule.key_low_to_high_hex,
+      );
+      expect(await hkdfKeyHex(secretBytes, salt, infoHighToLow)).toBe(
+        schedule.key_high_to_low_hex,
+      );
+
+      for (const step of handshake.transcript) {
+        const recipient = lookup(
+          handshake.sides,
+          (s) => s.identity !== step.from,
+        ).identity;
+        const counter = BigInt(step.counter);
+        expect(step.iv_hex, `${step.sealed_vector} iv`).toBe(
+          hexOf(
+            concat(new Uint8Array(IV_COUNTER_OFFSET), counterBytes(counter)),
+          ),
+        );
+        expect(step.iv_hex.length / 2).toBe(GCM_IV_BYTE_LENGTH);
+        expect(step.aad_hex, `${step.sealed_vector} aad`).toBe(
+          hexOf(
+            concat(
+              DATA_CONTEXT,
+              identityDeviceId(step.from),
+              identityDeviceId(recipient),
+              counterBytes(counter),
+            ),
+          ),
+        );
+      }
+    });
+  }
+});
+
 describe("secure-channel hello verdicts", () => {
   for (const verdict of channelVectors.hello_verdicts) {
     it(verdict.name, async () => {
-      const result = await verifyHello(
-        identityPort(verdict.receiver),
-        helloVector(verdict.hello_vector),
-      );
+      const hello = helloVector(verdict.hello_vector);
+      const result = await verifyHello(identityPort(verdict.receiver), hello);
 
       if (verdict.expected === "ok") {
         expect(result.ok).toBe(true);
@@ -260,6 +485,23 @@ describe("secure-channel hello verdicts", () => {
         }
       } else {
         expect(result).toEqual({ ok: false, reason: verdict.expected });
+      }
+      if (verdict.signing_input_hex !== undefined) {
+        const sender = await deriveDeviceId(
+          hello["identity-key"]["public-key"],
+        );
+        expect(verdict.signing_input_hex).toBe(
+          hexOf(
+            concat(
+              HELLO_CONTEXT,
+              hello["ephemeral-key"],
+              hello.nonce,
+              sender,
+              hello["to-device"],
+            ),
+          ),
+        );
+        expect(verdict.signature_hex).toBe(hexOf(hello.signature));
       }
     });
   }
@@ -313,18 +555,34 @@ describe("secure-channel establishment refuses an unusable ephemeral key", () =>
     it(verdict.name, async () => {
       const handshake = handshakeNamed(verdict.handshake);
       const own = lookup(handshake.sides, (s) => s.identity === verdict.side);
-      const hello = helloVector(verdict.hello_vector);
+      const wire = lookup(
+        file.vectors,
+        (v) => v.name === verdict.hello_vector,
+      ).wire_hex;
+      const decoded = tryDecodeFrame(bytesFromHex(wire));
+      if (decoded?.type !== "secure-hello") {
+        // Refused while decoding: allowed only where the vector says the stage is advisory.
+        expect(
+          verdict.stage_advisory,
+          `${verdict.name} refused at decoding`,
+        ).toBe(true);
+
+        return;
+      }
+      if (!verdict.stage_advisory) {
+        expect(verdict.refused_at).toBe("establishment");
+      }
       const identity = identityPort(verdict.side);
-      const hellos = await verifyHello(identity, hello);
-      // Validly signed, so verification passes and only the key exchange can refuse it.
-      expect(hellos.ok).toBe(true);
+      const hellos = await verifyHello(identity, decoded);
+      // The hello is validly signed, so only the key exchange can refuse its ephemeral key.
+      expect(hellos.ok, `${verdict.name} hello verdict`).toBe(true);
       if (!hellos.ok) return;
 
       expect(
         await establishChannel(
           identity,
           await pendingFor(own),
-          hello,
+          decoded,
           hellos.peer,
         ),
       ).toBeUndefined();
@@ -341,25 +599,40 @@ describe("secure-channel open sequences", () => {
       );
 
       await inSequence(sequence.steps, async (step, index) => {
-        const result = await channel.open(
+        const label = `${sequence.name} step ${String(index)}`;
+        if (step.full_width_only === true) {
+          // Past what this implementation holds exactly, the frame is refused at decoding rather than truncated; below it, the step depends on state a refused step would have left, so it is skipped.
+          if (BigInt(step.counter) > BigInt(MAX_COUNTER)) {
+            expect(
+              tryDecodeFrame(bytesFromHex(step.secure_data_wire_hex)),
+              label,
+            ).toBeNull();
+          }
+
+          return;
+        }
+        const outcome = await channel.openOutcome(
           secureData(step.secure_data_wire_hex),
         );
-        const label = `${sequence.name} step ${String(index)}`;
         if (step.expected.result === "opened") {
-          expect(result, label).toEqual(
-            frameFromHex(step.expected.frame_wire_hex),
-          );
-          if (sequence.not_sealable_after_open && result !== undefined) {
-            // Spec obligation 5: a kind other than a manage-request, manage-response or data frame opens, and the session then drops it.
+          expect(outcome, label).toEqual({
+            ok: true,
+            frame: frameFromHex(step.expected.frame_wire_hex),
+          });
+          if (sequence.receiver_drops_after_open && outcome.ok) {
+            // Spec obligation 5: a kind other than a manage-request, manage-response or data frame opens at the channel and the session drops it (mesh-session-secure-relay.unit.test.ts checks the drop).
             expect(
-              result.type !== "manage-request" &&
-                result.type !== "manage-response" &&
-                !isDataFrame(result),
+              outcome.frame.type !== "manage-request" &&
+                outcome.frame.type !== "manage-response" &&
+                !isDataFrame(outcome.frame),
               `${label} is a kind the session must drop`,
             ).toBe(true);
           }
         } else {
-          expect(result, label).toBeUndefined();
+          expect(outcome, label).toEqual({
+            ok: false,
+            reason: step.expected.result,
+          });
         }
       });
     });
