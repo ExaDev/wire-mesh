@@ -9,8 +9,9 @@ import type {
 import type { IdentityPort } from "../ports/identity.js";
 import { deviceIdToHex } from "./device-id.js";
 import {
+  ChannelExhaustedError,
   beginHandshake,
-  establishChannel,
+  establishChannelFrom,
   verifyHello,
   type PendingHandshake,
   type SecureChannel,
@@ -37,7 +38,7 @@ export interface OpenedFrame {
 export interface RelayChannels {
   /** The channel with peer, starting a handshake when there is none. Resolves once both hellos have been exchanged. */
   ensure: (peer: DeviceId) => Promise<SecureChannel>;
-  /** Handles a hello received through a relay pairing: verifies it, answers with this side's own unless one is already outstanding for that peer, and completes the handshake. A hello that does not verify is dropped, since there is nobody to tell. */
+  /** Handles a hello received through a relay pairing: verifies it, answers with this side's own unless one is already outstanding for that peer, and completes the handshake. A hello that does not verify is dropped, since there is nobody to tell. A failure of the identity port itself is not a verdict on the hello and propagates. */
   applyHello: (hello: Readonly<SecureHelloFrame>) => Promise<void>;
   /** Opens sealed data received through a relay pairing. `claimedFrom` is the `from-device` the relay stamped, which only picks the channel to try; the result is undefined unless the frame opens under it, and names the peer that channel authenticated. */
   open: (
@@ -54,6 +55,10 @@ export function createRelayChannels(
   identity: Readonly<IdentityPort>,
   /** Puts a hello on the wire for peer. Rejects when there is no connection to put it on. */
   sendHello: (peer: DeviceId, hello: SecureHelloFrame) => Promise<void>,
+  options: Readonly<{
+    /** Where each channel's send counter starts: only for tests that must reach the counter's bound, see establishChannelFrom. */
+    firstSendCounter?: number;
+  }> = {},
 ): RelayChannels {
   const channels = new Map<string, ChannelState>();
 
@@ -96,13 +101,13 @@ export function createRelayChannels(
       const current = channels.get(key);
       const entry =
         current?.status === "awaiting" ? current : start(verdict.peer.deviceId);
-      const channel = await establishChannel(
-        identity,
-        await entry.pending,
-        hello,
-        verdict.peer,
-      );
-      if (channel === undefined) {
+      const established = await establishChannelFrom(identity, {
+        pending: await entry.pending,
+        remote: hello,
+        peer: verdict.peer,
+        ...options,
+      });
+      if (established === undefined) {
         entry.settle.reject(
           new Error("the peer sent an unusable ephemeral key"),
         );
@@ -112,6 +117,25 @@ export function createRelayChannels(
 
         return;
       }
+      const channel: SecureChannel = {
+        ...established,
+        seal: async (frame) => {
+          try {
+            return await established.seal(frame);
+          } catch (error) {
+            // A channel whose send counter is spent can seal nothing more. Forgetting it makes the next send to this peer start a new handshake, with a fresh counter, instead of failing for good.
+            const held = channels.get(key);
+            if (
+              error instanceof ChannelExhaustedError &&
+              held?.status === "established" &&
+              held.channel === channel
+            ) {
+              channels.delete(key);
+            }
+            throw error;
+          }
+        },
+      };
       channels.set(key, { status: "established", channel });
       entry.settle.resolve(channel);
     },

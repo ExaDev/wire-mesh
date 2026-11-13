@@ -3,12 +3,16 @@ import type { DeviceId, IdentityKey } from "../generated/protocol.js";
 /** Why an identity-key could not be used: its algorithm is not one the implementation verifies, or its key bytes are not a valid key for that algorithm. */
 export type IdentityKeyFault = "unsupported_alg" | "invalid_key";
 
-/** Thrown by an IdentityPort's verify for an identity-key it cannot use at all, as opposed to a signature that does not verify (which returns false). Lets a caller tell the two faults apart without parsing a message. */
+/** Thrown by an IdentityPort's verify for an identity-key it cannot use at all, as opposed to a signature that does not verify (which returns false). Any other error from a port is not a fault of the key: it is a failure of the port itself and is never to be read as a verdict about a peer. */
 export class IdentityKeyError extends Error {
   readonly fault: IdentityKeyFault;
 
-  constructor(fault: IdentityKeyFault, message: string) {
-    super(message);
+  constructor(
+    fault: IdentityKeyFault,
+    message: string,
+    options?: Readonly<{ cause: unknown }>,
+  ) {
+    super(message, options);
     this.name = "IdentityKeyError";
     this.fault = fault;
   }
