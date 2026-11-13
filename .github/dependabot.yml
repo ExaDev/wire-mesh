@@ -1,0 +1,17 @@
+version: 2
+updates:
+  # Refreshes the commit SHAs the workflows pin their actions to.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+
+  # Refreshes rust/Cargo.lock. A new crate in the graph fails the cargo-deny job until rust/deny.toml lists it with its reason.
+  - package-ecosystem: cargo
+    directory: /rust
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
