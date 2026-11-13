@@ -13,13 +13,27 @@ use p256::ecdsa::{
 };
 use p256::PublicKey;
 use rand::rngs::OsRng;
+use rand::RngCore;
 use sha2::{Digest, Sha256};
 use wire_mesh_wire::identity::{DeviceId, IdentityKey};
 use wire_mesh_wire::tokens::CoseSign1;
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::domain::cose::sig_structure;
 use crate::ports::{CoreError, Identity};
+
+/// A fresh P-256 secret scalar from the operating system's randomness, by rejection sampling. The curve crate's own generator takes a `rand_core` 0.10 generator, and `rand` 0.8's `OsRng` is a 0.6 one.
+fn random_p256_secret() -> p256::SecretKey {
+    let mut bytes = [0u8; 32];
+    loop {
+        OsRng.fill_bytes(&mut bytes);
+        let key = p256::SecretKey::from_slice(&bytes);
+        bytes.zeroize();
+        if let Ok(key) = key {
+            return key;
+        }
+    }
+}
 
 enum SigningMaterial {
     Ed25519(SigningKey),
@@ -46,10 +60,10 @@ impl NodeIdentity {
 
     /// Generate a fresh ES256 identity (COSE alg -7, P-256 + SHA-256).
     pub fn generate_es256() -> Self {
-        let signing = P256SigningKey::from(&p256::SecretKey::random(&mut OsRng));
+        let signing = P256SigningKey::from(&random_p256_secret());
         let public_key = signing
             .verifying_key()
-            .to_encoded_point(false)
+            .to_sec1_point(false)
             .as_bytes()
             .to_vec();
         NodeIdentity::from_signing(
@@ -91,7 +105,7 @@ impl NodeIdentity {
         let signing = P256SigningKey::from(&key);
         let public_key = signing
             .verifying_key()
-            .to_encoded_point(false)
+            .to_sec1_point(false)
             .as_bytes()
             .to_vec();
         Ok(NodeIdentity::from_signing(
@@ -194,7 +208,13 @@ pub fn verify_with_identity_key(
             let sig = P256Signature::from_slice(signature)
                 .map_err(|e| CoreError::Crypto(format!("ES256 signature: {e}")))?;
             Ok(verifying
-                .verify_digest(Sha256::new_with_prefix(message), &sig)
+                .verify_digest(
+                    |digest: &mut Sha256| {
+                        digest.update(message);
+                        Ok(())
+                    },
+                    &sig,
+                )
                 .is_ok())
         }
         other => Err(CoreError::Crypto(format!(
@@ -218,7 +238,10 @@ impl Identity for NodeIdentity {
             SigningMaterial::Ed25519(key) => Ok(key.sign(message).to_bytes().to_vec()),
             SigningMaterial::Es256(key) => {
                 let signature: P256Signature = key
-                    .try_sign_digest(Sha256::new_with_prefix(message))
+                    .try_sign_digest(|digest: &mut Sha256| {
+                        digest.update(message);
+                        Ok(())
+                    })
                     .map_err(|e| CoreError::Crypto(format!("ES256 signing failed: {e}")))?;
                 Ok(signature.to_bytes().to_vec())
             }
