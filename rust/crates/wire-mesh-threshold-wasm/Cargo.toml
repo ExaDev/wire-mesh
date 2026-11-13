@@ -14,7 +14,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 wire-mesh-threshold = { path = "../wire-mesh-threshold" }
 wire-mesh-wire = { path = "../wire-mesh-wire" }
-frost-ed25519 = "2"
+frost-ed25519 = { workspace = true }
 wasm-bindgen = { version = "0.2", default-features = false, features = ["std"] }
 js-sys = { version = "0.3", default-features = false, features = ["std"] }
 rand = { workspace = true }

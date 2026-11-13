@@ -26,6 +26,10 @@ lint:
     @if [ -d rust ]; then cd rust && cargo clippy --all-targets -- -D warnings && cargo fmt --check; else echo "rust/ does not exist yet"; fi
     cd ts && pnpm turbo run _lint
 
+# Check each rust/ workspace member on its own, with and without default features, plus the wasm crate for wasm32. A whole-workspace build unifies features across members and hides a member that relies on a sibling to enable one.
+rust-members:
+    cd rust && ./check-members.sh
+
 # Typecheck ts/ (conformance/'s own typecheck already runs as part of `just conformance`;
 # rust/ has none separate from `cargo build`/`cargo clippy`). CI's ts/ Verify job runs this
 # between lint and build -- a type error caught only here, not by build or test, is exactly
