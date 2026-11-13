@@ -254,13 +254,13 @@ jobs:
     name: rust/ Verify
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: clippy, rustfmt
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: rust
 
@@ -292,16 +292,21 @@ jobs:
     name: cargo-deny
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # Prebuilt binary at an exact version: compiling cargo-deny from source on every run would dominate this job.
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
           tool: cargo-deny@0.20.2
 
-      - name: Check advisories, licences, sources and the crate allowlist
+      # Advisories are checked by rust-advisories.yml, outside the required checks, so a newly published advisory cannot change this verdict for an unrelated change.
+      - name: Check the crate allowlist, licences and sources
         working-directory: rust
-        run: cargo deny check
+        run: cargo deny check bans licenses sources
+
+      - name: Check that the policy files say what is true
+        working-directory: rust
+        run: ./check-deny-policy.py
 
       - name: Prove the allowlist rejects a second version and a feature-gated crate
         working-directory: rust
