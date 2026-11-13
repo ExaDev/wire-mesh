@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { buildCapabilityRequestCommand } from "../src/domain/capability-request.js";
 import {
   beginHandshake,
+  claimSendCounter,
   establishChannel,
+  MAX_COUNTER,
   verifyHello,
   type SecureChannel,
 } from "../src/domain/secure-channel.js";
@@ -21,6 +23,8 @@ import {
 
 const CONCURRENT_FRAME_COUNT = 24;
 const P256_UNCOMPRESSED_POINT_BYTE_LENGTH = 65;
+/** How many counters are claimed in the last stretch before the bound. */
+const COUNTERS_AT_THE_BOUND = 3;
 
 const request: Frame = {
   type: "manage-request",
@@ -302,5 +306,27 @@ describe("a channel", () => {
     expect(new TextDecoder("latin1").decode(sealed.ciphertext)).not.toContain(
       "a-recognisable-room-path",
     );
+  });
+});
+
+describe("the send counter's bound", () => {
+  it("hands out counters up to the largest exact integer and then refuses", () => {
+    expect(claimSendCounter(0)).toEqual({ counter: 0, next: 1 });
+    const last = claimSendCounter(MAX_COUNTER);
+    expect(last).toEqual({ counter: MAX_COUNTER, next: MAX_COUNTER + 1 });
+    expect(() => claimSendCounter(last.next)).toThrow(/exhausted/);
+  });
+
+  it("never gives two sends the same counter at the bound", () => {
+    const seen = new Set<number>();
+    let next = MAX_COUNTER - (COUNTERS_AT_THE_BOUND - 1);
+    for (let i = 0; i < COUNTERS_AT_THE_BOUND; i += 1) {
+      const claimed = claimSendCounter(next);
+      seen.add(claimed.counter);
+      next = claimed.next;
+    }
+
+    expect(seen.size).toBe(COUNTERS_AT_THE_BOUND);
+    expect(() => claimSendCounter(next)).toThrow();
   });
 });
