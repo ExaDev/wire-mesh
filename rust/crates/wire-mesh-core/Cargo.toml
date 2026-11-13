@@ -18,7 +18,7 @@ wire-mesh-wire = { path = "../wire-mesh-wire" }
 async-trait = { workspace = true }
 futures-core = { workspace = true }
 # Not `{ workspace = true }`: the workspace-level tokio dependency pins a fixed feature set unconditionally (feature unification would otherwise always pull "net" in regardless of this crate's own Cargo feature), so "net"'s tokio features are added explicitly above instead.
-tokio = { version = "1", features = ["sync", "macros", "rt"] }
+tokio = { version = "1", default-features = false, features = ["sync", "macros", "rt"] }
 sha2 = { workspace = true }
 ed25519-dalek = { workspace = true }
 zeroize = { workspace = true }
@@ -29,7 +29,7 @@ rand = { workspace = true }
 minicbor = { workspace = true }
 
 [dev-dependencies]
-tokio-stream = "0.1"
+tokio-stream = { version = "0.1", default-features = false }
 
 [lints]
 workspace = true
