@@ -22,10 +22,6 @@ rand = { workspace = true }
 # getrandom underlies rand::rngs::OsRng; on wasm32-unknown-unknown it has no OS entropy source of its own and needs its "js" backend feature enabled by the FINAL crate (per getrandom's own documented usage) to pull entropy from the browser/Node WebCrypto API instead. Native-target builds (`cargo build`/`clippy`/`test` from the workspace root) ignore this feature entirely -- it only takes effect for the wasm32 target.
 getrandom = { version = "0.2", default-features = false, features = ["js"] }
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-# p256's ECDSA signing reaches getrandom 0.4 through crypto-bigint (rfc6979), whose wasm32-unknown-unknown build refuses to compile without its "wasm_js" backend. Nothing here draws randomness from it (the code uses rand 0.8 over getrandom 0.2 above); the feature only lets the dependency build.
-getrandom-0-4 = { package = "getrandom", version = "0.4", default-features = false, features = ["wasm_js"] }
-
 [dev-dependencies]
 wasm-bindgen-test = { version = "0.3", default-features = false, features = ["std"] }
 

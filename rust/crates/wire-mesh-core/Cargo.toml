@@ -29,6 +29,11 @@ aes-gcm = { workspace = true }
 rand = { workspace = true }
 minicbor = { workspace = true }
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# wasm32-unknown-unknown has no operating system entropy source, so each getrandom this crate reaches needs its browser backend enabled by a crate in the graph, and enabling them here lets any wasm32 consumer of this crate build without repeating it. rand 0.8 draws from getrandom 0.2 ("js"). p256's ECDSA signing reaches getrandom 0.4 through crypto-bigint (rfc6979), which will not build on this target without "wasm_js"; nothing in the workspace draws randomness from that copy.
+getrandom-0-2 = { package = "getrandom", version = "0.2", default-features = false, features = ["js"] }
+getrandom-0-4 = { package = "getrandom", version = "0.4", default-features = false, features = ["wasm_js"] }
+
 [dev-dependencies]
 tokio-stream = { version = "0.1", default-features = false }
 
