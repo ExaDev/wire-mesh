@@ -109,8 +109,8 @@
 ; whose signature is another key's is invalid_identity_key). A key's algorithm
 ; is supported or not whatever else is wrong with it, so that check has no
 ; order against key usability to pin. A usable key is as identity.cddl
-; defines it, so an Ed25519 key that is not a canonical encoding of a curve
-; point, or is a point of small order, is invalid_identity_key.
+; defines it, so an Ed25519 key that is not a canonical encoding of a point in
+; the prime-order subgroup is invalid_identity_key.
 ;
 ; Verifier obligations, none of which the grammar can express:
 ;

@@ -12,7 +12,7 @@ import {
   type RoomPath,
 } from "../generated/protocol.js";
 import type { Clock } from "../ports/clock.js";
-import type { IdentityPort } from "../ports/identity.js";
+import { verifiesOrRefuses, type IdentityPort } from "../ports/identity.js";
 import type { RevocationCheck } from "./tokens.js";
 import { isEncryptedContentType } from "./group-key.js";
 import {
@@ -133,7 +133,8 @@ export async function verifyRoomNotice(
     return { ok: false, reason: "wrong_room" };
   }
 
-  const signatureOk = await options.identity.verify(
+  const signatureOk = await verifiesOrRefuses(
+    options.identity,
     claims["poster-key"],
     sig1ToBeSigned(protectedHeader, payload),
     signature,
