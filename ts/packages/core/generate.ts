@@ -4,7 +4,6 @@ import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parse } from "cddl.js/parse";
 import { emitModule } from "cddl.js/emitter";
-import { anchorRegexpOperators } from "./scripts/anchor-regexp-operators.ts";
 
 const specPath = fileURLToPath(
   new URL("../../../spec/protocol.cddl", import.meta.url),
@@ -14,7 +13,6 @@ const outputPath = fileURLToPath(
 );
 
 const parsed = parse(specPath);
-anchorRegexpOperators(parsed);
 const source = emitModule(parsed);
 writeFileSync(outputPath, source);
 console.log(`wrote ${outputPath}`);
