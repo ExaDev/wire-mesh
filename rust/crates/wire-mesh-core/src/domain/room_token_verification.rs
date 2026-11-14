@@ -193,6 +193,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_store_that_cannot_answer_refuses_the_room_token() {
+        use crate::domain::revocation::{RevocationCheck, RevocationUnavailable};
+        struct Down;
+        #[async_trait::async_trait]
+        impl RevocationCheck for Down {
+            async fn entries_for(
+                &self,
+                _: &[u8],
+            ) -> Result<Vec<RevocationClaims>, RevocationUnavailable> {
+                Err(RevocationUnavailable {
+                    reason: "the store is down".to_owned(),
+                })
+            }
+        }
+        let owner = NodeIdentity::generate_ed25519();
+        let member = NodeIdentity::generate_ed25519();
+        let room_path = owner_named_room_path(&device_id_to_hex(owner.device_id()), "general");
+        let token = mint_room_member_token(&owner, &member, &room_path, vec![0x01; 16]).await;
+        let verdict = verify_room_token(
+            &owner,
+            &FixedClock(NOW),
+            &Down,
+            &token,
+            *member.device_id(),
+            &room_path,
+        )
+        .await;
+        assert_eq!(
+            verdict,
+            RoomTokenVerdict::Invalid(RoomTokenRejection::Token(
+                TokenRejection::RevocationUnavailable("the store is down".to_owned())
+            ))
+        );
+    }
+
+    #[tokio::test]
     async fn accepts_a_token_rooted_at_the_named_rooms_own_owner() {
         let owner = NodeIdentity::generate_ed25519();
         let member = NodeIdentity::generate_ed25519();

@@ -10,7 +10,7 @@ use wire_mesh_wire::management::RevocationClaims;
 use wire_mesh_wire::tokens::{CoseSign1, TokenClaims};
 
 use crate::domain::cose::sig_structure;
-use crate::domain::revocation::RevocationCheck;
+use crate::domain::revocation::{RevocationCheck, RevocationUnavailable};
 use crate::ports::{Clock, CoreError, Identity};
 
 /// The capability a `revocation-claims.authorization` token must carry to
@@ -85,6 +85,8 @@ pub enum TokenRejection {
     /// system this verifier has no support for, which fails closed the
     /// same way (see `domain::predicates`' own module doc comment).
     ConditionsNotSatisfied { token_id: Vec<u8> },
+    /// The revocation store could not say whether a link of the chain is revoked, so the token is neither accepted nor called revoked: the verifier refuses to decide. A store that cannot answer must return an error for this and never an empty list, which would read as "not revoked".
+    RevocationUnavailable(String),
     /// The presented (leaf) token's own `bearer` does not equal the
     /// `expected_bearer` the caller gave -- the peer presenting this
     /// token to authorise itself is not the device the token actually
@@ -157,6 +159,9 @@ impl core::fmt::Display for TokenRejection {
                 "token {}'s conditions were not satisfied",
                 hex_prefix(token_id)
             ),
+            TokenRejection::RevocationUnavailable(why) => {
+                write!(f, "the revocation store could not answer: {why}")
+            }
             TokenRejection::BearerMismatch => write!(
                 f,
                 "the presented token's own bearer does not match the expected bearer"
@@ -250,15 +255,15 @@ async fn revocation_entry_grants_revoke(
     identity: &dyn Identity,
     clock: &dyn Clock,
     revocations: &dyn RevocationCheck,
-) -> bool {
+) -> Result<bool, RevocationUnavailable> {
     if entry.issuer == target.issuer {
-        return true;
+        return Ok(true);
     }
     let Some(authorization_bytes) = &entry.authorization else {
-        return false;
+        return Ok(false);
     };
     let Ok(authorization_token) = CoseSign1::decode_bytes(authorization_bytes) else {
-        return false;
+        return Ok(false);
     };
     let verdict = Box::pin(verify_capability_token(
         identity,
@@ -269,12 +274,14 @@ async fn revocation_entry_grants_revoke(
     ))
     .await;
     match verdict {
-        TokenVerdict::Valid { claims, .. } => {
-            claims.bearer == entry.issuer
-                && claims.capability.0 == REVOKE_CAPABILITY
-                && target.scope.is_within(&claims.scope)
+        TokenVerdict::Valid { claims, .. } => Ok(claims.bearer == entry.issuer
+            && claims.capability.0 == REVOKE_CAPABILITY
+            && target.scope.is_within(&claims.scope)),
+        // The authorisation's own chain could not be swept: the entry may or may not apply, so the question is unanswered and the outer verification refuses.
+        TokenVerdict::Invalid(TokenRejection::RevocationUnavailable(reason)) => {
+            Err(RevocationUnavailable { reason })
         }
-        TokenVerdict::Invalid(_) => false,
+        TokenVerdict::Invalid(_) => Ok(false),
     }
 }
 
@@ -381,11 +388,28 @@ pub async fn verify_capability_token(
         }
 
         // management.cddl's obligation: every ancestor's own token-id is swept against the view, checking each recorded entry via revocation_entry_grants_revoke (issuer-match, or a verified delegated manage:revoke authorization -- wire-mesh#84).
-        for entry in &revocations.entries_for(&claims.token_id).await {
-            if revocation_entry_grants_revoke(entry, &claims, identity, clock, revocations).await {
-                return TokenVerdict::Invalid(TokenRejection::Revoked {
-                    token_id: claims.token_id,
-                });
+        let entries = match revocations.entries_for(&claims.token_id).await {
+            Ok(entries) => entries,
+            Err(unavailable) => {
+                return TokenVerdict::Invalid(TokenRejection::RevocationUnavailable(
+                    unavailable.reason,
+                ))
+            }
+        };
+        for entry in &entries {
+            match revocation_entry_grants_revoke(entry, &claims, identity, clock, revocations).await
+            {
+                Ok(true) => {
+                    return TokenVerdict::Invalid(TokenRejection::Revoked {
+                        token_id: claims.token_id,
+                    })
+                }
+                Ok(false) => {}
+                Err(unavailable) => {
+                    return TokenVerdict::Invalid(TokenRejection::RevocationUnavailable(
+                        unavailable.reason,
+                    ))
+                }
             }
         }
 
@@ -2088,5 +2112,143 @@ mod tests {
             }
             other => panic!("expected Valid, got {other:?}"),
         }
+    }
+
+    /// A revocation store that cannot answer for the token-ids it is told to fail on, and answers "nothing recorded" for the rest.
+    struct FailingStore {
+        fails_for: Vec<Vec<u8>>,
+        entries: Vec<RevocationClaims>,
+    }
+
+    #[async_trait::async_trait]
+    impl RevocationCheck for FailingStore {
+        async fn entries_for(
+            &self,
+            token_id: &[u8],
+        ) -> Result<Vec<RevocationClaims>, RevocationUnavailable> {
+            if self.fails_for.iter().any(|id| id == token_id) {
+                return Err(RevocationUnavailable {
+                    reason: "the store is down".to_owned(),
+                });
+            }
+            Ok(self
+                .entries
+                .iter()
+                .filter(|entry| entry.token_id == token_id)
+                .cloned()
+                .collect())
+        }
+    }
+
+    fn unavailable() -> TokenRejection {
+        TokenRejection::RevocationUnavailable("the store is down".to_owned())
+    }
+
+    #[tokio::test]
+    async fn a_store_that_cannot_answer_refuses_the_token_and_never_reads_as_not_revoked() {
+        use crate::domain::mint::{mint_capability_token, MintCapabilityToken};
+        let issuer = NodeIdentity::generate_ed25519();
+        let clock = FixedClock(NOW);
+        let token = mint_capability_token(MintCapabilityToken {
+            identity: &issuer,
+            clock: &clock,
+            token_id: vec![7; 16],
+            bearer: *issuer.device_id(),
+            capability: CapabilityVerb("pin:write".to_owned()),
+            scope: CapabilityScope {
+                kind: "folder".to_owned(),
+                path: Some("/work".to_owned()),
+            },
+            expires: NOW + 60_000,
+            not_before: None,
+            delegations_remaining: None,
+            parent: None,
+            conditions: None,
+            authorised_by: None,
+            grants_capability: None,
+            requests_capability: None,
+        })
+        .await
+        .expect("mint");
+        let down = FailingStore {
+            fails_for: vec![vec![7; 16]],
+            entries: Vec::new(),
+        };
+        let up = FailingStore {
+            fails_for: Vec::new(),
+            entries: Vec::new(),
+        };
+        assert_eq!(
+            verify_capability_token(&issuer, &clock, &down, &token, None).await,
+            TokenVerdict::Invalid(unavailable())
+        );
+        assert!(matches!(
+            verify_capability_token(&issuer, &clock, &up, &token, None).await,
+            TokenVerdict::Valid { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn the_sweep_of_a_revocation_entrys_own_authorisation_is_refused_when_that_store_cannot_answer(
+    ) {
+        use crate::domain::mint::{mint_capability_token, MintCapabilityToken};
+        let issuer = NodeIdentity::generate_ed25519();
+        let revoker = NodeIdentity::generate_ed25519();
+        let clock = FixedClock(NOW);
+        let scope = CapabilityScope {
+            kind: "folder".to_owned(),
+            path: Some("/work".to_owned()),
+        };
+        let mint = |token_id: u8, capability: &str, bearer: DeviceId| {
+            let (identity, clock, scope) = (&issuer, &clock, scope.clone());
+            let capability = CapabilityVerb(capability.to_owned());
+            async move {
+                mint_capability_token(MintCapabilityToken {
+                    identity,
+                    clock,
+                    token_id: vec![token_id; 16],
+                    bearer,
+                    capability,
+                    scope,
+                    expires: NOW + 60_000,
+                    not_before: None,
+                    delegations_remaining: None,
+                    parent: None,
+                    conditions: None,
+                    authorised_by: None,
+                    grants_capability: None,
+                    requests_capability: None,
+                })
+                .await
+                .expect("mint")
+            }
+        };
+        let target = mint(1, "pin:write", *issuer.device_id()).await;
+        // The revoker holds a manage:revoke token from the issuer, and names it as the authorisation of its entry.
+        let authorisation = mint(2, "manage:revoke", *revoker.device_id()).await;
+        let entry = RevocationClaims {
+            token_id: vec![1; 16],
+            issuer: *revoker.device_id(),
+            issuer_key: revoker.identity_key().clone(),
+            revoked_at: NOW - 1,
+            authorization: Some(authorisation.encode_to_vec()),
+        };
+        let answers = FailingStore {
+            fails_for: Vec::new(),
+            entries: vec![entry.clone()],
+        };
+        assert!(matches!(
+            verify_capability_token(&issuer, &clock, &answers, &target, None).await,
+            TokenVerdict::Invalid(TokenRejection::Revoked { .. })
+        ));
+        let down_for_the_authorisation = FailingStore {
+            fails_for: vec![vec![2; 16]],
+            entries: vec![entry],
+        };
+        assert_eq!(
+            verify_capability_token(&issuer, &clock, &down_for_the_authorisation, &target, None)
+                .await,
+            TokenVerdict::Invalid(unavailable())
+        );
     }
 }

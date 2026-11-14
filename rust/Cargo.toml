@@ -46,7 +46,8 @@ aes-gcm = { version = "0.10", default-features = false, features = ["aes", "allo
 aes = { version = "0.8", default-features = false, features = ["zeroize"] }
 # "std" and "std_rng" are what `OsRng` and `thread_rng` need.
 rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
-serde_json = { version = "1", default-features = false, features = ["std"] }
+# "float_roundtrip" makes a decimal literal read to the nearest double, as JSON.parse does; without it serde_json can differ in the last place, and a reader of the shared vector files would disagree with the TypeScript at numeric boundaries. A test in wire-mesh-conformance fails without it.
+serde_json = { version = "1", default-features = false, features = ["std", "float_roundtrip"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"
