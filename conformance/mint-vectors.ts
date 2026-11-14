@@ -5,6 +5,7 @@
 import { createHash, sign as nodeSign } from "node:crypto";
 import { cdeEncodeOptions, encode } from "cbor2";
 import { hex, type JsonWire, type Vector } from "@exadev/wire-mesh-conformance";
+import { addOrderCases } from "./mint-order-vectors.ts";
 import {
   identityNamed,
   wireHex,
@@ -35,7 +36,7 @@ interface Scope {
   path?: string;
 }
 
-interface TokenSeed {
+export interface TokenSeed {
   /** The case's own name, from which its token-id is derived. */
   name: string;
   issuer: string;
@@ -101,7 +102,7 @@ function coseSign1(
   return { message, wireHex: wireHex(message) };
 }
 
-function scopeJson(scope: Scope): JsonWire {
+function scopeJson(scope: Readonly<Scope>): JsonWire {
   return scope.path === undefined
     ? { kind: scope.kind }
     : { kind: scope.kind, path: scope.path };
@@ -183,10 +184,7 @@ const MALFORMED_TOKEN_WIRE = wireHex([
   hex("00".repeat(TOKEN_ID_BYTES * HALF)),
 ]);
 
-function rootSeed(
-  name: string,
-  overrides: Partial<TokenSeed> = {},
-): TokenSeed {
+function rootSeed(name: string, overrides: Partial<TokenSeed> = {}): TokenSeed {
   return {
     name,
     issuer: "a",
@@ -198,11 +196,13 @@ function rootSeed(
   };
 }
 
-interface CaseOptions {
+export interface CaseOptions {
   /** The refusal reason; absent when the mint must produce the token. */
   refusal?: string;
   /** Whether the minted token verifies on its own at `NOW_MS`. */
   verifiesOnItsOwn?: boolean;
+  /** The case holds only for an implementation with a Rust-sized integer: the TypeScript runner skips it. */
+  rustOnly?: boolean;
 }
 
 interface GrantQueryOptions {
@@ -234,9 +234,13 @@ export function mintFile(): {
   const vectors: Vector[] = [];
   const minted = new Map<string, string>();
   const tokenMints: JsonWire[] = [];
+  const caseNames = new Set<string>();
 
   /** Records one case, signing the expected token when the case must mint. */
-  function mintCase(seed: TokenSeed, options: CaseOptions = {}): void {
+  function mintCase(
+    seed: TokenSeed,
+    options: Readonly<CaseOptions> = {},
+  ): void {
     let expected: JsonWire;
     if (options.refusal === undefined) {
       const token = coseSign1(identityNamed(seed.issuer), claimsFor(seed));
@@ -270,8 +274,23 @@ export function mintFile(): {
       authorised_by_wire_hex: seed.authorisedByWireHex ?? null,
       grants_capability: seed.grantsCapability ?? null,
       requests_capability: seed.requestsCapability ?? null,
+      rust_only: options.rustOnly ?? false,
       expected,
     });
+    caseNames.add(seed.name);
+  }
+
+  /** Signs `seed` as written, whatever a mint would say about it, and records it as a top-level vector: a token held by someone, which a case then cites as a parent or an authoriser. */
+  function fixture(seed: TokenSeed): string {
+    const token = coseSign1(identityNamed(seed.issuer), claimsFor(seed));
+    vectors.push({
+      name: `fixture_${seed.name}`,
+      message: token.message,
+      wire_hex: token.wireHex,
+    });
+    minted.set(`fixture_${seed.name}`, token.wireHex);
+
+    return token.wireHex;
   }
 
   const wireOf = (name: string): string => {
@@ -355,8 +374,14 @@ export function mintFile(): {
   const refuse = (seed: TokenSeed, refusal: string): void => {
     mintCase(seed, { refusal });
   };
-  refuse(rootSeed("refused_already_expired", { expires: NOW_MS }), "already_expired");
-  refuse(rootSeed("refused_invalid_capability", { capability: "exec" }), "invalid_capability");
+  refuse(
+    rootSeed("refused_already_expired", { expires: NOW_MS }),
+    "already_expired",
+  );
+  refuse(
+    rootSeed("refused_invalid_capability", { capability: "exec" }),
+    "invalid_capability",
+  );
   refuse(
     rootSeed("refused_invalid_grants_capability", {
       capability: MANAGE_GRANT,
@@ -365,31 +390,53 @@ export function mintFile(): {
     "invalid_capability",
   );
   refuse(
-    { ...delegationBase("refused_links_exclusive"), authorisedByWireHex: grantWire },
+    {
+      ...delegationBase("refused_links_exclusive"),
+      authorisedByWireHex: grantWire,
+    },
     "links_exclusive",
   );
   refuse(
-    { ...delegationBase("refused_grant_capability_through_a_parent"), capability: MANAGE_GRANT },
+    {
+      ...delegationBase("refused_grant_capability_through_a_parent"),
+      capability: MANAGE_GRANT,
+    },
     "authorisation_parent_forbidden",
   );
   refuse(
-    { ...delegationBase("refused_parent_malformed"), parentWireHex: MALFORMED_TOKEN_WIRE },
+    {
+      ...delegationBase("refused_parent_malformed"),
+      parentWireHex: MALFORMED_TOKEN_WIRE,
+    },
     "parent_malformed",
   );
   refuse(
-    { ...delegationBase("refused_parent_bearer_mismatch"), issuer: "c", bearer: "a" },
+    {
+      ...delegationBase("refused_parent_bearer_mismatch"),
+      issuer: "c",
+      bearer: "a",
+    },
     "parent_bearer_mismatch",
   );
   refuse(
-    { ...delegationBase("refused_expires_exceeds_parent"), expires: NOW_MS + TWO_HOURS_MS },
+    {
+      ...delegationBase("refused_expires_exceeds_parent"),
+      expires: NOW_MS + TWO_HOURS_MS,
+    },
     "expires_exceeds_parent",
   );
   refuse(
-    { ...delegationBase("refused_scope_does_not_narrow"), scope: { kind: "folder", path: "/other" } },
+    {
+      ...delegationBase("refused_scope_does_not_narrow"),
+      scope: { kind: "folder", path: "/other" },
+    },
     "scope_does_not_narrow",
   );
   refuse(
-    { ...delegationBase("refused_scope_of_another_kind"), scope: { kind: "room", path: "/work/sub" } },
+    {
+      ...delegationBase("refused_scope_of_another_kind"),
+      scope: { kind: "room", path: "/work/sub" },
+    },
     "scope_does_not_narrow",
   );
   refuse(
@@ -397,11 +444,17 @@ export function mintFile(): {
     "capability_mismatch",
   );
   refuse(
-    { ...delegationBase("refused_delegation_equal_to_parent"), delegationsRemaining: TWO_HOPS },
+    {
+      ...delegationBase("refused_delegation_equal_to_parent"),
+      delegationsRemaining: TWO_HOPS,
+    },
     "delegation_exceeds_parent",
   );
   refuse(
-    delegationBase("refused_delegation_unbounded_under_a_bounded_parent", false),
+    delegationBase(
+      "refused_delegation_unbounded_under_a_bounded_parent",
+      false,
+    ),
     "delegation_exceeds_parent",
   );
   // Breaks the bearer rule and the expiry rule: the bearer rule is checked first.
@@ -415,27 +468,46 @@ export function mintFile(): {
     "parent_bearer_mismatch",
   );
   refuse(
-    { ...authorisedBase("refused_authorisation_malformed"), authorisedByWireHex: MALFORMED_TOKEN_WIRE },
+    {
+      ...authorisedBase("refused_authorisation_malformed"),
+      authorisedByWireHex: MALFORMED_TOKEN_WIRE,
+    },
     "authorisation_malformed",
   );
   refuse(
-    { ...authorisedBase("refused_authorisation_by_a_token_with_a_parent"), authorisedByWireHex: wireOf("delegation_one_hop") },
+    {
+      ...authorisedBase("refused_authorisation_by_a_token_with_a_parent"),
+      authorisedByWireHex: wireOf("delegation_one_hop"),
+    },
     "authorisation_parent_forbidden",
   );
   refuse(
-    { ...authorisedBase("refused_authorisation_bearer_mismatch"), issuer: "c", bearer: "a" },
+    {
+      ...authorisedBase("refused_authorisation_bearer_mismatch"),
+      issuer: "c",
+      bearer: "a",
+    },
     "authorisation_bearer_mismatch",
   );
   refuse(
-    { ...authorisedBase("refused_authorisation_capability_mismatch"), capability: "fs:read" },
+    {
+      ...authorisedBase("refused_authorisation_capability_mismatch"),
+      capability: "fs:read",
+    },
     "authorisation_capability_mismatch",
   );
   refuse(
-    { ...authorisedBase("refused_authorisation_scope"), scope: { kind: "folder", path: "/other" } },
+    {
+      ...authorisedBase("refused_authorisation_scope"),
+      scope: { kind: "folder", path: "/other" },
+    },
     "authorisation_scope_does_not_narrow",
   );
   refuse(
-    { ...authorisedBase("refused_authorisation_exceeds_authoriser"), expires: NOW_MS + TWO_HOURS_MS },
+    {
+      ...authorisedBase("refused_authorisation_exceeds_authoriser"),
+      expires: NOW_MS + TWO_HOURS_MS,
+    },
     "authorisation_exceeds_authoriser",
   );
   refuse(
@@ -443,8 +515,103 @@ export function mintFile(): {
     "authorisation_delegation_exceeds",
   );
   refuse(
-    { ...authorisedBase("refused_authorisation_conditions_self_grant"), bearer: "b" },
+    {
+      ...authorisedBase("refused_authorisation_conditions_self_grant"),
+      bearer: "b",
+    },
     "authorisation_conditions_not_satisfied",
+  );
+
+  // A parent whose path ends in a slash names a segment boundary already, so everything under it narrows it, the root `/` included: the rule `scopeNarrows` has in the TypeScript core.
+  mintCase(
+    rootSeed("root_grant_slash_root", {
+      scope: { kind: "folder", path: "/" },
+      delegationsRemaining: ONE_HOP,
+    }),
+  );
+  mintCase(
+    rootSeed("root_grant_trailing_slash", {
+      scope: { kind: "folder", path: "/work/" },
+      delegationsRemaining: ONE_HOP,
+    }),
+  );
+  const slashChild = (
+    name: string,
+    parentName: string,
+    path: string,
+  ): TokenSeed => ({
+    name,
+    issuer: "b",
+    bearer: "c",
+    capability: EXEC,
+    scope: { kind: "folder", path },
+    expires: NOW_MS + HALF_HOUR_MS,
+    delegationsRemaining: NO_HOPS,
+    parentWireHex: wireOf(parentName),
+  });
+  mintCase(
+    slashChild(
+      "delegation_under_the_root_slash",
+      "root_grant_slash_root",
+      "/work/x",
+    ),
+  );
+  mintCase(
+    slashChild(
+      "delegation_to_the_root_slash_itself",
+      "root_grant_slash_root",
+      "/",
+    ),
+  );
+  mintCase(
+    slashChild(
+      "delegation_under_a_trailing_slash",
+      "root_grant_trailing_slash",
+      "/work/sub",
+    ),
+  );
+  mintCase(
+    slashChild(
+      "delegation_to_a_trailing_slash_itself",
+      "root_grant_trailing_slash",
+      "/work/",
+    ),
+  );
+  mintCase(
+    slashChild(
+      "delegation_under_a_trailing_slash_with_a_doubled_slash",
+      "root_grant_trailing_slash",
+      "/work//x",
+    ),
+  );
+  mintCase(
+    slashChild(
+      "refused_scope_parent_name_without_its_slash",
+      "root_grant_trailing_slash",
+      "/work",
+    ),
+    { refusal: "scope_does_not_narrow" },
+  );
+  mintCase(
+    slashChild(
+      "refused_scope_dot_segment_under_the_root_slash",
+      "root_grant_slash_root",
+      "/work/./x",
+    ),
+    { refusal: "scope_does_not_narrow" },
+  );
+
+  addOrderCases(
+    {
+      mintCase,
+      fixture,
+      wireOf,
+      nowMs: NOW_MS,
+      hourMs: HOUR_MS,
+      malformedTokenWire: MALFORMED_TOKEN_WIRE,
+      conditionsFor,
+    },
+    caseNames,
   );
 
   // Revocation entries, each revoking the minted token of the case it is named for.
@@ -463,7 +630,11 @@ export function mintFile(): {
       },
       "revoked-at": revokedAt,
     });
-    vectors.push({ name: `mint_${name}`, message: entry.message, wire_hex: entry.wireHex });
+    vectors.push({
+      name: `mint_${name}`,
+      message: entry.message,
+      wire_hex: entry.wireHex,
+    });
     revocationMints.push({
       name,
       issuer,
@@ -484,7 +655,7 @@ export function mintFile(): {
   const grantQuery = (
     name: string,
     query: { device: string; candidate: Candidate; expected: boolean },
-    options: GrantQueryOptions = {},
+    options: Readonly<GrantQueryOptions> = {},
   ): void => {
     canGrantCases.push({
       name,
@@ -495,18 +666,82 @@ export function mintFile(): {
       expected: query.expected,
     });
   };
-  const yes = (device: string, candidate: Candidate) => ({ device, candidate, expected: true });
-  const no = (device: string, candidate: Candidate) => ({ device, candidate, expected: false });
+  const yes = (device: string, candidate: Candidate) => ({
+    device,
+    candidate,
+    expected: true,
+  });
+  const no = (device: string, candidate: Candidate) => ({
+    device,
+    candidate,
+    expected: false,
+  });
   grantQuery("can_grant_a_narrower_delegation", yes("b", delegation));
   grantQuery("can_grant_not_for_another_device", no("c", delegation));
-  grantQuery("can_grant_not_a_wider_scope", no("b", { ...delegation, scope: { kind: "folder", path: "/other" } }));
-  grantQuery("can_grant_not_a_later_expiry", no("b", { ...delegation, expires: NOW_MS + TWO_HOURS_MS }));
-  grantQuery("can_grant_not_another_verb", no("b", { ...delegation, capability: "fs:read" }));
-  grantQuery("can_grant_not_the_same_hops", no("b", { ...delegation, delegationsRemaining: TWO_HOPS }));
-  grantQuery("can_grant_not_an_expired_candidate", no("b", { ...delegation, expires: NOW_MS - 1 }));
+  grantQuery(
+    "can_grant_not_a_wider_scope",
+    no("b", { ...delegation, scope: { kind: "folder", path: "/other" } }),
+  );
+  grantQuery(
+    "can_grant_not_a_later_expiry",
+    no("b", { ...delegation, expires: NOW_MS + TWO_HOURS_MS }),
+  );
+  grantQuery(
+    "can_grant_not_another_verb",
+    no("b", { ...delegation, capability: "fs:read" }),
+  );
+  grantQuery(
+    "can_grant_not_the_same_hops",
+    no("b", { ...delegation, delegationsRemaining: TWO_HOPS }),
+  );
+  grantQuery(
+    "can_grant_not_an_expired_candidate",
+    no("b", { ...delegation, expires: NOW_MS - 1 }),
+  );
   grantQuery("can_grant_not_from_a_malformed_token", no("b", delegation), {
     held: MALFORMED_TOKEN_WIRE,
   });
+
+  grantQuery(
+    "can_grant_under_the_root_slash",
+    yes("b", {
+      ...delegation,
+      scope: { kind: "folder", path: "/work/x" },
+      delegationsRemaining: NO_HOPS,
+    }),
+    {
+      held: wireOf("root_grant_slash_root"),
+    },
+  );
+  grantQuery(
+    "can_grant_under_a_trailing_slash",
+    yes("b", {
+      ...delegation,
+      scope: { kind: "folder", path: "/work/sub" },
+      delegationsRemaining: NO_HOPS,
+    }),
+    {
+      held: wireOf("root_grant_trailing_slash"),
+    },
+  );
+  grantQuery(
+    "can_grant_not_the_parent_name_without_its_slash",
+    no("b", {
+      ...delegation,
+      scope: { kind: "folder", path: "/work" },
+      delegationsRemaining: NO_HOPS,
+    }),
+    {
+      held: wireOf("root_grant_trailing_slash"),
+    },
+  );
+  grantQuery(
+    "can_grant_not_from_a_token_with_an_invalid_verb",
+    no("b", delegation),
+    {
+      held: wireOf("fixture_token_with_an_invalid_verb"),
+    },
+  );
 
   const authorisation: Candidate = {
     ...delegation,
@@ -516,7 +751,12 @@ export function mintFile(): {
   const viaCases: JsonWire[] = [];
   const viaQuery = (
     name: string,
-    query: { device: string; bearer: string; candidate: Candidate; expected: boolean },
+    query: {
+      device: string;
+      bearer: string;
+      candidate: Candidate;
+      expected: boolean;
+    },
     held: string = grantWire,
   ): void => {
     viaCases.push({
@@ -529,16 +769,50 @@ export function mintFile(): {
       expected: query.expected,
     });
   };
-  const via = (device: string, bearer: string, candidate: Candidate, expected: boolean) => ({
+  const via = (
+    device: string,
+    bearer: string,
+    candidate: Candidate,
+    expected: boolean,
+  ) => ({
     device,
     bearer,
     candidate,
     expected,
   });
-  viaQuery("can_grant_via_to_another_bearer", via("b", "c", authorisation, true));
+  viaQuery(
+    "can_grant_via_to_another_bearer",
+    via("b", "c", authorisation, true),
+  );
   viaQuery("can_grant_via_not_to_itself", via("b", "b", authorisation, false));
-  viaQuery("can_grant_via_not_for_another_device", via("c", "a", authorisation, false));
-  viaQuery("can_grant_via_not_another_verb", via("b", "c", { ...authorisation, capability: "fs:read" }, false));
+  viaQuery(
+    "can_grant_via_not_for_another_device",
+    via("c", "a", authorisation, false),
+  );
+  viaQuery(
+    "can_grant_via_not_another_verb",
+    via("b", "c", { ...authorisation, capability: "fs:read" }, false),
+  );
+  viaQuery(
+    "can_grant_via_not_from_a_parentless_token_of_another_verb",
+    via("b", "c", authorisation, false),
+    wireOf("fixture_authoriser_exec_parentless"),
+  );
+  viaQuery(
+    "can_grant_via_for_any_verb_when_the_grant_names_none",
+    via("b", "c", { ...authorisation, capability: "fs:read" }, true),
+    wireOf("fixture_grant_for_any_verb"),
+  );
+  viaQuery(
+    "can_grant_via_unbounded_under_an_unbounded_grant",
+    via("b", "c", { ...authorisation, delegationsRemaining: null }, true),
+    wireOf("fixture_grant_without_a_bound"),
+  );
+  viaQuery(
+    "can_grant_via_not_with_conditions_that_do_not_decode",
+    via("b", "c", authorisation, false),
+    wireOf("fixture_grant_with_undecodable_conditions"),
+  );
   viaQuery(
     "can_grant_via_not_from_a_token_with_a_parent",
     via("b", "c", authorisation, false),
@@ -568,6 +842,12 @@ export function mintFile(): {
         revocation_mints: revocationMints,
         can_grant: canGrantCases,
         can_grant_via: viaCases,
+        counts: {
+          token_mints: tokenMints.length,
+          revocation_mints: revocationMints.length,
+          can_grant: canGrantCases.length,
+          can_grant_via: viaCases.length,
+        },
       },
     },
   };

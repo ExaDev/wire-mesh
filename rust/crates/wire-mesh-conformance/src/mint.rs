@@ -6,7 +6,7 @@ use serde_json::Value;
 use wire_mesh_core::adapters::NodeIdentity;
 use wire_mesh_core::domain::mint::{
     can_grant, can_grant_via, mint_capability_token, mint_revocation_entry, GrantCandidate,
-    MintCapabilityToken, MintError, NarrowingCandidate,
+    MintCapabilityToken, MintError, MintRefusal, NarrowingCandidate,
 };
 use wire_mesh_core::domain::revocation::RevocationView;
 use wire_mesh_core::domain::tokens::{verify_capability_token, TokenVerdict};
@@ -49,6 +49,8 @@ struct MintCase {
     authorised_by: Option<Vec<u8>>,
     grants_capability: Option<String>,
     requests_capability: Option<String>,
+    /// Set for a case only an implementation with a Rust-sized integer can run; this binary runs every case, and reads the flag so that a field nothing reads cannot hide.
+    rust_only: bool,
     expected: Expected,
 }
 
@@ -85,6 +87,15 @@ struct Section {
     revocations: Vec<RevocationCase>,
     can_grant: Vec<Query>,
     can_grant_via: Vec<Query>,
+    /// The number of cases of each list the header says the file holds.
+    counts: Counts,
+}
+
+struct Counts {
+    token_mints: u64,
+    revocation_mints: u64,
+    can_grant: u64,
+    can_grant_via: u64,
 }
 
 fn scope_of(mut obj: Obj) -> Result<CapabilityScope, String> {
@@ -148,6 +159,7 @@ fn mint_case_of(mut obj: Obj) -> Result<MintCase, String> {
         authorised_by: obj.optional_hex("authorised_by_wire_hex")?,
         grants_capability: obj.optional_string("grants_capability")?,
         requests_capability: obj.optional_string("requests_capability")?,
+        rust_only: obj.boolean("rust_only")?,
         expected: {
             let mut expected = obj.object("expected")?;
             let result = expected.string("result")?;
@@ -168,6 +180,65 @@ fn mint_case_of(mut obj: Obj) -> Result<MintCase, String> {
 }
 
 impl Section {
+    /// Fails when a list holds a different number of cases than the header says, so a case that vanished from the file fails the run.
+    fn check_counts(&self) -> Result<(), String> {
+        for (name, held, recorded) in [
+            ("token_mints", self.mints.len(), self.counts.token_mints),
+            (
+                "revocation_mints",
+                self.revocations.len(),
+                self.counts.revocation_mints,
+            ),
+            ("can_grant", self.can_grant.len(), self.counts.can_grant),
+            (
+                "can_grant_via",
+                self.can_grant_via.len(),
+                self.counts.can_grant_via,
+            ),
+        ] {
+            if held as u64 != recorded {
+                return Err(format!(
+                    "mint.counts.{name} says {recorded} and the list holds {held}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// A case is Rust-only exactly when it expects the refusal only an implementation with a Rust-sized integer gives, so the flag cannot drift from what the case does.
+    fn check_rust_only_cases(&self) -> Result<(), String> {
+        for case in &self.mints {
+            let expects_value_refusal = matches!(&case.expected, Expected::Refused(reason)
+                if reason == MintRefusal::ValueNotRepresentable.as_str());
+            if case.rust_only != expects_value_refusal {
+                return Err(format!(
+                    "case {} is {}rust_only but {}expects value_not_representable",
+                    case.name,
+                    if case.rust_only { "" } else { "not " },
+                    if expects_value_refusal {
+                        ""
+                    } else {
+                        "does not "
+                    },
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Every refusal reason some case expects, so a reason with no case fails the run.
+    fn check_every_refusal_has_a_case(&self) -> Result<(), String> {
+        for refusal in MintRefusal::ALL {
+            let covered = self.mints.iter().any(|case| {
+                matches!(&case.expected, Expected::Refused(reason) if reason == refusal.as_str())
+            });
+            if !covered {
+                return Err(format!("no case expects the refusal {}", refusal.as_str()));
+            }
+        }
+        Ok(())
+    }
+
     fn parse(value: &Value) -> Result<Section, String> {
         let mut root = Obj::new(value, "mint")?;
         if root.integer("layout_version")? != LAYOUT_VERSION {
@@ -230,8 +301,22 @@ impl Section {
                 .into_iter()
                 .map(|obj| query_of(obj, true))
                 .collect::<Result<_, _>>()?,
+            counts: {
+                let mut counts = root.object("counts")?;
+                let parsed = Counts {
+                    token_mints: counts.unsigned("token_mints")?,
+                    revocation_mints: counts.unsigned("revocation_mints")?,
+                    can_grant: counts.unsigned("can_grant")?,
+                    can_grant_via: counts.unsigned("can_grant_via")?,
+                };
+                counts.finish()?;
+                parsed
+            },
         };
         root.finish()?;
+        section.check_counts()?;
+        section.check_every_refusal_has_a_case()?;
+        section.check_rust_only_cases()?;
         Ok(section)
     }
 }
@@ -419,4 +504,27 @@ pub async fn check_section(
         ));
     }
     results
+}
+
+#[cfg(test)]
+mod tests {
+    /// serde_json without its `float_roundtrip` feature can read a decimal literal one unit in the last place away from the nearest double, which is what `JSON.parse` and `str::parse` give. A reader of vector files must agree with the TypeScript at numeric boundaries, so this compares a spread of 17-digit literals with the standard parse: it fails when the feature is off.
+    #[test]
+    fn serde_json_reads_floats_to_the_nearest_double() {
+        let mut state: u64 = 0x2545_f491_4f6c_dd1d;
+        let mut next = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        for _ in 0..20_000 {
+            let digits = next() % 100_000_000_000_000_000;
+            let exponent = i64::try_from(next() % 40).expect("small") - 20;
+            let literal = format!("{digits}e{exponent}");
+            let expected: f64 = literal.parse().expect("a decimal literal");
+            let read: f64 = serde_json::from_str(&literal).expect("valid JSON number");
+            assert_eq!(read.to_bits(), expected.to_bits(), "{literal}");
+        }
+    }
 }
