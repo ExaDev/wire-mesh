@@ -1,3 +1,15 @@
+## [4.1.4](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.1.3...wire-mesh-core%404.1.4) (2026-11-14)
+
+### Styles
+
+* **core:** format the lockfile zod test as the linter does ([252103f](https://github.com/ExaDev/wire-mesh/commit/252103f60eb5b5ee4d1c205c134a2c0eaca5e33b))
+
+### Build System
+
+* **core:** generate the schemas with cddl.js 1.0.11 and drop the repository's own anchoring ([8a15b24](https://github.com/ExaDev/wire-mesh/commit/8a15b24decebfa00945ed634b0cf1ff9ce442ff0))
+* **core:** keep one zod copy on the runtime path ([4b40a3c](https://github.com/ExaDev/wire-mesh/commit/4b40a3cc7a3becf665828272000a5c6edd5dd252))
+* **core:** move to cddl.js 2.0.0, which takes zod as a peer dependency ([4d9c786](https://github.com/ExaDev/wire-mesh/commit/4d9c78618d7d682c84f7602f6ba00f25ad452a88))
+
 ## [4.1.3](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.1.2...wire-mesh-core%404.1.3) (2026-11-14)
 
 ### Bug Fixes

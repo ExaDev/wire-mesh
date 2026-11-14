@@ -1,3 +1,14 @@
+## [2.3.4](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%402.3.3...%40exadev%2Fwire-mesh-cloudflare-hub%402.3.4) (2026-11-14)
+
+### Build System
+
+* **core:** keep one zod copy on the runtime path ([4b40a3c](https://github.com/ExaDev/wire-mesh/commit/4b40a3cc7a3becf665828272000a5c6edd5dd252))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 4.1.4
+
 ## [2.3.3](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%402.3.2...%40exadev%2Fwire-mesh-cloudflare-hub%402.3.3) (2026-11-14)
 
 ### Bug Fixes
