@@ -36,17 +36,18 @@ use std::path::PathBuf;
 
 use wire_mesh_core::adapters::NodeIdentity;
 use wire_mesh_core::domain::{verify_peer_advert, PeerAdvertVerdict};
-use wire_mesh_wire::tokens::CoseSign1;
+use wire_mesh_wire::tokens::{CoseSign1, TokenClaims};
 use wire_mesh_wire::transport::{peer_advert_signing_input, PeerAdvert};
 use wire_mesh_wire::value::{CanonicalMap, CborValue};
 use wire_mesh_wire::{decode_frame, encode_frame, minicbor};
 
 /// The vector files this binary checks, each with the top-level keys it reads.
-const CONSUMED: [&str; 4] = [
+const CONSUMED: [&str; 5] = [
     "frames.v1.json",
     "handshake.v1.json",
     "tokens.v1.json",
     "adverts.v1.json",
+    "invalid-frames.v1.json",
 ];
 
 /// The top-level keys of a consumed file: the ones `validate_vector_file` reads.
@@ -188,6 +189,15 @@ struct Vector {
     wire_hex: String,
     /// adverts.v1.json only: the exact bytes an advert's signature covers, and the verdict a conformant verifier must reach. Both are absent from every other vector file, which has nothing beyond its own wire bytes to pin.
     advert: Option<AdvertExpectations>,
+    /// invalid-frames.v1.json only: what the bytes are, the CDDL rule whose pattern their value breaks, and the same bytes with a valid value. Every vector in that file must be refused, at decoding or at validation, and its control accepted.
+    invalid: Option<InvalidExpectations>,
+}
+
+struct InvalidExpectations {
+    /// `frame` or `token-claims`.
+    kind: String,
+    pattern: String,
+    control_wire_hex: String,
 }
 
 struct AdvertExpectations {
@@ -244,6 +254,24 @@ fn validate_vector_file(parsed: &serde_json::Value, file: &str) -> Vec<Vector> {
                         .get("verifies")
                         .and_then(serde_json::Value::as_bool)
                         .unwrap_or_else(|| fail("advert vector missing verifies")),
+                })
+            } else {
+                None
+            },
+            invalid: if file == "invalid-frames.v1.json" {
+                if v.get("refused").and_then(serde_json::Value::as_bool) != Some(true) {
+                    fail("invalid-frame vector missing refused: true");
+                }
+                let text = |key: &str| -> String {
+                    v.get(key)
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_else(|| fail(&format!("invalid-frame vector missing {key}")))
+                        .to_owned()
+                };
+                Some(InvalidExpectations {
+                    kind: text("kind"),
+                    pattern: text("pattern"),
+                    control_wire_hex: text("valid_control_wire_hex"),
                 })
             } else {
                 None
@@ -317,6 +345,42 @@ async fn check_vector(file: &str, vector: Vector, verifier: &NodeIdentity) -> Re
                 return Err(format!(
                     "verdict mismatch: expected verifies={}, got {verdict:?}",
                     expectations.verifies
+                ));
+            }
+        }
+        "invalid-frames.v1.json" => {
+            let invalid = vector
+                .invalid
+                .as_ref()
+                .ok_or_else(|| "invalid-frame vector without its expectations".to_owned())?;
+            let control = decode_hex(&invalid.control_wire_hex)?;
+            // Refused at decoding or at validation: either way nothing comes out of these bytes. The control, the same bytes with a valid value, must come out, so the refusal is the pattern's.
+            let (refused, control_accepted) = match invalid.kind.as_str() {
+                "frame" => (
+                    decode_frame(&expected)
+                        .ok()
+                        .is_none_or(|frame| frame.validate().is_err()),
+                    decode_frame(&control)
+                        .ok()
+                        .is_some_and(|frame| frame.validate().is_ok()),
+                ),
+                "token-claims" => (
+                    TokenClaims::decode_bytes(&expected)
+                        .ok()
+                        .is_none_or(|claims| claims.validate_verbs().is_err()),
+                    TokenClaims::decode_bytes(&control)
+                        .ok()
+                        .is_some_and(|claims| claims.validate_verbs().is_ok()),
+                ),
+                other => return Err(format!("unknown invalid-vector kind {other}")),
+            };
+            if !refused {
+                return Err(format!("a value breaking {} was accepted", invalid.pattern));
+            }
+            if !control_accepted {
+                return Err(format!(
+                    "the valid control for {} was refused, so the refusal may not be the pattern's",
+                    invalid.pattern
                 ));
             }
         }
