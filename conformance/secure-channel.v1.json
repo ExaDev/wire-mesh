@@ -2563,6 +2563,108 @@
         "receiver_drops_after_open": false
       },
       {
+        "name": "undecodable_invalid_capability_verb_ed25519_a_to_b",
+        "handshake": "ed25519",
+        "sender": "a",
+        "receiver": "b",
+        "steps": [
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458798f6f893ea50247400ceffbcebdf7ad44ea257af3c4af6f7b7f6039a2c06ab5e403ab9ab5712deb80ebec65431bf98a235bf55478f6dc959f2550874c7fd70275ef75eb995df0d3f17b3d710459e39b2887a2deb195024749a55fef9f004ce507ee68ddbd7b22c3a90c818aa57d08a496946dc08a919db93421",
+            "expected": {
+              "result": "undecodable"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae8f6f893ea50247400ceffbcebdf7ad44ea257af3c4af6f7b7f6039a1c06ab5e403ab9ab5712deb80e8ff6b5a1efdcb3096e3497ae7d197863351d98d74cd0869fe27e6844af68ff16e3676194b309e339177dfbb871e4705fc5cf4871743f9143f79d9bc68792aa96e170467978d8cb72af63ecb8a99089aef81d6ea7c0355ee883e1c3e857ed33ad129777894ffaa5c76ff66b2016e56b2d66a6a285289e66d364e2d7e78ea8dca6de4c4d6b34d",
+            "expected": {
+              "result": "replayed"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "1",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572016a6369706865727465787458ae2eec004cb01d906b17c5dcc36aea37ef75cfa7e787868b53407a9413d4beec88e13eaed14a0275bb2420ee16e8a821a6fce01a75949af7e0fa84d90a6cafa26410276cc2e076bf55f1b850c3d047d4a2aec459ec2446fbf644902a7bca52a0eb17cfdc1aef30755fe14fcbe827e992aeffc4952c1dca5e4bd3d46f00ea9d048bd5bc3354416f99869fa271094216fa43b1a8a0fc52e1e561aad3e7b195997e79461d9fb1072f66e11707ee336bbd",
+            "expected": {
+              "result": "opened",
+              "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
+            },
+            "full_width_only": false
+          }
+        ],
+        "receiver_drops_after_open": false
+      },
+      {
+        "name": "undecodable_invalid_namespaced_capability_verb_ed25519_a_to_b",
+        "handshake": "ed25519",
+        "sender": "a",
+        "receiver": "b",
+        "steps": [
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458848f6f893ea50247400ceffbcebdf7ad44ea257af3c4af6f7b7f6039a2c06ab5e403ab9ab5712deb80ebec65431bf98a235bf55478f6dc82f23747dc4260d70835ff20eed35bfadaed203d6507102f902c87b6ccb9821b4f592a57f0890644fe07e778dbe06366d9b9670a0d65fab89bb168e829d241dcbe59b6ad89e51c6ef44ac3442deb",
+            "expected": {
+              "result": "undecodable"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae8f6f893ea50247400ceffbcebdf7ad44ea257af3c4af6f7b7f6039a1c06ab5e403ab9ab5712deb80e8ff6b5a1efdcb3096e3497ae7d197863351d98d74cd0869fe27e6844af68ff16e3676194b309e339177dfbb871e4705fc5cf4871743f9143f79d9bc68792aa96e170467978d8cb72af63ecb8a99089aef81d6ea7c0355ee883e1c3e857ed33ad129777894ffaa5c76ff66b2016e56b2d66a6a285289e66d364e2d7e78ea8dca6de4c4d6b34d",
+            "expected": {
+              "result": "replayed"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "1",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572016a6369706865727465787458ae2eec004cb01d906b17c5dcc36aea37ef75cfa7e787868b53407a9413d4beec88e13eaed14a0275bb2420ee16e8a821a6fce01a75949af7e0fa84d90a6cafa26410276cc2e076bf55f1b850c3d047d4a2aec459ec2446fbf644902a7bca52a0eb17cfdc1aef30755fe14fcbe827e992aeffc4952c1dca5e4bd3d46f00ea9d048bd5bc3354416f99869fa271094216fa43b1a8a0fc52e1e561aad3e7b195997e79461d9fb1072f66e11707ee336bbd",
+            "expected": {
+              "result": "opened",
+              "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
+            },
+            "full_width_only": false
+          }
+        ],
+        "receiver_drops_after_open": false
+      },
+      {
+        "name": "undecodable_invalid_private_use_capability_verb_ed25519_a_to_b",
+        "handshake": "ed25519",
+        "sender": "a",
+        "receiver": "b",
+        "steps": [
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a63697068657274657874587b8f6f893ea50247400ceffbcebdf7ad44ea257af3c4af6f7b7f6039a2c06ab5e403ab9ab5712deb80ebec65431bf98a235bf55478f6dc8b937f53d24c71d75769e921a39957e1c7e07c3f711b4b2f8cff86a6d9aa92134752ee50a8801d55e308ed78c9bb6a7cdee0641c695fea76c569e95ce2c67489c598d437f0",
+            "expected": {
+              "result": "undecodable"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae8f6f893ea50247400ceffbcebdf7ad44ea257af3c4af6f7b7f6039a1c06ab5e403ab9ab5712deb80e8ff6b5a1efdcb3096e3497ae7d197863351d98d74cd0869fe27e6844af68ff16e3676194b309e339177dfbb871e4705fc5cf4871743f9143f79d9bc68792aa96e170467978d8cb72af63ecb8a99089aef81d6ea7c0355ee883e1c3e857ed33ad129777894ffaa5c76ff66b2016e56b2d66a6a285289e66d364e2d7e78ea8dca6de4c4d6b34d",
+            "expected": {
+              "result": "replayed"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "1",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572016a6369706865727465787458ae2eec004cb01d906b17c5dcc36aea37ef75cfa7e787868b53407a9413d4beec88e13eaed14a0275bb2420ee16e8a821a6fce01a75949af7e0fa84d90a6cafa26410276cc2e076bf55f1b850c3d047d4a2aec459ec2446fbf644902a7bca52a0eb17cfdc1aef30755fe14fcbe827e992aeffc4952c1dca5e4bd3d46f00ea9d048bd5bc3354416f99869fa271094216fa43b1a8a0fc52e1e561aad3e7b195997e79461d9fb1072f66e11707ee336bbd",
+            "expected": {
+              "result": "opened",
+              "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
+            },
+            "full_width_only": false
+          }
+        ],
+        "receiver_drops_after_open": false
+      },
+      {
         "name": "kind_outside_obligation_5_ed25519_a_to_b",
         "handshake": "ed25519",
         "sender": "a",
@@ -3262,6 +3364,108 @@
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a636970686572746578745022ac24f47c1ad95bc6a6f2539b7b50a6",
+            "expected": {
+              "result": "undecodable"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aef3941d69f0f8442145c0b6636f133d4ce483604287a6960862d629cf3eab0c8a864c34e1164f0f662f3987ab05f9134c918ade57e2364d51e8cd7f2524b96e0ba8695bea483783cb78651303190287c3b30b6125b1a0e1b3ce65cc930ff69dd2846c991596e3d137197a5fe866fa7a619684b947644d2cd8aac38e02361f309ddf7a89ac6eeee6f8d54d04fdce59115dda830ac58b451d00ff1e98d0847c35dda9d3e75a7a0e4bd329cecd81346d",
+            "expected": {
+              "result": "replayed"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "1",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572016a6369706865727465787458aec92a8ff3741b14ed65c086054b30b667d60882d9518fd77e02594c2c6c17fbede0c842964ead4148d68f40374f1c5c3f0d71eea3f94db9825f95299bf6614b0ad0b082e7c191b16fcae5a1b9d699ba00ae5942c73421a1022e404c5b004851b9f52695a6addf6a660595786347511fa56ab1a49b92f0ed35c9eab3a0c16ef6a08a09f7436ce1f1951197beed337102e6fd69cbae64e8c4441f2deedddceeeefa878b72eb8239579c7bdc25a93a37",
+            "expected": {
+              "result": "opened",
+              "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
+            },
+            "full_width_only": false
+          }
+        ],
+        "receiver_drops_after_open": false
+      },
+      {
+        "name": "undecodable_invalid_capability_verb_ed25519_b_to_a",
+        "handshake": "ed25519",
+        "sender": "b",
+        "receiver": "a",
+        "steps": [
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a636970686572746578745879f3941d69f0f8442145c0b6636f133d4ce483604287a6960862d629cc3eab0c8a864c34e1164f0f662c2a89b200fd525f5c9cc355f33b4f48fecc21e42fa36417b93b56f75f31dfcb6d6e141e0bd182d8a5de602fa3bce1ff9766d78b18f981c1557d9d1485b838377bc96c10490fa37f7351548baae582540b",
+            "expected": {
+              "result": "undecodable"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aef3941d69f0f8442145c0b6636f133d4ce483604287a6960862d629cf3eab0c8a864c34e1164f0f662f3987ab05f9134c918ade57e2364d51e8cd7f2524b96e0ba8695bea483783cb78651303190287c3b30b6125b1a0e1b3ce65cc930ff69dd2846c991596e3d137197a5fe866fa7a619684b947644d2cd8aac38e02361f309ddf7a89ac6eeee6f8d54d04fdce59115dda830ac58b451d00ff1e98d0847c35dda9d3e75a7a0e4bd329cecd81346d",
+            "expected": {
+              "result": "replayed"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "1",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572016a6369706865727465787458aec92a8ff3741b14ed65c086054b30b667d60882d9518fd77e02594c2c6c17fbede0c842964ead4148d68f40374f1c5c3f0d71eea3f94db9825f95299bf6614b0ad0b082e7c191b16fcae5a1b9d699ba00ae5942c73421a1022e404c5b004851b9f52695a6addf6a660595786347511fa56ab1a49b92f0ed35c9eab3a0c16ef6a08a09f7436ce1f1951197beed337102e6fd69cbae64e8c4441f2deedddceeeefa878b72eb8239579c7bdc25a93a37",
+            "expected": {
+              "result": "opened",
+              "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
+            },
+            "full_width_only": false
+          }
+        ],
+        "receiver_drops_after_open": false
+      },
+      {
+        "name": "undecodable_invalid_namespaced_capability_verb_ed25519_b_to_a",
+        "handshake": "ed25519",
+        "sender": "b",
+        "receiver": "a",
+        "steps": [
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a636970686572746578745884f3941d69f0f8442145c0b6636f133d4ce483604287a6960862d629cc3eab0c8a864c34e1164f0f662c2a89b200fd525f5c9cc355f33b5825ecdb7aea30a36e57a96e53bd593bd6d7366e001d421d89dca5ca7227b4a5e9ef186ec89d1ef19ac15c6d9b499dfc2227106756ea0bcf6d67d49aae5e359a6fcf48a1af4a1b7d5f21a1eae29d",
+            "expected": {
+              "result": "undecodable"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aef3941d69f0f8442145c0b6636f133d4ce483604287a6960862d629cf3eab0c8a864c34e1164f0f662f3987ab05f9134c918ade57e2364d51e8cd7f2524b96e0ba8695bea483783cb78651303190287c3b30b6125b1a0e1b3ce65cc930ff69dd2846c991596e3d137197a5fe866fa7a619684b947644d2cd8aac38e02361f309ddf7a89ac6eeee6f8d54d04fdce59115dda830ac58b451d00ff1e98d0847c35dda9d3e75a7a0e4bd329cecd81346d",
+            "expected": {
+              "result": "replayed"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "1",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572016a6369706865727465787458aec92a8ff3741b14ed65c086054b30b667d60882d9518fd77e02594c2c6c17fbede0c842964ead4148d68f40374f1c5c3f0d71eea3f94db9825f95299bf6614b0ad0b082e7c191b16fcae5a1b9d699ba00ae5942c73421a1022e404c5b004851b9f52695a6addf6a660595786347511fa56ab1a49b92f0ed35c9eab3a0c16ef6a08a09f7436ce1f1951197beed337102e6fd69cbae64e8c4441f2deedddceeeefa878b72eb8239579c7bdc25a93a37",
+            "expected": {
+              "result": "opened",
+              "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
+            },
+            "full_width_only": false
+          }
+        ],
+        "receiver_drops_after_open": false
+      },
+      {
+        "name": "undecodable_invalid_private_use_capability_verb_ed25519_b_to_a",
+        "handshake": "ed25519",
+        "sender": "b",
+        "receiver": "a",
+        "steps": [
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a63697068657274657874587bf3941d69f0f8442145c0b6636f133d4ce483604287a6960862d629cc3eab0c8a864c34e1164f0f662c2a89b200fd525f5c9cc355f33b5144a4cf74e421a3310bbf6f1ef75520cbda6a6c1401191d950fa4da6734a4ade1e4dc69909405e087ce566d891294e6257e1371324f276a83712110d37c863b34e56e94c5",
             "expected": {
               "result": "undecodable"
             },
@@ -4013,6 +4217,108 @@
         "receiver_drops_after_open": false
       },
       {
+        "name": "undecodable_invalid_capability_verb_es256_e_to_a",
+        "handshake": "es256",
+        "sender": "e",
+        "receiver": "a",
+        "steps": [
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a636970686572746578745879532951fe144df42d5285ab7f00cd9f0505ca5c6f1b8f8479d4927394473deccdcd09eb7bd7376d03597211852ae18366ffc8257faeb367bb354ce03c80b6f6028effa6743c4ad9bb63d5a4a6105c4e5d87abca9ac8c7023e106fe8c1365defa055418bc71a27062f47d488d91547c3f29cb10cd1dcbc931047",
+            "expected": {
+              "result": "undecodable"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae532951fe144df42d5285ab7f00cd9f0505ca5c6f1b8f8479d4927397473deccdcd09eb7bd7376d035a611f9c2fe5c27532de387dbfbe65a2234dbefd8bacfc1e9fadab692b4c85bb76dea3bb028f4b46917ecb90dadb0272496cf3d92152f3b384508fc6097cef2f2547cbe1aae05d44c2aea79d16adfbce76ed9ccf91f4604ec63bd5b80ce0f960e44d6ce903d95eb5c5b5788281c10da76c1fa93263649c7bfeed58617a21b9b0a30c06f86d42",
+            "expected": {
+              "result": "replayed"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "1",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572016a6369706865727465787458ae2051e9d7a498bbce03d40d2ddb1d38298d2d7bc7a91d601dc9944c8265ecfe196e4eb0e1aab3d66565ee99ffcc5952da8fa59e8cf99b710ab174ee2daf32e87d192d4afd525ccb5f154d6d7baa0bda654b8afbff1c8d13b05a42834ecf8016da3aa456f9c513de80af4b924f4c266e45bde29eba5e1b0644fd47569fdd72dd1b7e7dd9e5f6254904128ef0e40f162f64480db05b301859f50818198dde27128ac8133e8d115be802330b2e1efc0c",
+            "expected": {
+              "result": "opened",
+              "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
+            },
+            "full_width_only": false
+          }
+        ],
+        "receiver_drops_after_open": false
+      },
+      {
+        "name": "undecodable_invalid_namespaced_capability_verb_es256_e_to_a",
+        "handshake": "es256",
+        "sender": "e",
+        "receiver": "a",
+        "steps": [
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a636970686572746578745884532951fe144df42d5285ab7f00cd9f0505ca5c6f1b8f8479d4927394473deccdcd09eb7bd7376d03597211852ae18366ffc8257faeb370d6275bbb329fb6fc429eaaa33e3a40d0a738d5b0a55990455987bfd892dfde0a2e9f67f7d73055f4a05c518d9a02631c3f2c5ac2e3c7d54a4280b0b084d0c28e1a706329b5c3b7d69d61803681",
+            "expected": {
+              "result": "undecodable"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae532951fe144df42d5285ab7f00cd9f0505ca5c6f1b8f8479d4927397473deccdcd09eb7bd7376d035a611f9c2fe5c27532de387dbfbe65a2234dbefd8bacfc1e9fadab692b4c85bb76dea3bb028f4b46917ecb90dadb0272496cf3d92152f3b384508fc6097cef2f2547cbe1aae05d44c2aea79d16adfbce76ed9ccf91f4604ec63bd5b80ce0f960e44d6ce903d95eb5c5b5788281c10da76c1fa93263649c7bfeed58617a21b9b0a30c06f86d42",
+            "expected": {
+              "result": "replayed"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "1",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572016a6369706865727465787458ae2051e9d7a498bbce03d40d2ddb1d38298d2d7bc7a91d601dc9944c8265ecfe196e4eb0e1aab3d66565ee99ffcc5952da8fa59e8cf99b710ab174ee2daf32e87d192d4afd525ccb5f154d6d7baa0bda654b8afbff1c8d13b05a42834ecf8016da3aa456f9c513de80af4b924f4c266e45bde29eba5e1b0644fd47569fdd72dd1b7e7dd9e5f6254904128ef0e40f162f64480db05b301859f50818198dde27128ac8133e8d115be802330b2e1efc0c",
+            "expected": {
+              "result": "opened",
+              "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
+            },
+            "full_width_only": false
+          }
+        ],
+        "receiver_drops_after_open": false
+      },
+      {
+        "name": "undecodable_invalid_private_use_capability_verb_es256_e_to_a",
+        "handshake": "es256",
+        "sender": "e",
+        "receiver": "a",
+        "steps": [
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a63697068657274657874587b532951fe144df42d5285ab7f00cd9f0505ca5c6f1b8f8479d4927394473deccdcd09eb7bd7376d03597211852ae18366ffc8257faeb379b76f4fb53c8eb6a31e88abee74365bcdaa64d7a4b90290598a86afcd81cfd602255b60afde2b44e9af56519fc10b791b662f4ca6173d75aa5855985f0e507a81c2d1b9d5",
+            "expected": {
+              "result": "undecodable"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458ae532951fe144df42d5285ab7f00cd9f0505ca5c6f1b8f8479d4927397473deccdcd09eb7bd7376d035a611f9c2fe5c27532de387dbfbe65a2234dbefd8bacfc1e9fadab692b4c85bb76dea3bb028f4b46917ecb90dadb0272496cf3d92152f3b384508fc6097cef2f2547cbe1aae05d44c2aea79d16adfbce76ed9ccf91f4604ec63bd5b80ce0f960e44d6ce903d95eb5c5b5788281c10da76c1fa93263649c7bfeed58617a21b9b0a30c06f86d42",
+            "expected": {
+              "result": "replayed"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "1",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572016a6369706865727465787458ae2051e9d7a498bbce03d40d2ddb1d38298d2d7bc7a91d601dc9944c8265ecfe196e4eb0e1aab3d66565ee99ffcc5952da8fa59e8cf99b710ab174ee2daf32e87d192d4afd525ccb5f154d6d7baa0bda654b8afbff1c8d13b05a42834ecf8016da3aa456f9c513de80af4b924f4c266e45bde29eba5e1b0644fd47569fdd72dd1b7e7dd9e5f6254904128ef0e40f162f64480db05b301859f50818198dde27128ac8133e8d115be802330b2e1efc0c",
+            "expected": {
+              "result": "opened",
+              "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
+            },
+            "full_width_only": false
+          }
+        ],
+        "receiver_drops_after_open": false
+      },
+      {
         "name": "kind_outside_obligation_5_es256_e_to_a",
         "handshake": "es256",
         "sender": "e",
@@ -4686,6 +4992,108 @@
           {
             "counter": "0",
             "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787450f5bac280d156b1ff526757110447202a",
+            "expected": {
+              "result": "undecodable"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aeeadc2951a03260ba4f324227c09c13c3dc97d0e6eb15900df70b66911dce264e76040d8d7cedf2b324c9579514be8ce0f722f02140787a22b69c69f49809eaf9b246a894f40a9995682f930b11ba01513cb37b4c99fb56b8b63bb3923f293ec44b5844a5b80416f89367409f4ce3fe7bdbf9011c831930075fb1ca9f05915afdb522db4f7798882515ee2861734e56592266e4a8ed8ae0ebbfad33a399bedc1dda6cd4f2bf8dee3255dece331461",
+            "expected": {
+              "result": "replayed"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "1",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572016a6369706865727465787458aee53b9464672625d742bbc9de177e1ad77fdde080b84b29db43ff01350d4c8de0911e2a5d7fe03fdc9525c8d29c3955dfe2573fb154dc953a0f526487b34b520908ecb627b081549b07d00988379e79b59e646c05c64ed28a5513d0a0273bb2261f1df5b26d6cfe18773f1434605fb65d809f7cf8c23129bc15714a215c18a5f4d03ef7268a9ff0a9d9413dabd510127e60106c26e74aedf7ead7bdb3300bdc0d08891470afefbaebd7da3c8c9ff0",
+            "expected": {
+              "result": "opened",
+              "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
+            },
+            "full_width_only": false
+          }
+        ],
+        "receiver_drops_after_open": false
+      },
+      {
+        "name": "undecodable_invalid_capability_verb_es256_a_to_e",
+        "handshake": "es256",
+        "sender": "a",
+        "receiver": "e",
+        "steps": [
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a636970686572746578745879eadc2951a03260ba4f324227c09c13c3dc97d0e6eb15900df70b66921dce264e76040d8d7cedf2b327da598c11bacdf33a34ed235175783ba09d37359313e0e5a314a589e30cc5957d2494160369044a2a667a468be756f4ef38a88a282622d79a4940a4ab5ffff8f15ba33c2339d69535e45e847ed859d9c1",
+            "expected": {
+              "result": "undecodable"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aeeadc2951a03260ba4f324227c09c13c3dc97d0e6eb15900df70b66911dce264e76040d8d7cedf2b324c9579514be8ce0f722f02140787a22b69c69f49809eaf9b246a894f40a9995682f930b11ba01513cb37b4c99fb56b8b63bb3923f293ec44b5844a5b80416f89367409f4ce3fe7bdbf9011c831930075fb1ca9f05915afdb522db4f7798882515ee2861734e56592266e4a8ed8ae0ebbfad33a399bedc1dda6cd4f2bf8dee3255dece331461",
+            "expected": {
+              "result": "replayed"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "1",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572016a6369706865727465787458aee53b9464672625d742bbc9de177e1ad77fdde080b84b29db43ff01350d4c8de0911e2a5d7fe03fdc9525c8d29c3955dfe2573fb154dc953a0f526487b34b520908ecb627b081549b07d00988379e79b59e646c05c64ed28a5513d0a0273bb2261f1df5b26d6cfe18773f1434605fb65d809f7cf8c23129bc15714a215c18a5f4d03ef7268a9ff0a9d9413dabd510127e60106c26e74aedf7ead7bdb3300bdc0d08891470afefbaebd7da3c8c9ff0",
+            "expected": {
+              "result": "opened",
+              "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
+            },
+            "full_width_only": false
+          }
+        ],
+        "receiver_drops_after_open": false
+      },
+      {
+        "name": "undecodable_invalid_namespaced_capability_verb_es256_a_to_e",
+        "handshake": "es256",
+        "sender": "a",
+        "receiver": "e",
+        "steps": [
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a636970686572746578745884eadc2951a03260ba4f324227c09c13c3dc97d0e6eb15900df70b66921dce264e76040d8d7cedf2b327da598c11bacdf33a34ed2351756f56b28a6c3b8c13eaa5b341a0c3e506cc89262480154aa50f4e2a72684e9cfe5ee46030b79c2e2e39d7935946f9b31be5e89a7a499d21d6e97d99e71605891ecc47b0f360e4eac145782f9df75b",
+            "expected": {
+              "result": "undecodable"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a6369706865727465787458aeeadc2951a03260ba4f324227c09c13c3dc97d0e6eb15900df70b66911dce264e76040d8d7cedf2b324c9579514be8ce0f722f02140787a22b69c69f49809eaf9b246a894f40a9995682f930b11ba01513cb37b4c99fb56b8b63bb3923f293ec44b5844a5b80416f89367409f4ce3fe7bdbf9011c831930075fb1ca9f05915afdb522db4f7798882515ee2861734e56592266e4a8ed8ae0ebbfad33a399bedc1dda6cd4f2bf8dee3255dece331461",
+            "expected": {
+              "result": "replayed"
+            },
+            "full_width_only": false
+          },
+          {
+            "counter": "1",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572016a6369706865727465787458aee53b9464672625d742bbc9de177e1ad77fdde080b84b29db43ff01350d4c8de0911e2a5d7fe03fdc9525c8d29c3955dfe2573fb154dc953a0f526487b34b520908ecb627b081549b07d00988379e79b59e646c05c64ed28a5513d0a0273bb2261f1df5b26d6cfe18773f1434605fb65d809f7cf8c23129bc15714a215c18a5f4d03ef7268a9ff0a9d9413dabd510127e60106c26e74aedf7ead7bdb3300bdc0d08891470afefbaebd7da3c8c9ff0",
+            "expected": {
+              "result": "opened",
+              "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a2647665726268657865633a70747966706172616d73a763637764652f776f726b63656e76a064617267768064636f6c73185064726f777318186476657262697074792e737061776e657368656c6c672f62696e2f73686a726571756573742d696407"
+            },
+            "full_width_only": false
+          }
+        ],
+        "receiver_drops_after_open": false
+      },
+      {
+        "name": "undecodable_invalid_private_use_capability_verb_es256_a_to_e",
+        "handshake": "es256",
+        "sender": "a",
+        "receiver": "e",
+        "steps": [
+          {
+            "counter": "0",
+            "secure_data_wire_hex": "a364747970656b7365637572652d6461746167636f756e746572006a63697068657274657874587beadc2951a03260ba4f324227c09c13c3dc97d0e6eb15900df70b66921dce264e76040d8d7cedf2b327da598c11bacdf33a34ed2351756637fa9e62359d13b5f9a540ed89e91dd1847a26940911a5139d2b627d5d8cf656efa437ef95353f24d8995954a2ba01e2b1996c2d4eb4d9049e970cd20bba77b9acc515f3",
             "expected": {
               "result": "undecodable"
             },

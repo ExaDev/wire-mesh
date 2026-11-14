@@ -2,6 +2,7 @@
   "extends": "./tsconfig.json",
   "include": [
     "adverts.ts",
+    "invalid-frame-vectors.ts",
     "secure-channel-crypto.ts",
     "secure-channel-references.ts",
     "secure-channel-vectors.ts",

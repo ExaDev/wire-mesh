@@ -1,0 +1,413 @@
+{
+  "protocol_version": 1,
+  "description": "Values outside the grammar of the spec's `.regexp` patterns, for protocol version 1. The control matches the whole string, so a conformant decoder refuses every vector here, at decoding or at validation: a capability verb with two colons, a trailing space or newline or a leading hyphen, a domain with trailing text, a trailing newline or an embedded separator, and the three verb fields of token claims. Each vector is well-formed CBOR in the shape of a valid frame (kind frame) or token-claims map (kind token-claims) with one such value, carries refused: true and the CDDL rule it breaks, and carries valid_control_wire_hex, the same bytes with a value inside the grammar, which every consumer must accept so that a vector cannot be refused for another reason. message and wire_hex follow the shared round-trip contract. The room-path and device-id-hex patterns occur only in the room-notice claims, which the implementations' own schema and parser tests pin.",
+  "vectors": [
+    {
+      "name": "manage_request_v1_invalid_capability_verb",
+      "message": {
+        "type": "manage-request",
+        "request-id": 1,
+        "command": {
+          "verb": "two:colons:here",
+          "params": {
+            "verb": "exec.list"
+          }
+        },
+        "scope": {
+          "kind": "folder"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e6466666f6c64657267636f6d6d616e64a264766572626f74776f3a636f6c6f6e733a6865726566706172616d73a1647665726269657865632e6c6973746a726571756573742d696401",
+      "kind": "frame",
+      "pattern": "core-capability",
+      "refused": true,
+      "valid_control_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e6466666f6c64657267636f6d6d616e64a2647665726268657865633a70747966706172616d73a1647665726269657865632e6c6973746a726571756573742d696401"
+    },
+    {
+      "name": "manage_request_v1_invalid_capability_verb_trailing_text",
+      "message": {
+        "type": "manage-request",
+        "request-id": 1,
+        "command": {
+          "verb": "exec:pty extra",
+          "params": {
+            "verb": "exec.list"
+          }
+        },
+        "scope": {
+          "kind": "folder"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e6466666f6c64657267636f6d6d616e64a264766572626e657865633a70747920657874726166706172616d73a1647665726269657865632e6c6973746a726571756573742d696401",
+      "kind": "frame",
+      "pattern": "core-capability",
+      "refused": true,
+      "valid_control_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e6466666f6c64657267636f6d6d616e64a2647665726268657865633a70747966706172616d73a1647665726269657865632e6c6973746a726571756573742d696401"
+    },
+    {
+      "name": "manage_request_v1_invalid_capability_verb_trailing_newline",
+      "message": {
+        "type": "manage-request",
+        "request-id": 1,
+        "command": {
+          "verb": "exec:pty\n",
+          "params": {
+            "verb": "exec.list"
+          }
+        },
+        "scope": {
+          "kind": "folder"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e6466666f6c64657267636f6d6d616e64a2647665726269657865633a7074790a66706172616d73a1647665726269657865632e6c6973746a726571756573742d696401",
+      "kind": "frame",
+      "pattern": "core-capability",
+      "refused": true,
+      "valid_control_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e6466666f6c64657267636f6d6d616e64a2647665726268657865633a70747966706172616d73a1647665726269657865632e6c6973746a726571756573742d696401"
+    },
+    {
+      "name": "manage_request_v1_invalid_capability_verb_leading_hyphen",
+      "message": {
+        "type": "manage-request",
+        "request-id": 1,
+        "command": {
+          "verb": "-x:pty",
+          "params": {
+            "verb": "exec.list"
+          }
+        },
+        "scope": {
+          "kind": "folder"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e6466666f6c64657267636f6d6d616e64a26476657262662d783a70747966706172616d73a1647665726269657865632e6c6973746a726571756573742d696401",
+      "kind": "frame",
+      "pattern": "core-capability",
+      "refused": true,
+      "valid_control_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e6466666f6c64657267636f6d6d616e64a2647665726268657865633a70747966706172616d73a1647665726269657865632e6c6973746a726571756573742d696401"
+    },
+    {
+      "name": "manage_request_v1_invalid_capability_verb_digit_action",
+      "message": {
+        "type": "manage-request",
+        "request-id": 1,
+        "command": {
+          "verb": "exec:1",
+          "params": {
+            "verb": "exec.list"
+          }
+        },
+        "scope": {
+          "kind": "folder"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e6466666f6c64657267636f6d6d616e64a2647665726266657865633a3166706172616d73a1647665726269657865632e6c6973746a726571756573742d696401",
+      "kind": "frame",
+      "pattern": "core-capability",
+      "refused": true,
+      "valid_control_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e6466666f6c64657267636f6d6d616e64a2647665726268657865633a70747966706172616d73a1647665726269657865632e6c6973746a726571756573742d696401"
+    },
+    {
+      "name": "manage_request_v1_invalid_namespaced_capability_verb",
+      "message": {
+        "type": "manage-request",
+        "request-id": 1,
+        "command": {
+          "verb": "example.com/tool:run:more",
+          "params": {
+            "verb": "exec.list"
+          }
+        },
+        "scope": {
+          "kind": "folder"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e6466666f6c64657267636f6d6d616e64a2647665726278196578616d706c652e636f6d2f746f6f6c3a72756e3a6d6f726566706172616d73a1647665726269657865632e6c6973746a726571756573742d696401",
+      "kind": "frame",
+      "pattern": "namespaced-capability",
+      "refused": true,
+      "valid_control_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e6466666f6c64657267636f6d6d616e64a26476657262746578616d706c652e636f6d2f746f6f6c3a72756e66706172616d73a1647665726269657865632e6c6973746a726571756573742d696401"
+    },
+    {
+      "name": "manage_request_v1_invalid_namespaced_capability_verb_leading_text",
+      "message": {
+        "type": "manage-request",
+        "request-id": 1,
+        "command": {
+          "verb": "!example.com/tool:run",
+          "params": {
+            "verb": "exec.list"
+          }
+        },
+        "scope": {
+          "kind": "folder"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e6466666f6c64657267636f6d6d616e64a2647665726275216578616d706c652e636f6d2f746f6f6c3a72756e66706172616d73a1647665726269657865632e6c6973746a726571756573742d696401",
+      "kind": "frame",
+      "pattern": "namespaced-capability",
+      "refused": true,
+      "valid_control_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e6466666f6c64657267636f6d6d616e64a26476657262746578616d706c652e636f6d2f746f6f6c3a72756e66706172616d73a1647665726269657865632e6c6973746a726571756573742d696401"
+    },
+    {
+      "name": "manage_request_v1_invalid_namespaced_capability_verb_trailing_newline",
+      "message": {
+        "type": "manage-request",
+        "request-id": 1,
+        "command": {
+          "verb": "example.com/tool:run\n",
+          "params": {
+            "verb": "exec.list"
+          }
+        },
+        "scope": {
+          "kind": "folder"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e6466666f6c64657267636f6d6d616e64a26476657262756578616d706c652e636f6d2f746f6f6c3a72756e0a66706172616d73a1647665726269657865632e6c6973746a726571756573742d696401",
+      "kind": "frame",
+      "pattern": "namespaced-capability",
+      "refused": true,
+      "valid_control_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e6466666f6c64657267636f6d6d616e64a26476657262746578616d706c652e636f6d2f746f6f6c3a72756e66706172616d73a1647665726269657865632e6c6973746a726571756573742d696401"
+    },
+    {
+      "name": "manage_request_v1_invalid_private_use_capability_verb",
+      "message": {
+        "type": "manage-request",
+        "request-id": 1,
+        "command": {
+          "verb": "x-local:run extra",
+          "params": {
+            "verb": "exec.list"
+          }
+        },
+        "scope": {
+          "kind": "folder"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e6466666f6c64657267636f6d6d616e64a2647665726271782d6c6f63616c3a72756e20657874726166706172616d73a1647665726269657865632e6c6973746a726571756573742d696401",
+      "kind": "frame",
+      "pattern": "private-use-capability",
+      "refused": true,
+      "valid_control_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e6466666f6c64657267636f6d6d616e64a264766572626b782d6c6f63616c3a72756e66706172616d73a1647665726269657865632e6c6973746a726571756573742d696401"
+    },
+    {
+      "name": "manage_request_v1_invalid_private_use_capability_verb_trailing_newline",
+      "message": {
+        "type": "manage-request",
+        "request-id": 1,
+        "command": {
+          "verb": "x-local:run\n",
+          "params": {
+            "verb": "exec.list"
+          }
+        },
+        "scope": {
+          "kind": "folder"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e6466666f6c64657267636f6d6d616e64a264766572626c782d6c6f63616c3a72756e0a66706172616d73a1647665726269657865632e6c6973746a726571756573742d696401",
+      "kind": "frame",
+      "pattern": "private-use-capability",
+      "refused": true,
+      "valid_control_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a1646b696e6466666f6c64657267636f6d6d616e64a264766572626b782d6c6f63616c3a72756e66706172616d73a1647665726269657865632e6c6973746a726571756573742d696401"
+    },
+    {
+      "name": "handshake_v1_invalid_namespaced_domain_trailing_text",
+      "message": {
+        "type": "handshake",
+        "version": 1,
+        "domains": [
+          "example.com/thing extra"
+        ]
+      },
+      "wire_hex": "a364747970656968616e647368616b6567646f6d61696e7381776578616d706c652e636f6d2f7468696e672065787472616776657273696f6e01",
+      "kind": "frame",
+      "pattern": "namespaced-domain-id",
+      "refused": true,
+      "valid_control_wire_hex": "a364747970656968616e647368616b6567646f6d61696e7381716578616d706c652e636f6d2f7468696e676776657273696f6e01"
+    },
+    {
+      "name": "handshake_v1_invalid_namespaced_domain_leading_text",
+      "message": {
+        "type": "handshake",
+        "version": 1,
+        "domains": [
+          "!example.com/thing"
+        ]
+      },
+      "wire_hex": "a364747970656968616e647368616b6567646f6d61696e738172216578616d706c652e636f6d2f7468696e676776657273696f6e01",
+      "kind": "frame",
+      "pattern": "namespaced-domain-id",
+      "refused": true,
+      "valid_control_wire_hex": "a364747970656968616e647368616b6567646f6d61696e7381716578616d706c652e636f6d2f7468696e676776657273696f6e01"
+    },
+    {
+      "name": "handshake_v1_invalid_namespaced_domain_trailing_newline",
+      "message": {
+        "type": "handshake",
+        "version": 1,
+        "domains": [
+          "example.com/thing\n"
+        ]
+      },
+      "wire_hex": "a364747970656968616e647368616b6567646f6d61696e7381726578616d706c652e636f6d2f7468696e670a6776657273696f6e01",
+      "kind": "frame",
+      "pattern": "namespaced-domain-id",
+      "refused": true,
+      "valid_control_wire_hex": "a364747970656968616e647368616b6567646f6d61696e7381716578616d706c652e636f6d2f7468696e676776657273696f6e01"
+    },
+    {
+      "name": "handshake_v1_invalid_namespaced_domain_embedded_separator",
+      "message": {
+        "type": "handshake",
+        "version": 1,
+        "domains": [
+          "example.com/thing/more"
+        ]
+      },
+      "wire_hex": "a364747970656968616e647368616b6567646f6d61696e7381766578616d706c652e636f6d2f7468696e672f6d6f72656776657273696f6e01",
+      "kind": "frame",
+      "pattern": "namespaced-domain-id",
+      "refused": true,
+      "valid_control_wire_hex": "a364747970656968616e647368616b6567646f6d61696e7381716578616d706c652e636f6d2f7468696e676776657273696f6e01"
+    },
+    {
+      "name": "handshake_v1_invalid_private_use_domain",
+      "message": {
+        "type": "handshake",
+        "version": 1,
+        "domains": [
+          "x-thing extra"
+        ]
+      },
+      "wire_hex": "a364747970656968616e647368616b6567646f6d61696e73816d782d7468696e672065787472616776657273696f6e01",
+      "kind": "frame",
+      "pattern": "private-use-domain-id",
+      "refused": true,
+      "valid_control_wire_hex": "a364747970656968616e647368616b6567646f6d61696e738167782d7468696e676776657273696f6e01"
+    },
+    {
+      "name": "handshake_v1_invalid_private_use_domain_trailing_newline",
+      "message": {
+        "type": "handshake",
+        "version": 1,
+        "domains": [
+          "x-thing\n"
+        ]
+      },
+      "wire_hex": "a364747970656968616e647368616b6567646f6d61696e738168782d7468696e670a6776657273696f6e01",
+      "kind": "frame",
+      "pattern": "private-use-domain-id",
+      "refused": true,
+      "valid_control_wire_hex": "a364747970656968616e647368616b6567646f6d61696e738167782d7468696e676776657273696f6e01"
+    },
+    {
+      "name": "handshake_v1_invalid_private_use_domain_embedded_separator",
+      "message": {
+        "type": "handshake",
+        "version": 1,
+        "domains": [
+          "x-thing/more"
+        ]
+      },
+      "wire_hex": "a364747970656968616e647368616b6567646f6d61696e73816c782d7468696e672f6d6f72656776657273696f6e01",
+      "kind": "frame",
+      "pattern": "private-use-domain-id",
+      "refused": true,
+      "valid_control_wire_hex": "a364747970656968616e647368616b6567646f6d61696e738167782d7468696e676776657273696f6e01"
+    },
+    {
+      "name": "token_claims_v1_invalid_capability",
+      "message": {
+        "token-id": {
+          "hex": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        },
+        "issuer": {
+          "hex": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+        },
+        "issuer-key": {
+          "alg": -8,
+          "public-key": {
+            "hex": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+          }
+        },
+        "bearer": {
+          "hex": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
+        },
+        "capability": "two:colons:here",
+        "scope": {
+          "kind": "folder"
+        },
+        "expires": 1861920000000
+      },
+      "wire_hex": "a76573636f7065a1646b696e6466666f6c646572666265617265725820d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4666973737565725820b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b267657870697265731b000001b18314880068746f6b656e2d696450a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a16a6361706162696c6974796f74776f3a636f6c6f6e733a686572656a6973737565722d6b6579a263616c67276a7075626c69632d6b65795820c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+      "kind": "token-claims",
+      "pattern": "capability-verb",
+      "refused": true,
+      "valid_control_wire_hex": "a76573636f7065a1646b696e6466666f6c646572666265617265725820d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4666973737565725820b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b267657870697265731b000001b18314880068746f6b656e2d696450a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a16a6361706162696c69747968657865633a7074796a6973737565722d6b6579a263616c67276a7075626c69632d6b65795820c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+    },
+    {
+      "name": "token_claims_v1_invalid_grants_capability",
+      "message": {
+        "token-id": {
+          "hex": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        },
+        "issuer": {
+          "hex": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+        },
+        "issuer-key": {
+          "alg": -8,
+          "public-key": {
+            "hex": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+          }
+        },
+        "bearer": {
+          "hex": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
+        },
+        "capability": "exec:pty",
+        "grants-capability": "exec:pty extra",
+        "scope": {
+          "kind": "folder"
+        },
+        "expires": 1861920000000
+      },
+      "wire_hex": "a86573636f7065a1646b696e6466666f6c646572666265617265725820d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4666973737565725820b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b267657870697265731b000001b18314880068746f6b656e2d696450a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a16a6361706162696c69747968657865633a7074796a6973737565722d6b6579a263616c67276a7075626c69632d6b65795820c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3716772616e74732d6361706162696c6974796e657865633a707479206578747261",
+      "kind": "token-claims",
+      "pattern": "capability-verb",
+      "refused": true,
+      "valid_control_wire_hex": "a86573636f7065a1646b696e6466666f6c646572666265617265725820d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4666973737565725820b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b267657870697265731b000001b18314880068746f6b656e2d696450a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a16a6361706162696c69747968657865633a7074796a6973737565722d6b6579a263616c67276a7075626c69632d6b65795820c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3716772616e74732d6361706162696c69747968657865633a707479"
+    },
+    {
+      "name": "token_claims_v1_invalid_requests_capability",
+      "message": {
+        "token-id": {
+          "hex": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        },
+        "issuer": {
+          "hex": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+        },
+        "issuer-key": {
+          "alg": -8,
+          "public-key": {
+            "hex": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+          }
+        },
+        "bearer": {
+          "hex": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
+        },
+        "capability": "exec:pty",
+        "requests-capability": "-x:pty",
+        "scope": {
+          "kind": "folder"
+        },
+        "expires": 1861920000000
+      },
+      "wire_hex": "a86573636f7065a1646b696e6466666f6c646572666265617265725820d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4666973737565725820b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b267657870697265731b000001b18314880068746f6b656e2d696450a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a16a6361706162696c69747968657865633a7074796a6973737565722d6b6579a263616c67276a7075626c69632d6b65795820c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c37372657175657374732d6361706162696c697479662d783a707479",
+      "kind": "token-claims",
+      "pattern": "capability-verb",
+      "refused": true,
+      "valid_control_wire_hex": "a86573636f7065a1646b696e6466666f6c646572666265617265725820d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4666973737565725820b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b267657870697265731b000001b18314880068746f6b656e2d696450a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a16a6361706162696c69747968657865633a7074796a6973737565722d6b6579a263616c67276a7075626c69632d6b65795820c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c37372657175657374732d6361706162696c69747968657865633a707479"
+    }
+  ]
+}

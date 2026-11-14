@@ -47,6 +47,7 @@ import {
   jsonField,
   LAYOUT_VERSION,
 } from "./secure-channel-references.ts";
+import { SEALED_INVALID_FRAMES } from "./invalid-frame-vectors.ts";
 
 // An algorithm no verifier implements
 const UNKNOWN_ALG = -999;
@@ -316,6 +317,8 @@ function undecodablePlaintexts(): readonly (readonly [string, Buffer])[] {
     ["indefinite_length_map", Buffer.from("bf64747970656470696e67ff", "hex")],
     ["trailing_bytes", Buffer.concat([ping, Buffer.from([0])])],
     ["empty_plaintext", Buffer.alloc(0)],
+    // A manage-request whose capability verb only an unanchored pattern accepts, one per pattern the verb can break: well-formed CBOR in a valid shape, so it fails only the validation a decoder runs after decoding, and a substring match would let it open.
+    ...SEALED_INVALID_FRAMES,
   ];
 }
 

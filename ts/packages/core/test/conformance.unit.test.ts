@@ -8,6 +8,7 @@ import {
   capabilityTokenSchema,
   frameSchema,
   peerAdvertSchema,
+  tokenClaimsSchema,
 } from "../src/generated/protocol.js";
 import {
   deriveDeviceId,
@@ -17,6 +18,7 @@ import {
   peerAdvertSigningInput,
   verifyPeerAdvert,
 } from "../src/domain/peer-advert.js";
+import { tryDecodeFrame } from "../src/adapters/frame-codec.js";
 
 interface Vector {
   name: string;
@@ -88,6 +90,7 @@ const CHECKED_HERE = [
   "handshake.v1.json",
   "tokens.v1.json",
   "adverts.v1.json",
+  "invalid-frames.v1.json",
 ];
 const CHECKED_ELSEWHERE: Readonly<Record<string, string>> = {
   "secure-channel.v1.json": "conformance-secure-channel.unit.test.ts",
@@ -131,6 +134,78 @@ describe("frame vectors decode and re-encode byte-exactly through frameSchema", 
   ]) {
     it(vector.name, () => {
       roundTrip(vector, frameSchema);
+    });
+  }
+});
+
+/** conformance/invalid-frames.v1.json's vector shape: bytes no conformant decoder produces a frame or claims from, the CDDL rule whose pattern their value breaks, and the same bytes with a valid value. */
+interface InvalidFrameVector extends Vector {
+  kind: "frame" | "token-claims";
+  pattern: string;
+  refused: boolean;
+  valid_control_wire_hex: string;
+}
+
+function isInvalidFrameVector(
+  value: Readonly<Vector>,
+): value is InvalidFrameVector {
+  return (
+    "kind" in value &&
+    (value.kind === "frame" || value.kind === "token-claims") &&
+    "pattern" in value &&
+    typeof value.pattern === "string" &&
+    "refused" in value &&
+    typeof value.refused === "boolean" &&
+    "valid_control_wire_hex" in value &&
+    typeof value.valid_control_wire_hex === "string"
+  );
+}
+
+describe("invalid-frame vectors are refused, and their valid controls are accepted", () => {
+  const vectors = readVectors("invalid-frames.v1.json");
+
+  it("has vectors", () => {
+    expect(vectors.length).toBeGreaterThan(0);
+  });
+
+  for (const vector of vectors) {
+    it(vector.name, () => {
+      expect(
+        isInvalidFrameVector(vector),
+        "kind, pattern, refused, control",
+      ).toBe(true);
+      if (!isInvalidFrameVector(vector)) return;
+      expect(vector.refused).toBe(true);
+
+      const invalid = decode(
+        Uint8Array.from(Buffer.from(vector.wire_hex, "hex")),
+        cdeDecodeOptions,
+      );
+      const control = decode(
+        Uint8Array.from(Buffer.from(vector.valid_control_wire_hex, "hex")),
+        cdeDecodeOptions,
+      );
+      // Well-formed CBOR in the shape of the thing, so only the pattern can be what refuses it, and the control shows that.
+      const schema = vector.kind === "frame" ? frameSchema : tokenClaimsSchema;
+      expect(
+        schema.safeParse(invalid).success,
+        `${vector.name} breaks ${vector.pattern}`,
+      ).toBe(false);
+      expect(schema.safeParse(control).success, `${vector.name} control`).toBe(
+        true,
+      );
+      if (vector.kind === "frame") {
+        expect(
+          tryDecodeFrame(Uint8Array.from(Buffer.from(vector.wire_hex, "hex"))),
+          vector.name,
+        ).toBeNull();
+        expect(
+          tryDecodeFrame(
+            Uint8Array.from(Buffer.from(vector.valid_control_wire_hex, "hex")),
+          ),
+          `${vector.name} control`,
+        ).not.toBeNull();
+      }
     });
   }
 });
