@@ -5,8 +5,10 @@ import {
   FAULT_REPORT_INTERVAL_MS,
   MAX_FAULT_REPORTS_PER_INTERVAL,
   MAX_TRACKED_FAULT_SOURCES,
+  MAX_FAULT_TEXT_CHARS,
   createFaultReporter,
   deliverContained,
+  describeFault,
 } from "../src/domain/fault-report.js";
 
 const BURST = 1_000;
@@ -49,7 +51,8 @@ describe("createFaultReporter", () => {
     expect(told).toEqual([0]);
     await vi.advanceTimersByTimeAsync(FAULT_REPORT_INTERVAL_MS);
 
-    expect(told).toEqual([0, BURST - 1]);
+    // The last fault of the burst is the one the second report carries; the others in between are what it counts.
+    expect(told).toEqual([0, BURST - 2]);
   });
 
   it("keeps one source's faults from hiding another's", () => {
@@ -99,7 +102,7 @@ describe("createFaultReporter", () => {
     expect(told.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("delivers a source's pending count when its window is evicted for a newer source", () => {
+  it("adds the pending count of a source it stopped tracking to the next report it delivers", () => {
     let clock = 0;
     const report = createFaultReporter(() => clock);
     const told: [string, number][] = [];
@@ -110,15 +113,62 @@ describe("createFaultReporter", () => {
       };
     report("first", deliverFor("first"));
     report("first", deliverFor("first"));
-    for (let source = 0; source < MAX_TRACKED_FAULT_SOURCES; source += 1) {
-      clock += 1;
-      report(`other-${String(source)}`, deliverFor("other"));
+    // Each source arrives in an interval of its own, so the budget never refuses one; once there are more than it tracks, the oldest, "first", is forgotten with one fault still pending.
+    for (let source = 0; source <= MAX_TRACKED_FAULT_SOURCES; source += 1) {
+      clock += FAULT_REPORT_INTERVAL_MS;
+      report(`other-${String(source)}`, deliverFor(`other-${String(source)}`));
     }
 
-    expect(told.filter(([name]) => name === "first")).toEqual([
-      ["first", 0],
-      ["first", 1],
-    ]);
+    const counted = told
+      .filter(([name]) => name.startsWith("other-"))
+      .map(([, suppressed]) => suppressed)
+      .filter((suppressed) => suppressed > 0);
+    expect(counted).toEqual([1]);
+  });
+
+  it("does not throw where a timer handle is a number, as in a browser or a Worker", () => {
+    let nextHandle = 0;
+    vi.stubGlobal("setTimeout", () => {
+      nextHandle += 1;
+
+      return nextHandle;
+    });
+    try {
+      const report = createFaultReporter(() => 0);
+      const told: number[] = [];
+      const deliver = (suppressed: number): void => {
+        told.push(suppressed);
+      };
+
+      report("peer", deliver);
+      expect(() => {
+        report("peer", deliver);
+        report("peer", deliver);
+      }).not.toThrow();
+
+      expect(told).toEqual([0]);
+      expect(nextHandle).toBe(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("counts the faults between two reports, not the one a report carries", async () => {
+    vi.useFakeTimers();
+    const report = createFaultReporter(() => performance.now());
+    const told: number[] = [];
+    const deliver = (suppressed: number): void => {
+      told.push(suppressed);
+    };
+
+    report("peer", deliver);
+    report("peer", deliver);
+    report("peer", deliver);
+    report("peer", deliver);
+    await vi.advanceTimersByTimeAsync(FAULT_REPORT_INTERVAL_MS);
+
+    // One fault reported at once, three after it inside the interval: the report that ends it carries the last and counts the two before.
+    expect(told).toEqual([0, 2]);
   });
 });
 
@@ -136,5 +186,16 @@ describe("deliverContained", () => {
     } finally {
       reported.mockRestore();
     }
+  });
+});
+
+describe("describeFault", () => {
+  it("quotes control characters and cuts the text to the bound", () => {
+    const text = describeFault(
+      new Error(`a\nb${"x".repeat(MAX_FAULT_TEXT_CHARS * 2)}`),
+    );
+
+    expect(text).not.toContain("\n");
+    expect(text.length).toBeLessThanOrEqual(MAX_FAULT_TEXT_CHARS + 2 + 2);
   });
 });

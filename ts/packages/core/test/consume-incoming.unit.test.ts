@@ -402,6 +402,61 @@ describe("a fault listener", () => {
   });
 });
 
+describe("consumeEach, reporting a failure", () => {
+  it("goes on to the next item when the caller's sourceOf throws", async () => {
+    const seen: number[] = [];
+    const reported = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    try {
+      await consumeEach(
+        items(FIRST, SECOND, THIRD),
+        (item) => {
+          seen.push(item);
+          throw new Error("the item fails");
+        },
+        {
+          onFault: () => undefined,
+          sourceOf: () => {
+            throw new Error("the source cannot be named");
+          },
+        },
+      );
+
+      expect(seen).toEqual([FIRST, SECOND, THIRD]);
+      expect(reported).toHaveBeenCalledTimes(THIRD);
+    } finally {
+      reported.mockRestore();
+    }
+  });
+
+  it("goes on to the next item when the reporter's own clock throws", async () => {
+    const seen: number[] = [];
+    const reported = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    try {
+      await consumeEach(
+        items(FIRST, SECOND),
+        (item) => {
+          seen.push(item);
+          throw new Error("the item fails");
+        },
+        {
+          onFault: () => undefined,
+          now: () => {
+            throw new Error("the clock failed");
+          },
+        },
+      );
+
+      expect(seen).toEqual([FIRST, SECOND]);
+    } finally {
+      reported.mockRestore();
+    }
+  });
+});
+
 describe("serveManageRequests", () => {
   it("never puts text from the failure in the refusal a requester receives", async () => {
     const answers: ManageOutcome[] = [];

@@ -17,6 +17,7 @@ const INTERNAL_MODULES = [
   "src/domain/own-version.ts",
   "src/domain/per-device-collector.ts",
   "src/domain/sequential.ts",
+  "src/domain/timers.ts",
   "src/domain/relay-channels.ts",
   "src/domain/relay-pairing.ts",
   "src/domain/secure-channel.ts",

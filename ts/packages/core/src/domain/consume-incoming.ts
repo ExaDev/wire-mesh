@@ -5,10 +5,14 @@
  */
 
 import { deviceIdToHex } from "./device-id.js";
-import { createFaultReporter, deliverContained } from "./fault-report.js";
+import {
+  createFaultReporter,
+  deliverContained,
+  describeFault,
+} from "./fault-report.js";
 import type { IncomingManageRequest, ManageOutcome } from "./mesh-session.js";
 
-/** What a consumer is told about a failure. `item` is the item whose handling failed, or undefined when the stream itself failed. `suppressed` is how many failures from the same source were not reported since the previous report (see FAULT_REPORT_INTERVAL_MS). */
+/** What a consumer is told about a failure. `item` is the item whose handling failed, or undefined when the stream itself failed. `suppressed` is how many failures from the same source were not reported before this report, not counting the one it carries (see FAULT_REPORT_INTERVAL_MS); it also counts failures of sources the reporter has stopped tracking. */
 export type ConsumeFault<T> = (
   error: unknown,
   item: T | undefined,
@@ -38,12 +42,17 @@ export async function consumeEach<T>(
 ): Promise<void> {
   const { onFault, signal } = options;
   const reporter = createFaultReporter(options.now);
+  // Telling the owner of a failure must never itself end the loop: whatever the caller's `sourceOf` or the reporter's own bookkeeping throws is reported once to the console and dropped, and the loop goes on.
   const reportItem = (error: unknown, item: T): void => {
     if (onFault === undefined) {
       return;
     }
-    const origin = options.sourceOf?.(item) ?? "";
-    reporter(origin, async (suppressed) => onFault(error, item, suppressed));
+    try {
+      const origin = options.sourceOf?.(item) ?? "";
+      reporter(origin, async (suppressed) => onFault(error, item, suppressed));
+    } catch (failure) {
+      console.error(`could not report a failure: ${describeFault(failure)}`);
+    }
   };
   const reportStream = (error: unknown): void => {
     if (onFault !== undefined) {
