@@ -4,6 +4,7 @@
  * Two responsibilities live here, split the same way tokens.ts and room-token-verification.ts already split verification concerns: requestCapability is the asking side (a thin wrapper over MeshSession.sendManageRequest, parsing the grant response), and createCapabilityRequestHandler is the receiving side (validates the incoming ask, arms a receiver-side timeout so an unanswered request never hangs a requester forever, and hands the decision to the domain).
  */
 
+import { unrefIfSupported } from "./timers.js";
 import {
   capabilityGrantOkSchema,
   capabilityRequestSchema,
@@ -35,18 +36,6 @@ function randomTokenId(): Uint8Array<ArrayBuffer> {
   crypto.getRandomValues(bytes);
 
   return bytes;
-}
-
-/** Stops a pending timer from keeping the process alive, where the runtime has that notion. Node's setTimeout returns an object with unref(); a browser's or a Worker's returns a number, which has nothing to unref and must not be called as if it did. */
-function unrefIfSupported(handle: unknown): void {
-  if (
-    typeof handle === "object" &&
-    handle !== null &&
-    "unref" in handle &&
-    typeof handle.unref === "function"
-  ) {
-    Reflect.apply(handle.unref, handle, []);
-  }
 }
 
 /**
