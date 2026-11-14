@@ -3,7 +3,7 @@
 import { type JsonWire, type Vector } from "@exadev/wire-mesh-conformance";
 
 /** The layout of the `secure_channel` section: raised when a field is renamed, retyped or removed, so a consumer can tell a layout it does not know from one it does. */
-export const LAYOUT_VERSION = 1;
+export const LAYOUT_VERSION = 2;
 
 export function jsonArray(value: JsonWire | undefined): readonly JsonWire[] {
   if (!Array.isArray(value)) {

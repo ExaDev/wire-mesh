@@ -529,8 +529,6 @@ export interface HelloVerdict {
   receiver: string;
   message: JsonWire;
   expected: HelloExpectation;
-  /** Other reasons an implementation may give instead, where the spec leaves the reason open. */
-  alsoAcceptable?: readonly HelloExpectation[];
   peer?: Identity;
   /** Set when the hello was freshly signed for this case, so its signature is recorded and, for ES256, kept on regeneration. */
   signed?: Hello;
@@ -781,7 +779,6 @@ export function secureChannelFile(frameVectors: readonly Vector[]): {
         receiver: verdict.receiver,
         hello_vector: name,
         expected: verdict.expected,
-        also_acceptable: [...(verdict.alsoAcceptable ?? [])],
         peer_device_id_hex: verdict.peer?.deviceId.toString("hex") ?? null,
         signing_input_hex: verdict.signed?.signingInput.toString("hex") ?? null,
         signature_hex: verdict.signed?.signature.toString("hex") ?? null,

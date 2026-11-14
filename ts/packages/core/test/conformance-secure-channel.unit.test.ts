@@ -47,7 +47,7 @@ const IV_COUNTER_OFFSET = 4;
 const COUNTER_BYTE_LENGTH = 8;
 const KEY_BIT_LENGTH = 256;
 const EDDSA = -8;
-const LAYOUT_VERSION = 1;
+const LAYOUT_VERSION = 2;
 const PKCS8_ED25519_PREFIX = "302e020100300506032b657004220420";
 
 const hexString = z.string().regex(/^(?:[0-9a-f]{2})*$/);
@@ -118,7 +118,6 @@ const helloVerdictSchema = z.strictObject({
   receiver: z.string(),
   hello_vector: z.string(),
   expected: helloReason,
-  also_acceptable: z.array(helloReason),
   peer_device_id_hex: hexString.nullable(),
   signing_input_hex: hexString.nullable(),
   signature_hex: hexString.nullable(),
@@ -547,18 +546,12 @@ describe("secure-channel hello verdicts", () => {
       const hello = helloVector(verdict.hello_vector);
       const result = await verifyHello(identityPort(verdict.receiver), hello);
 
-      if (verdict.expected === "ok") {
-        expect(result.ok).toBe(true);
-        if (result.ok) {
-          expect(hexOf(result.peer.deviceId)).toBe(verdict.peer_device_id_hex);
-        }
-      } else {
-        // The reason is the expected one or one the vector lists as also acceptable.
-        const acceptable = [verdict.expected, ...verdict.also_acceptable];
-        expect(
-          result.ok ? "ok" : result.reason,
-          `${verdict.name} reason`,
-        ).toBeOneOf(acceptable);
+      // Exactly the expected reason: a vector has one answer.
+      expect(result.ok ? "ok" : result.reason, `${verdict.name} reason`).toBe(
+        verdict.expected,
+      );
+      if (result.ok) {
+        expect(hexOf(result.peer.deviceId)).toBe(verdict.peer_device_id_hex);
       }
       if (verdict.signing_input_hex !== null) {
         const sender = await deriveDeviceId(
@@ -760,4 +753,21 @@ describe("secure-channel open sequences", () => {
       });
     });
   }
+});
+
+describe("the vector file format", () => {
+  const [first] = channelVectors.hello_verdicts;
+
+  it("refuses a hello verdict that lists a second acceptable answer", () => {
+    expect(first).toBeDefined();
+    expect(
+      helloVerdictSchema.safeParse({ ...first, also_acceptable: [] }).success,
+    ).toBe(false);
+    expect(helloVerdictSchema.safeParse(first).success).toBe(true);
+  });
+
+  it("refuses a file of the layout that allowed a second answer", () => {
+    const section = z.literal(LAYOUT_VERSION);
+    expect(section.safeParse(LAYOUT_VERSION - 1).success).toBe(false);
+  });
 });
