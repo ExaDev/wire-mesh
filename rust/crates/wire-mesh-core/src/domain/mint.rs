@@ -1,6 +1,10 @@
 //! Minting capability tokens and revocation entries, the Rust port of `mintCapabilityToken`, `mintRevocationEntry`, `canGrant` and `canGrantVia` in `ts/packages/core/src/domain/tokens.ts`.
 //!
-//! A mint refuses rather than produce a token that [`crate::domain::tokens::verify_capability_token`] would reject anyway: every narrowing rule of a `parent` link and every obligation of an `authorised-by` link is enforced at issuance, and the refusal names the rule broken. The order of the checks is part of the contract, since a candidate that breaks two rules gets the first one's reason.
+//! A mint enforces, at issuance, every narrowing rule of a `parent` link and every obligation of an `authorised-by` link, and names the first rule a candidate breaks. The order of the checks is part of the contract, since a candidate that breaks two rules gets the earlier one's reason; the conformance vectors pin each neighbouring pair.
+//!
+//! What a mint does not do, as in the TypeScript: it does not verify the signature, the revocation status or the validity window of the parent or the authoriser, it does not compare `not_before` with `expires`, it does not validate the scope's kind or path, and it carries `conditions` bytes verbatim without decoding them. A token it mints can therefore still be refused by [`crate::domain::tokens::verify_capability_token`] for any of those reasons.
+//!
+//! Integers are bounded at 2^53 - 1 (what a JavaScript number holds exactly): a larger `expires`, `not_before` or `delegations_remaining` is refused with [`MintRefusal::ValueNotRepresentable`], a refusal the TypeScript has no counterpart for, since a token minted so would not decode there.
 
 use wire_mesh_wire::identity::DeviceId;
 use wire_mesh_wire::management::{RevocationClaims, RevocationEntry};
@@ -11,13 +15,24 @@ use crate::domain::predicates::{decode_conditions, evaluate_conditions, GrantSub
 use crate::domain::tokens::MANAGE_GRANT_CAPABILITY;
 use crate::ports::{Clock, CoreError, Identity};
 
-/// Why a mint was refused, in the order the checks run. The string form is the name the conformance vectors use.
+/// The largest integer a JavaScript number holds exactly, 2^53 - 1: the bound on every integer claim a mint writes.
+pub const MAX_EXACT_INTEGER: u64 = (1 << 53) - 1;
+
+/// Why a mint was refused. The string form is the name the conformance vectors use.
+///
+/// The checks run in the order the variants are listed, with the exceptions the doc of [`mint_capability_token`] states.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MintRefusal {
-    /// `expires` is not after the clock's present.
-    AlreadyExpired,
+    /// An integer claim is above [`MAX_EXACT_INTEGER`]. Rust only: the TypeScript cannot hold such a value.
+    ValueNotRepresentable,
     /// The capability, grants-capability or requests-capability is not a capability verb of the spec's grammar.
     InvalidCapability,
+    /// `expires` is not after the clock's present.
+    AlreadyExpired,
+    /// A parent and an authorised-by link were both given; they are mutually exclusive.
+    LinksExclusive,
+    /// Two different rules, both given this reason: a `manage:grant` token was minted through a parent, or the authoriser itself has a parent.
+    AuthorisationParentForbidden,
     /// The parent token did not decode into valid claims.
     ParentMalformed,
     /// The parent's bearer is not the minting identity.
@@ -30,12 +45,8 @@ pub enum MintRefusal {
     CapabilityMismatch,
     /// The delegations-remaining is not strictly less than the parent's.
     DelegationExceedsParent,
-    /// A parent and an authorised-by link were both given; they are mutually exclusive.
-    LinksExclusive,
-    /// The authorising token, or its conditions, did not decode.
+    /// The authorising token did not decode, or its conditions are not a list of predicates this implementation supports.
     AuthorisationMalformed,
-    /// The authoriser itself has a parent, or a `manage:grant` token was minted through a parent.
-    AuthorisationParentForbidden,
     /// The authoriser's bearer is not the minting identity.
     AuthorisationBearerMismatch,
     /// The authoriser is not `manage:grant`, or its grants-capability names another verb.
@@ -51,9 +62,32 @@ pub enum MintRefusal {
 }
 
 impl MintRefusal {
+    /// Every refusal, so a test can check that nothing is left out of a list. The match in `as_str` is exhaustive, so a new variant fails to compile until it is named; the test that walks this list then fails until the variant is added here.
+    pub const ALL: [MintRefusal; 18] = [
+        MintRefusal::ValueNotRepresentable,
+        MintRefusal::InvalidCapability,
+        MintRefusal::AlreadyExpired,
+        MintRefusal::LinksExclusive,
+        MintRefusal::AuthorisationParentForbidden,
+        MintRefusal::ParentMalformed,
+        MintRefusal::ParentBearerMismatch,
+        MintRefusal::ExpiresExceedsParent,
+        MintRefusal::ScopeDoesNotNarrow,
+        MintRefusal::CapabilityMismatch,
+        MintRefusal::DelegationExceedsParent,
+        MintRefusal::AuthorisationMalformed,
+        MintRefusal::AuthorisationBearerMismatch,
+        MintRefusal::AuthorisationCapabilityMismatch,
+        MintRefusal::AuthorisationScopeDoesNotNarrow,
+        MintRefusal::AuthorisationExceedsAuthoriser,
+        MintRefusal::AuthorisationDelegationExceeds,
+        MintRefusal::AuthorisationConditionsNotSatisfied,
+    ];
+
     /// The name the conformance vectors give the refusal.
     pub fn as_str(self) -> &'static str {
         match self {
+            MintRefusal::ValueNotRepresentable => "value_not_representable",
             MintRefusal::AlreadyExpired => "already_expired",
             MintRefusal::InvalidCapability => "invalid_capability",
             MintRefusal::ParentMalformed => "parent_malformed",
@@ -118,16 +152,22 @@ impl From<CoreError> for MintError {
 /// What a parent link must narrow: the token a delegation would be minted as.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NarrowingCandidate {
+    /// The verb of the token to mint.
     pub capability: CapabilityVerb,
+    /// The scope of the token to mint.
     pub scope: CapabilityScope,
+    /// Expiry in milliseconds since the Unix epoch.
     pub expires: u64,
+    /// How many further hops the token to mint permits; absent is unbounded.
     pub delegations_remaining: Option<u64>,
 }
 
 /// A token minted through an `authorised-by` link: a [`NarrowingCandidate`] and the device that would bear it, which the authoriser's conditions read.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GrantCandidate {
+    /// What the token to mint carries.
     pub candidate: NarrowingCandidate,
+    /// The device that would bear it, which the authoriser's conditions read.
     pub bearer: DeviceId,
 }
 
@@ -135,12 +175,19 @@ pub struct GrantCandidate {
 pub struct MintCapabilityToken<'a> {
     /// The issuer: signs the token and supplies its `issuer` and `issuer-key` claims.
     pub identity: &'a dyn Identity,
+    /// The present, for the check that the token is not already expired.
     pub clock: &'a dyn Clock,
+    /// Opaque; unique per issuer, since a revocation names a token by it.
     pub token_id: Vec<u8>,
+    /// The device the token is issued to.
     pub bearer: DeviceId,
+    /// The verb the token grants.
     pub capability: CapabilityVerb,
+    /// What the token is scoped to.
     pub scope: CapabilityScope,
+    /// Expiry in milliseconds since the Unix epoch.
     pub expires: u64,
+    /// Earliest instant the token is valid, in milliseconds since the Unix epoch.
     pub not_before: Option<u64>,
     /// How many further delegation hops the resulting token permits below it. It bounds nothing about the issuer's own authority to mint other root-level grants.
     pub delegations_remaining: Option<u64>,
@@ -228,9 +275,13 @@ fn check_authorisation(
         }
     }
     if let Some(conditions) = &authoriser.conditions {
+        // A list this implementation cannot decode, or holds a node it has no support for, is malformed here. The TypeScript gives the same reason to a list that fails trilean's schema; a schema-valid node outside this implementation's subset is refused here where the TypeScript could evaluate it, which is fail-closed.
         let Ok(nodes) = decode_conditions(conditions) else {
             return Some(MintRefusal::AuthorisationMalformed);
         };
+        if nodes.iter().any(|node| node.contains_unsupported()) {
+            return Some(MintRefusal::AuthorisationMalformed);
+        }
         let subject = GrantSubject {
             capability: &token.capability.0,
             bearer: &candidate.bearer,
@@ -242,7 +293,7 @@ fn check_authorisation(
     None
 }
 
-/// A pure query: could `device`, presenting `held` as its own delegation authority, mint a delegation matching `candidate` at `now`. It checks the narrowing rules a parent link requires and nothing about `held`'s signature or revocation status, exactly as [`mint_capability_token`] never re-verifies its own parent; a caller that needs those confirmed verifies `held` separately.
+/// A pure query: could `device`, presenting `held` as its own delegation authority, mint a delegation matching `candidate` at `now`. It answers whether the narrowing rules a parent link requires hold, and is not an authorisation decision: it does not check `held`'s signature, its issuer or that it is authentic at all (a forged token that names `device` as its bearer answers true), nor its revocation status, nor its `not_before` and `valid_until`. Exactly as [`mint_capability_token`] never re-verifies its own parent, a caller that needs any of those confirmed verifies `held` separately.
 pub fn can_grant(
     held: &CoseSign1,
     device: &DeviceId,
@@ -258,7 +309,7 @@ pub fn can_grant(
     check_narrowing(&claims, device, candidate).is_none()
 }
 
-/// [`can_grant`]'s `authorised-by` analogue: could `device`, presenting `held` as its minting authority, mint a token matching `candidate` at `now`. The candidate carries a bearer because the authoriser's conditions read it, the no-self-grant bar among them. The same caveat holds: `held`'s signature and revocation status are not checked here.
+/// [`can_grant`]'s `authorised-by` analogue: could `device`, presenting `held` as its minting authority, mint a token matching `candidate` at `now`. The candidate carries a bearer because the authoriser's conditions read it, the no-self-grant bar among them. The same limits hold: it is not an authorisation decision, and `held`'s signature, issuer, revocation status, `not_before` and `valid_until` are not checked here.
 pub fn can_grant_via(
     held: &CoseSign1,
     device: &DeviceId,
@@ -278,10 +329,22 @@ pub fn can_grant_via(
 ///
 /// # Errors
 ///
-/// [`MintError::Refused`] with the [`MintRefusal`] for the first check that fails, in this order: the verbs, the expiry, the two links being exclusive, a `manage:grant` token with a parent, the parent link's narrowing, the authorised-by link's obligations. [`MintError::Port`] when the identity cannot sign.
+/// [`MintError::Refused`] with the [`MintRefusal`] for the first check that fails, in the order of the variants of [`MintRefusal`] with this one exception: a `manage:grant` token with a parent and an authoriser with a parent share [`MintRefusal::AuthorisationParentForbidden`] and are checked at their own places (before the parent is decoded, and after the authoriser is decoded). [`MintError::Port`] when the identity cannot sign.
 pub async fn mint_capability_token(
     options: MintCapabilityToken<'_>,
 ) -> Result<CoseSign1, MintError> {
+    let bounded = [
+        Some(options.expires),
+        options.not_before,
+        options.delegations_remaining,
+    ];
+    if bounded
+        .into_iter()
+        .flatten()
+        .any(|value| value > MAX_EXACT_INTEGER)
+    {
+        return Err(MintRefusal::ValueNotRepresentable.into());
+    }
     for verb in [
         Some(&options.capability),
         options.grants_capability.as_ref(),
@@ -672,27 +735,114 @@ mod tests {
     }
 
     #[test]
-    fn every_refusal_has_a_distinct_name() {
-        let all = [
-            MintRefusal::AlreadyExpired,
-            MintRefusal::InvalidCapability,
-            MintRefusal::ParentMalformed,
-            MintRefusal::ParentBearerMismatch,
-            MintRefusal::ExpiresExceedsParent,
-            MintRefusal::ScopeDoesNotNarrow,
-            MintRefusal::CapabilityMismatch,
-            MintRefusal::DelegationExceedsParent,
-            MintRefusal::LinksExclusive,
-            MintRefusal::AuthorisationMalformed,
-            MintRefusal::AuthorisationParentForbidden,
-            MintRefusal::AuthorisationBearerMismatch,
-            MintRefusal::AuthorisationCapabilityMismatch,
-            MintRefusal::AuthorisationScopeDoesNotNarrow,
-            MintRefusal::AuthorisationExceedsAuthoriser,
-            MintRefusal::AuthorisationDelegationExceeds,
-            MintRefusal::AuthorisationConditionsNotSatisfied,
-        ];
-        let names: std::collections::BTreeSet<&str> = all.iter().map(|r| r.as_str()).collect();
-        assert_eq!(names.len(), all.len());
+    fn every_refusal_has_a_distinct_name_and_none_is_left_out_of_the_list() {
+        // An exhaustive match with no wildcard: adding a variant stops this compiling until the variant is handled here, and the count below then fails until `ALL` holds it.
+        fn position(refusal: MintRefusal) -> usize {
+            match refusal {
+                MintRefusal::ValueNotRepresentable => 0,
+                MintRefusal::InvalidCapability => 1,
+                MintRefusal::AlreadyExpired => 2,
+                MintRefusal::LinksExclusive => 3,
+                MintRefusal::AuthorisationParentForbidden => 4,
+                MintRefusal::ParentMalformed => 5,
+                MintRefusal::ParentBearerMismatch => 6,
+                MintRefusal::ExpiresExceedsParent => 7,
+                MintRefusal::ScopeDoesNotNarrow => 8,
+                MintRefusal::CapabilityMismatch => 9,
+                MintRefusal::DelegationExceedsParent => 10,
+                MintRefusal::AuthorisationMalformed => 11,
+                MintRefusal::AuthorisationBearerMismatch => 12,
+                MintRefusal::AuthorisationCapabilityMismatch => 13,
+                MintRefusal::AuthorisationScopeDoesNotNarrow => 14,
+                MintRefusal::AuthorisationExceedsAuthoriser => 15,
+                MintRefusal::AuthorisationDelegationExceeds => 16,
+                MintRefusal::AuthorisationConditionsNotSatisfied => 17,
+            }
+        }
+        let names: std::collections::BTreeSet<&str> =
+            MintRefusal::ALL.iter().map(|r| r.as_str()).collect();
+        assert_eq!(names.len(), MintRefusal::ALL.len());
+        for (index, refusal) in MintRefusal::ALL.iter().enumerate() {
+            assert_eq!(position(*refusal), index, "ALL lists the variants in order");
+        }
+    }
+
+    #[tokio::test]
+    async fn an_integer_claim_a_javascript_number_cannot_hold_is_refused_at_the_boundary() {
+        let issuer = NodeIdentity::generate_ed25519();
+        let clock = FixedClock(NOW);
+        let beyond = MAX_EXACT_INTEGER + 1;
+        for options in [
+            MintCapabilityToken {
+                expires: beyond,
+                ..root(&issuer, &clock, *issuer.device_id())
+            },
+            MintCapabilityToken {
+                not_before: Some(beyond),
+                ..root(&issuer, &clock, *issuer.device_id())
+            },
+            MintCapabilityToken {
+                delegations_remaining: Some(beyond),
+                ..root(&issuer, &clock, *issuer.device_id())
+            },
+        ] {
+            assert_eq!(
+                mint_capability_token(options).await.unwrap_err(),
+                MintError::Refused(MintRefusal::ValueNotRepresentable)
+            );
+        }
+        let at_the_bound = mint_capability_token(MintCapabilityToken {
+            expires: MAX_EXACT_INTEGER,
+            delegations_remaining: Some(MAX_EXACT_INTEGER),
+            ..root(&issuer, &clock, *issuer.device_id())
+        })
+        .await;
+        assert!(at_the_bound.is_ok());
+    }
+
+    #[test]
+    fn a_conditions_list_with_a_node_this_implementation_cannot_read_is_malformed() {
+        use wire_mesh_wire::value::{CanonicalMap, CborValue};
+        let mut node = CanonicalMap::new();
+        node.insert(
+            CborValue::Text("kind".to_owned()),
+            CborValue::Text("exists".to_owned()),
+        )
+        .expect("one key");
+        let conditions = wire_mesh_wire::to_vec(&CborValue::Array(vec![CborValue::Map(node)]));
+        let authoriser = TokenClaims {
+            token_id: vec![1; 16],
+            issuer: DeviceId([1; 32]),
+            issuer_key: wire_mesh_wire::identity::IdentityKey {
+                alg: -8,
+                public_key: vec![0; 32],
+            },
+            bearer: DeviceId([2; 32]),
+            capability: verb(MANAGE_GRANT_CAPABILITY),
+            scope: folder("/work"),
+            expires: NOW + 1_000,
+            not_before: None,
+            valid_until: None,
+            conditions: Some(conditions),
+            parent: None,
+            delegations_remaining: None,
+            authorised_by: None,
+            grants_capability: None,
+            requests_capability: None,
+            extra: wire_mesh_wire::value::CanonicalMap::new(),
+        };
+        let candidate = GrantCandidate {
+            candidate: NarrowingCandidate {
+                capability: verb("exec:pty"),
+                scope: folder("/work/x"),
+                expires: NOW + 500,
+                delegations_remaining: None,
+            },
+            bearer: DeviceId([3; 32]),
+        };
+        assert_eq!(
+            check_authorisation(&authoriser, &DeviceId([2; 32]), &candidate),
+            Some(MintRefusal::AuthorisationMalformed)
+        );
     }
 }
