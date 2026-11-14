@@ -10,7 +10,7 @@ use wire_mesh_wire::management::RevocationClaims;
 use wire_mesh_wire::tokens::{CoseSign1, TokenClaims};
 
 use crate::domain::cose::sig_structure;
-use crate::domain::revocation::RevocationView;
+use crate::domain::revocation::RevocationCheck;
 use crate::ports::{Clock, CoreError, Identity};
 
 /// The capability a `revocation-claims.authorization` token must carry to
@@ -249,7 +249,7 @@ async fn revocation_entry_grants_revoke(
     target: &TokenClaims,
     identity: &dyn Identity,
     clock: &dyn Clock,
-    revocations: &RevocationView,
+    revocations: &dyn RevocationCheck,
 ) -> bool {
     if entry.issuer == target.issuer {
         return true;
@@ -316,7 +316,7 @@ enum LinkKind {
 pub async fn verify_capability_token(
     identity: &dyn Identity,
     clock: &dyn Clock,
-    revocations: &RevocationView,
+    revocations: &dyn RevocationCheck,
     token: &CoseSign1,
     // When given, the presented (leaf) token must bear this device -- the caller presenting a token to authorise itself, not someone else. Checked once the whole chain has verified, against the leaf claims only: in any valid chain the parent's bearer is already structurally enforced to equal the child's issuer, so consulting this during the recursive walk would wrongly fail every ancestor.
     expected_bearer: Option<DeviceId>,
@@ -381,7 +381,7 @@ pub async fn verify_capability_token(
         }
 
         // management.cddl's obligation: every ancestor's own token-id is swept against the view, checking each recorded entry via revocation_entry_grants_revoke (issuer-match, or a verified delegated manage:revoke authorization -- wire-mesh#84).
-        for entry in revocations.entries_for(&claims.token_id) {
+        for entry in &revocations.entries_for(&claims.token_id).await {
             if revocation_entry_grants_revoke(entry, &claims, identity, clock, revocations).await {
                 return TokenVerdict::Invalid(TokenRejection::Revoked {
                     token_id: claims.token_id,
