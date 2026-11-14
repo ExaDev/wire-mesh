@@ -360,6 +360,11 @@ function helloSigningInput(
   return Buffer.concat([HELLO_CONTEXT, ephemeralKey, nonce, sender, recipient]);
 }
 
+/** `identity` presented under other bytes for its public key. The device-id is the hash of the bytes a hello carries, so it changes with them; the private key, and with it who can sign, does not. */
+export function presentedAs(identity: Identity, publicKey: Buffer): Identity {
+  return { ...identity, publicKey, deviceId: sha256(publicKey) };
+}
+
 export function makeHello({
   name,
   from,
