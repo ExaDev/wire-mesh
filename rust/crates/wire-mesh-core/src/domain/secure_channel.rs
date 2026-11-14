@@ -17,7 +17,7 @@ use wire_mesh_wire::secure_channel::{
     SecureDataFrame, SecureHelloFrame, EPHEMERAL_KEY_SIZE, NONCE_SIZE,
 };
 use wire_mesh_wire::{decode_frame, encode_frame, DecodeError, Frame, ValidationError};
-use zeroize::{ZeroizeOnDrop, Zeroizing};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::domain::identity_key::{ed25519_public_key, es256_public_key, UNCOMPRESSED_POINT_TAG};
 use crate::ports::{CoreError, Identity};
@@ -459,7 +459,9 @@ impl core::fmt::Debug for DirectionKeys {
 
 /// The key schedule: HKDF-SHA256 with `shared_secret` as input keying material, [`channel_salt`] as salt and [`channel_hkdf_info`] as info, to 32 bytes per direction. `low` and `high` are the two device-ids in bytewise order and `nonce_low` and `nonce_high` the nonces of the hellos those devices sent.
 ///
-/// What is zeroised: the two returned keys, when dropped. What is not: `hkdf` 0.13 offers no zeroising path, so the HKDF pseudo-random key (enough to derive both keys again) lives in a value that is dropped, scoped here so that happens before this function returns, and not overwritten.
+/// The schedule binds the keys to the two device-ids, the two nonces and the direction labels, and through the shared secret to both ephemeral keys. It does not itself bind the identity keys, the ephemeral keys or the algorithm: those are bound by the hello signatures, which cover the ephemeral key, nonce, sender and recipient, so a change to this schedule or to what a hello signs must keep that binding.
+///
+/// What is wiped when dropped: the two returned keys; the HKDF pseudo-random key (the extract output, overwritten here before it goes); and the keyed state of the HMAC inside the HKDF value. That state is two SHA-256 cores (`hmac` 0.13 keeps the inner and outer ones in `HmacCore`, which has no wiping of its own), and the `Drop` of each wipes its state when `sha2` is built with its `zeroize` feature, which the workspace does; a test pins that feature through `Sha256: ZeroizeOnDrop`, which does not compile without it, since the HMAC types themselves implement no marker to assert. What is not wiped: copies the compiler makes of a value when it moves it, in registers or in stack frames this call has returned from, which no safe code can overwrite.
 pub fn derive_direction_keys(
     shared_secret: &[u8; KEY_SIZE],
     low: &DeviceId,
@@ -471,7 +473,8 @@ pub fn derive_direction_keys(
     let mut low_to_high = Zeroizing::new([0u8; KEY_SIZE]);
     let mut high_to_low = Zeroizing::new([0u8; KEY_SIZE]);
     {
-        let hkdf = Hkdf::<Sha256>::new(Some(&salt), shared_secret);
+        let (mut pseudo_random_key, hkdf) = Hkdf::<Sha256>::extract(Some(&salt), shared_secret);
+        pseudo_random_key.as_mut_slice().zeroize();
         for (label, key) in [
             (LABEL_LOW_TO_HIGH, &mut low_to_high),
             (LABEL_HIGH_TO_LOW, &mut high_to_low),
@@ -662,6 +665,8 @@ impl SecureChannel {
 }
 
 /// An AES-256-GCM instance for one operation, built from the zeroising key so no long-lived cipher state holds a copy of it.
+///
+/// What is wiped when it is dropped: the expanded AES round keys (`aes` is built with its `zeroize` feature) and the GHASH key bytes `aes-gcm` derives (its `zeroize` feature). What is not: the GHASH accumulator and key power state of `polyval` 0.6. Its zeroising is a `Drop` on the backend structs, which the crate's runtime-detecting backend never runs (the backends sit in a union of `ManuallyDrop` fields), and the ARM64 backend has none, so no feature of a crate at the locked versions reaches that state. It holds the hash key and the running authenticator of the one frame sealed or opened, not an AES key.
 fn cipher(key: &[u8; KEY_SIZE]) -> Aes256Gcm {
     Aes256Gcm::new(key.into())
 }
@@ -676,7 +681,6 @@ mod tests {
     use crate::adapters::NodeIdentity;
     use wire_mesh_wire::data::DataHaveFrame;
     use wire_mesh_wire::transport::PingFrame;
-    use zeroize::Zeroize;
 
     fn have(head_seq: u64) -> Frame {
         Frame::DataHave(DataHaveFrame {
@@ -1029,6 +1033,8 @@ mod tests {
         fn assert_zeroize_on_drop<T: ZeroizeOnDrop>() {}
         assert_zeroize_on_drop::<PendingHandshake>();
         assert_zeroize_on_drop::<SecureChannel>();
+        // The SHA-256 cores that hold the keyed state of the HMAC inside HKDF are wiped on drop: this fails to compile if `sha2` loses its `zeroize` feature.
+        assert_zeroize_on_drop::<Sha256>();
         let mut keys = derive_direction_keys(
             &[3; 32],
             &DeviceId([1; 32]),

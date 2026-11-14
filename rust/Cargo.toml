@@ -31,7 +31,8 @@ tokio = { version = "1", default-features = false, features = [
     "sync",
     "time",
 ] }
-sha2 = { version = "0.11", default-features = false }
+# "zeroize" wipes the state of a dropped hash core, which is what holds the keyed state of the HMAC inside HKDF (hmac has no wiping of its own, and its own "zeroize" feature only forwards to the digest crate this enables).
+sha2 = { version = "0.11", default-features = false, features = ["zeroize"] }
 ed25519-dalek = { version = "2", default-features = false, features = ["std", "fast", "zeroize", "rand_core"] }
 # Zeroes the exported secret of a node identity when it is dropped.
 # "serialization" gives the key and package types their serialize and deserialize methods, and "cheater-detection" makes aggregation name the participant that sent a bad share. frost-core is pinned to the version frost-ed25519 depends on.
