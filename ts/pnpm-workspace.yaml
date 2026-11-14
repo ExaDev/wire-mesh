@@ -27,4 +27,5 @@ minimumReleaseAgeExclude:
   - trilean-regex
   - trilean
   - web-ui-primitives
+  - wire-mesh-core
 saveExact: true

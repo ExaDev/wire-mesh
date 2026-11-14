@@ -78,6 +78,8 @@ export class FakeConnection {
 
   private heldSends: (() => void)[] | null = null;
 
+  private readonly taps: ((frame: Frame) => void)[] = [];
+
   private heldCloses: (() => void)[] | null = null;
 
   /** How many sends were rejected because rejectSends was in force. */
@@ -106,6 +108,9 @@ export class FakeConnection {
           throw sendFailure;
         }
         this.sent.push(frame);
+        for (const tap of this.taps) {
+          tap(frame);
+        }
 
         return Promise.resolve();
       },
@@ -148,6 +153,11 @@ export class FakeConnection {
   rejectSends(error: Error, afterMs = 0): void {
     this.sendFailure = error;
     this.sendFailureDelayMs = afterMs;
+  }
+
+  /** Calls `listener` with every frame this connection's session sends, as the send succeeds: a hub that carries them to another connection. */
+  tap(listener: (frame: Frame) => void): void {
+    this.taps.push(listener);
   }
 
   /** How many sends are held right now. */
