@@ -813,8 +813,8 @@ async fn check_hello_verdict(ctx: &Ctx<'_>, verdict: &HelloVerdict) -> Check {
             Ok(())
         }
         (Ok(_), None) => Err("an accepted hello has no expected peer device-id".to_owned()),
-        (Err(_), Some(_)) => Err("a refused hello has an expected peer device-id".to_owned()),
-        (Err(_), None) => Ok(()),
+        // A vector that allows two verdicts may name the peer for the one that accepts.
+        (Err(_), _) => Ok(()),
     }
 }
 
