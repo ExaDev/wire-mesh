@@ -5,11 +5,15 @@
 
 import { webcrypto } from "node:crypto";
 import { createNodeIdentity } from "wire-mesh-core/adapters/node-identity";
-import { createFaultReporter } from "wire-mesh-core/domain/fault-report";
+import { describeFault } from "wire-mesh-core/domain/fault-report";
 import { acceptMeshSession } from "wire-mesh-core/domain/mesh-session";
 import type { RevocationCheck } from "wire-mesh-core/domain/tokens";
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import { createNodeWebSocketTransport } from "wire-mesh/adapters/node-websocket-transport";
+import {
+  createParticipantFailureLog,
+  failureLine,
+} from "./domain/failure-log.js";
 import { createSfuCall } from "./domain/sfu-session.js";
 import { createMediasoupMediaBackend } from "./adapters/mediasoup-media-backend.js";
 
@@ -17,8 +21,6 @@ const ES256 = -7;
 const DEFAULT_BIND_ADDRESS = "0.0.0.0:8788";
 const HTTP_OK = 200;
 const LOCAL_DOMAINS = ["core/webrtc"];
-/** The most characters of a failure's text that go into one operator log line, since the text can carry what a peer sent. */
-const MAX_LOGGED_ERROR_CHARS = 256;
 
 export function healthResponse(): { ok: true; node: string; roles: string[] } {
   return { ok: true, node: "wire-mesh-sfu", roles: ["sfu"] };
@@ -67,22 +69,6 @@ function logStartup(message: string): void {
   console.log(message);
 }
 
-/** Builds the operator log for failures, at most one line per label per interval through the shared fault reporter. The text of the failure is quoted, so a control character in it cannot start a new line, and cut to MAX_LOGGED_ERROR_CHARS. */
-function createFailureLog(): (label: string, error: unknown) => void {
-  const report = createFaultReporter();
-
-  return (label, error) => {
-    report(label, (suppressed) => {
-      const text = JSON.stringify(
-        String(error).slice(0, MAX_LOGGED_ERROR_CHARS),
-      );
-      const more =
-        suppressed > 0 ? ` (${String(suppressed)} more not logged)` : "";
-      process.stderr.write(`${label} failed: ${text}${more}\n`);
-    });
-  };
-}
-
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const identity = await generateIdentity();
@@ -91,7 +77,10 @@ async function main(): Promise<void> {
     listenIp: listenIpFromArgs(argv),
     ...(announcedIp !== undefined ? { announcedIp } : {}),
   });
-  const logFailure = createFailureLog();
+  const writeLine = (line: string): void => {
+    process.stderr.write(line);
+  };
+  const logParticipantFailure = createParticipantFailureLog(writeLine);
   const call = createSfuCall(
     backend,
     {
@@ -100,8 +89,8 @@ async function main(): Promise<void> {
       revocation: noRevocationCheck,
     },
     {
-      onFault: (error) => {
-        logFailure("request", error);
+      onFault: (error, _item, suppressed) => {
+        writeLine(failureLine("request", error, suppressed));
       },
     },
   );
@@ -125,7 +114,7 @@ async function main(): Promise<void> {
         await call.removeParticipant(deviceId);
       })().catch((error: unknown) => {
         // One connection failing to set up or tear down is that connection's alone.
-        logFailure("participant", error);
+        logParticipantFailure(error);
       });
     },
   );
@@ -138,7 +127,7 @@ if (invokedPath !== undefined && import.meta.url === `file://${invokedPath}`) {
   main().catch((error: unknown) => {
     // A service that cannot start has nothing to run: say why and exit non-zero.
     process.stderr.write(
-      `wire-mesh-sfu could not start: ${JSON.stringify(String(error))}\n`,
+      `wire-mesh-sfu could not start: ${describeFault(error)}\n`,
     );
     process.exitCode = 1;
   });
