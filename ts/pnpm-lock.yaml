@@ -285,8 +285,8 @@ importers:
         specifier: 2.3.0
         version: 2.3.0
       cddl.js:
-        specifier: 1.0.11
-        version: 1.0.11
+        specifier: 2.0.0
+        version: 2.0.0(zod@4.6.6)
       trilean:
         specifier: 1.6.2
         version: 1.6.2
@@ -3539,8 +3539,10 @@ packages:
     resolution: {integrity: sha512-76WB3hq8BoaGkMkBVJ27fW5LJU+qqDLEpgRNCG/SYKhODWXpVPOTD4UcUto3IEzYLA52nsvbhb0wabhHDn3qXg==}
     engines: {node: '>=20'}
 
-  cddl.js@1.0.11:
-    resolution: {integrity: sha512-mcwUhpBJJkcFToTHR+aBgZzSGWJsG/WZFz99boRaL1DeJYxIWMNH3EEG8EaDJSa/p2l4m64GxNS3ztC/HB1rzA==}
+  cddl.js@2.0.0:
+    resolution: {integrity: sha512-FnBNhuQxBlzzlCJ1ImTdb0Y/Dk00lV6aO8fERwMZJ6IFgivBNNbOvlcsvTPipRDbMCnPs5KriXCrPrbKizmsEQ==}
+    peerDependencies:
+      zod: '>=4.0.0 <5'
 
   chai@6.2.2:
     resolution: {integrity: sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg==}
@@ -9991,7 +9993,7 @@ snapshots:
     dependencies:
       '@cto.af/wtf8': 0.0.5
 
-  cddl.js@1.0.11:
+  cddl.js@2.0.0(zod@4.6.6):
     dependencies:
       camelcase: 9.0.0
       cbor2: 2.3.0
