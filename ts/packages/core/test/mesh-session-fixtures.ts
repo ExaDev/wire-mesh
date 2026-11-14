@@ -74,7 +74,9 @@ export class FakeConnection {
 
   private sendFailure: Error | null = null;
 
-  private sendFailureDelayMs = 0;
+  private held: PromiseWithResolvers<undefined> | undefined;
+
+  private readonly taps: ((frame: Frame) => void)[] = [];
 
   /** Constructs a fake, already-authenticated connection whose own `peerDeviceId` is set from the start -- the transport-authenticated case topology self-advertisement's own `direct` field prefers over any gossip-derived guess (mesh-session.ts's directPeerDevice). Omit for the default, unauthenticated case every other test here relies on. */
   constructor(private readonly authenticatedPeerDeviceId?: DeviceId) {}
@@ -82,16 +84,17 @@ export class FakeConnection {
   get connection(): Readonly<Connection> {
     return {
       send: async (frame: Frame): Promise<void> => {
+        if (this.held !== undefined) {
+          // Held until the test releases or fails every held send together.
+          await this.held.promise;
+        }
         if (this.sendFailure !== null) {
-          const { sendFailure, sendFailureDelayMs } = this;
-          if (sendFailureDelayMs > 0) {
-            await new Promise((resolve) => {
-              setTimeout(resolve, sendFailureDelayMs);
-            });
-          }
-          throw sendFailure;
+          throw this.sendFailure;
         }
         this.sent.push(frame);
+        for (const tap of this.taps) {
+          tap(frame);
+        }
 
         return Promise.resolve();
       },
@@ -125,9 +128,24 @@ export class FakeConnection {
   }
 
   /** Makes every later send reject with `error`, as a link that has stopped accepting writes does while its receive stream is still open. */
-  rejectSends(error: Error, afterMs = 0): void {
+  rejectSends(error: Error): void {
     this.sendFailure = error;
-    this.sendFailureDelayMs = afterMs;
+  }
+
+  /** Calls `listener` with every frame this connection's session sends, as the send succeeds: a hub that carries them to another connection. */
+  tap(listener: (frame: Frame) => void): void {
+    this.taps.push(listener);
+  }
+
+  /** Holds every later send until `releaseSends`, so a test decides when a send settles. */
+  holdSends(): void {
+    this.held = Promise.withResolvers<undefined>();
+  }
+
+  /** Lets the held sends continue: they reject if `rejectSends` was called meanwhile and are recorded otherwise. */
+  releaseSends(): void {
+    this.held?.resolve(undefined);
+    this.held = undefined;
   }
 
   /** Undoes rejectSends: later sends are recorded again. */

@@ -172,6 +172,23 @@ export async function verifyHello(
   }
 }
 
+/** True when `key` is a usable P-256 ECDH public key, so a channel can be built from a hello carrying it. Cheap enough to run before any key of this side's own is generated. */
+export async function isUsableEphemeralKey(key: Uint8Array): Promise<boolean> {
+  try {
+    await crypto.subtle.importKey(
+      "raw",
+      Uint8Array.from(key),
+      ECDH_PARAMS,
+      false,
+      [],
+    );
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** One end of an established channel. */
 export interface SecureChannel {
   readonly peer: SecureChannelPeer;

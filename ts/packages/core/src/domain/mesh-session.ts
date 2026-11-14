@@ -35,6 +35,7 @@ import {
   validateGossipExtensions,
 } from "./gossip-extensions.js";
 import { signPeerAdvert, verifyPeerAdvert } from "./peer-advert.js";
+import type { LocalFaultHandler } from "./local-fault.js";
 import { createRelayChannels } from "./relay-channels.js";
 import { isDataFrame } from "./hub-mailbox.js";
 import type { Clock } from "../ports/clock.js";
@@ -211,8 +212,8 @@ function createSessionCore(
   ) => void | Promise<void>,
   /** Fired once this session's own connection.receive() stream ends, regardless of whether the session itself goes on to reconnect with a fresh connection -- the counterpart hook a RelayHub's own forgetConnection needs, since its registry and pairing state is keyed by this exact Connection instance and must be cleaned up when it specifically ends, not when the session as a whole gives up. */
   onSessionEnd?: (connection: Readonly<Connection>) => void,
-  /** Told of a failure that is local to this session and did not end it, while handling a hello from a peer: an identity port that failed to check or sign, an answering hello that could not be sent, a channel that could not be established. The hello is dropped, any half-made handshake for that peer is discarded, and the peer is told nothing, so no failure in handling a hello ends the session. Called once per failing hello; if it throws, or returns a promise that rejects, that is reported once to the console and swallowed. Omit for a caller with no use for it. */
-  onLocalFault?: (error: unknown) => void | Promise<void>,
+  /** Told of a failure that is local to this session and did not end it, while handling a hello from a peer: an identity port that failed to check or sign, an answering hello that could not be sent, a channel that could not be established. The hello is dropped, any half-made handshake for that peer is discarded, and the peer is told nothing, so no failure in handling a hello ends the session. Reports are coalesced: at most one per peer per handshake window, with the number withheld in between given as `suppressed` in the second argument, and no more than a fixed number across all peers in a window, so a failure repeated for one peer is reported once and then counted. If the callback throws, or returns a promise that rejects, that is reported to the console at most once per window and swallowed. Omit for a caller with no use for it. */
+  onLocalFault?: LocalFaultHandler,
 ): SessionCore {
   let connection: Connection | null = null;
   let state: ConnectionState = { status: "idle" };
@@ -314,23 +315,22 @@ function createSessionCore(
   /** Sends a frame. Through a relay it is sealed for toDevice on their secure channel first (spec/secure-channel.cddl) and only then wrapped as relay-data, so the hub carries ciphertext. This is the single choke point every outbound manage-request and manage-response passes through, so a consumer of sendManageRequest or respond never needs its own relay logic. */
   async function transmit(
     frame: Frame,
-    viaRelay: boolean,
     toDevice?: DeviceId,
+    purpose: "request" | "reply" = "request",
   ): Promise<void> {
     if (connection === null) {
       throw new Error("not connected");
     }
-    if (!viaRelay) {
+    if (toDevice === undefined) {
       await connection.send(frame);
 
       return;
     }
-    if (toDevice === undefined) {
-      throw new Error("a relayed frame needs the device it is for");
-    }
-    const channel = await relayChannels.ensure(toDevice);
-    const sealed = await channel.seal(frame);
-    await connection.send(wrapRelayData(sealed, toDevice));
+    const link = connection;
+    const sealed = await relayChannels.seal(toDevice, frame, purpose);
+    await Promise.all(
+      sealed.map(async (copy) => link.send(wrapRelayData(copy, toDevice))),
+    );
   }
 
   /** `from` is the device whose secure channel the response arrived through, absent for one that arrived directly. A pending request only accepts an answer from where it was sent: a peer must not be able to answer a request meant for another by guessing its request-id. */
@@ -377,7 +377,7 @@ function createSessionCore(
           outcome,
         };
         recordFrame({ direction: "sent", frame: response });
-        await transmit(response, origin !== undefined, fromDevice);
+        await transmit(response, fromDevice, "reply");
         emit();
       },
     };
@@ -396,7 +396,7 @@ function createSessionCore(
       const inner = tryDecodeFrame(frame.payload);
       if (inner?.type === "secure-hello") {
         recordFrame({ direction: "received", frame: inner });
-        await relayChannels.applyHello(inner);
+        await relayChannels.applyHello(inner, frame["from-device"]);
 
         return;
       }
@@ -741,7 +741,7 @@ function createSessionCore(
         // The timeout below covers the whole exchange, secure-channel handshake included: a peer that never answers the hello would otherwise leave a request with a timeout waiting for ever.
         const exchange = (async (): Promise<ManageOutcome> => {
           try {
-            await transmit(frame, targetDevice !== undefined, targetDevice);
+            await transmit(frame, targetDevice);
           } catch (error) {
             // The request never left, so nothing will answer it, and the caller learns why from this rejection rather than from the pending entry's.
             pendingManageRequests.delete(requestId);
@@ -785,7 +785,7 @@ function createSessionCore(
           entries: [...entries],
         };
         recordFrame({ direction: "sent", frame });
-        await transmit(frame, false);
+        await transmit(frame);
         emit();
       },
       async sendCoordinatorClaim(
@@ -794,7 +794,7 @@ function createSessionCore(
         requireConnectedLink();
         const claim: CoordinatorFrame = { ...frame };
         recordFrame({ direction: "sent", frame: claim });
-        await transmit(claim, false);
+        await transmit(claim);
         emit();
       },
       async sendGossipUpdate(
@@ -803,7 +803,7 @@ function createSessionCore(
         requireConnectedLink();
         const frame = await buildSelfAdvert(extensions);
         recordFrame({ direction: "sent", frame });
-        await transmit(frame, false);
+        await transmit(frame);
         emit();
       },
       getTopologyPeers(): TopologyPeers {
@@ -818,7 +818,7 @@ function createSessionCore(
           await ensureRelayPairing(targetDevice);
         }
         recordFrame({ direction: "sent", frame });
-        await transmit(frame, targetDevice !== undefined, targetDevice);
+        await transmit(frame, targetDevice);
         emit();
       },
       async close(): Promise<void> {
@@ -870,8 +870,8 @@ export function createMeshSession(
     connection: Readonly<Connection>,
     frame: Frame,
   ) => void | Promise<void>,
-  /** Told of a failure that is local to this session and did not end it, while handling a hello from a peer: an identity port that failed to check or sign, an answering hello that could not be sent, a channel that could not be established. The hello is dropped, any half-made handshake for that peer is discarded, and the peer is told nothing, so no failure in handling a hello ends the session. Called once per failing hello; if it throws, or returns a promise that rejects, that is reported once to the console and swallowed. Omit for a caller with no use for it. */
-  onLocalFault?: (error: unknown) => void | Promise<void>,
+  /** Told of a failure that is local to this session and did not end it, while handling a hello from a peer: an identity port that failed to check or sign, an answering hello that could not be sent, a channel that could not be established. The hello is dropped, any half-made handshake for that peer is discarded, and the peer is told nothing, so no failure in handling a hello ends the session. Reports are coalesced: at most one per peer per handshake window, with the number withheld in between given as `suppressed` in the second argument, and no more than a fixed number across all peers in a window, so a failure repeated for one peer is reported once and then counted. If the callback throws, or returns a promise that rejects, that is reported to the console at most once per window and swallowed. Omit for a caller with no use for it. */
+  onLocalFault?: LocalFaultHandler,
 ): MeshSession {
   const { session } = createSessionCore(
     identity,
