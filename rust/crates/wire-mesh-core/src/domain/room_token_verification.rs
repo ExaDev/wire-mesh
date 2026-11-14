@@ -12,7 +12,7 @@
 use wire_mesh_wire::identity::DeviceId;
 use wire_mesh_wire::tokens::{CoseSign1, TokenClaims};
 
-use crate::domain::revocation::RevocationView;
+use crate::domain::revocation::RevocationCheck;
 use crate::domain::room_path::{device_id_to_hex, parse_room_path, ParsedRoomPath};
 use crate::domain::tokens::{verify_capability_token, TokenRejection};
 use crate::ports::{Clock, Identity};
@@ -70,7 +70,7 @@ pub enum RoomTokenVerdict {
 pub async fn verify_room_token(
     identity: &dyn Identity,
     clock: &dyn Clock,
-    revocations: &RevocationView,
+    revocations: &dyn RevocationCheck,
     token: &CoseSign1,
     // The peer identity actually authenticated on the arriving connection
     // (obligation 2) -- never a relay-asserted or gossip-derived value.
@@ -126,6 +126,7 @@ pub async fn verify_room_token(
 mod tests {
     use super::*;
     use crate::adapters::node_identity::NodeIdentity;
+    use crate::domain::revocation::RevocationView;
     use wire_mesh_wire::management::RevocationClaims;
     use wire_mesh_wire::tokens::{CapabilityScope, CapabilityVerb, TokenClaims};
     use wire_mesh_wire::value::CanonicalMap;
@@ -189,6 +190,42 @@ mod tests {
             .mint_cose_sign1(&claims.encode_to_vec())
             .await
             .expect("mint")
+    }
+
+    #[tokio::test]
+    async fn a_store_that_cannot_answer_refuses_the_room_token() {
+        use crate::domain::revocation::{RevocationCheck, RevocationUnavailable};
+        struct Down;
+        #[async_trait::async_trait]
+        impl RevocationCheck for Down {
+            async fn entries_for(
+                &self,
+                _: &[u8],
+            ) -> Result<Vec<RevocationClaims>, RevocationUnavailable> {
+                Err(RevocationUnavailable {
+                    reason: "the store is down".to_owned(),
+                })
+            }
+        }
+        let owner = NodeIdentity::generate_ed25519();
+        let member = NodeIdentity::generate_ed25519();
+        let room_path = owner_named_room_path(&device_id_to_hex(owner.device_id()), "general");
+        let token = mint_room_member_token(&owner, &member, &room_path, vec![0x01; 16]).await;
+        let verdict = verify_room_token(
+            &owner,
+            &FixedClock(NOW),
+            &Down,
+            &token,
+            *member.device_id(),
+            &room_path,
+        )
+        .await;
+        assert_eq!(
+            verdict,
+            RoomTokenVerdict::Invalid(RoomTokenRejection::Token(
+                TokenRejection::RevocationUnavailable("the store is down".to_owned())
+            ))
+        );
     }
 
     #[tokio::test]

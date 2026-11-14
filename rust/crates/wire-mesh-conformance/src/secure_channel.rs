@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 
-use serde_json::{Map, Value};
+use serde_json::Value;
 use wire_mesh_core::adapters::NodeIdentity;
 use wire_mesh_core::domain::secure_channel::{
     begin_handshake_with, channel_hkdf_info, channel_salt, data_associated_data, data_iv,
@@ -23,106 +23,11 @@ use wire_mesh_wire::identity::{DeviceId, IdentityKey};
 use wire_mesh_wire::secure_channel::{SecureHelloFrame, EPHEMERAL_KEY_SIZE, NONCE_SIZE};
 use wire_mesh_wire::{decode_frame, encode_frame, Frame};
 
-use super::{decode_hex, report_first_divergence};
+use super::obj::{Check, Obj};
+use super::report_first_divergence;
 
 /// The layout of the `secure_channel` section this binary reads.
 const LAYOUT_VERSION: i64 = 2;
-
-type Check = Result<(), String>;
-
-/// A JSON object read field by field. [`Obj::finish`] fails while any field is left, so a field nothing reads cannot go unnoticed.
-struct Obj {
-    path: String,
-    map: Map<String, Value>,
-}
-
-impl Obj {
-    fn new(value: &Value, path: impl Into<String>) -> Result<Self, String> {
-        let path = path.into();
-        let map = value
-            .as_object()
-            .ok_or_else(|| format!("{path} is not an object"))?
-            .clone();
-        Ok(Obj { path, map })
-    }
-
-    fn take(&mut self, key: &str) -> Result<Value, String> {
-        self.map
-            .remove(key)
-            .ok_or_else(|| format!("{} has no field {key}", self.path))
-    }
-
-    fn string(&mut self, key: &str) -> Result<String, String> {
-        match self.take(key)? {
-            Value::String(text) => Ok(text),
-            _ => Err(format!("{}.{key} is not a string", self.path)),
-        }
-    }
-
-    fn boolean(&mut self, key: &str) -> Result<bool, String> {
-        self.take(key)?
-            .as_bool()
-            .ok_or_else(|| format!("{}.{key} is not a boolean", self.path))
-    }
-
-    fn integer(&mut self, key: &str) -> Result<i64, String> {
-        self.take(key)?
-            .as_i64()
-            .ok_or_else(|| format!("{}.{key} is not an integer", self.path))
-    }
-
-    fn hex(&mut self, key: &str) -> Result<Vec<u8>, String> {
-        let text = self.string(key)?;
-        decode_hex(&text).map_err(|e| format!("{}.{key}: {e}", self.path))
-    }
-
-    /// A hex field that is `null` when it does not apply.
-    fn optional_hex(&mut self, key: &str) -> Result<Option<Vec<u8>>, String> {
-        match self.take(key)? {
-            Value::Null => Ok(None),
-            Value::String(text) => decode_hex(&text)
-                .map(Some)
-                .map_err(|e| format!("{}.{key}: {e}", self.path)),
-            _ => Err(format!("{}.{key} is neither null nor a string", self.path)),
-        }
-    }
-
-    fn fixed<const N: usize>(&mut self, key: &str) -> Result<[u8; N], String> {
-        let bytes = self.hex(key)?;
-        <[u8; N]>::try_from(bytes.as_slice())
-            .map_err(|_| format!("{}.{key} is {} bytes, not {N}", self.path, bytes.len()))
-    }
-
-    fn object(&mut self, key: &str) -> Result<Obj, String> {
-        let value = self.take(key)?;
-        Obj::new(&value, format!("{}.{key}", self.path))
-    }
-
-    fn objects(&mut self, key: &str) -> Result<Vec<Obj>, String> {
-        match self.take(key)? {
-            Value::Array(items) => items
-                .iter()
-                .enumerate()
-                .map(|(i, item)| Obj::new(item, format!("{}.{key}[{i}]", self.path)))
-                .collect(),
-            _ => Err(format!("{}.{key} is not an array", self.path)),
-        }
-    }
-
-    /// Fails when the object has a field nothing read.
-    fn finish(self) -> Check {
-        if self.map.is_empty() {
-            Ok(())
-        } else {
-            let unread: Vec<&str> = self.map.keys().map(String::as_str).collect();
-            Err(format!(
-                "{} has field(s) this binary does not read: {}",
-                self.path,
-                unread.join(", ")
-            ))
-        }
-    }
-}
 
 struct IdentitySpec {
     alg: i64,

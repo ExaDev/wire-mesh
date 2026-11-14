@@ -165,7 +165,14 @@ impl CapabilityScope {
         if has_relative_segment(path) || has_relative_segment(parent_path) {
             return false;
         }
-        path == parent_path || path.starts_with(&format!("{parent_path}/"))
+        if path == parent_path {
+            return true;
+        }
+        if !path.starts_with(parent_path.as_str()) {
+            return false;
+        }
+        // A parent that ends in a slash already names a segment boundary, so everything under it narrows it; otherwise the next character of the child must start a new segment.
+        parent_path.ends_with('/') || path[parent_path.len()..].starts_with('/')
     }
 }
 
@@ -840,6 +847,51 @@ mod tests {
         assert!(claims(&bad, None, None).validate_verbs().is_err());
         assert!(claims(&ok, Some(&bad), None).validate_verbs().is_err());
         assert!(claims(&ok, None, Some(&bad)).validate_verbs().is_err());
+    }
+
+    /// Every edge of the path rule, each pinned to what the TypeScript core's `scopeNarrows` answers: the same rule in the same words, so the two implementations cannot disagree on a path.
+    #[test]
+    fn scope_within_agrees_with_the_typescript_rule_at_every_edge() {
+        let within = |child: &str, parent: &str| {
+            let scope = |path: &str| CapabilityScope {
+                kind: "folder".to_owned(),
+                path: Some(path.to_owned()),
+            };
+            scope(child).is_within(&scope(parent))
+        };
+        // A parent ending in a slash names a segment boundary already: everything under it narrows it, the root `/` included.
+        assert!(within("/work/x", "/"));
+        assert!(within("/", "/"));
+        assert!(within("/work/sub", "/work/"));
+        assert!(within("/work/", "/work/"));
+        assert!(
+            within("/work//x", "/work/"),
+            "doubled slashes are not collapsed"
+        );
+        assert!(
+            !within("/work", "/work/"),
+            "the parent's own name without its slash is outside it"
+        );
+        assert!(!within("/other", "/work/"));
+        // Without the trailing slash the next character must start a segment.
+        assert!(within("/work", "/work"));
+        assert!(within("/work/sub", "/work"));
+        assert!(within("/work/", "/work"));
+        assert!(
+            !within("/workshop", "/work"),
+            "a shared prefix is not a shared segment"
+        );
+        assert!(!within("/work-other", "/work"));
+        // Paths with a dot segment never narrow, on either side, even an identical one.
+        assert!(!within("/work/./x", "/work"));
+        assert!(!within("/work/../x", "/work"));
+        assert!(!within("/work", "/work/.."));
+        assert!(!within("/work/..", "/work/.."));
+        assert!(!within("/.", "/"));
+        // An empty path is within no parent but the empty one, and the empty parent holds the paths that start a segment.
+        assert!(!within("", "/work"));
+        assert!(within("/x", ""));
+        assert!(!within("x", ""));
     }
 
     #[test]

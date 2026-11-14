@@ -219,7 +219,28 @@ impl ExpressionNode {
     }
 }
 
+impl ExpressionNode {
+    /// Whether this expression, or one below it, is a shape this module has no support for.
+    fn is_unsupported(&self) -> bool {
+        matches!(self, ExpressionNode::Unsupported)
+    }
+}
+
 impl PredicateNode {
+    /// Whether this node, or any below it, is a node or an expression this module does not support, which evaluates to indeterminate and so refuses whatever carries it. A caller that wants to tell a list it cannot read from one it read and found unmet asks this first.
+    pub fn contains_unsupported(&self) -> bool {
+        match self {
+            PredicateNode::Compare { left, right, .. } => {
+                left.is_unsupported() || right.is_unsupported()
+            }
+            PredicateNode::Not { operand } => operand.contains_unsupported(),
+            PredicateNode::And { left, right } | PredicateNode::Or { left, right } => {
+                left.contains_unsupported() || right.contains_unsupported()
+            }
+            PredicateNode::Unsupported => true,
+        }
+    }
+
     fn from_cbor(v: &CborValue) -> Self {
         let CborValue::Map(map) = v else {
             return PredicateNode::Unsupported;

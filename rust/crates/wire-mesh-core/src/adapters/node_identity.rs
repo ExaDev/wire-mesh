@@ -18,7 +18,6 @@ use wire_mesh_wire::identity::{DeviceId, IdentityKey};
 use wire_mesh_wire::tokens::CoseSign1;
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::domain::cose::sig_structure;
 use crate::domain::identity_key::{ed25519_public_key, es256_public_key};
 use crate::ports::{CoreError, Identity};
 
@@ -137,25 +136,17 @@ impl NodeIdentity {
     }
 
     /// Mint a COSE_Sign1 over `payload` (already-encoded claims bytes) with
-    /// this node's key: canonical protected `{alg}` header, empty
-    /// unprotected header, and a signature over the RFC 9052
-    /// Sig_structure. The same construction every verifier checks.
+    /// this node's key: the protected header [`crate::domain::cose::sign_cose_sign1`]
+    /// writes (`alg` and `kid`, under the text keys "1" and "4"), an empty
+    /// unprotected header, and a signature over the RFC 9052 Sig_structure.
+    /// The same construction every verifier checks, and the same bytes as
+    /// that function and as the TypeScript core.
+    ///
+    /// Before the minters existed this wrote the labels as integers, so a
+    /// signature made then differs from one made now over the same payload.
+    /// Both forms verify: the verifiers read either label form.
     pub async fn mint_cose_sign1(&self, payload: &[u8]) -> Result<CoseSign1, CoreError> {
-        let protected = {
-            let headers = wire_mesh_wire::tokens::CoseTokenHeaders {
-                alg: Some(self.identity_key.alg),
-                kid: Some(self.device_id.as_bytes().to_vec()),
-                extra: wire_mesh_wire::value::CanonicalMap::new(),
-            };
-            wire_mesh_wire::to_vec(&headers)
-        };
-        let signature = self.sign(&sig_structure(&protected, payload)).await?;
-        Ok(CoseSign1 {
-            protected,
-            unprotected: wire_mesh_wire::tokens::CoseTokenHeaders::new(),
-            payload: Some(payload.to_vec()),
-            signature,
-        })
+        crate::domain::cose::sign_cose_sign1(self, payload).await
     }
 }
 
@@ -384,6 +375,26 @@ mod tests {
         let es256 = NodeIdentity::generate_es256();
         assert!(ed25519.derive_shared_secret(es256.identity_key()).is_err());
     }
+    #[tokio::test]
+    async fn mint_cose_sign1_and_the_shared_signer_give_the_same_bytes_and_pin_the_header() {
+        let identity = NodeIdentity::from_ed25519_secret(&[7u8; 32]).unwrap();
+        let from_method = identity.mint_cose_sign1(b"payload").await.unwrap();
+        let from_function = crate::domain::cose::sign_cose_sign1(&identity, b"payload")
+            .await
+            .unwrap();
+        assert_eq!(from_method.encode_to_vec(), from_function.encode_to_vec());
+        // `{"1": -8, "4": h'<device-id>'}` in canonical form: a two-entry map of text keys.
+        let mut expected = vec![0xa2, 0x61, b'1', 0x27, 0x61, b'4', 0x58, 0x20];
+        expected.extend_from_slice(identity.device_id().as_bytes());
+        assert_eq!(from_method.protected, expected);
+        let headers = from_method.decode_protected().unwrap();
+        assert_eq!(headers.alg(), Some(-8));
+        assert_eq!(
+            headers.kid(),
+            Some(identity.device_id().as_bytes().as_slice())
+        );
+    }
+
     #[tokio::test]
     async fn an_ed25519_identity_restored_from_its_secret_is_the_same_identity() {
         let original = NodeIdentity::generate_ed25519();

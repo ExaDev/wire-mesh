@@ -89,6 +89,43 @@ pub struct RevocationView {
     entries: BTreeMap<Vec<u8>, Vec<RevocationClaims>>,
 }
 
+/// A store of revocations that could not answer. A verifier that gets it refuses to decide, since an answer it could not read must never count as "not revoked".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevocationUnavailable {
+    /// Why the store could not answer, for a log: never read by a verifier.
+    pub reason: String,
+}
+
+impl core::fmt::Display for RevocationUnavailable {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "the revocation store could not answer: {}", self.reason)
+    }
+}
+
+impl std::error::Error for RevocationUnavailable {}
+
+/// The revocation view a verifier consults: every recorded, already signature-verified revocation-claims for a token-id, across every issuer that has submitted one, unfiltered by the store itself. The verifier decides which entries count (an entry counts against a token when its own issuer is the token's issuer, or when it carries a verified delegated `manage:revoke` authorisation). Asynchronous so a store backed by something that is not in memory can answer it.
+///
+/// A store that cannot answer returns [`RevocationUnavailable`] and never an empty list: the verifiers turn it into their own refusal (`TokenRejection::RevocationUnavailable`, which the room verifiers carry unchanged), so a failing store cannot make a revoked token verify. This matches the TypeScript core, whose `RevocationCheck.entriesFor` returns a promise that may reject, and whose verifiers let that rejection propagate instead of answering.
+#[async_trait::async_trait]
+pub trait RevocationCheck: Send + Sync {
+    /// Every revocation-claims recorded for `token_id`, or why the store cannot say.
+    async fn entries_for(
+        &self,
+        token_id: &[u8],
+    ) -> Result<Vec<RevocationClaims>, RevocationUnavailable>;
+}
+
+#[async_trait::async_trait]
+impl RevocationCheck for RevocationView {
+    async fn entries_for(
+        &self,
+        token_id: &[u8],
+    ) -> Result<Vec<RevocationClaims>, RevocationUnavailable> {
+        Ok(RevocationView::entries_for(self, token_id).to_vec())
+    }
+}
+
 impl RevocationView {
     pub fn new() -> Self {
         Self::default()
