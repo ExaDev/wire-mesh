@@ -76,6 +76,8 @@ export class FakeConnection {
 
   private held: PromiseWithResolvers<undefined> | undefined;
 
+  private readonly taps: ((frame: Frame) => void)[] = [];
+
   /** Constructs a fake, already-authenticated connection whose own `peerDeviceId` is set from the start -- the transport-authenticated case topology self-advertisement's own `direct` field prefers over any gossip-derived guess (mesh-session.ts's directPeerDevice). Omit for the default, unauthenticated case every other test here relies on. */
   constructor(private readonly authenticatedPeerDeviceId?: DeviceId) {}
 
@@ -90,6 +92,9 @@ export class FakeConnection {
           throw this.sendFailure;
         }
         this.sent.push(frame);
+        for (const tap of this.taps) {
+          tap(frame);
+        }
 
         return Promise.resolve();
       },
@@ -125,6 +130,11 @@ export class FakeConnection {
   /** Makes every later send reject with `error`, as a link that has stopped accepting writes does while its receive stream is still open. */
   rejectSends(error: Error): void {
     this.sendFailure = error;
+  }
+
+  /** Calls `listener` with every frame this connection's session sends, as the send succeeds: a hub that carries them to another connection. */
+  tap(listener: (frame: Frame) => void): void {
+    this.taps.push(listener);
   }
 
   /** Holds every later send until `releaseSends`, so a test decides when a send settles. */

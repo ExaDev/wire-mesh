@@ -342,6 +342,9 @@ importers:
       vitest:
         specifier: 5.0.0
         version: 5.0.0(@types/node@26.4.1)(jsdom@30.0.1)(vite@8.2.2(@types/node@26.4.1)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28)))
+      wire-mesh-core-released:
+        specifier: npm:wire-mesh-core@4.1.3
+        version: wire-mesh-core@4.1.3
 
   packages/node:
     dependencies:
@@ -3539,6 +3542,9 @@ packages:
     resolution: {integrity: sha512-76WB3hq8BoaGkMkBVJ27fW5LJU+qqDLEpgRNCG/SYKhODWXpVPOTD4UcUto3IEzYLA52nsvbhb0wabhHDn3qXg==}
     engines: {node: '>=20'}
 
+  cddl.js@1.0.1:
+    resolution: {integrity: sha512-UTQZM1rCob6FFOxmYJh+csg9AaKyrFjFnp6Lar/1QicpHW77UxBZsuE2r4NOMaKuvZypIXyCSU+dhGOfhAJLVA==}
+
   cddl.js@2.0.0:
     resolution: {integrity: sha512-FnBNhuQxBlzzlCJ1ImTdb0Y/Dk00lV6aO8fERwMZJ6IFgivBNNbOvlcsvTPipRDbMCnPs5KriXCrPrbKizmsEQ==}
     peerDependencies:
@@ -6549,6 +6555,9 @@ packages:
     resolution: {integrity: sha512-hUrmaWBdVDcxvYqnyh09zunKzROWjbZTiNy8dBEjkS7ehEDQibXJ7XvlmtbwuTclUiIyN+CyXQD4Vmko8fNm8w==}
     engines: {node: '>=8'}
     hasBin: true
+
+  wire-mesh-core@4.1.3:
+    resolution: {integrity: sha512-kRQOq25LcYwW9xcEo7XL8pxF8MNOtrBcfn12TlVge8NJf1ZYBpGq7z/Q25X7Wqf4L29CPHUMIN3l97SvOwvdGw==}
 
   word-wrap@1.2.5:
     resolution: {integrity: sha512-BN22B5eaMMI9UMtjrGd5g5eCYPpCPDUy0FJXbYsaT5zYxjFOckS53SQDE3pWkVoWpHXVb3BrYcEN4Twa55B5cA==}
@@ -9993,6 +10002,12 @@ snapshots:
     dependencies:
       '@cto.af/wtf8': 0.0.5
 
+  cddl.js@1.0.1:
+    dependencies:
+      camelcase: 9.0.0
+      cbor2: 2.3.0
+      zod: 4.5.4
+
   cddl.js@2.0.0(zod@4.6.6):
     dependencies:
       camelcase: 9.0.0
@@ -13325,6 +13340,13 @@ snapshots:
     dependencies:
       siginfo: 2.0.0
       stackback: 0.0.2
+
+  wire-mesh-core@4.1.3:
+    dependencies:
+      cbor2: 2.3.0
+      cddl.js: 1.0.1
+      trilean: 1.6.2
+      zod: 4.5.4
 
   word-wrap@1.2.5: {}
 
