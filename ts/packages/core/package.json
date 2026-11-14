@@ -106,6 +106,10 @@
       "import": "./dist/domain/direct-manage-request.mjs",
       "require": "./dist/domain/direct-manage-request.cjs"
     },
+    "./domain/ed25519-identity-key": {
+      "import": "./dist/domain/ed25519-identity-key.mjs",
+      "require": "./dist/domain/ed25519-identity-key.cjs"
+    },
     "./domain/erasure-coding": {
       "import": "./dist/domain/erasure-coding.mjs",
       "require": "./dist/domain/erasure-coding.cjs"

@@ -6,7 +6,7 @@
 //! 32 raw bytes for Ed25519, 65-byte uncompressed SEC1 (`0x04 || X || Y`)
 //! for ES256 — the same encodings COSE keys use.
 
-use ed25519_dalek::{Signature as Ed25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature as Ed25519Signature, Signer, SigningKey};
 use p256::ecdsa::signature::{DigestSigner, DigestVerifier};
 use p256::ecdsa::{
     Signature as P256Signature, SigningKey as P256SigningKey, VerifyingKey as P256VerifyingKey,
@@ -20,6 +20,7 @@ use wire_mesh_wire::tokens::CoseSign1;
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::domain::cose::sig_structure;
+use crate::domain::identity_key::ed25519_public_key;
 use crate::ports::{CoreError, Identity};
 
 /// A fresh P-256 secret scalar from the operating system's randomness, by rejection sampling. The curve crate's own generator takes a `rand_core` 0.10 generator, and `rand` 0.8's `OsRng` is a 0.6 one.
@@ -187,19 +188,11 @@ pub fn verify_with_identity_key(
 ) -> Result<bool, CoreError> {
     match key.alg {
         IdentityKey::ALG_ED25519 => {
-            if key.public_key.len() != 32 {
-                return Err(CoreError::Crypto(format!(
-                    "Ed25519 public key must be 32 bytes, got {}",
-                    key.public_key.len()
-                )));
-            }
-            let mut public_key = [0u8; 32];
-            public_key.copy_from_slice(&key.public_key);
-            let verifying: VerifyingKey = VerifyingKey::from_bytes(&public_key)
-                .map_err(|e| CoreError::Crypto(format!("invalid Ed25519 public key: {e}")))?;
+            let verifying = ed25519_public_key(&key.public_key)?;
             let sig: Ed25519Signature = Ed25519Signature::from_slice(signature)
                 .map_err(|e| CoreError::Crypto(format!("Ed25519 signature: {e}")))?;
-            Ok(verifying.verify(message, &sig).is_ok())
+            // Strict verification: a signature whose R is of small order, or whose S is not reduced, does not verify.
+            Ok(verifying.verify_strict(message, &sig).is_ok())
         }
         IdentityKey::ALG_ES256 => {
             let public_key = PublicKey::from_sec1_bytes(&key.public_key)
@@ -315,6 +308,39 @@ mod tests {
         let with_c = a.derive_shared_secret(c.identity_key()).expect("ECDH");
 
         assert_ne!(with_b, with_c);
+    }
+
+    #[tokio::test]
+    async fn a_small_order_ed25519_key_is_refused_even_with_a_signature_that_verifies_under_it() {
+        let verifier = NodeIdentity::generate_ed25519();
+        // R = the identity element and S = 0 verifies under the identity element for any message.
+        let mut signature = vec![0u8; 64];
+        signature[0] = 1;
+        let mut identity_element = vec![0u8; 32];
+        identity_element[0] = 1;
+        let key = IdentityKey {
+            alg: IdentityKey::ALG_ED25519,
+            public_key: identity_element,
+        };
+        assert!(verifier.verify(&key, b"message", &signature).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn an_ed25519_signature_with_a_small_order_r_does_not_verify() {
+        let verifier = NodeIdentity::generate_ed25519();
+        let signer = NodeIdentity::generate_ed25519();
+        let mut signature = signer.sign(b"message").await.unwrap();
+        assert!(verifier
+            .verify(signer.identity_key(), b"message", &signature)
+            .await
+            .unwrap());
+        // Replace R with the identity element: the equation no longer holds, and a strict verifier refuses it before checking.
+        signature[..32].fill(0);
+        signature[0] = 1;
+        assert!(!verifier
+            .verify(signer.identity_key(), b"message", &signature)
+            .await
+            .unwrap());
     }
 
     #[tokio::test]

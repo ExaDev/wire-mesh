@@ -1,5 +1,9 @@
 import { webcrypto } from "node:crypto";
 import type { DeviceId, IdentityKey } from "../generated/protocol.js";
+import {
+  ed25519KeyFault,
+  ed25519SignatureIsStrict,
+} from "../domain/ed25519-identity-key.js";
 import { IdentityKeyError, type IdentityPort } from "../ports/identity.js";
 
 const ES256 = -7;
@@ -63,6 +67,16 @@ async function importPublicKey(key: IdentityKey): Promise<webcrypto.CryptoKey> {
       `identity-key public-key is ${String(key["public-key"].length)} bytes, not the ${String(publicKeySize(key.alg))} an alg ${String(key.alg)} key has`,
     );
   }
+  if (key.alg === EDDSA) {
+    // Decided here, never by the platform's Ed25519 import, which differs between crypto libraries on a small-order or non-canonical key.
+    const fault = ed25519KeyFault(key["public-key"]);
+    if (fault !== undefined) {
+      throw new IdentityKeyError(
+        "invalid_key",
+        `identity-key public-key is not a usable Ed25519 key (${fault})`,
+      );
+    }
+  }
   const id = importedKeyId(key);
   const held = importedKeys.get(id);
   if (held !== undefined) {
@@ -85,7 +99,7 @@ async function importPublicKey(key: IdentityKey): Promise<webcrypto.CryptoKey> {
   return pending;
 }
 
-/** Imports the raw public key, reporting a key the algorithm cannot import (not a point on the curve, for ES256) as an IdentityKeyError rather than the Web Crypto error it arrives as. An Ed25519 import does not check that the bytes are a curve point: such a key imports, and every signature under it fails to verify. */
+/** Imports the raw public key, reporting a key the algorithm cannot import (not a point on the curve, for ES256) as an IdentityKeyError rather than the Web Crypto error it arrives as. An Ed25519 key is checked before this by `ed25519KeyFault`, since the import itself accepts keys that are not points. */
 async function importRawPublicKey(
   key: IdentityKey,
   algorithm: webcrypto.EcKeyImportParams | webcrypto.Algorithm,
@@ -134,6 +148,9 @@ export async function verifyWithPublicKey(
   signature: Uint8Array,
 ): Promise<boolean> {
   const cryptoKey = await importPublicKey(key);
+  if (key.alg === EDDSA && !ed25519SignatureIsStrict(signature)) {
+    return false;
+  }
 
   return webcrypto.subtle.verify(
     algParams(key.alg),

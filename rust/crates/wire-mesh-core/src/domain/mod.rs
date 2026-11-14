@@ -4,6 +4,7 @@ pub mod cose;
 pub mod erasure_coding;
 pub mod group_key;
 pub mod handshake;
+pub mod identity_key;
 pub mod peer_advert;
 pub mod predicates;
 pub mod revocation;
