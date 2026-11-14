@@ -1,4 +1,4 @@
-// Every consumer of a session's incoming streams goes through consume-incoming.ts, so the rule that one failed item never ends the loop, and that no rejection escapes to whoever started it, holds for a consumer written later too. Two source checks hold it: a `for await` is either in the list of readers of a connection or a transport below or fails here, whatever it is named or passed through, and an async function started with `void (async ...)()` ends in a rejection handler. A promise started with `void` in any other form is not covered by this file.
+// Every consumer of a session's incoming streams goes through consume-incoming.ts, so the rule that one failed item never ends the loop, and that no rejection escapes to whoever started it, holds for a consumer written later too. This file is a tripwire for the accident of a new bare `for await` over one of those streams, in any package's `src`: a `for await` is either a listed reader of a connection or a transport, or it fails here, whatever shape its loop variable has (a name, a destructuring pattern, a pre-declared variable) and whatever the stream is called or passed through. It does not see a manual `next()` loop, a `ReadableStream` reader or a stream consumed outside `packages/*/src`. The other half of the rule, that no loop is started without a rejection handler, is the repository's lint: `@typescript-eslint/no-floating-promises` with `ignoreVoid: false` in every package.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -12,9 +12,6 @@ const INCOMING_STREAMS = [
   "coordinatorFrames",
   "events",
 ];
-
-/** How much of a started function is quoted in a failure. */
-const EXCERPT_LENGTH = 60;
 
 const packagesRoot = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -37,11 +34,17 @@ const packageSources = readdirSync(packagesRoot).flatMap((name) => {
   }
 });
 
-/** The text of every `for await (... of <expression>)` header in `source`. */
+/** The expression every `for await (... of <expression>)` in `source` reads, whatever shape the loop variable has. */
 function forAwaitSources(source: string): string[] {
-  return [
-    ...source.matchAll(/for await \(\s*(?:const|let)\s+\w+\s+of\s+([^)]+)\)/gu),
-  ].map((match) => match[1] ?? "");
+  return [...source.matchAll(/for await \(/gu)].map((match) => {
+    const open = match.index + "for await ".length;
+    const header = source.slice(open + 1, closingParenthesis(source, open));
+    const separator = /\sof\s/u.exec(header);
+
+    return separator === null
+      ? header
+      : header.slice(separator.index + separator[0].length);
+  });
 }
 
 /** The `for await` loops that read a connection, a transport or a byte source, not a session's incoming streams: the file each is in and the start of what it reads. A loop not listed fails the check below, so one that reads a stream through an alias or a parameter is caught too. */
@@ -70,40 +73,6 @@ function closingParenthesis(source: string, open: number): number {
   }
 
   return source.length;
-}
-
-/** Whether what follows a started function handles its rejection: a `.catch(...)`, or a `.then(...)` that is given a rejection handler as its second argument. */
-function handlesRejection(after: string): boolean {
-  if (after.startsWith(".catch(")) return true;
-  if (!after.startsWith(".then(")) return false;
-  const open = ".then".length;
-  const args = after.slice(open + 1, closingParenthesis(after, open));
-  let depth = 0;
-  let commas = 0;
-  for (const char of args) {
-    if ("([{".includes(char)) depth += 1;
-    if (")]}".includes(char)) depth -= 1;
-    if (char === "," && depth === 0) commas += 1;
-  }
-
-  return (commas >= 1 && !args.trimEnd().endsWith(",")) || commas >= 2;
-}
-
-/** Every `void (async ...)()` in `source`: its text up to the end of its call, and what follows it. */
-function voidStartedFunctions(
-  source: string,
-): { text: string; after: string }[] {
-  return [...source.matchAll(/void \(async/gu)].map((match) => {
-    const open = match.index + "void ".length;
-    const close = closingParenthesis(source, open);
-    const call = source.slice(close + 1).startsWith("()") ? 2 : 0;
-    const end = close + 1 + call;
-
-    return {
-      text: source.slice(match.index, end),
-      after: source.slice(end).trimStart(),
-    };
-  });
 }
 
 describe("the session's incoming streams", () => {
@@ -141,42 +110,6 @@ describe("the session's incoming streams", () => {
     expect(unlisted).toEqual([]);
   });
 
-  it("are never left to a function started with void and no rejection handler", () => {
-    const unhandled: string[] = [];
-    for (const file of packageSources) {
-      for (const { text, after } of voidStartedFunctions(
-        readFileSync(file, "utf8"),
-      )) {
-        if (!handlesRejection(after)) {
-          unhandled.push(`${file}: ${text.slice(0, EXCERPT_LENGTH)}`);
-        }
-      }
-    }
-
-    expect(unhandled).toEqual([]);
-  });
-
-  it("finds a void-started function with and without a handler", () => {
-    const found = voidStartedFunctions(
-      "void (async () => { await a(); })();\nvoid (async () => { await b(); })().catch(() => undefined);",
-    );
-
-    expect(found.map(({ after }) => handlesRejection(after))).toEqual([
-      false,
-      true,
-    ]);
-    expect(
-      voidStartedFunctions("void (async () => {})().then(() => 1);").map(
-        ({ after }) => handlesRejection(after),
-      ),
-    ).toEqual([false]);
-    expect(
-      voidStartedFunctions(
-        "void (async () => {})().then(() => 1, (e: unknown) => report(e));",
-      ).map(({ after }) => handlesRejection(after)),
-    ).toEqual([true]);
-  });
-
   it("are detected by the pattern the check above relies on", () => {
     expect(
       forAwaitSources(
@@ -186,5 +119,16 @@ describe("the session's incoming streams", () => {
     expect(
       forAwaitSources("for await (const e of options.session.events) {}"),
     ).toEqual(["options.session.events"]);
+    expect(
+      forAwaitSources(
+        "for await (const { command, respond } of session.incomingManageRequests) {}",
+      ),
+    ).toEqual(["session.incomingManageRequests"]);
+    expect(
+      forAwaitSources("for await (const [first] of session.events) {}"),
+    ).toEqual(["session.events"]);
+    expect(forAwaitSources("for await (item of stream) {}")).toEqual([
+      "stream",
+    ]);
   });
 });

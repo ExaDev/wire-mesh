@@ -23,7 +23,8 @@ export function createAsyncQueue<T>(): AsyncQueue<T> {
     stream: {
       [Symbol.asyncIterator]() {
         let finished = false;
-        let release: (() => void) | undefined;
+        // The releases of every next() this iterator has waiting, so a return() withdraws all of them.
+        const releases = new Set<() => void>();
 
         return {
           next: async (): Promise<IteratorResult<T>> =>
@@ -39,21 +40,28 @@ export function createAsyncQueue<T>(): AsyncQueue<T> {
 
                 return;
               }
+              // The two are each other's cleanup: delivering withdraws the release, and releasing withdraws the waiter.
+              const registration: { release?: () => void } = {};
               const waiter = (value: T): void => {
-                release = undefined;
+                if (registration.release !== undefined) {
+                  releases.delete(registration.release);
+                }
                 resolve({ value, done: false });
               };
-              waiters.push(waiter);
-              release = () => {
+              registration.release = (): void => {
                 waiters.splice(waiters.indexOf(waiter), 1);
                 resolve({ value: undefined, done: true });
               };
+              waiters.push(waiter);
+              releases.add(registration.release);
             }),
-          // Ends this iterator, and a next() it has waiting stops being one of the waiters a push can wake, so a consumer that has stopped reading takes no value another reader needs.
+          // Ends this iterator: every next() it has waiting stops being one of the waiters a push can wake, so a consumer that has stopped reading takes no value another reader needs. A value already handed to a next() stays with it.
           return: async (): Promise<IteratorResult<T>> => {
             finished = true;
-            release?.();
-            release = undefined;
+            for (const release of [...releases]) {
+              releases.delete(release);
+              release();
+            }
 
             return Promise.resolve({ value: undefined, done: true });
           },
