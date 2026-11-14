@@ -1,4 +1,6 @@
-// The secure channels a MeshSession holds with the devices it reaches through a relay (spec/secure-channel.cddl), one per peer, and the state machine that opens them. secure-channel.ts is the crypto; this decides when to start a handshake, whose hello completes which, and which channel a received frame belongs to. Kept out of mesh-session.ts, which only says how a hello reaches the wire and what to do with a frame once it has been opened.
+/* The secure channels a MeshSession holds with the devices it reaches through a relay (spec/secure-channel.cddl), one entry per peer, and the state machine that opens them. secure-channel.ts is the crypto; this decides when to start a handshake, whose hello completes which, when a new channel replaces the current one, and which channel a received frame belongs to. Kept out of mesh-session.ts, which only says how a hello reaches the wire and what to do with a frame once it has been opened.
+
+   A hello never replaces a channel by itself. It builds a candidate beside the current channel, and the candidate takes over only once a frame from the peer opens under it, which only a holder of the candidate's other ephemeral secret can produce. A side that has a handshake of its own outstanding with a peer completes a received hello against it instead of answering, so two sides that both hold channels never answer each other without end. */
 
 import type {
   DeviceId,
@@ -6,6 +8,7 @@ import type {
   SecureDataFrame,
   SecureHelloFrame,
 } from "../generated/protocol.js";
+import type { Clock } from "../ports/clock.js";
 import type { IdentityPort } from "../ports/identity.js";
 import { deviceIdToHex } from "./device-id.js";
 import { ChannelExhaustedError } from "./channel-exhausted-error.js";
@@ -14,32 +17,28 @@ import {
   assertFirstSendCounter,
   beginHandshake,
   establishChannelFrom,
+  isUsableEphemeralKey,
   verifyHello,
+  type OpenOutcome,
   type PendingHandshake,
   type SecureChannel,
   type SecureChannelPeer,
 } from "./secure-channel.js";
 
-/** Where the handshake with one peer stands. A peer is awaiting from the moment this side starts one, whichever side spoke first, and established once both hellos have been exchanged. */
-type ChannelState =
-  | {
-      readonly status: "awaiting";
-      readonly pending: Promise<PendingHandshake>;
-      /** Settles with the channel once established, or rejects if the handshake is abandoned. A handler is attached when the entry is created, so an entry nothing awaits (one a received hello created) never rejects unobserved. */
-      readonly settle: PromiseWithResolvers<SecureChannel>;
-      /** The peer this handshake is with. */
-      readonly key: string;
-      /** Settles once this side's hello has been sent, and rejects if it could not be signed or sent. Observed from creation, like `settle`. */
-      readonly sent: PromiseWithResolvers<undefined>;
-    }
-  | {
-      readonly status: "established";
-      readonly channel: SecureChannel;
-      /** The ephemeral key of the peer's hello that this channel was built from, which a later hello must not repeat. */
-      readonly remoteEphemeralKey: Uint8Array;
-    };
+/** How long a peer may take to answer a hello, and the window every other rule here is measured in: a handshake is outstanding for this long, a replaced channel may still open frames that were in flight for this long, and an entry younger than this is never reused. Whoever holds a hello for longer than this gains nothing, since the handshake it belongs to is over. */
+export const HANDSHAKE_WINDOW_MS = 3_000;
 
-type Awaiting = Extract<ChannelState, { status: "awaiting" }>;
+/** The most channels one handshake builds. An honest handshake yields one fresh hello for this side's ephemeral key. A second arises in exactly one honest case: the peer restarted while this side's hello was in flight and its new hello also arrived. A third is never honest, so beyond this a hello is dropped. */
+export const CANDIDATES_PER_HANDSHAKE = 2;
+
+/** The most handshakes this side leaves pending for its own sends at once. A local resource budget: peers cannot reach it, only what the local application sends to. Past it the oldest pending handshake is dropped and whoever awaits it is told. */
+export const MAX_PENDING_HANDSHAKES = 256;
+
+/** The most entries held for peers this side never sent anything to. A memory and CPU budget for peers this side did not choose; no safety property depends on its value, since peers this side chose are outside it. Each entry is at most one established channel, one replaced channel, one handshake and CANDIDATES_PER_HANDSHAKE candidates. It also caps the answers to such peers per handshake window, because an entry younger than the window is never reused, and the reports passed to `onFault` per window. */
+export const MAX_UNSOLICITED_PEERS = 64;
+
+/** What a sealed frame is for: a "request" is this side choosing to talk to the peer, a "reply" answers a frame that peer sent and does not make the peer chosen. */
+export type SealPurpose = "request" | "reply";
 
 /** A frame that opened under a peer's channel, with the peer that channel authenticated. */
 export interface OpenedFrame {
@@ -47,12 +46,27 @@ export interface OpenedFrame {
   readonly from: DeviceId;
 }
 
+/** What `onFault` is told besides the error. */
+export interface FaultContext {
+  /** The peer the failing hello or send was for, when it is known by then. */
+  readonly peer: DeviceId | undefined;
+  /** How many reports for this peer were withheld since the last one: at most one report per peer is made per handshake window. */
+  readonly suppressed: number;
+}
+
 export interface RelayChannels {
-  /** The channel with peer, starting a handshake when there is none. Resolves once both hellos have been exchanged. */
-  ensure: (peer: DeviceId) => Promise<SecureChannel>;
-  /** Handles a hello received through a relay pairing: verifies it, answers with this side's own unless one is already outstanding for that peer, and completes the handshake. Nothing that happens while handling a hello rejects the returned promise or reaches the peer. A hello that does not verify, and one whose ephemeral key cannot be used, is dropped, since there is nobody to tell. A hello that repeats the ephemeral key the established channel with that peer was built from is dropped too: it names a channel that already exists, so there is nothing to answer. Any failure of this side while handling a hello (the identity port failing to check or sign, the answer failing to send, the channel failing to establish) abandons the handshake it was part of, so a later hello from the same peer starts afresh, and is reported to the `onFault` option. */
-  applyHello: (hello: Readonly<SecureHelloFrame>) => Promise<void>;
-  /** Opens sealed data received through a relay pairing. `claimedFrom` is the `from-device` the relay stamped, which only picks the channel to try; the result is undefined unless the frame opens under it, and names the peer that channel authenticated. */
+  /** Seals one frame for peer, starting a handshake when there is no channel and none is outstanding. Resolves with one sealed frame, or with one per candidate channel while this side has no established channel and holds several, which the peer opens at most one of. A "request" marks the peer chosen. */
+  seal: (
+    peer: DeviceId,
+    frame: Frame,
+    purpose: SealPurpose,
+  ) => Promise<readonly SecureDataFrame[]>;
+  /** Handles a hello received through a relay pairing, `claimedFrom` being the `from-device` the relay stamped. The hello is dropped, changing nothing and sending nothing, unless the device-id its identity-key hashes to is `claimedFrom`, its signature verifies, its ephemeral key is usable and is not one this side already holds for that peer. Otherwise it is completed against this side's own outstanding handshake with that peer, or, when there is none, answered with a hello of this side's own. Either way it yields a candidate beside any current channel; nothing is replaced until a frame opens under the candidate. Nothing that happens while handling a hello rejects the returned promise or reaches the peer: a failure of this side is reported to `onFault` and abandons only the handshake it was part of. */
+  applyHello: (
+    hello: Readonly<SecureHelloFrame>,
+    claimedFrom: DeviceId | undefined,
+  ) => Promise<void>;
+  /** Opens sealed data received through a relay pairing. `claimedFrom` is the `from-device` the relay stamped, which only picks the entry to try; the result is undefined unless the frame opens under one of that entry's channels, and names the peer that channel authenticated. A frame that opens under a candidate makes it the current channel. */
   open: (
     data: Readonly<SecureDataFrame>,
     claimedFrom: DeviceId | undefined,
@@ -63,124 +77,408 @@ export interface RelayChannels {
   forget: (peer: DeviceId) => void;
 }
 
+/** A channel built from this side's own handshake and one remote hello, with that hello's ephemeral key. */
+interface Candidate {
+  readonly channel: SecureChannel;
+  readonly remoteKey: Uint8Array;
+}
+
+/** This side's own hello to one peer, from the moment it is begun until a candidate is confirmed or the window passes. */
+interface Handshake {
+  readonly mine: Promise<PendingHandshake>;
+  /** "initiated" by a local send, "answered" for a received hello. */
+  readonly origin: "initiated" | "answered";
+  readonly sentAt: number;
+  readonly cands: Candidate[];
+  /** Settles once the hello has gone out, and rejects if it could not be signed or sent. Observed from creation. */
+  readonly sent: PromiseWithResolvers<undefined>;
+  /** Set when the window passed with nothing from the peer, so the handshake no longer suppresses answers. */
+  expired: boolean;
+}
+
+interface Current {
+  readonly channel: SecureChannel;
+  readonly remoteKey: Uint8Array;
+  confirmed: boolean;
+}
+
+interface Replaced {
+  readonly channel: SecureChannel;
+  readonly remoteKey: Uint8Array;
+  readonly until: number;
+}
+
+/** Everything held for one peer. The fields only change through the methods, so each transition has one place. */
+class PeerChannels {
+  chosen = false;
+
+  lastUsed: number;
+
+  /** The current channel: sealing goes through it and only it. */
+  current: Current | undefined;
+
+  /** The channel the current one replaced, which may still open frames that were in flight but never seals. */
+  replaced: Replaced | undefined;
+
+  hs: Handshake | undefined;
+
+  /** The candidates of a handshake that ended without confirming either of two, which together serve as the channel until a frame opens under one. */
+  pool: Candidate[] = [];
+
+  private waiters: PromiseWithResolvers<undefined> | undefined;
+
+  private opening: Promise<unknown> = Promise.resolve();
+
+  constructor(
+    readonly peer: DeviceId,
+    now: number,
+  ) {
+    this.lastUsed = now;
+  }
+
+  get key(): string {
+    return deviceIdToHex(this.peer);
+  }
+
+  touch(now: number): void {
+    this.lastUsed = now;
+  }
+
+  choose(): void {
+    this.chosen = true;
+  }
+
+  /** True when `key` is the remote ephemeral key of anything held for the peer. */
+  holdsKey(key: Uint8Array): boolean {
+    return [
+      this.current?.remoteKey,
+      this.replaced?.remoteKey,
+      ...(this.hs?.cands ?? []).map((cand) => cand.remoteKey),
+      ...this.pool.map((cand) => cand.remoteKey),
+    ].some((held) => held !== undefined && bytesEqual(held, key));
+  }
+
+  /** Whether this side's handshake with the peer is outstanding: sent less than a window ago, and neither confirmed nor ended. */
+  outstanding(now: number): boolean {
+    return (
+      this.hs !== undefined &&
+      !this.hs.expired &&
+      now < this.hs.sentAt + HANDSHAKE_WINDOW_MS
+    );
+  }
+
+  /** Applies whatever the passing of time has ended: the replaced channel after its window, and a handshake after its window. Checked on every event, so no timer is needed. */
+  expire(now: number): void {
+    if (this.replaced !== undefined && now >= this.replaced.until) {
+      this.replaced = undefined;
+    }
+    const { hs } = this;
+    if (
+      hs === undefined ||
+      hs.expired ||
+      now < hs.sentAt + HANDSHAKE_WINDOW_MS
+    ) {
+      return;
+    }
+    const [only, ...rest] = hs.cands;
+    if (this.current !== undefined) {
+      // Nothing confirmed a candidate: the current channel stays.
+      this.hs = undefined;
+    } else if (only === undefined) {
+      hs.expired = true;
+    } else if (rest.length === 0) {
+      this.current = { ...only, confirmed: false };
+      this.hs = undefined;
+    } else {
+      this.pool = hs.cands;
+      this.hs = undefined;
+    }
+  }
+
+  /** The candidates a received frame is tried against, in order. */
+  candidates(): readonly Candidate[] {
+    return [...(this.hs?.cands ?? []), ...this.pool];
+  }
+
+  begin(hs: Handshake): void {
+    this.hs = hs;
+  }
+
+  /** Ends `hs` if it is still this peer's handshake. */
+  end(hs: Handshake): boolean {
+    if (this.hs !== hs) {
+      return false;
+    }
+    this.hs = undefined;
+
+    return true;
+  }
+
+  confirmCurrent(): void {
+    if (this.current !== undefined) {
+      this.current.confirmed = true;
+    }
+  }
+
+  /** A frame opened under `cand`: it becomes the current channel, the channel it replaces may open in-flight frames for a window, and every other candidate goes. */
+  confirm(cand: Candidate, now: number): void {
+    if (this.current !== undefined) {
+      this.replaced = {
+        channel: this.current.channel,
+        remoteKey: this.current.remoteKey,
+        until: now + HANDSHAKE_WINDOW_MS,
+      };
+    }
+    this.current = { ...cand, confirmed: true };
+    this.hs = undefined;
+    this.pool = [];
+  }
+
+  /** Forgets the current channel when it is the one that is spent. */
+  clearCurrent(channel: SecureChannel): void {
+    if (this.current?.channel === channel) {
+      this.current = undefined;
+    }
+  }
+
+  isEmpty(): boolean {
+    return (
+      this.current === undefined &&
+      this.replaced === undefined &&
+      this.hs === undefined &&
+      this.pool.length === 0
+    );
+  }
+
+  /** Resolves once some candidate exists. */
+  async waitForChannel(): Promise<undefined> {
+    this.waiters ??= (() => {
+      const waiting = Promise.withResolvers<undefined>();
+      void waiting.promise.catch(() => undefined);
+
+      return waiting;
+    })();
+
+    return this.waiters.promise;
+  }
+
+  releaseWaiters(): void {
+    this.waiters?.resolve(undefined);
+    this.waiters = undefined;
+  }
+
+  rejectWaiters(error: Error): void {
+    this.waiters?.reject(error);
+    this.waiters = undefined;
+  }
+
+  /** Runs `task` after every earlier one for this peer: two frames opening at once must not both be tried before either has settled what it confirms. */
+  async serialise<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.opening.then(task);
+    this.opening = run.catch(() => undefined);
+
+    return run;
+  }
+}
+
+function authentic(outcome: OpenOutcome): boolean {
+  // An authentic frame whose plaintext is not a frame still proves the sender holds the keys.
+  return outcome.ok || outcome.reason === "undecodable";
+}
+
+async function openFirst(
+  cands: readonly Candidate[],
+  data: Readonly<SecureDataFrame>,
+): Promise<{ cand: Candidate; outcome: OpenOutcome } | undefined> {
+  const [first, ...rest] = cands;
+  if (first === undefined) {
+    return undefined;
+  }
+  const outcome = await first.channel.openOutcome(data);
+
+  return authentic(outcome) ? { cand: first, outcome } : openFirst(rest, data);
+}
+
 export function createRelayChannels(
   identity: Readonly<IdentityPort>,
   /** Puts a hello on the wire for peer. Rejects when there is no connection to put it on. */
   sendHello: (peer: DeviceId, hello: SecureHelloFrame) => Promise<void>,
+  clock: Readonly<Clock>,
   options: Readonly<{
     /** Where each channel's send counter starts: only for tests that must reach the counter's bound, see establishChannelFrom. */
     firstSendCounter?: number;
-    /** Told of a failure that is local to this side and is not the peer's doing, while handling a hello: an identity port that failed to check or sign, an answer that could not be sent, a channel that could not be established. It runs once per failing hello, so it must be cheap; if it throws, or returns a promise that rejects, that is reported once to the console and swallowed. The hello is dropped and nothing is sent to the peer. */
-    onFault?: ((error: unknown) => void | Promise<void>) | undefined;
+    /** Told of a failure that is local to this side and is not the peer's doing, while handling a hello or sending this side's own: an identity port that failed to check or sign, a hello that could not be sent, a channel that could not be established. At most one report is made per peer per handshake window, with the number withheld since the last in the context, and at most MAX_UNSOLICITED_PEERS across all peers, so it must be cheap rather than rate limited by its owner. If it throws, or returns a promise that rejects, that is reported once per window to the console and swallowed. The hello is dropped and nothing is sent to the peer. */
+    onFault?:
+      | ((error: unknown, context: FaultContext) => void | Promise<void>)
+      | undefined;
+    /** Test-only: supplies each new handshake's ephemeral key pair and nonce, so a scenario is deterministic. */
+    newHandshake?: (peer: DeviceId) => Promise<PendingHandshake>;
   }> = {},
 ): RelayChannels {
   if (options.firstSendCounter !== undefined) {
     assertFirstSendCounter(options.firstSendCounter);
   }
-  const channels = new Map<string, ChannelState>();
+  const newHandshake =
+    options.newHandshake ??
+    (async (peer: DeviceId): Promise<PendingHandshake> =>
+      beginHandshake(identity, peer));
+  const peers = new Map<string, PeerChannels>();
 
-  /** Tells the owner of a failure that is local to this side. The callback is the owner's code: its own failure, thrown or as a rejected promise it returns, must not end the session or go unobserved, so it is reported once and swallowed. */
-  function reportFault(error: unknown): void {
-    const report = (faultError: unknown): void => {
-      console.error("the local fault callback failed", faultError);
-    };
+  // Fault reporting: one report per peer per window, with the count withheld; the state of a peer that no longer has an entry is kept in a small table of its own.
+  const faultWindows = new Map<string, { start: number; suppressed: number }>();
+  let reports = { start: Number.NEGATIVE_INFINITY, count: 0 };
+  let lastConsoleReport = Number.NEGATIVE_INFINITY;
+
+  function reportToConsole(faultError: unknown): void {
+    const now = clock.now();
+    if (now - lastConsoleReport < HANDSHAKE_WINDOW_MS) {
+      return;
+    }
+    lastConsoleReport = now;
+    console.error("the local fault callback failed", faultError);
+  }
+
+  /** Tells the owner of a failure that is local to this side. The callback is the owner's code: its own failure, thrown or as a rejected promise it returns, must not end the session or go unobserved, so it is reported to the console and swallowed. */
+  function reportFault(error: unknown, peer: DeviceId | undefined): void {
+    const now = clock.now();
+    const id = peer === undefined ? "" : deviceIdToHex(peer);
+    const held = faultWindows.get(id);
+    const overall =
+      now - reports.start < HANDSHAKE_WINDOW_MS
+        ? reports
+        : { start: now, count: 0 };
+    reports = overall;
+    if (
+      (held !== undefined && now - held.start < HANDSHAKE_WINDOW_MS) ||
+      overall.count >= MAX_UNSOLICITED_PEERS
+    ) {
+      faultWindows.set(id, {
+        start: held?.start ?? Number.NEGATIVE_INFINITY,
+        suppressed: (held?.suppressed ?? 0) + 1,
+      });
+
+      return;
+    }
+    reports = { start: overall.start, count: overall.count + 1 };
+    faultWindows.delete(id);
+    faultWindows.set(id, { start: now, suppressed: 0 });
+    const [oldest] = faultWindows.keys();
+    if (faultWindows.size > MAX_UNSOLICITED_PEERS && oldest !== undefined) {
+      faultWindows.delete(oldest);
+    }
     try {
-      const result: unknown = options.onFault?.(error);
+      const result: unknown = options.onFault?.(error, {
+        peer,
+        suppressed: held?.suppressed ?? 0,
+      });
       if (
         typeof result === "object" &&
         result !== null &&
         "then" in result &&
         typeof result.then === "function"
       ) {
-        void Promise.resolve(result).catch(report);
+        void Promise.resolve(result).catch(reportToConsole);
       }
     } catch (faultError) {
-      report(faultError);
+      reportToConsole(faultError);
     }
   }
 
-  /** Abandons a handshake that failed: the entry goes if it is still the one held for the peer, and whoever awaits it is told. */
-  function abandon(entry: Awaiting, error: unknown): void {
+  function prune(entry: PeerChannels): void {
+    if (entry.isEmpty() && !entry.chosen && peers.get(entry.key) === entry) {
+      peers.delete(entry.key);
+    }
+  }
+
+  /** Ends this side's handshake `hs` with the peer, leaving every channel as it is, and tells whoever waits for a channel when there is none to wait for. */
+  function dropHandshake(
+    entry: PeerChannels,
+    hs: Handshake,
+    error: unknown,
+  ): void {
+    if (!entry.end(hs)) {
+      return;
+    }
     const failure = error instanceof Error ? error : new Error(String(error));
-    if (channels.get(entry.key) === entry) {
-      channels.delete(entry.key);
+    hs.sent.reject(failure);
+    if (entry.current === undefined && entry.pool.length === 0) {
+      entry.rejectWaiters(failure);
     }
-    entry.settle.reject(failure);
-    entry.sent.reject(failure);
+    prune(entry);
   }
 
-  /** Starts a handshake with the peer: sends this side's hello, and registers the peer as awaiting at once, so a hello arriving meanwhile completes this handshake instead of starting a second. `answering` is true when a received hello started this, so nobody awaits the outcome and a failure to send is reported to the owner. `track` is false for a handshake answering a hello while a channel with that peer is established: it is not registered, so the established channel stays in place and in use until the new one is up and this side's hello has been sent. A hello that could not be sent leaves no channel behind: the peer would never learn this side's key. */
-  function start(
-    peer: DeviceId,
-    { answering, track }: Readonly<{ answering: boolean; track: boolean }> = {
-      answering: false,
-      track: true,
-    },
-  ): Awaiting {
-    const key = deviceIdToHex(peer);
-    const pending = beginHandshake(identity, peer);
-    const entry: Awaiting = {
-      status: "awaiting",
-      pending,
-      settle: Promise.withResolvers<SecureChannel>(),
-      key,
+  /** Drops every handshake that is waiting for its first answer beyond MAX_PENDING_HANDSHAKES, oldest first. */
+  function enforcePendingBound(keep: PeerChannels): void {
+    const pending = [...peers.values()].filter(
+      (entry) =>
+        entry.hs?.origin === "initiated" &&
+        entry.hs.cands.length === 0 &&
+        entry.current === undefined,
+    );
+    const excess = pending
+      .filter((entry) => entry !== keep)
+      .sort((a, b) => (a.hs?.sentAt ?? 0) - (b.hs?.sentAt ?? 0))
+      .slice(0, Math.max(0, pending.length - MAX_PENDING_HANDSHAKES));
+    for (const entry of excess) {
+      if (entry.hs !== undefined) {
+        dropHandshake(
+          entry,
+          entry.hs,
+          new Error("the handshake was dropped to make room for others"),
+        );
+      }
+    }
+  }
+
+  /** Begins this side's own hello to the entry's peer and registers it at once, so a hello arriving meanwhile completes it instead of starting another. */
+  function beginOwn(
+    entry: PeerChannels,
+    origin: Handshake["origin"],
+  ): Handshake {
+    const mine = newHandshake(entry.peer);
+    const hs: Handshake = {
+      mine,
+      origin,
+      sentAt: clock.now(),
+      cands: [],
       sent: Promise.withResolvers<undefined>(),
+      expired: false,
     };
-    // Observed from the start: a caller that awaits either sees the rejection through its own handler, and one that does not (a received hello created this entry) must not leave it unhandled.
-    void entry.settle.promise.catch(() => undefined);
-    void entry.sent.promise.catch(() => undefined);
-    void pending.then(
+    // Observed from the start: whoever awaits it sees the rejection through their own handler, and one that does not must not leave it unhandled.
+    void hs.sent.promise.catch(() => undefined);
+    entry.begin(hs);
+    void mine.then(
       async ({ hello }) => {
         try {
-          await sendHello(peer, hello);
+          await sendHello(entry.peer, hello);
         } catch (error) {
-          abandon(entry, error);
-          // Settled already means the channel is up: take it down again, since the peer never got this side's hello.
-          void entry.settle.promise.then(
-            (channel) => {
-              const held = channels.get(key);
-              if (held?.status === "established" && held.channel === channel) {
-                channels.delete(key);
-              }
-            },
-            () => undefined,
-          );
-          if (answering && track) {
-            reportFault(error);
+          dropHandshake(entry, hs, error);
+          if (origin === "answered") {
+            reportFault(error, entry.peer);
           }
 
           return;
         }
-        entry.sent.resolve(undefined);
+        hs.sent.resolve(undefined);
       },
-      // Signing failed. A received hello being handled sees the same rejection through `entry.pending` and reports it.
+      // Signing failed. A received hello being handled sees the same rejection through `hs.mine` and reports it.
       (error: unknown) => {
-        abandon(entry, error);
+        dropHandshake(entry, hs, error);
       },
     );
-    if (track) {
-      channels.set(key, entry);
-    }
 
-    return entry;
+    return hs;
   }
 
-  /** Completes the handshake a verified hello belongs to. Throws on any failure of this side; the caller abandons the handshake. */
-  async function complete({
-    entry,
-    hello,
-    peer,
-    replaces,
-  }: Readonly<{
-    entry: Awaiting;
-    hello: Readonly<SecureHelloFrame>;
-    peer: SecureChannelPeer;
-    /** The established channel this one replaces, when the handshake was begun without displacing it. */
-    replaces: ChannelState | undefined;
-  }>): Promise<void> {
-    const { key } = entry;
-    const pending = await entry.pending;
-    const established = await establishChannelFrom(identity, {
+  /** Builds the channel `hello` makes with this side's handshake `hs`, and holds it as a candidate. */
+  async function addCandidate(
+    entry: PeerChannels,
+    hs: Handshake,
+    hello: Readonly<SecureHelloFrame>,
+    peer: SecureChannelPeer,
+  ): Promise<void> {
+    const pending = await hs.mine;
+    const channel = await establishChannelFrom(identity, {
       pending,
       remote: hello,
       peer,
@@ -188,121 +486,240 @@ export function createRelayChannels(
         ? {}
         : { firstSendCounter: options.firstSendCounter }),
     });
-    if (established === undefined) {
-      // The peer's ephemeral key is unusable: the peer's doing, so nothing is reported.
-      abandon(entry, new Error("the peer sent an unusable ephemeral key"));
+    if (
+      channel === undefined ||
+      entry.hs !== hs ||
+      peers.get(entry.key) !== entry ||
+      hs.cands.length >= CANDIDATES_PER_HANDSHAKE ||
+      entry.holdsKey(hello["ephemeral-key"])
+    ) {
+      return;
+    }
+    hs.cands.push({ channel, remoteKey: hello["ephemeral-key"] });
+    entry.releaseWaiters();
+  }
+
+  /** Makes room for a peer this side never sent anything to. An entry is reused only once it is older than the window, so answers cannot outpace the turnover of slots. */
+  function reserveUnsolicitedSlot(now: number): boolean {
+    const unsolicited = [...peers.values()].filter((entry) => !entry.chosen);
+    if (unsolicited.length < MAX_UNSOLICITED_PEERS) {
+      return true;
+    }
+    const [victim] = unsolicited
+      .filter((entry) => now - entry.lastUsed >= HANDSHAKE_WINDOW_MS)
+      .sort((a, b) => a.lastUsed - b.lastUsed);
+    if (victim === undefined) {
+      return false;
+    }
+    discard(victim, new Error("the entry was dropped to make room for others"));
+
+    return true;
+  }
+
+  function discard(entry: PeerChannels, error: Error): void {
+    peers.delete(entry.key);
+    entry.hs?.sent.reject(error);
+    entry.rejectWaiters(error);
+  }
+
+  async function sealUnder(
+    entry: PeerChannels,
+    channel: SecureChannel,
+    frame: Frame,
+  ): Promise<SecureDataFrame> {
+    try {
+      return await channel.seal(frame);
+    } catch (error) {
+      // A channel whose send counter is spent can seal nothing more. Forgetting it makes the next send to this peer start a new handshake, with a fresh counter, instead of failing for good.
+      if (error instanceof ChannelExhaustedError) {
+        entry.clearCurrent(channel);
+      }
+      throw error;
+    }
+  }
+
+  async function sealFor(
+    entry: PeerChannels,
+    frame: Frame,
+  ): Promise<readonly SecureDataFrame[]> {
+    entry.expire(clock.now());
+    entry.touch(clock.now());
+    const { current, hs } = entry;
+    if (current !== undefined) {
+      return [await sealUnder(entry, current.channel, frame)];
+    }
+    if (entry.pool.length > 0) {
+      return Promise.all(
+        entry.pool.map(async (cand) => sealUnder(entry, cand.channel, frame)),
+      );
+    }
+    if (hs === undefined) {
+      beginOwn(entry, "initiated");
+      enforcePendingBound(entry);
+
+      return sealFor(entry, frame);
+    }
+    if (hs.cands.length > 0) {
+      // The hello this side answered with is out before anything is sealed under the channel it makes.
+      await hs.sent.promise;
+
+      return Promise.all(
+        hs.cands.map(async (cand) => sealUnder(entry, cand.channel, frame)),
+      );
+    }
+    await entry.waitForChannel();
+
+    return sealFor(entry, frame);
+  }
+
+  /** Tries a frame against the peer's channels, in order: the current one, then the candidates, then the replaced one while its window lasts. */
+  async function openUnder(
+    entry: PeerChannels,
+    data: Readonly<SecureDataFrame>,
+  ): Promise<OpenedFrame | undefined> {
+    entry.expire(clock.now());
+    const { current } = entry;
+    if (current !== undefined) {
+      const outcome = await current.channel.openOutcome(data);
+      if (authentic(outcome)) {
+        entry.confirmCurrent();
+        entry.touch(clock.now());
+
+        return outcome.ok
+          ? { frame: outcome.frame, from: current.channel.peer.deviceId }
+          : undefined;
+      }
+    }
+    const found = await openFirst(entry.candidates(), data);
+    if (found !== undefined) {
+      if (peers.get(entry.key) !== entry) {
+        return undefined;
+      }
+      // Confirmation: the peer holds the candidate's other secret.
+      entry.confirm(found.cand, clock.now());
+      entry.touch(clock.now());
+
+      return found.outcome.ok
+        ? {
+            frame: found.outcome.frame,
+            from: found.cand.channel.peer.deviceId,
+          }
+        : undefined;
+    }
+    const { replaced } = entry;
+    if (replaced !== undefined && clock.now() < replaced.until) {
+      const outcome = await replaced.channel.openOutcome(data);
+
+      return outcome.ok
+        ? { frame: outcome.frame, from: replaced.channel.peer.deviceId }
+        : undefined;
+    }
+
+    return undefined;
+  }
+
+  async function acceptHello(
+    hello: Readonly<SecureHelloFrame>,
+    sender: DeviceId,
+  ): Promise<void> {
+    const key = deviceIdToHex(sender);
+    const verdict = await verifyHello(identity, hello);
+    if (!verdict.ok || !(await isUsableEphemeralKey(hello["ephemeral-key"]))) {
+      return;
+    }
+    // Everything above waited; what follows decides on the state as it is now.
+    const now = clock.now();
+    let entry = peers.get(key);
+    entry?.expire(now);
+    if (entry?.holdsKey(hello["ephemeral-key"]) === true) {
+      return;
+    }
+    if (entry?.hs !== undefined && entry.outstanding(now)) {
+      if (entry.hs.cands.length < CANDIDATES_PER_HANDSHAKE) {
+        await addCandidate(entry, entry.hs, hello, verdict.peer);
+      }
 
       return;
     }
-    if (replaces !== undefined) {
-      // The channel being replaced stays installed and in use until this side's hello is out: a hello that cannot be sent abandons this handshake and leaves it untouched.
-      await entry.sent.promise;
+    if (entry === undefined) {
+      if (!reserveUnsolicitedSlot(now)) {
+        return;
+      }
+      entry = new PeerChannels(sender, now);
+      peers.set(key, entry);
     }
-    if (channels.get(key) !== (replaces ?? entry)) {
-      // The handshake was reset, forgotten or superseded while this hello was being completed; whoever did that has already told its waiters.
-      return;
+    const hs = beginOwn(entry, "answered");
+    entry.touch(now);
+    try {
+      await addCandidate(entry, hs, hello, verdict.peer);
+    } catch (error) {
+      dropHandshake(entry, hs, error);
+      throw error;
     }
-    const channel: SecureChannel = {
-      ...established,
-      seal: async (frame) => {
-        try {
-          return await established.seal(frame);
-        } catch (error) {
-          // A channel whose send counter is spent can seal nothing more. Forgetting it makes the next send to this peer start a new handshake, with a fresh counter, instead of failing for good.
-          const held = channels.get(key);
-          if (
-            error instanceof ChannelExhaustedError &&
-            held?.status === "established" &&
-            held.channel === channel
-          ) {
-            channels.delete(key);
-          }
-          throw error;
-        }
-      },
-    };
-    channels.set(key, {
-      status: "established",
-      channel,
-      remoteEphemeralKey: hello["ephemeral-key"],
-    });
-    entry.settle.resolve(channel);
   }
 
   return {
-    ensure: async (peer) => {
+    seal: async (peer, frame, purpose) => {
       const key = deviceIdToHex(peer);
-      const existing = channels.get(key);
-      if (existing?.status === "established") {
-        return existing.channel;
+      const now = clock.now();
+      let entry = peers.get(key);
+      if (entry === undefined) {
+        if (purpose === "reply" && !reserveUnsolicitedSlot(now)) {
+          throw new Error("there is no channel with this peer");
+        }
+        entry = new PeerChannels(peer, now);
+        peers.set(key, entry);
+      }
+      if (purpose === "request") {
+        entry.choose();
       }
 
-      return (existing ?? start(peer)).settle.promise;
+      return sealFor(entry, frame);
     },
-    applyHello: async (hello) => {
-      let entry: Awaiting | undefined;
+    applyHello: async (hello, claimedFrom) => {
+      let sender: DeviceId | undefined;
       try {
-        // verifyHello gives a verdict for every hello whose key the port reports as unusable, and lets any other failure of the port out. Such a failure is this side's, not the peer's: it is caught with the rest below.
-        const verdict = await verifyHello(identity, hello);
-        if (!verdict.ok) {
+        if (claimedFrom === undefined) {
           return;
         }
-        const key = deviceIdToHex(verdict.peer.deviceId);
-        const current = channels.get(key);
-        if (
-          current?.status === "established" &&
-          bytesEqual(current.remoteEphemeralKey, hello["ephemeral-key"])
-        ) {
-          // The channel was built from this very ephemeral key, so this hello is a repeat: answering it would replace a working channel with one the peer has no reason to expect.
+        // The cheapest checks first, and before any signature is verified: the hello must come from the pairing of the device it names, and must not repeat a key already held for that device.
+        sender = await identity.deriveDeviceId(
+          hello["identity-key"]["public-key"],
+        );
+        if (!bytesEqual(sender, claimedFrom)) {
           return;
         }
-        const replaces =
-          current?.status === "established" ? current : undefined;
-        entry =
-          current?.status === "awaiting"
-            ? current
-            : start(verdict.peer.deviceId, {
-                answering: true,
-                track: replaces === undefined,
-              });
-        await complete({ entry, hello, peer: verdict.peer, replaces });
+        const held = peers.get(deviceIdToHex(sender));
+        held?.expire(clock.now());
+        if (held?.holdsKey(hello["ephemeral-key"]) === true) {
+          return;
+        }
+        await acceptHello(hello, sender);
       } catch (error) {
-        if (entry !== undefined) {
-          abandon(entry, error);
-        }
-        reportFault(error);
+        reportFault(error, sender);
       }
     },
     open: async (data, claimedFrom) => {
       if (claimedFrom === undefined) {
         return undefined;
       }
-      const key = deviceIdToHex(claimedFrom);
-      const entry = channels.get(key);
-      if (entry?.status !== "established") {
+      const entry = peers.get(deviceIdToHex(claimedFrom));
+      if (entry === undefined) {
         return undefined;
       }
-      const frame = await entry.channel.open(data);
 
-      return frame === undefined
-        ? undefined
-        : { frame, from: entry.channel.peer.deviceId };
+      return entry.serialise(async () => openUnder(entry, data));
     },
     reset: (reason) => {
-      for (const entry of [...channels.values()]) {
-        if (entry.status === "awaiting") {
-          abandon(entry, new Error(reason));
-        }
+      for (const entry of [...peers.values()]) {
+        discard(entry, new Error(reason));
       }
-      channels.clear();
     },
     forget: (peer) => {
-      const key = deviceIdToHex(peer);
-      const entry = channels.get(key);
-      if (entry?.status === "awaiting") {
-        abandon(entry, new Error("the relay pairing was lost"));
+      const entry = peers.get(deviceIdToHex(peer));
+      if (entry !== undefined) {
+        discard(entry, new Error("the relay pairing was lost"));
       }
-      channels.delete(key);
     },
   };
 }

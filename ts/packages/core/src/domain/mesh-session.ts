@@ -35,7 +35,7 @@ import {
   validateGossipExtensions,
 } from "./gossip-extensions.js";
 import { signPeerAdvert, verifyPeerAdvert } from "./peer-advert.js";
-import { createRelayChannels } from "./relay-channels.js";
+import { createRelayChannels, HANDSHAKE_WINDOW_MS } from "./relay-channels.js";
 import { isDataFrame } from "./hub-mailbox.js";
 import type { Clock } from "../ports/clock.js";
 import type { IdentityPort } from "../ports/identity.js";
@@ -50,8 +50,8 @@ import {
 
 const MS_PER_SECOND = 1000;
 
-/** How long to wait for the node's handshake before calling it unanswered. A relay-only node never sends one; that is a state to display, not an error. */
-export const HANDSHAKE_TIMEOUT_MS = 3_000;
+/** How long to wait for the node's handshake before calling it unanswered. A relay-only node never sends one; that is a state to display, not an error. It is also the window the secure channel's handshake rules are measured in. */
+export const HANDSHAKE_TIMEOUT_MS = HANDSHAKE_WINDOW_MS;
 
 export type ConnectionState =
   | { status: "idle" }
@@ -256,7 +256,7 @@ function createSessionCore(
     await connection.send(wrapRelayData(hello, peer));
     emit();
   };
-  const relayChannels = createRelayChannels(identity, sendHello, {
+  const relayChannels = createRelayChannels(identity, sendHello, clock, {
     onFault: onLocalFault,
   });
   const incomingQueue = createAsyncQueue<IncomingManageRequest>();
@@ -314,23 +314,23 @@ function createSessionCore(
   /** Sends a frame. Through a relay it is sealed for toDevice on their secure channel first (spec/secure-channel.cddl) and only then wrapped as relay-data, so the hub carries ciphertext. This is the single choke point every outbound manage-request and manage-response passes through, so a consumer of sendManageRequest or respond never needs its own relay logic. */
   async function transmit(
     frame: Frame,
-    viaRelay: boolean,
     toDevice?: DeviceId,
+    purpose: "request" | "reply" = "request",
   ): Promise<void> {
     if (connection === null) {
       throw new Error("not connected");
     }
-    if (!viaRelay) {
+    if (toDevice === undefined) {
       await connection.send(frame);
 
       return;
     }
-    if (toDevice === undefined) {
-      throw new Error("a relayed frame needs the device it is for");
-    }
-    const channel = await relayChannels.ensure(toDevice);
-    const sealed = await channel.seal(frame);
-    await connection.send(wrapRelayData(sealed, toDevice));
+    // One frame, or one per candidate channel while no channel is confirmed yet: the peer opens at most one.
+    const link = connection;
+    const sealed = await relayChannels.seal(toDevice, frame, purpose);
+    await Promise.all(
+      sealed.map(async (copy) => link.send(wrapRelayData(copy, toDevice))),
+    );
   }
 
   /** `from` is the device whose secure channel the response arrived through, absent for one that arrived directly. A pending request only accepts an answer from where it was sent: a peer must not be able to answer a request meant for another by guessing its request-id. */
@@ -377,7 +377,7 @@ function createSessionCore(
           outcome,
         };
         recordFrame({ direction: "sent", frame: response });
-        await transmit(response, origin !== undefined, fromDevice);
+        await transmit(response, fromDevice, "reply");
         emit();
       },
     };
@@ -396,7 +396,7 @@ function createSessionCore(
       const inner = tryDecodeFrame(frame.payload);
       if (inner?.type === "secure-hello") {
         recordFrame({ direction: "received", frame: inner });
-        await relayChannels.applyHello(inner);
+        await relayChannels.applyHello(inner, frame["from-device"]);
 
         return;
       }
@@ -741,7 +741,7 @@ function createSessionCore(
         // The timeout below covers the whole exchange, secure-channel handshake included: a peer that never answers the hello would otherwise leave a request with a timeout waiting for ever.
         const exchange = (async (): Promise<ManageOutcome> => {
           try {
-            await transmit(frame, targetDevice !== undefined, targetDevice);
+            await transmit(frame, targetDevice);
           } catch (error) {
             // The request never left, so nothing will answer it, and the caller learns why from this rejection rather than from the pending entry's.
             pendingManageRequests.delete(requestId);
@@ -785,7 +785,7 @@ function createSessionCore(
           entries: [...entries],
         };
         recordFrame({ direction: "sent", frame });
-        await transmit(frame, false);
+        await transmit(frame);
         emit();
       },
       async sendCoordinatorClaim(
@@ -794,7 +794,7 @@ function createSessionCore(
         requireConnectedLink();
         const claim: CoordinatorFrame = { ...frame };
         recordFrame({ direction: "sent", frame: claim });
-        await transmit(claim, false);
+        await transmit(claim);
         emit();
       },
       async sendGossipUpdate(
@@ -803,7 +803,7 @@ function createSessionCore(
         requireConnectedLink();
         const frame = await buildSelfAdvert(extensions);
         recordFrame({ direction: "sent", frame });
-        await transmit(frame, false);
+        await transmit(frame);
         emit();
       },
       getTopologyPeers(): TopologyPeers {
@@ -818,7 +818,7 @@ function createSessionCore(
           await ensureRelayPairing(targetDevice);
         }
         recordFrame({ direction: "sent", frame });
-        await transmit(frame, targetDevice !== undefined, targetDevice);
+        await transmit(frame, targetDevice);
         emit();
       },
       async close(): Promise<void> {

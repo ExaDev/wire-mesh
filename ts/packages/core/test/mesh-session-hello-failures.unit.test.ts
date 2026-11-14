@@ -35,6 +35,7 @@ const command: ManageCommand = {
 };
 const scope: CapabilityScope = { kind: "folder" };
 const REQUEST_ID = 91;
+const CONFIRMING_REQUEST_ID = 90;
 const SETTLE_MS = 40;
 const P256_POINT_BYTES = 65;
 const SEC1_UNCOMPRESSED = 4;
@@ -146,6 +147,14 @@ async function requestsAreStillServed(
   });
 }
 
+function sentHellos(connection: Link): Frame[] {
+  return connection.sent.filter(
+    (frame) =>
+      frame.type === "relay-data" &&
+      new TextDecoder("latin1").decode(frame.payload).includes("secure-hello"),
+  );
+}
+
 function expectSessionUp(states: readonly string[]): void {
   expect(states).not.toContain("reconnecting");
   expect(states).not.toContain("closed");
@@ -162,19 +171,9 @@ describe("a hello that verifies but cannot be completed", () => {
     );
 
     pushHello(connection, await helloWithUnusableEphemeralKey(testIdentity));
-    // The session's own hello goes out before the peer's key is found unusable; the next hello is judged against what has been sent, so wait for it.
-    await vi.waitFor(() => {
-      expect(
-        connection.sent.filter(
-          (frame) =>
-            frame.type === "relay-data" &&
-            new TextDecoder("latin1")
-              .decode(frame.payload)
-              .includes("secure-hello"),
-        ),
-      ).toHaveLength(1);
-    });
     await settle();
+    // The key is found unusable before any key of this side's own is generated, so nothing is sent.
+    expect(sentHellos(connection)).toEqual([]);
     expect(unhandled).toEqual([]);
     // The peer's doing, so nothing is reported as a local fault.
     expect(faults).toEqual([]);
@@ -208,8 +207,9 @@ describe("a hello that verifies but cannot be completed", () => {
       connection,
       await beginHandshake(identityA, flaky.deviceId).then((p) => p.hello),
     );
-    await settle();
-    expect(faults).toHaveLength(1);
+    await vi.waitFor(() => {
+      expect(faults).toHaveLength(1);
+    });
     expect(connection.sent.length).toBe(sentBefore);
     expect(unhandled).toEqual([]);
     expectSessionUp(states);
@@ -470,6 +470,16 @@ describe("a verified hello whose answer cannot be sent, with a channel establish
       );
       const peer = new RelayPeer(identityA, testIdentity, connection);
       await peer.openTowardSession();
+      // The channel is confirmed once a frame from the peer has opened under it.
+      await peer.deliver({
+        type: "manage-request",
+        "request-id": CONFIRMING_REQUEST_ID,
+        command,
+        scope,
+      });
+      await vi.waitFor(() => {
+        expect(incoming).toHaveLength(1);
+      });
       connection.rejectSends(
         new Error("the link stopped accepting writes"),
         afterMs,
@@ -495,10 +505,11 @@ describe("a verified hello whose answer cannot be sent, with a channel establish
       });
       await vi.waitFor(() => {
         expect(incoming.map((request) => request.requestId)).toEqual([
+          CONFIRMING_REQUEST_ID,
           REQUEST_ID,
         ]);
       });
-      await incoming[0]?.respond({ result: "ok" });
+      await incoming[1]?.respond({ result: "ok" });
       expect(await peer.received()).toEqual([
         expect.objectContaining({ type: "manage-response" }),
       ]);

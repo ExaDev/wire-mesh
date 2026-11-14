@@ -1,6 +1,6 @@
 // A hello whose verification fails or throws is dropped: nothing is sent to the peer, and the session keeps serving everyone else. This covers the checking of the hello, not everything a hello could provoke. A key the identity port reports as unusable is a verdict about the peer; any other failure of the port is local, reported to the owner and not to the peer.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { messageFromFrame } from "../src/adapters/frame-codec.js";
 import {
   createMeshSession,
@@ -172,11 +172,11 @@ describe("a hostile hello", () => {
         command,
         scope,
       });
-      await settle();
-
-      expect(incoming.map((request) => request.requestId)).toEqual([
-        REQUEST_ID,
-      ]);
+      await vi.waitFor(() => {
+        expect(incoming.map((request) => request.requestId)).toEqual([
+          REQUEST_ID,
+        ]);
+      });
       expect(states).not.toContain("reconnecting");
       expect(states).not.toContain("closed");
       // The identity port said the key was unusable: that is a verdict, not a local fault.
