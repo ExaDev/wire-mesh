@@ -118,6 +118,36 @@ describe("generated string patterns match the whole value", () => {
     }
   }
 
+  // Characters a character class or a line-anchored pattern could let through: an astral character (one code point, two UTF-16 units), a lone surrogate, every line terminator and NUL, before, after and inside a valid value.
+  const OTHER_CHARACTERS = [
+    "\u{1F600}",
+    "\uD800",
+    "\r",
+    "\u2028",
+    "\u2029",
+    "\u0085",
+    "\0",
+  ];
+  for (const pattern of patterns) {
+    for (const character of OTHER_CHARACTERS) {
+      it(`${pattern.name} refuses ${JSON.stringify(character)} around and inside a valid value`, () => {
+        const middle = Math.floor(pattern.valid.length / 2);
+        for (const value of [
+          pattern.valid + character,
+          character + pattern.valid,
+          pattern.valid.slice(0, middle) +
+            character +
+            pattern.valid.slice(middle),
+        ]) {
+          expect(
+            pattern.schema.safeParse(value).success,
+            JSON.stringify(value),
+          ).toBe(false);
+        }
+      });
+    }
+  }
+
   it("capability-verb refuses a value only a substring match accepts", () => {
     expect(capabilityVerbSchema.safeParse("two:colons:here").success).toBe(
       false,

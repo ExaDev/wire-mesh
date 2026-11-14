@@ -123,8 +123,8 @@ export const frameSchema = z.lazy(() => z.lazy(() => frameVariantSchema));
 export const protocolVersionSchema = z.lazy(() => z.number().int().nonnegative());
 export const domainIdSchema = z.lazy(() => z.union([z.lazy(() => coreDomainNameSchema), z.lazy(() => namespacedDomainIdSchema), z.lazy(() => privateUseDomainIdSchema)]));
 export const coreDomainNameSchema = z.lazy(() => z.union([z.literal("core/management"), z.literal("core/exec"), z.literal("core/data"), z.literal("core/federation"), z.literal("core/webrtc"), z.literal("core/room"), z.literal("core/bulk"), z.literal("core/version")]));
-export const namespacedDomainIdSchema = z.lazy(() => z.string().regex(new RegExp("^(?:[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+/[A-Za-z0-9_.-]+)$")));
-export const privateUseDomainIdSchema = z.lazy(() => z.string().regex(new RegExp("^(?:x-[A-Za-z0-9_.-]+)$")));
+export const namespacedDomainIdSchema = z.lazy(() => z.string().regex(new RegExp("^(?:[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+/[A-Za-z0-9_.-]+)$", "u")));
+export const privateUseDomainIdSchema = z.lazy(() => z.string().regex(new RegExp("^(?:x-[A-Za-z0-9_.-]+)$", "u")));
 export const handshakeFrameSchema = z.lazy(() => z.object({
   "type": z.literal("handshake"),
   "version": z.lazy(() => protocolVersionSchema),
@@ -211,9 +211,9 @@ export const topologyGetSchema = z.lazy(() => z.object({
   "verb": z.literal("topology.get"),
 }));
 export const roomPathSchema = z.lazy(() => z.union([z.lazy(() => ownerNamedRoomPathSchema), z.lazy(() => dmRoomPathSchema)]));
-export const deviceIdHexSchema = z.lazy(() => z.string().regex(new RegExp("^(?:[0-9a-f]{64})$")));
-export const ownerNamedRoomPathSchema = z.lazy(() => z.string().regex(new RegExp("^(?:[0-9a-f]{64}/[A-Za-z0-9_-]+)$")));
-export const dmRoomPathSchema = z.lazy(() => z.string().regex(new RegExp("^(?:[0-9a-f]{64}\\+[0-9a-f]{64})$")));
+export const deviceIdHexSchema = z.lazy(() => z.string().regex(new RegExp("^(?:[0-9a-f]{64})$", "u")));
+export const ownerNamedRoomPathSchema = z.lazy(() => z.string().regex(new RegExp("^(?:[0-9a-f]{64}/[A-Za-z0-9_-]+)$", "u")));
+export const dmRoomPathSchema = z.lazy(() => z.string().regex(new RegExp("^(?:[0-9a-f]{64}\\+[0-9a-f]{64})$", "u")));
 export const roomSendSchema = z.lazy(() => z.object({
   "verb": z.literal("room.send"),
   "message-id": z.instanceof(Uint8Array),
@@ -366,9 +366,9 @@ export const thresholdKeygenConfirmSchema = z.lazy(() => z.object({
   "group-key": z.instanceof(Uint8Array),
 }));
 export const capabilityVerbSchema = z.lazy(() => z.union([z.lazy(() => coreCapabilitySchema), z.lazy(() => namespacedCapabilitySchema), z.lazy(() => privateUseCapabilitySchema)]));
-export const coreCapabilitySchema = z.lazy(() => z.string().regex(new RegExp("^(?:[a-z][a-z0-9-]*:[a-z][a-z0-9-]*)$")));
-export const namespacedCapabilitySchema = z.lazy(() => z.string().regex(new RegExp("^(?:[a-z0-9.-]+/[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+)$")));
-export const privateUseCapabilitySchema = z.lazy(() => z.string().regex(new RegExp("^(?:x-[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+)$")));
+export const coreCapabilitySchema = z.lazy(() => z.string().regex(new RegExp("^(?:[a-z][a-z0-9-]*:[a-z][a-z0-9-]*)$", "u")));
+export const namespacedCapabilitySchema = z.lazy(() => z.string().regex(new RegExp("^(?:[a-z0-9.-]+/[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+)$", "u")));
+export const privateUseCapabilitySchema = z.lazy(() => z.string().regex(new RegExp("^(?:x-[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+)$", "u")));
 export const capabilityScopeSchema = z.lazy(() => z.object({
   "kind": z.string(),
   "path": z.string().optional(),
