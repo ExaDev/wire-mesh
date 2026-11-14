@@ -200,9 +200,14 @@ export function createTlsTransport(identity: Readonly<TlsIdentity>): Transport {
         const server = createServer(
           { ...tlsOptions, requestCert: true },
           (socket) => {
-            void authenticatedPeerDeviceId(socket).then((peerDeviceId) => {
-              onConnection(wrapSocket(socket, peerDeviceId));
-            });
+            void authenticatedPeerDeviceId(socket)
+              .then((peerDeviceId) => {
+                onConnection(wrapSocket(socket, peerDeviceId));
+              })
+              // A connection whose peer cannot be identified, or that its owner cannot take, is closed.
+              .catch((error: unknown) => {
+                socket.destroy(error instanceof Error ? error : undefined);
+              });
           },
         );
         server.once("error", reject);
