@@ -728,6 +728,8 @@ function createSessionCore(
         requireConnectedLink();
         if (targetDevice !== undefined) {
           await ensureRelayPairing(targetDevice);
+          // A close that ran during the await has already settled every pending request, so one registered now would never be settled.
+          requireConnectedLink();
         }
         const frame = buildManageRequest(command, scope, token);
         const requestId = frame["request-id"];

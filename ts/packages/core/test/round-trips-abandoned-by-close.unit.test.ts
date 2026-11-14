@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMeshSession } from "../src/domain/mesh-session.js";
 import { createPingRoundTrips } from "../src/domain/ping-round-trips.js";
+import { deviceIdFromFillHex } from "./hex.js";
 import type { ManageCommand } from "../src/generated/protocol.js";
 import {
   fakeTransport,
@@ -180,6 +181,27 @@ describe("a manage-request abandoned by a close", () => {
     );
     connection.releaseCloses();
     await closing;
+    await letUnhandledRejectionsSurface();
+
+    expect(unhandled).toEqual([]);
+  });
+
+  it("is refused, rather than left pending for ever, when the session closes while it waits for its relay pairing", async () => {
+    const { session, connection } = await connected();
+    connection.holdSends();
+
+    const request = session.sendManageRequest(
+      command,
+      { kind: "folder" },
+      deviceIdFromFillHex("0a"),
+    );
+    const outcome = expect(request).rejects.toThrow("not connected");
+    await vi.waitFor(() => {
+      expect(connection.heldSendCount).toBeGreaterThan(0);
+    });
+    await session.close();
+    connection.releaseSends();
+    await outcome;
     await letUnhandledRejectionsSurface();
 
     expect(unhandled).toEqual([]);
