@@ -10,6 +10,7 @@ import type {
 } from "../generated/protocol.js";
 import type { Clock } from "../ports/clock.js";
 import type { IdentityPort } from "../ports/identity.js";
+import type { LocalFaultHandler } from "./local-fault.js";
 import { deviceIdToHex } from "./device-id.js";
 import { ChannelExhaustedError } from "./channel-exhausted-error.js";
 import { bytesEqual } from "./token-scope.js";
@@ -46,16 +47,8 @@ export interface OpenedFrame {
   readonly from: DeviceId;
 }
 
-/** What `onFault` is told besides the error. */
-export interface FaultContext {
-  /** The peer the failing hello or send was for, when it is known by then. */
-  readonly peer: DeviceId | undefined;
-  /** How many reports for this peer were withheld since the last one: at most one report per peer is made per handshake window. */
-  readonly suppressed: number;
-}
-
 export interface RelayChannels {
-  /** Seals one frame for peer, starting a handshake when there is no channel and none is outstanding. Resolves with one sealed frame, or with one per candidate channel while this side has no established channel and holds several, which the peer opens at most one of. A "request" marks the peer chosen. */
+  /** Seals one frame for peer, starting a handshake when there is no channel and none is outstanding. Resolves with one sealed frame, or with one per candidate channel while this side has no established channel and holds several, which the peer opens at most one of. A "request" marks the peer chosen for good, so a consumer must not seal a request in reaction to a frame from a peer it did not choose: use "reply" for an answer. */
   seal: (
     peer: DeviceId,
     frame: Frame,
@@ -73,7 +66,7 @@ export interface RelayChannels {
   ) => Promise<OpenedFrame | undefined>;
   /** Forgets every peer, abandoning handshakes still waiting: channels are tied to the connection they were set up on. */
   reset: (reason: string) => void;
-  /** Forgets one peer, so the next request to it starts afresh. */
+  /** Forgets one peer, so the next request to it starts afresh. A candidate channel the peer has not yet confirmed is kept, so that a frame from the peer under it still opens; a handshake with no candidate is dropped. */
   forget: (peer: DeviceId) => void;
 }
 
@@ -234,6 +227,12 @@ class PeerChannels {
     this.pool = [];
   }
 
+  /** Forgets the confirmed channel and the one it replaced, keeping every candidate. */
+  dropConfirmed(): void {
+    this.current = undefined;
+    this.replaced = undefined;
+  }
+
   /** Forgets the current channel when it is the one that is spent. */
   clearCurrent(channel: SecureChannel): void {
     if (this.current?.channel === channel) {
@@ -299,18 +298,22 @@ async function openFirst(
   return authentic(outcome) ? { cand: first, outcome } : openFirst(rest, data);
 }
 
+/** A clock that never goes backwards: milliseconds from an arbitrary origin, as `performance.now()` gives them. What `createMeshSession` gives its channels. */
+export const monotonicClock: Readonly<Clock> = {
+  now: () => performance.now(),
+};
+
 export function createRelayChannels(
   identity: Readonly<IdentityPort>,
   /** Puts a hello on the wire for peer. Rejects when there is no connection to put it on. */
   sendHello: (peer: DeviceId, hello: SecureHelloFrame) => Promise<void>,
-  clock: Readonly<Clock>,
   options: Readonly<{
+    /** The time every window rule is measured in: milliseconds from any origin, and monotonic. Defaults to the performance clock. A clock that steps backwards is held at the latest reading it has given until it passes it, so a step back lengthens every window by the size of the step and breaks no rule; a wall clock that can be set is not a suitable source. */
+    clock?: Readonly<Clock>;
     /** Where each channel's send counter starts: only for tests that must reach the counter's bound, see establishChannelFrom. */
     firstSendCounter?: number;
     /** Told of a failure that is local to this side and is not the peer's doing, while handling a hello or sending this side's own: an identity port that failed to check or sign, a hello that could not be sent, a channel that could not be established. At most one report is made per peer per handshake window, with the number withheld since the last in the context, and at most MAX_UNSOLICITED_PEERS across all peers, so it must be cheap rather than rate limited by its owner. If it throws, or returns a promise that rejects, that is reported once per window to the console and swallowed. The hello is dropped and nothing is sent to the peer. */
-    onFault?:
-      | ((error: unknown, context: FaultContext) => void | Promise<void>)
-      | undefined;
+    onFault?: LocalFaultHandler | undefined;
     /** Test-only: supplies each new handshake's ephemeral key pair and nonce, so a scenario is deterministic. */
     newHandshake?: (peer: DeviceId) => Promise<PendingHandshake>;
   }> = {},
@@ -322,6 +325,15 @@ export function createRelayChannels(
     options.newHandshake ??
     (async (peer: DeviceId): Promise<PendingHandshake> =>
       beginHandshake(identity, peer));
+  let latest = Number.NEGATIVE_INFINITY;
+  const source = options.clock ?? monotonicClock;
+  const clock: Readonly<Clock> = {
+    now: () => {
+      latest = Math.max(latest, source.now());
+
+      return latest;
+    },
+  };
   const peers = new Map<string, PeerChannels>();
 
   // Fault reporting: one report per peer per window, with the count withheld; the state of a peer that no longer has an entry is kept in a small table of its own.
@@ -499,15 +511,35 @@ export function createRelayChannels(
     entry.releaseWaiters();
   }
 
-  /** Makes room for a peer this side never sent anything to. An entry is reused only once it is older than the window, so answers cannot outpace the turnover of slots. */
+  /** The entry of a peer this side never sent anything to that may be reused now, or undefined when every slot is free or none is old enough, which is told by `slotIsFree`. An entry is reused only once it is older than the window, so answers cannot outpace the turnover of slots. */
+  function reusableEntry(now: number): PeerChannels | undefined {
+    const [victim] = [...peers.values()]
+      .filter(
+        (entry) => !entry.chosen && now - entry.lastUsed >= HANDSHAKE_WINDOW_MS,
+      )
+      .sort((a, b) => a.lastUsed - b.lastUsed);
+
+    return victim;
+  }
+
+  function slotIsFree(): boolean {
+    return (
+      [...peers.values()].filter((entry) => !entry.chosen).length <
+      MAX_UNSOLICITED_PEERS
+    );
+  }
+
+  /** Whether a peer this side never sent anything to could be given an entry now, changing nothing. */
+  function slotAvailable(now: number): boolean {
+    return slotIsFree() || reusableEntry(now) !== undefined;
+  }
+
+  /** Makes room for a peer this side never sent anything to. */
   function reserveUnsolicitedSlot(now: number): boolean {
-    const unsolicited = [...peers.values()].filter((entry) => !entry.chosen);
-    if (unsolicited.length < MAX_UNSOLICITED_PEERS) {
+    if (slotIsFree()) {
       return true;
     }
-    const [victim] = unsolicited
-      .filter((entry) => now - entry.lastUsed >= HANDSHAKE_WINDOW_MS)
-      .sort((a, b) => a.lastUsed - b.lastUsed);
+    const victim = reusableEntry(now);
     if (victim === undefined) {
       return false;
     }
@@ -690,8 +722,20 @@ export function createRelayChannels(
           return;
         }
         const held = peers.get(deviceIdToHex(sender));
-        held?.expire(clock.now());
+        const now = clock.now();
+        held?.expire(now);
         if (held?.holdsKey(hello["ephemeral-key"]) === true) {
+          return;
+        }
+        // Nor may it reach a signature check when no answer to it is possible: the handshake it would join already has its candidates, or this side has no entry to give a peer it did not choose.
+        if (
+          held?.hs !== undefined &&
+          held.outstanding(now) &&
+          held.hs.cands.length >= CANDIDATES_PER_HANDSHAKE
+        ) {
+          return;
+        }
+        if (held === undefined && !slotAvailable(now)) {
           return;
         }
         await acceptHello(hello, sender);
@@ -717,9 +761,16 @@ export function createRelayChannels(
     },
     forget: (peer) => {
       const entry = peers.get(deviceIdToHex(peer));
-      if (entry !== undefined) {
-        discard(entry, new Error("the relay pairing was lost"));
+      if (entry === undefined) {
+        return;
       }
+      if ((entry.hs?.cands.length ?? 0) + entry.pool.length === 0) {
+        discard(entry, new Error("the relay pairing was lost"));
+
+        return;
+      }
+      // A candidate the peer may still confirm stays: it is not a statement about the channel that failed, and a frame from the peer under it is how the two sides meet again.
+      entry.dropConfirmed();
     },
   };
 }

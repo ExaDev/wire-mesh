@@ -23,6 +23,8 @@ const pong: Frame = { type: "pong" };
 const PAST_WINDOW_MS = HANDSHAKE_WINDOW_MS + 1;
 const REPLAY_WINDOWS = 10;
 const BEFORE_WINDOW_MS = HANDSHAKE_WINDOW_MS - 1;
+const STEPPED_BACK_WINDOWS = 10;
+const BACKWARD_STEP_MS = STEPPED_BACK_WINDOWS * HANDSHAKE_WINDOW_MS;
 
 const unhandled = useUnhandledRecorder();
 
@@ -58,7 +60,7 @@ async function carriesFrames(a: Node, b: Node): Promise<void> {
 }
 
 describe("a hello that repeats one already held", () => {
-  it("is dropped when it is the current channel's, sending nothing", async () => {
+  it("is dropped when it is the current channel's, and answered by nothing", async () => {
     const { relay, a, b } = await pair();
     await establish(a, b);
     const sentA = a.hellosSent.length;
@@ -74,7 +76,7 @@ describe("a hello that repeats one already held", () => {
     expect(unhandled()).toEqual([]);
   });
 
-  it("is dropped when the relay duplicates a hello of a handshake still in progress", async () => {
+  it("is dropped when it duplicates a hello of a handshake in progress", async () => {
     const { relay, a, b } = await pair();
     const sealing = a.beginSend(b, ping);
     const [helloA] = await relay.take();
@@ -100,7 +102,7 @@ describe("a hello that repeats one already held", () => {
 });
 
 describe("an older hello replayed to a side that holds a channel", () => {
-  it("costs one hello from each side, and the channel both keep sealing under is unchanged", async () => {
+  it("changes no confirmed channel, and is answered once", async () => {
     const { relay, a, b } = await pair();
     await establish(a, b);
     const older = first(b.hellosSent);
@@ -124,7 +126,35 @@ describe("an older hello replayed to a side that holds a channel", () => {
     expect(unhandled()).toEqual([]);
   });
 
-  it("costs each side at most one hello per window, however often it is replayed", async () => {
+  it("keeps its window rules when the clock steps backwards, and recovers once the clock passes its latest reading", async () => {
+    const { relay, a, b } = await pair();
+    await establish(a, b);
+    const older = first(b.hellosSent);
+    a.forget(b);
+    b.forget(a);
+    await establish(a, b);
+    relay.clock.advance(PAST_WINDOW_MS);
+    // The clock steps back by many windows before an older hello is answered.
+    relay.clock.advance(-BACKWARD_STEP_MS);
+    await relay.deliver(older);
+    await relay.pump();
+    const answered = a.hellosSent.length;
+
+    // A whole window later by the clock's own reading, time has still not passed the reading it gave before the step, so the handshake is outstanding and a further hello is completed, not answered.
+    relay.clock.advance(PAST_WINDOW_MS);
+    await a.receiveHello(await freshHello(b.identity, a), b.deviceId);
+    await relay.idle();
+    expect(a.hellosSent).toHaveLength(answered);
+
+    // Once the clock has passed its latest reading by a window, answering resumes.
+    relay.clock.advance(BACKWARD_STEP_MS);
+    await a.receiveHello(await freshHello(b.identity, a), b.deviceId);
+    await relay.idle();
+    expect(a.hellosSent).toHaveLength(answered + 1);
+    expect(unhandled()).toEqual([]);
+  });
+
+  it("is answered at most once per handshake window", async () => {
     const { relay, a, b } = await pair();
     await establish(a, b);
     const older = first(b.hellosSent);
@@ -164,7 +194,7 @@ describe("two sides that initiate at once", () => {
   ];
 
   for (const { name, aFirst, twice } of orders) {
-    it(`reach the same channel with one hello each, ${name}`, async () => {
+    it(`reach one channel without answering each other, ${name}`, async () => {
       const { relay, a, b } = await pair();
       const fromA = a.beginSend(b, ping);
       const fromB = b.beginSend(a, pong);
@@ -193,7 +223,7 @@ describe("two sides that initiate at once", () => {
 });
 
 describe("a peer that restarts", () => {
-  it("with a request to send costs two hellos, and its first frame confirms the new channel", async () => {
+  it("with a request to send confirms its new channel with its first frame", async () => {
     const { relay, a, b } = await pair();
     await establish(a, b);
     const inFlightSoon = await b.send(a, ping);
@@ -222,7 +252,7 @@ describe("a peer that restarts", () => {
     expect(unhandled()).toEqual([]);
   });
 
-  it("with nothing to send costs no hello until the survivor forgets it and sends, then two", async () => {
+  it("with nothing to send is reached again once the survivor forgets it and sends", async () => {
     const { relay, a, b } = await pair();
     await establish(a, b);
     const sentA = a.hellosSent.length;
@@ -244,7 +274,7 @@ describe("a peer that restarts", () => {
 });
 
 describe("a channel whose send counter is spent", () => {
-  it("is replaced by a handshake that costs two hellos, and the next frame confirms it", async () => {
+  it("is replaced by a new handshake, which the next frame confirms", async () => {
     const relay = new TestRelay();
     const a = await relay.node("a", { firstSendCounter: MAX_COUNTER });
     const b = await relay.node("b");
@@ -264,7 +294,7 @@ describe("a channel whose send counter is spent", () => {
 });
 
 describe("a relay that holds or reorders", () => {
-  it("answers a delayed answer with at most one further hello from each side", async () => {
+  it("answers a delayed hello at most once more", async () => {
     const { relay, a, b } = await pair();
     const sealing = a.beginSend(b, ping);
     const [helloA] = await relay.take();
@@ -290,7 +320,7 @@ describe("a relay that holds or reorders", () => {
     expect(unhandled()).toEqual([]);
   });
 
-  it("drops a frame that arrives before its hello, and the resent frame opens with no extra hello", async () => {
+  it("drops a frame that arrives before its hello, and opens the resent one", async () => {
     const { relay, a, b } = await pair();
     const sealing = a.beginSend(b, ping);
     const [helloA] = await relay.take();
@@ -320,7 +350,7 @@ describe("a relay that holds or reorders", () => {
     expect(unhandled()).toEqual([]);
   });
 
-  it("drops a third hello in one handshake", async () => {
+  it("drops a hello beyond the candidates a handshake may build", async () => {
     const { relay, a, b } = await pair();
     const sealing = a.beginSend(b, ping);
     await relay.take();
@@ -336,7 +366,7 @@ describe("a relay that holds or reorders", () => {
     expect(unhandled()).toEqual([]);
   });
 
-  it("keeps the window's edge exact: a handshake is outstanding just inside it and over just outside", async () => {
+  it("measures the handshake window exactly", async () => {
     const { relay, a, b } = await pair();
     await establish(a, b);
     const older = first(b.hellosSent);

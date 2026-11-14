@@ -1,6 +1,6 @@
 // Through a real session: a relayed request and its reply still round-trip, and an older hello replayed by the relay costs this side one hello and leaves the channel it holds working (spec/secure-channel.cddl, obligations 7 to 9).
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { tryDecodeFrame } from "../src/adapters/frame-codec.js";
 import { HANDSHAKE_WINDOW_MS } from "../src/domain/relay-channels.js";
 import {
@@ -37,13 +37,16 @@ function helloPayloads(frames: readonly Frame[]): Frame[] {
   );
 }
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("a session reached through a relay", () => {
-  it("round-trips a request and its reply, and answers a replayed older hello once, leaving its channel working", async () => {
-    let now = 0;
+  it("round-trips a request and its reply, and a replayed older hello changes no confirmed channel", async () => {
+    // A session measures its handshake windows with the monotonic performance clock, so that is the one a test moves.
+    vi.useFakeTimers({ toFake: ["performance"] });
     const { transport, connection } = fakeTransport();
-    const session = createMeshSession(transport, testIdentity, {
-      now: () => now,
-    });
+    const session = createMeshSession(transport, testIdentity);
     await session.connect("ws://node", ["core/management"]);
     const incoming: IncomingManageRequest[] = [];
     void (async (): Promise<void> => {
@@ -89,7 +92,7 @@ describe("a session reached through a relay", () => {
     await vi.waitFor(() => {
       expect(incoming).toHaveLength(2);
     });
-    now += HANDSHAKE_WINDOW_MS + 1;
+    vi.advanceTimersByTime(HANDSHAKE_WINDOW_MS + 1);
 
     const [older] = helloPayloads(pushed);
     const hellosBefore = helloPayloads(connection.sent).length;

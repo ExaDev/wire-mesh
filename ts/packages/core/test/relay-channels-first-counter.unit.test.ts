@@ -13,14 +13,10 @@ describe("the first send counter of every channel", () => {
 
     for (const bad of [Number.NaN, -1, FRACTIONAL_COUNTER]) {
       expect(() =>
-        createRelayChannels(
-          a,
-          async () => Promise.resolve(),
-          new ManualClock(),
-          {
-            firstSendCounter: bad,
-          },
-        ),
+        createRelayChannels(a, async () => Promise.resolve(), {
+          clock: new ManualClock(),
+          firstSendCounter: bad,
+        }),
       ).toThrow(RangeError);
     }
   });

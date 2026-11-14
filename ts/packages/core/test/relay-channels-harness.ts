@@ -10,9 +10,9 @@ import type {
 import type { Clock } from "../src/ports/clock.js";
 import type { IdentityPort } from "../src/ports/identity.js";
 import { deviceIdToHex } from "../src/domain/device-id.js";
+import type { FaultContext } from "../src/domain/local-fault.js";
 import {
   createRelayChannels,
-  type FaultContext,
   type OpenedFrame,
   type SealPurpose,
 } from "../src/domain/relay-channels.js";
@@ -245,7 +245,8 @@ export class Node {
     this.endpoint =
       options.kind === "released"
         ? new ReleasedChannels(this.identity, sendHello)
-        : createRelayChannels(this.identity, sendHello, relay.clock, {
+        : createRelayChannels(this.identity, sendHello, {
+            clock: relay.clock,
             ...(options.firstSendCounter === undefined
               ? {}
               : { firstSendCounter: options.firstSendCounter }),

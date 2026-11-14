@@ -16,7 +16,7 @@ const FAILURES = 5;
 const unhandled = useUnhandledRecorder();
 
 describe("local fault reports", () => {
-  it("are one per peer per window, and the next one says how many were withheld", async () => {
+  it("are coalesced per peer per window, and the next one says how many were withheld", async () => {
     const relay = new TestRelay();
     const reports: { peer: DeviceId | undefined; suppressed: number }[] = [];
     const a = await relay.node("a", {

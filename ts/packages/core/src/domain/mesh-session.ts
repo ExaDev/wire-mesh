@@ -35,7 +35,8 @@ import {
   validateGossipExtensions,
 } from "./gossip-extensions.js";
 import { signPeerAdvert, verifyPeerAdvert } from "./peer-advert.js";
-import { createRelayChannels, HANDSHAKE_WINDOW_MS } from "./relay-channels.js";
+import type { LocalFaultHandler } from "./local-fault.js";
+import { createRelayChannels } from "./relay-channels.js";
 import { isDataFrame } from "./hub-mailbox.js";
 import type { Clock } from "../ports/clock.js";
 import type { IdentityPort } from "../ports/identity.js";
@@ -50,8 +51,8 @@ import {
 
 const MS_PER_SECOND = 1000;
 
-/** How long to wait for the node's handshake before calling it unanswered. A relay-only node never sends one; that is a state to display, not an error. It is also the window the secure channel's handshake rules are measured in. */
-export const HANDSHAKE_TIMEOUT_MS = HANDSHAKE_WINDOW_MS;
+/** How long to wait for the node's handshake before calling it unanswered. A relay-only node never sends one; that is a state to display, not an error. */
+export const HANDSHAKE_TIMEOUT_MS = 3_000;
 
 export type ConnectionState =
   | { status: "idle" }
@@ -211,8 +212,8 @@ function createSessionCore(
   ) => void | Promise<void>,
   /** Fired once this session's own connection.receive() stream ends, regardless of whether the session itself goes on to reconnect with a fresh connection -- the counterpart hook a RelayHub's own forgetConnection needs, since its registry and pairing state is keyed by this exact Connection instance and must be cleaned up when it specifically ends, not when the session as a whole gives up. */
   onSessionEnd?: (connection: Readonly<Connection>) => void,
-  /** Told of a failure that is local to this session and did not end it, while handling a hello from a peer: an identity port that failed to check or sign, an answering hello that could not be sent, a channel that could not be established. The hello is dropped, any half-made handshake for that peer is discarded, and the peer is told nothing, so no failure in handling a hello ends the session. Called once per failing hello; if it throws, or returns a promise that rejects, that is reported once to the console and swallowed. Omit for a caller with no use for it. */
-  onLocalFault?: (error: unknown) => void | Promise<void>,
+  /** Told of a failure that is local to this session and did not end it, while handling a hello from a peer: an identity port that failed to check or sign, an answering hello that could not be sent, a channel that could not be established. The hello is dropped, any half-made handshake for that peer is discarded, and the peer is told nothing, so no failure in handling a hello ends the session. Reports are coalesced: at most one per peer per handshake window, with the number withheld in between given as `suppressed` in the second argument, and no more than a fixed number across all peers in a window, so a failure repeated for one peer is reported once and then counted. If the callback throws, or returns a promise that rejects, that is reported to the console at most once per window and swallowed. Omit for a caller with no use for it. */
+  onLocalFault?: LocalFaultHandler,
 ): SessionCore {
   let connection: Connection | null = null;
   let state: ConnectionState = { status: "idle" };
@@ -256,7 +257,7 @@ function createSessionCore(
     await connection.send(wrapRelayData(hello, peer));
     emit();
   };
-  const relayChannels = createRelayChannels(identity, sendHello, clock, {
+  const relayChannels = createRelayChannels(identity, sendHello, {
     onFault: onLocalFault,
   });
   const incomingQueue = createAsyncQueue<IncomingManageRequest>();
@@ -325,7 +326,6 @@ function createSessionCore(
 
       return;
     }
-    // One frame, or one per candidate channel while no channel is confirmed yet: the peer opens at most one.
     const link = connection;
     const sealed = await relayChannels.seal(toDevice, frame, purpose);
     await Promise.all(
@@ -870,8 +870,8 @@ export function createMeshSession(
     connection: Readonly<Connection>,
     frame: Frame,
   ) => void | Promise<void>,
-  /** Told of a failure that is local to this session and did not end it, while handling a hello from a peer: an identity port that failed to check or sign, an answering hello that could not be sent, a channel that could not be established. The hello is dropped, any half-made handshake for that peer is discarded, and the peer is told nothing, so no failure in handling a hello ends the session. Called once per failing hello; if it throws, or returns a promise that rejects, that is reported once to the console and swallowed. Omit for a caller with no use for it. */
-  onLocalFault?: (error: unknown) => void | Promise<void>,
+  /** Told of a failure that is local to this session and did not end it, while handling a hello from a peer: an identity port that failed to check or sign, an answering hello that could not be sent, a channel that could not be established. The hello is dropped, any half-made handshake for that peer is discarded, and the peer is told nothing, so no failure in handling a hello ends the session. Reports are coalesced: at most one per peer per handshake window, with the number withheld in between given as `suppressed` in the second argument, and no more than a fixed number across all peers in a window, so a failure repeated for one peer is reported once and then counted. If the callback throws, or returns a promise that rejects, that is reported to the console at most once per window and swallowed. Omit for a caller with no use for it. */
+  onLocalFault?: LocalFaultHandler,
 ): MeshSession {
   const { session } = createSessionCore(
     identity,

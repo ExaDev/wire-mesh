@@ -53,7 +53,7 @@ async function helloWithUnusableKey(
 }
 
 describe("a hello that cannot be used, beside an established channel", () => {
-  it("with an unusable ephemeral key costs no hello and no key generation, and changes nothing", async () => {
+  it("with an unusable ephemeral key is dropped before any key of this side's own is generated, and changes nothing", async () => {
     const relay = new TestRelay();
     const base = await generateEd25519Identity();
     let generated = 0;
@@ -80,7 +80,7 @@ describe("a hello that cannot be used, beside an established channel", () => {
     expect(unhandled()).toEqual([]);
   });
 
-  it("whose answer cannot be sent leaves the channel in place and is reported once", async () => {
+  it("whose answer cannot be sent leaves the channel in place and is reported", async () => {
     const relay = new TestRelay();
     const faults: unknown[] = [];
     const a = await relay.node("a", {
@@ -102,7 +102,7 @@ describe("a hello that cannot be used, beside an established channel", () => {
     expect(unhandled()).toEqual([]);
   });
 
-  it("whose answer cannot be signed leaves the channel in place and is reported once", async () => {
+  it("whose answer cannot be signed leaves the channel in place and is reported", async () => {
     const relay = new TestRelay();
     const faults: unknown[] = [];
     const a = await relay.node("a", {
@@ -177,6 +177,35 @@ describe("a side that holds the previous release's rule", () => {
     const next = await released.send(a, pong);
     const opened = await Promise.all(next.map(async (r) => a.receiveData(r)));
     expect(opened.filter((result) => result !== undefined)).toHaveLength(1);
+    expect(unhandled()).toEqual([]);
+  });
+
+  it("is met again after a request to it is lost and forgotten, because the candidate survives the forget", async () => {
+    const relay = new TestRelay();
+    const a = await relay.node("a");
+    const released = await relay.node("released", { kind: "released" });
+    await establish(a, released);
+    const older = released.hellosSent[0];
+    if (older === undefined) {
+      throw new Error("no hello was sent");
+    }
+    a.forget(released);
+    await establish(a, released);
+    await relay.deliver(older);
+    await relay.pump();
+
+    // The released side has switched channel: a request sealed under the old one is lost.
+    const lost = await a.send(released, ping);
+    const received = await Promise.all(
+      lost.map(async (record) => released.receiveData(record)),
+    );
+    expect(received.filter((result) => result !== undefined)).toEqual([]);
+    // The request times out, and the session forgets the peer.
+    a.forget(released);
+
+    // The released side's next request, sealed under the channel it switched to, opens under the candidate the forget kept and confirms it; then requests go both ways.
+    expect(await carries(released, a, pong)).toBe(true);
+    expect(await carries(a, released, ping)).toBe(true);
     expect(unhandled()).toEqual([]);
   });
 
