@@ -66,6 +66,7 @@ export type MintGrantResult =
   { ok: true; token: CapabilityToken } | { ok: false; error: string };
 
 const REFUSAL_TEXT: Readonly<Record<MintRefusalReason, string>> = {
+  invalid_capability: "its capability is not a valid capability verb",
   already_expired: "the grant would already have expired",
   parent_malformed: "the grant it delegates from is malformed",
   parent_bearer_mismatch:

@@ -5,6 +5,7 @@ import {
   mintRevocationEntry,
   verifyCapabilityToken,
   verifyRevocationEntry,
+  type MintVerdict,
 } from "../src/domain/tokens.js";
 import type { IdentityPort } from "../src/ports/identity.js";
 import type {
@@ -20,6 +21,8 @@ import {
   neverRevoked,
   nextTokenId,
 } from "./tokens-fixtures.js";
+
+const ONE_SECOND_MS = 1000;
 
 describe("mintCapabilityToken", () => {
   let issuer: IdentityPort;
@@ -105,6 +108,43 @@ describe("mintCapabilityToken", () => {
       expires: now - 1,
     });
     expect(verdict).toEqual({ ok: false, reason: "already_expired" });
+  });
+
+  it("refuses to mint a token whose capability, grants-capability or requests-capability is not a capability verb", async () => {
+    const mint = async (
+      verbs: Readonly<{
+        capability: string;
+        grantsCapability?: string;
+        requestsCapability?: string;
+      }>,
+    ): Promise<MintVerdict> =>
+      mintCapabilityToken({
+        identity: issuer,
+        clock: fixedClock(now),
+        tokenId: nextTokenId(),
+        bearer: bearerIdentity.deviceId,
+        capability: verbs.capability,
+        ...(verbs.grantsCapability === undefined
+          ? {}
+          : { grantsCapability: verbs.grantsCapability }),
+        ...(verbs.requestsCapability === undefined
+          ? {}
+          : { requestsCapability: verbs.requestsCapability }),
+        scope: workScope,
+        expires: now + ONE_SECOND_MS,
+      });
+
+    const verdicts = await Promise.all([
+      mint({ capability: "two:colons:here" }),
+      mint({ capability: "exec:pty\n" }),
+      mint({ capability: "exec:pty", grantsCapability: "exec:pty extra" }),
+      mint({ capability: "exec:pty", requestsCapability: "-x:pty" }),
+    ]);
+
+    for (const verdict of verdicts) {
+      expect(verdict).toEqual({ ok: false, reason: "invalid_capability" });
+    }
+    expect((await mint({ capability: "exec:pty" })).ok).toBe(true);
   });
 
   it("refuses to mint against a malformed parent", async () => {

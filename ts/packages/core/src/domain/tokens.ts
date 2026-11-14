@@ -2,6 +2,7 @@ import { cdeDecodeOptions, cdeEncodeOptions, decode, encode } from "cbor2";
 import type { PredicateNode } from "trilean";
 import {
   capabilityTokenSchema,
+  capabilityVerbSchema,
   revocationClaimsSchema,
   tokenClaimsSchema,
   type CapabilityToken,
@@ -479,6 +480,8 @@ export async function verifyRevocationEntry(
 
 export type MintRefusalReason =
   | "already_expired"
+  /** The capability, grants-capability or requests-capability is not a capability verb of the spec's grammar. */
+  | "invalid_capability"
   | "parent_malformed"
   | "parent_bearer_mismatch"
   | "expires_exceeds_parent"
@@ -670,6 +673,15 @@ export interface MintCapabilityTokenOptions {
 export async function mintCapabilityToken(
   options: MintCapabilityTokenOptions,
 ): Promise<MintVerdict> {
+  for (const verb of [
+    options.capability,
+    options.grantsCapability,
+    options.requestsCapability,
+  ]) {
+    if (verb !== undefined && !capabilityVerbSchema.safeParse(verb).success) {
+      return { ok: false, reason: "invalid_capability" };
+    }
+  }
   if (options.expires <= options.clock.now()) {
     return { ok: false, reason: "already_expired" };
   }
