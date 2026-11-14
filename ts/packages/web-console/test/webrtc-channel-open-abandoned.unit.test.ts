@@ -10,7 +10,11 @@ function recordUnhandled(reason: unknown): void {
   unhandled.push(reason);
 }
 
+/** Every peer connection the stub has had close() called on. */
+const closedConnections: unknown[] = [];
+
 beforeEach(() => {
+  closedConnections.length = 0;
   unhandled.length = 0;
   process.on("unhandledRejection", recordUnhandled);
 });
@@ -48,8 +52,11 @@ class StubPeerConnection {
     return Promise.resolve();
   }
 
+  closed = 0;
+
   close(): void {
-    return undefined;
+    closedConnections.push(this);
+    this.closed += 1;
   }
 }
 
@@ -91,5 +98,72 @@ describe("WebrtcNegotiator.initiate", () => {
     });
 
     expect(unhandled).toEqual([]);
+  });
+
+  const OPEN_TIMEOUT_MS = 1_000;
+
+  async function negotiatorWith(
+    sendManageRequest: MeshSession["sendManageRequest"],
+  ): Promise<ReturnType<typeof createWebrtcNegotiator>> {
+    vi.stubGlobal("RTCPeerConnection", StubPeerConnection);
+    channelListeners.error = [];
+    const identity = await createWebCryptoIdentity();
+
+    return createWebrtcNegotiator(
+      { sendManageRequest, incomingManageRequests: noIncoming },
+      {
+        identity,
+        clock: { now: () => 0 },
+        revocation: { entriesFor: async () => Promise.resolve([]) },
+        iceServers: [],
+        onIncomingConnection: () => undefined,
+        channelOpenTimeoutMs: OPEN_TIMEOUT_MS,
+      },
+    );
+  }
+
+  it("closes its peer connection when the offer cannot be sent", async () => {
+    const negotiator = await negotiatorWith(async () =>
+      Promise.reject(new Error("the session is not connected")),
+    );
+
+    await expect(negotiator.initiate()).rejects.toThrow("not connected");
+    expect(closedConnections).toHaveLength(1);
+  });
+
+  it("closes its peer connection when the data channel fails after the offer is accepted", async () => {
+    const negotiator = await negotiatorWith(async () => {
+      queueMicrotask(() => {
+        for (const listener of channelListeners.error ?? []) listener();
+      });
+
+      return Promise.resolve({ result: "ok" });
+    });
+
+    await expect(negotiator.initiate()).rejects.toThrow(/failed to open/);
+    expect(closedConnections).toHaveLength(1);
+  });
+
+  it("gives up on a data channel that neither opens nor fails, and closes its peer connection", async () => {
+    vi.useFakeTimers();
+    try {
+      const negotiator = await negotiatorWith(async () =>
+        Promise.resolve({ result: "ok" }),
+      );
+      const outcome = expect(negotiator.initiate()).rejects.toThrow(
+        /did not open in time/,
+      );
+      // The bound starts once the offer is accepted, after real asynchronous steps.
+      await vi.waitFor(() => {
+        expect(vi.getTimerCount()).toBe(1);
+      });
+      await vi.advanceTimersByTimeAsync(OPEN_TIMEOUT_MS);
+      await outcome;
+
+      expect(closedConnections).toHaveLength(1);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

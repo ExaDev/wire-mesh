@@ -47,4 +47,28 @@ describe("useMeshSessionEvents", () => {
       });
     });
   });
+
+  it("delivers an event that was already waiting before mount to the live effect, not to the one cancelled in the same turn", async () => {
+    const queue = createAsyncQueue<SessionEvent>();
+    const waiting = eventNumber(0);
+    queue.push(waiting);
+    const session = { events: queue.stream };
+    const clock = { now: () => 0 };
+    const { result } = renderHook(() => useMeshSessionEvents(session, clock), {
+      wrapper: StrictMode,
+    });
+
+    await waitFor(() => {
+      expect(result.current.event).toBe(waiting);
+    });
+    const next = eventNumber(1);
+    await act(async () => {
+      queue.push(next);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(result.current.event).toBe(next);
+    });
+  });
 });

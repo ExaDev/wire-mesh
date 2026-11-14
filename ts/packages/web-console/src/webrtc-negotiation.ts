@@ -1,5 +1,6 @@
 // Drives a real RTCPeerConnection through the core/webrtc signaling exchange over an existing MeshSession's sendManageRequest/incomingManageRequests plumbing -- the one place in this package that both consumes the browser's WebRTC API and speaks the wire protocol, so it lives beside the adapters rather than in wire-mesh-core's own mesh-session domain module (protocol-generic) or main.ts (DOM-only). One negotiator is constructed per session and, from construction, both offers new negotiations and answers incoming ones on that same session. The protocol itself carries no target-device field (a webrtc-offer's scope is "this node's own signaling", not a routed resource) -- addressing a specific peer when this session's own Connection is to a relay hub rather than to the peer directly is a MeshSession.sendManageRequest concern (its own targetDevice parameter), not something this module encodes on the wire.
 
+import { startInBackground } from "./background.js";
 import type { Connection } from "wire-mesh-core/ports/transport";
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import type { Clock } from "wire-mesh-core/ports/clock";
@@ -41,6 +42,8 @@ import {
 import { wrapRtcDataChannel } from "./adapters/webrtc-transport.js";
 
 const DATA_CHANNEL_LABEL = "wire-mesh";
+/** How long initiate() waits for the data channel to open once the offer is accepted, when the options give no bound, before it gives the negotiation up and releases what it holds. */
+export const DEFAULT_CHANNEL_OPEN_TIMEOUT_MS = 30_000;
 
 export interface WebrtcNegotiatorOptions {
   identity: IdentityPort;
@@ -55,6 +58,8 @@ export interface WebrtcNegotiatorOptions {
   localTracks?: readonly MediaStreamTrack[];
   /** Fired for every remote track received on any peer connection this negotiator manages, offering or answering alike. */
   onRemoteTrack?: (event: Readonly<RTCTrackEvent>) => void;
+  /** How long initiate() waits for the data channel to open before it fails and releases the negotiation; DEFAULT_CHANNEL_OPEN_TIMEOUT_MS when absent. */
+  channelOpenTimeoutMs?: number;
   /** Told of a failure while handling one incoming signalling request: the request is answered with a refusal where it can be and the negotiator goes on to the next. Absent, the failure is dropped. */
   onFault?: ConsumeFault<IncomingManageRequest> | undefined;
 }
@@ -137,6 +142,24 @@ export function createWebrtcNegotiator(
   const negotiationTargets = new Map<number, DeviceId | undefined>();
   const allocateNegotiationId = createNegotiationIdAllocator();
 
+  /** Releases everything a negotiation holds: both registrations and the peer connection. Safe to call for a negotiation that is already gone. */
+  function discard(
+    negotiationId: number,
+    pc: Readonly<RTCPeerConnection>,
+  ): void {
+    peerConnections.delete(negotiationId);
+    negotiationTargets.delete(negotiationId);
+    pc.close();
+  }
+
+  /** Sends one ICE candidate. A candidate that cannot be sent (the session is no longer connected) is dropped: the negotiation it belonged to then fails by its own bound. */
+  function sendIceCandidateQuietly(
+    negotiationId: number,
+    candidate: MinimalRtcIceCandidate | null,
+  ): void {
+    sendIceCandidate(negotiationId, candidate).catch(() => undefined);
+  }
+
   async function sendIceCandidate(
     negotiationId: number,
     candidate: MinimalRtcIceCandidate | null,
@@ -168,22 +191,28 @@ export function createWebrtcNegotiator(
     peerConnections.set(negotiationId, pc);
     wireMediaTracks(pc, options);
     pc.addEventListener("icecandidate", (event) => {
-      void sendIceCandidate(negotiationId, event.candidate);
+      sendIceCandidateQuietly(negotiationId, event.candidate);
     });
     pc.addEventListener("datachannel", (event) => {
       const { channel } = event;
       channel.binaryType = "arraybuffer";
       wireOpenChannel(channel, options.onIncomingConnection);
     });
-    await pc.setRemoteDescription({ type: "offer", sdp: offer.sdp });
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    await incoming.respond({ result: "ok" });
-    await session.sendManageRequest(
-      buildAnswerCommand(negotiationId, answer.sdp ?? ""),
-      WEBRTC_SIGNAL_SCOPE,
-      incoming.fromDevice,
-    );
+    try {
+      await pc.setRemoteDescription({ type: "offer", sdp: offer.sdp });
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await incoming.respond({ result: "ok" });
+      await session.sendManageRequest(
+        buildAnswerCommand(negotiationId, answer.sdp ?? ""),
+        WEBRTC_SIGNAL_SCOPE,
+        incoming.fromDevice,
+      );
+    } catch (error) {
+      // A negotiation that fails part way holds a peer connection and two registrations that nothing else will release.
+      discard(negotiationId, pc);
+      throw error;
+    }
   }
 
   async function handleIncomingAnswer(
@@ -228,9 +257,11 @@ export function createWebrtcNegotiator(
       await handleIncomingIceCandidate(incoming, params);
     }
   }
-  void serveManageRequests(session.incomingManageRequests, handleIncoming, {
-    onFault: options.onFault,
-  });
+  startInBackground(
+    serveManageRequests(session.incomingManageRequests, handleIncoming, {
+      onFault: options.onFault,
+    }),
+  );
 
   return {
     async initiate(targetDevice?: DeviceId): Promise<Connection> {
@@ -240,7 +271,7 @@ export function createWebrtcNegotiator(
       peerConnections.set(negotiationId, pc);
       wireMediaTracks(pc, options);
       pc.addEventListener("icecandidate", (event) => {
-        void sendIceCandidate(negotiationId, event.candidate);
+        sendIceCandidateQuietly(negotiationId, event.candidate);
       });
       const channel = pc.createDataChannel(DATA_CHANNEL_LABEL);
       channel.binaryType = "arraybuffer";
@@ -256,22 +287,35 @@ export function createWebrtcNegotiator(
       });
       // The channel can fail while the offer is still being negotiated, or the offer be refused so nothing ever waits on it: either is an expected end, not an unhandled rejection. The caller still sees the rejection through the promise this returns.
       channelOpen.catch(() => undefined);
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      const outcome = await session.sendManageRequest(
-        buildOfferCommand(negotiationId, offer.sdp ?? ""),
-        WEBRTC_SIGNAL_SCOPE,
-        targetDevice,
-        await mintOfferToken(options.identity, options.clock),
-      );
-      if (outcome.result === "error") {
-        peerConnections.delete(negotiationId);
-        negotiationTargets.delete(negotiationId);
-        pc.close();
-        throw new Error(`webrtc offer rejected: ${outcome.code}`);
-      }
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        const outcome = await session.sendManageRequest(
+          buildOfferCommand(negotiationId, offer.sdp ?? ""),
+          WEBRTC_SIGNAL_SCOPE,
+          targetDevice,
+          await mintOfferToken(options.identity, options.clock),
+        );
+        if (outcome.result === "error") {
+          throw new Error(`webrtc offer rejected: ${outcome.code}`);
+        }
 
-      return channelOpen;
+        return await Promise.race([
+          channelOpen,
+          new Promise<never>((_resolve, reject) => {
+            timer = setTimeout(() => {
+              reject(new Error("data channel did not open in time"));
+            }, options.channelOpenTimeoutMs ?? DEFAULT_CHANNEL_OPEN_TIMEOUT_MS);
+          }),
+        ]);
+      } catch (error) {
+        // However the negotiation fails (a step throws, the offer is refused, the channel errors or does not open in time) both registrations and the peer connection go with it.
+        discard(negotiationId, pc);
+        throw error;
+      } finally {
+        clearTimeout(timer);
+      }
     },
   };
 }
