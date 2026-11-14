@@ -11,6 +11,7 @@ pub mod revocation;
 pub mod room;
 pub mod room_path;
 pub mod room_token_verification;
+pub mod secure_channel;
 #[cfg(feature = "net")]
 pub mod session;
 pub mod shard_manifest;
