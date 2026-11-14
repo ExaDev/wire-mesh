@@ -4,7 +4,8 @@
 //! manage-response. Both travel as the payload of a `relay-data-frame`.
 //!
 //! This module is the codec only. The handshake, key schedule and sealing
-//! are the secure channel itself and live with the crypto ports.
+//! are the secure channel itself and live in `wire-mesh-core`'s
+//! `domain::secure_channel`.
 
 use minicbor::{decode::Decoder, encode::Encoder, Decode, Encode};
 
