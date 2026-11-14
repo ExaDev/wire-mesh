@@ -480,7 +480,7 @@ fn report_first_divergence(expected: &[u8], actual: &[u8]) -> Result<(), String>
         String::new()
     };
     Err(format!(
-        "re-encode diverges from wire_hex at byte {offset}{length_note}\n  expected: {}\n  actual:   {}",
+        "bytes diverge from the expected bytes at byte {offset}{length_note}\n  expected: {}\n  actual:   {}",
         window(expected),
         window(actual)
     ))
