@@ -20,7 +20,7 @@ export class IdentityKeyError extends Error {
 
 /** Verifies a signature and treats a key the port cannot use as a signature that does not verify, so a verifier of attacker-supplied bytes always gets a verdict: an `IdentityKeyError` is a refusal of those bytes, while any other error is a failure of the port and propagates. */
 export async function verifiesOrRefuses(
-  identity: Pick<IdentityPort, "verify">,
+  identity: Readonly<Pick<IdentityPort, "verify">>,
   key: IdentityKey,
   message: Uint8Array,
   signature: Uint8Array,

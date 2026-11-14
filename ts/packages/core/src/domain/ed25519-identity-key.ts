@@ -111,7 +111,10 @@ function pointWithY(y: bigint): ExtendedPoint | undefined {
   const denominator = mod(CURVE_D * ySquared + ONE);
   const target = mod(numerator * modPow(denominator, FIELD_PRIME - TWO));
   // The square root of a value modulo a prime congruent to 5 modulo 8 (RFC 8032, section 5.1.3): a candidate, or the candidate times sqrt(-1).
-  const candidate = modPow(target, (FIELD_PRIME + BigInt(THREE)) / BigInt(EIGHT));
+  const candidate = modPow(
+    target,
+    (FIELD_PRIME + BigInt(THREE)) / BigInt(EIGHT),
+  );
   for (const x of [candidate, mod(candidate * SQRT_MINUS_ONE)]) {
     if (mod(x * x) === target) {
       return { x, y, z: ONE, t: mod(x * y) };
@@ -122,7 +125,10 @@ function pointWithY(y: bigint): ExtendedPoint | undefined {
 }
 
 /** The sum of two points: the unified, complete addition of Hisil, Wong, Carter and Dawson for a = -1, which doubles as the doubling. */
-function addPoints(p: ExtendedPoint, q: ExtendedPoint): ExtendedPoint {
+function addPoints(
+  p: Readonly<ExtendedPoint>,
+  q: Readonly<ExtendedPoint>,
+): ExtendedPoint {
   const a = mod((p.y - p.x) * (q.y - q.x));
   const b = mod((p.y + p.x) * (q.y + q.x));
   const c = mod(p.t * TWO * CURVE_D * q.t);
@@ -138,7 +144,7 @@ function addPoints(p: ExtendedPoint, q: ExtendedPoint): ExtendedPoint {
 const IDENTITY_POINT: ExtendedPoint = { x: ZERO, y: ONE, z: ONE, t: ZERO };
 
 /** Whether the point is in the prime-order subgroup: multiplying it by the group order gives the identity element. The point and the order are public, so the double-and-add loop leaks nothing. It costs one doubling per bit of the order below the top (252) and one addition per set bit below the top (72), each a handful of field multiplications, once per distinct key. */
-function isTorsionFree(point: ExtendedPoint): boolean {
+function isTorsionFree(point: Readonly<ExtendedPoint>): boolean {
   let result = IDENTITY_POINT;
   for (let bit = ORDER_BITS; bit >= 0; bit -= 1) {
     result = addPoints(result, result);

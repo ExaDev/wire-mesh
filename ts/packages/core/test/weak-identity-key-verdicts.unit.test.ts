@@ -75,9 +75,10 @@ describe("every verifier gives a verdict for a key it refuses", () => {
     const verifier = await generateEd25519Identity();
     const entry = await signRevocationEntry(weak, nextTokenId());
 
-    expect(await verifyRevocationEntry(entry, { identity: verifier })).toEqual(
-      { ok: false, reason: "bad_signature" },
-    );
+    expect(await verifyRevocationEntry(entry, { identity: verifier })).toEqual({
+      ok: false,
+      reason: "bad_signature",
+    });
   });
 
   it("a room notice", async () => {
