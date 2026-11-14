@@ -123,6 +123,24 @@ describe("ed25519KeyFault", () => {
   });
 });
 
+describe("ed25519KeyFault remembers a verdict per whole key", () => {
+  it("gives two keys that share their first byte their own verdicts, whichever is asked first", () => {
+    // y = 0x503 is a point of prime order and y = 3 has a torsion component; both encodings start with the byte 03.
+    const usable = fromHex(`0305${"00".repeat(KEY_BYTES - 2)}`);
+    const mixed = fromHex(`03${"00".repeat(KEY_BYTES - 1)}`);
+    for (const order of [
+      [usable, mixed],
+      [mixed, usable],
+      [usable, mixed],
+    ]) {
+      const verdicts = order.map((key) => ed25519KeyFault(key));
+      expect(verdicts).toEqual(
+        order.map((key) => (key === usable ? undefined : "mixed_order")),
+      );
+    }
+  });
+});
+
 describe("ed25519SignatureIsStrict", () => {
   it("refuses a signature whose R is of small order, whose S is not reduced, or that is the wrong size", () => {
     const signature = new Uint8Array(SIGNATURE_BYTES);
@@ -138,6 +156,36 @@ describe("ed25519SignatureIsStrict", () => {
     expect(ed25519SignatureIsStrict(new Uint8Array(SIGNATURE_BYTES - 1))).toBe(
       false,
     );
+  });
+});
+
+describe("ed25519SignatureIsStrict, one rule at a time", () => {
+  /** A signature with R of the given hex encoding and a reduced S of one. */
+  function withR(rHex: string): Uint8Array<ArrayBuffer> {
+    return fromHex(`${rHex}01${"00".repeat(KEY_BYTES - 1)}`);
+  }
+
+  it("refuses an R that is not canonical and nothing else is wrong with the signature", () => {
+    // R with y = 3 is accepted by this check (it is neither of small order nor non-canonical)...
+    expect(
+      ed25519SignatureIsStrict(withR(`03${"00".repeat(KEY_BYTES - 1)}`)),
+    ).toBe(true);
+    // ...and the same y written as 3 + p, a second encoding of that point, is refused for its encoding.
+    expect(ed25519SignatureIsStrict(withR(paddedHex("f0", "7f")))).toBe(false);
+    expect(ed25519SignatureIsStrict(withR(paddedHex("f0", "ff")))).toBe(false);
+  });
+
+  it("refuses an S that is not below the group order and nothing else is wrong with the signature", () => {
+    const r = `03${"00".repeat(KEY_BYTES - 1)}`;
+    // S = L - 1 is reduced, and S = L is the least value that is not.
+    const orderMinusOne =
+      "ecd3f55c1a631258d69cf7a2def9de1400000000000000000000000000000010";
+    const order =
+      "edd3f55c1a631258d69cf7a2def9de1400000000000000000000000000000010";
+    expect(ed25519SignatureIsStrict(fromHex(`${r}${orderMinusOne}`))).toBe(
+      true,
+    );
+    expect(ed25519SignatureIsStrict(fromHex(`${r}${order}`))).toBe(false);
   });
 });
 
