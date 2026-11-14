@@ -22,8 +22,8 @@ allowBuilds:
   workerd: false
 minimumReleaseAgeExclude:
   - '@exadev/eslint-config'
-  - cddl.js
   - '@exadev/semantic-release-workspace'
+  - cddl.js
   - trilean-regex
   - trilean
   - web-ui-primitives
