@@ -1,6 +1,6 @@
-import { unrefIfSupported } from "./timers.js";
-
 // How a fault is told to its owner: the owner's callback is its own code, so a throw or a rejected promise from it is reported once locally and swallowed, and the reports a source can cause are rate-limited so a peer cannot drive one report per failing message without bound. A fault suppressed inside a source's interval is counted, and the count is delivered when the interval ends, so a burst followed by silence is still told.
+
+import { unrefIfSupported } from "./timers.js";
 
 /** The shortest time between two reports for one source. */
 export const FAULT_REPORT_INTERVAL_MS = 1_000;
