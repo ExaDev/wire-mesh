@@ -12,6 +12,7 @@ import {
 
 const PONG_TIMEOUT_MS = 60_000;
 const SENT_AT = 1;
+const PONG_ROUND_TRIP_MS = 7;
 
 const unhandled: unknown[] = [];
 function recordUnhandled(reason: unknown): void {
@@ -82,6 +83,56 @@ describe("a ping abandoned by a close", () => {
     await letUnhandledRejectionsSurface();
 
     expect(unhandled).toEqual([]);
+  });
+});
+
+describe("a ping whose send fails", () => {
+  it("leaves no registration behind, so the next ping is paired with its own pong", async () => {
+    const trips = createPingRoundTrips();
+
+    await expect(
+      trips.sendAndAwait(SENT_AT, async () =>
+        Promise.reject(new Error("the link refused the ping")),
+      ),
+    ).rejects.toThrow("the link refused the ping");
+    const next = trips.sendAndAwait(SENT_AT, async () => Promise.resolve());
+    trips.resolveOldest(SENT_AT + PONG_ROUND_TRIP_MS);
+
+    await expect(next).resolves.toBe(PONG_ROUND_TRIP_MS);
+  });
+
+  it("raises nothing unhandled when the session closes afterwards", async () => {
+    const { session, connection } = await connected();
+    connection.rejectSends(new Error("the link refused the ping"));
+
+    await expect(session.sendPingMeasureRtt(PONG_TIMEOUT_MS)).rejects.toThrow(
+      "the link refused the ping",
+    );
+    await session.close();
+    await letUnhandledRejectionsSurface();
+
+    expect(unhandled).toEqual([]);
+  });
+});
+
+describe("a ping that is answered", () => {
+  it("leaves no timeout timer running", async () => {
+    vi.useFakeTimers();
+    try {
+      const trips = createPingRoundTrips();
+      const ping = trips.sendAndAwait(
+        SENT_AT,
+        async () => Promise.resolve(),
+        PONG_TIMEOUT_MS,
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      trips.resolveOldest(SENT_AT + PONG_ROUND_TRIP_MS);
+      await ping;
+
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
