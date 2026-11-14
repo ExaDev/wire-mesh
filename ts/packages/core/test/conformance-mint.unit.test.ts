@@ -23,6 +23,7 @@ import {
   verifyCapabilityToken,
   verifyRevocationEntry,
 } from "../src/domain/tokens.js";
+import type { MintRefusalReason } from "../src/domain/tokens.js";
 import { conditionsListSchema } from "../src/domain/token-predicates.js";
 import {
   capabilityTokenSchema,
@@ -37,6 +38,8 @@ const LAYOUT_VERSION = 1;
 const PKCS8_ED25519_PREFIX = "302e020100300506032b657004220420";
 
 const hexString = z.string().regex(/^(?:[0-9a-f]{2})*$/);
+/** An integer as a JavaScript number holds it, not only a safe one: the file carries a value at 2^53 for the cases only Rust runs. */
+const integer = z.number().refine(Number.isInteger);
 const scopeSchema = z.strictObject({
   kind: z.string(),
   path: z.string().optional(),
@@ -44,8 +47,8 @@ const scopeSchema = z.strictObject({
 const candidateSchema = z.strictObject({
   capability: z.string(),
   scope: scopeSchema,
-  expires: z.number().int(),
-  delegations_remaining: z.number().int().nullable(),
+  expires: integer,
+  delegations_remaining: integer.nullable(),
 });
 
 const mintCaseSchema = z.strictObject({
@@ -56,14 +59,15 @@ const mintCaseSchema = z.strictObject({
   bearer: z.string(),
   capability: z.string(),
   scope: scopeSchema,
-  expires: z.number().int(),
-  not_before: z.number().int().nullable(),
-  delegations_remaining: z.number().int().nullable(),
+  expires: integer,
+  not_before: integer.nullable(),
+  delegations_remaining: integer.nullable(),
   conditions_hex: hexString.nullable(),
   parent_wire_hex: hexString.nullable(),
   authorised_by_wire_hex: hexString.nullable(),
   grants_capability: z.string().nullable(),
   requests_capability: z.string().nullable(),
+  rust_only: z.boolean(),
   expected: z.discriminatedUnion("result", [
     z.strictObject({
       result: z.literal("minted"),
@@ -113,6 +117,12 @@ const file = z
       can_grant_via: z.array(
         grantQuerySchema.extend({ candidate_bearer: z.string() }),
       ),
+      counts: z.strictObject({
+        token_mints: z.number().int(),
+        revocation_mints: z.number().int(),
+        can_grant: z.number().int(),
+        can_grant_via: z.number().int(),
+      }),
     }),
   })
   .parse(
@@ -220,8 +230,59 @@ describe("mint identities", () => {
   }
 });
 
+/** The refusal reasons the TypeScript core can give, every one of which has a case in the file. The reason only an implementation with a Rust-sized integer gives is left out. */
+const TYPESCRIPT_REASONS = [
+  "already_expired",
+  "invalid_capability",
+  "parent_malformed",
+  "parent_bearer_mismatch",
+  "expires_exceeds_parent",
+  "scope_does_not_narrow",
+  "capability_mismatch",
+  "delegation_exceeds_parent",
+  "links_exclusive",
+  "authorisation_malformed",
+  "authorisation_parent_forbidden",
+  "authorisation_bearer_mismatch",
+  "authorisation_capability_mismatch",
+  "authorisation_scope_does_not_narrow",
+  "authorisation_exceeds_authoriser",
+  "authorisation_delegation_exceeds",
+  "authorisation_conditions_not_satisfied",
+] as const satisfies readonly MintRefusalReason[];
+
+describe("the file's own accounting", () => {
+  it("holds the number of cases its header says", () => {
+    expect(section.token_mints).toHaveLength(section.counts.token_mints);
+    expect(section.revocation_mints).toHaveLength(
+      section.counts.revocation_mints,
+    );
+    expect(section.can_grant).toHaveLength(section.counts.can_grant);
+    expect(section.can_grant_via).toHaveLength(section.counts.can_grant_via);
+  });
+
+  it("has a case for every refusal reason, and flags as Rust-only exactly the cases that expect the Rust-only reason", () => {
+    const expected = new Set(
+      section.token_mints.flatMap((testCase) =>
+        testCase.expected.result === "refused"
+          ? [testCase.expected.reason]
+          : [],
+      ),
+    );
+    for (const reason of TYPESCRIPT_REASONS) {
+      expect(expected, reason).toContain(reason);
+    }
+    for (const testCase of section.token_mints) {
+      expect(testCase.rust_only, testCase.name).toBe(
+        testCase.expected.result === "refused" &&
+          testCase.expected.reason === "value_not_representable",
+      );
+    }
+  });
+});
+
 describe("mintCapabilityToken", () => {
-  for (const testCase of section.token_mints) {
+  for (const testCase of section.token_mints.filter((c) => !c.rust_only)) {
     it(testCase.name, async () => {
       const issuer = await identityPort(testCase.issuer);
       const scope =
