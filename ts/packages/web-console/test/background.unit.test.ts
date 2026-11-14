@@ -1,6 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MAX_FAULT_TEXT_CHARS } from "wire-mesh-core/domain/fault-report";
 import { startInBackground } from "../src/background.js";
 
+/** What a report line adds around the bounded text: its label and the quotes. */
+const LINE_OVERHEAD_CHARS = 64;
 const unhandled: unknown[] = [];
 function record(reason: unknown): void {
   unhandled.push(reason);
@@ -38,10 +41,28 @@ describe("startInBackground", () => {
     expect(unhandled).toEqual([]);
   });
 
-  it("drops a failure on purpose when no callback is given, with nothing unhandled", async () => {
-    startInBackground(Promise.reject(new Error("the work failed")));
-    await letRejectionsSurface();
+  it("writes a failure to the console as one bounded, quoted line when no callback is given, with nothing unhandled", async () => {
+    const reported = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    try {
+      startInBackground(
+        Promise.reject(
+          new Error(`a\nb${"x".repeat(MAX_FAULT_TEXT_CHARS * 2)}`),
+        ),
+      );
+      await letRejectionsSurface();
 
-    expect(unhandled).toEqual([]);
+      expect(unhandled).toEqual([]);
+      expect(reported).toHaveBeenCalledTimes(1);
+      const line = String(reported.mock.calls[0]?.[0]);
+      expect(line).toContain("background work failed");
+      expect(line).not.toContain("\n");
+      expect(line.length).toBeLessThan(
+        MAX_FAULT_TEXT_CHARS + LINE_OVERHEAD_CHARS,
+      );
+    } finally {
+      reported.mockRestore();
+    }
   });
 });
