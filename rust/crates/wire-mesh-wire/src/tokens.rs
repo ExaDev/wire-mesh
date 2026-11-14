@@ -56,9 +56,12 @@ impl CapabilityVerb {
             return Err(VerbError::BadShape);
         };
         let action_ok = |a: &str| {
-            !a.is_empty()
-                && a.bytes()
-                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+            let bytes = a.as_bytes();
+            !bytes.is_empty()
+                && bytes[0].is_ascii_lowercase()
+                && bytes[1..]
+                    .iter()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'-')
         };
         let loose_ok = |a: &str| {
             !a.is_empty()
@@ -513,6 +516,20 @@ pub struct TokenClaims {
 }
 
 impl TokenClaims {
+    /// Checks every capability verb the claims carry, `capability`,
+    /// `grants-capability` and `requests-capability`, against the
+    /// capability-verb grammar.
+    pub fn validate_verbs(&self) -> Result<(), VerbError> {
+        CapabilityVerb::validate(&self.capability.0)?;
+        for verb in [&self.grants_capability, &self.requests_capability]
+            .into_iter()
+            .flatten()
+        {
+            CapabilityVerb::validate(&verb.0)?;
+        }
+        Ok(())
+    }
+
     /// Strictly decode from a complete byte string, rejecting trailing
     /// bytes.
     pub fn decode_bytes(bytes: &[u8]) -> Result<Self, DecodeError> {
@@ -741,9 +758,88 @@ mod tests {
             "exa.dev:run", // namespaced needs a '/' in the head
             "x-bad verb:thing",
             "-lead:action",
+            // The core action starts with a letter, like its subsystem.
+            "exec:1",
+            "exec:-x",
+            "exec:1pty",
         ] {
             assert_ne!(CapabilityVerb::validate(verb), Ok(()), "{verb}");
         }
+    }
+
+    /// The grammar's edges, for every tier: the empty string, a leading or
+    /// trailing space, a trailing newline, NUL, non-ASCII and an uppercase
+    /// letter where only lowercase is allowed. The cases are the ones the
+    /// anchored TypeScript schema refuses too (`anchored-patterns.unit.test.ts`).
+    #[test]
+    fn capability_verb_edges_match_the_grammar() {
+        for verb in [
+            "",
+            " exec:pty",
+            "exec:pty ",
+            "exec:pty\n",
+            "exec:pty\0",
+            "exec\0:pty",
+            "exec:pty\r",
+            "exec:p\u{e9}ty",
+            "ex\u{e9}c:pty",
+            "exec:pty\u{2028}",
+            "Exec:pty",
+            "example.com/Tool:run:more",
+            "Example.com/tool:run",
+            "example.com/tool:run\n",
+            "example.com/tool:",
+            "example.com/:run",
+            "/tool:run",
+            "x-local:run\n",
+            "x-local:",
+            "X-local:run",
+        ] {
+            assert_ne!(CapabilityVerb::validate(verb), Ok(()), "{verb:?}");
+        }
+        let long_action = "a".repeat(10_000);
+        assert_eq!(
+            CapabilityVerb::validate(&format!("exec:{long_action}")),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn claims_verbs_are_all_validated() {
+        let ok = CapabilityVerb("exec:pty".to_owned());
+        let bad = CapabilityVerb("two:colons:here".to_owned());
+        let claims = |capability: &CapabilityVerb,
+                      grants: Option<&CapabilityVerb>,
+                      requests: Option<&CapabilityVerb>| TokenClaims {
+            token_id: vec![0; 16],
+            issuer: crate::identity::DeviceId([1; 32]),
+            issuer_key: crate::identity::IdentityKey {
+                alg: -8,
+                public_key: vec![2; 32],
+            },
+            bearer: crate::identity::DeviceId([3; 32]),
+            capability: capability.clone(),
+            scope: CapabilityScope {
+                kind: "folder".to_owned(),
+                path: None,
+            },
+            expires: 1,
+            not_before: None,
+            valid_until: None,
+            conditions: None,
+            parent: None,
+            delegations_remaining: None,
+            authorised_by: None,
+            grants_capability: grants.cloned(),
+            requests_capability: requests.cloned(),
+            extra: CanonicalMap::new(),
+        };
+
+        assert_eq!(claims(&ok, Some(&ok), Some(&ok)).validate_verbs(), Ok(()));
+        assert_eq!(claims(&ok, None, None).validate_verbs(), Ok(()));
+        assert!(claims(&bad, None, None).validate_verbs().is_err());
+        assert!(claims(&ok, Some(&bad), None).validate_verbs().is_err());
+        assert!(claims(&ok, None, Some(&bad)).validate_verbs().is_err());
     }
 
     #[test]

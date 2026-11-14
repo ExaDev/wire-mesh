@@ -258,6 +258,41 @@ mod tests {
         );
     }
 
+    /// The grammar's edges for the two pattern tiers: the empty string, spaces,
+    /// a trailing newline, NUL, non-ASCII, uppercase where only lowercase is
+    /// allowed and an extra separator.
+    #[test]
+    fn domain_edges_match_the_grammar() {
+        for domain in [
+            "",
+            " x-thing",
+            "x-thing ",
+            "x-thing\n",
+            "x-thing\0",
+            "x-th\u{e9}ng",
+            "x-thing/more",
+            "x-",
+            "X-thing",
+            "example.com/thing\n",
+            "example.com/thing\0",
+            "example.com/thing/more",
+            "example.com/th\u{e9}ng",
+            " example.com/thing",
+            "example.com/thing ",
+            "Example.com/thing",
+            "example.com/",
+            "/thing",
+            "example/thing",
+            "example..com/thing",
+            "-example.com/thing",
+            "example-.com/thing",
+        ] {
+            assert!(DomainId::validate(domain).is_err(), "{domain:?}");
+        }
+        let long_local = "a".repeat(10_000);
+        assert!(DomainId::validate(&format!("example.com/{long_local}")).is_ok());
+    }
+
     #[test]
     fn namespaced_tier_examples() {
         // The registry's own shape: registrant is a DNS name the registrant

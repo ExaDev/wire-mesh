@@ -7,7 +7,7 @@
 
 use wire_mesh_wire::identity::{DeviceId, IdentityKey};
 use wire_mesh_wire::management::RevocationClaims;
-use wire_mesh_wire::tokens::{CapabilityVerb, CoseSign1, TokenClaims};
+use wire_mesh_wire::tokens::{CoseSign1, TokenClaims};
 
 use crate::domain::cose::sig_structure;
 use crate::domain::revocation::RevocationView;
@@ -344,7 +344,7 @@ pub async fn verify_capability_token(
         // malformed is invalid at verification time, not only where a
         // frame gate happens to check (Frame::validate covers
         // manage-requests; the verifier must not depend on that).
-        if let Err(e) = CapabilityVerb::validate(&claims.capability.0) {
+        if let Err(e) = claims.validate_verbs() {
             return TokenVerdict::Invalid(TokenRejection::InvalidClaims(e.to_string()));
         }
         if let Err(e) = claims.scope.validate() {

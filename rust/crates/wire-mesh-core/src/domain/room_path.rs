@@ -92,6 +92,46 @@ pub fn parse_room_path(path: &str) -> Option<ParsedRoomPath> {
 mod tests {
     use super::*;
 
+    /// The grammar's edges for the room-path and device-id-hex patterns: the
+    /// empty string, spaces, a trailing newline, NUL, non-ASCII, uppercase hex,
+    /// a wrong length and an extra separator.
+    #[test]
+    fn room_path_and_device_id_edges_match_the_grammar() {
+        let hex = "ab".repeat(32);
+        for path in [
+            String::new(),
+            format!(" {hex}/general"),
+            format!("{hex}/general "),
+            format!("{hex}/general\n"),
+            format!("{hex}/general\0"),
+            format!("{hex}/gen\u{e9}ral"),
+            format!("{hex}/general/more"),
+            format!("{hex}/"),
+            format!("{}/general", hex.to_uppercase()),
+            format!("0{hex}/general"),
+            format!("{hex}0/general"),
+            format!("{hex}+{hex}\n"),
+            format!("{hex}+{hex}0"),
+            format!("0{hex}+{hex}"),
+            format!("{hex}+{hex}+{hex}"),
+            format!("{hex}+"),
+        ] {
+            assert_eq!(parse_room_path(&path), None, "{path:?}");
+        }
+        for device in [
+            String::new(),
+            format!("{hex}\n"),
+            format!("{hex}0"),
+            format!("0{hex}"),
+            format!(" {hex}"),
+            hex.to_uppercase(),
+            format!("{}\0", &hex[..63]),
+            "\u{e9}".repeat(32),
+        ] {
+            assert_eq!(device_id_from_hex(&device), None, "{device:?}");
+        }
+    }
+
     #[test]
     fn device_id_hex_round_trips() {
         let device = DeviceId([0xAB; 32]);
