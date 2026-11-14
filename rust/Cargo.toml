@@ -45,7 +45,7 @@ hkdf = { version = "0.13", default-features = false }
 aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc", "zeroize"] }
 aes = { version = "0.8", default-features = false, features = ["zeroize"] }
 # "std" and "std_rng" are what `OsRng` and `thread_rng` need.
-rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
+rand = { version = "0.10", default-features = false, features = ["std", "std_rng"] }
 serde_json = { version = "1", default-features = false, features = ["std"] }
 
 [workspace.lints.rust]
