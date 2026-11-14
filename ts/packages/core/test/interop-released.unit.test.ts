@@ -1,9 +1,10 @@
 // Sessions of the published previous release and of this build, through an in-memory hub: what holds between them (spec/secure-channel.cddl). The previous release is the package this one is built from, installed under an alias, so what runs is its published code and not a model of it.
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMeshSession as createReleased } from "wire-mesh-core-released/domain/mesh-session";
 import { createMeshSession as createCurrent } from "../src/domain/mesh-session.js";
 import type { ManageOutcome } from "../src/domain/mesh-session.js";
+import { HANDSHAKE_WINDOW_MS } from "../src/domain/relay-channels.js";
 import type {
   CapabilityScope,
   DeviceId,
@@ -83,6 +84,10 @@ async function attemptsUntilAnswered(
   if (outcome.result === "ok") {
     return made;
   }
+  // A request that timed out stands for a handshake window gone by.
+  if (vi.isFakeTimers()) {
+    vi.advanceTimersByTime(HANDSHAKE_WINDOW_MS + 1);
+  }
 
   return made >= MOST_ATTEMPTS
     ? Number.POSITIVE_INFINITY
@@ -123,37 +128,39 @@ describe("sessions of the previous release and of this build", () => {
   }
 });
 
-// Only a replay to a session of this build is expected to be recovered from: the previous release has no rule that confirms a channel before it replaces another.
+// Only a replay to a session of this build is covered: the previous release has no rule that confirms a channel before it replaces another. Time moves by the handshake window after every failed request, as the request timeouts that the window measures would move it, so each count below is an outcome and not a duration.
 describe("sessions with this build on the replayed side", () => {
-  for (const [first, second] of pairings.filter(
-    ([build]) => build === "current",
-  )) {
-    it(`are reachable again after an older hello is replayed, ${first} then ${second}`, async () => {
+  const recoveries: readonly (readonly [Build, number, number])[] = [
+    // The other side's first request, then this build's.
+    ["current", 1, 1],
+    ["released", 2, 1],
+  ];
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  for (const [second, restartedAttempts, otherAttempts] of recoveries) {
+    it(`recovers from a replayed older hello with ${second} as the other side, in ${String(restartedAttempts)} then ${String(otherAttempts)} attempts`, async () => {
+      vi.useFakeTimers({ toFake: ["performance"] });
       const hub = new InteropHub();
-      const a = await start(hub, first, await generateEd25519Identity());
+      const a = await start(hub, "current", await generateEd25519Identity());
       const b = await start(hub, second, await generateEd25519Identity());
       expect(await a.request(b.identity.deviceId)).toEqual({ result: "ok" });
       const [older] = hub.helloFrom(b.identity.deviceId);
       if (older === undefined) {
         throw new Error("no hello was relayed");
       }
-      // The second channel is the current one: the hello above is an older hello of the same device.
       await b.close();
       const restarted = await start(hub, second, b.identity);
-      expect(await attemptsUntilAnswered(restarted, a)).toBeLessThanOrEqual(
-        MOST_ATTEMPTS,
-      );
-      expect(await attemptsUntilAnswered(a, restarted)).toBeLessThanOrEqual(
-        MOST_ATTEMPTS,
-      );
+      expect(await attemptsUntilAnswered(restarted, a)).toBe(1);
+      expect(await attemptsUntilAnswered(a, restarted)).toBe(1);
+      // The replayed hello is no longer one the session still holds: it is answered.
+      vi.advanceTimersByTime(HANDSHAKE_WINDOW_MS + 1);
       hub.replayTo(a.identity.deviceId, older);
 
-      expect(await attemptsUntilAnswered(a, restarted)).toBeLessThanOrEqual(
-        MOST_ATTEMPTS,
-      );
-      expect(await attemptsUntilAnswered(restarted, a)).toBeLessThanOrEqual(
-        MOST_ATTEMPTS,
-      );
+      expect(await attemptsUntilAnswered(restarted, a)).toBe(restartedAttempts);
+      expect(await attemptsUntilAnswered(a, restarted)).toBe(otherAttempts);
       await a.close();
       await restarted.close();
     });
