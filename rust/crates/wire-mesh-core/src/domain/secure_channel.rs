@@ -95,7 +95,7 @@ pub fn data_associated_data(sender: &DeviceId, recipient: &DeviceId, counter: u6
     aad
 }
 
-/// Whether obligation 5 of the spec lets a frame travel inside a `secure-data-frame`: only a manage-request, manage-response, data-have, data-request or data-entries frame may. A receiver drops every other frame it opens, and [`SecureChannel::seal`] refuses to produce one.
+/// Whether obligation 5 of the spec lets a frame travel inside a `secure-data-frame`: only a manage-request, manage-response, data-have, data-request or data-entries frame may. A receiver drops every other frame it opens: [`SecureChannel::open`] still returns it, and the caller applies this check to what comes out. The spec states no rule for a sender, so [`SecureChannel::seal`] does not apply it.
 pub fn is_sealable(frame: &Frame) -> bool {
     matches!(
         frame,
@@ -165,11 +165,9 @@ impl core::fmt::Display for EstablishError {
 
 impl std::error::Error for EstablishError {}
 
-/// Why [`SecureChannel::seal`] produced no frame. Neither refusal changes the channel.
+/// Why [`SecureChannel::seal`] produced no frame. A refusal does not change the channel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SealError {
-    /// Obligation 5 of the spec does not let this kind of frame travel sealed. Carries the frame's `type`.
-    NotSealable { kind: &'static str },
     /// The next counter would not fit in a `u64`. The channel sends no more frames, since a counter must never wrap or repeat.
     CounterExhausted,
     /// The encoded frame is longer than AES-GCM can seal under one IV.
@@ -179,7 +177,6 @@ pub enum SealError {
 impl core::fmt::Display for SealError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            SealError::NotSealable { kind } => write!(f, "a {kind} frame may not be sealed"),
             SealError::CounterExhausted => f.write_str("the send counter is exhausted"),
             SealError::FrameTooLong => f.write_str("the frame is too long to seal"),
         }
@@ -531,15 +528,12 @@ impl SecureChannel {
         &self.peer
     }
 
-    /// Seals one frame for the peer under the next send counter. The plaintext is the canonical encoding of `frame`, sealed with AES-256-GCM under the send key, [`data_iv`] and [`data_associated_data`].
+    /// Seals one frame for the peer under the next send counter. The plaintext is the canonical encoding of `frame`, sealed with AES-256-GCM under the send key, [`data_iv`] and [`data_associated_data`]. The sender imposes no restriction on the kind of frame because the spec imposes none; only the receiver drops a kind obligation 5 does not allow (see [`is_sealable`]).
     ///
     /// # Errors
     ///
-    /// [`SealError::NotSealable`] for a frame obligation 5 does not allow, [`SealError::CounterExhausted`] once counter `u64::MAX` has been used (and on every call after it: the counter never wraps), and [`SealError::FrameTooLong`]. A refusal leaves the counter where it was.
+    /// [`SealError::CounterExhausted`] once counter `u64::MAX` has been used (and on every call after it: the counter never wraps), and [`SealError::FrameTooLong`]. A refusal leaves the counter where it was.
     pub fn seal(&mut self, frame: &Frame) -> Result<SecureDataFrame, SealError> {
-        if !is_sealable(frame) {
-            return Err(SealError::NotSealable { kind: frame.kind() });
-        }
         let counter = self.next_send.ok_or(SealError::CounterExhausted)?;
         let plaintext = encode_frame(frame);
         let ciphertext = cipher(&self.send_key)
@@ -707,17 +701,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_frame_obligation_5_does_not_allow_is_not_sealed_and_costs_no_counter() {
+    async fn a_frame_obligation_5_does_not_allow_is_sealed_and_opened_and_reported_as_droppable() {
         let (a, b) = (
             NodeIdentity::generate_ed25519(),
             NodeIdentity::generate_ed25519(),
         );
-        let (mut a_end, _b_end) = connect(&a, &b).await;
-        assert_eq!(
-            a_end.seal(&Frame::Ping(PingFrame)),
-            Err(SealError::NotSealable { kind: "ping" })
-        );
-        assert_eq!(a_end.seal(&have(1)).expect("seal").counter, 0);
+        let (mut a_end, mut b_end) = connect(&a, &b).await;
+        let ping = Frame::Ping(PingFrame);
+        let sealed = a_end
+            .seal(&ping)
+            .expect("a sender imposes no kind restriction");
+        let opened = b_end.open(&sealed).expect("the receiver opens it");
+        assert_eq!(opened, ping);
+        assert!(!is_sealable(&opened));
+        assert!(is_sealable(&have(1)));
     }
 
     #[tokio::test]
