@@ -45,26 +45,32 @@ use wire_mesh_wire::transport::{peer_advert_signing_input, PeerAdvert};
 use wire_mesh_wire::value::{CanonicalMap, CborValue};
 use wire_mesh_wire::{decode_frame, encode_frame, minicbor, DecodeError};
 
+mod mint;
+mod obj;
 mod secure_channel;
 
 /// The vector files this binary checks, each with the top-level keys it reads.
-const CONSUMED: [&str; 6] = [
+const CONSUMED: [&str; 7] = [
     "frames.v1.json",
     "handshake.v1.json",
     "tokens.v1.json",
     "adverts.v1.json",
     "invalid-frames.v1.json",
     SECURE_CHANNEL_FILE,
+    MINT_FILE,
 ];
 
 /// The vector file whose `secure_channel` section [`secure_channel`] checks.
 const SECURE_CHANNEL_FILE: &str = "secure-channel.v1.json";
 
+/// The vector file whose `mint` section [`mint`] checks.
+const MINT_FILE: &str = "mint.v1.json";
+
 /// The top-level keys every consumed file may carry: the ones `validate_vector_file` reads.
 const CONSUMED_KEYS: [&str; 3] = ["protocol_version", "description", "vectors"];
 
-/// The top-level key only [`SECURE_CHANNEL_FILE`] carries, and [`secure_channel`] reads.
-const SECURE_CHANNEL_SECTION: &str = "secure_channel";
+/// The top-level section a file carries besides the shared keys, with the file that carries it.
+const SECTIONS: [(&str, &str); 2] = [(SECURE_CHANNEL_FILE, "secure_channel"), (MINT_FILE, "mint")];
 
 /// Vector files this binary does not check yet, each with the issue that tracks checking it. The run reports them as not consumed and fails if a file is missing from here and from [`CONSUMED`].
 const NOT_YET_CONSUMED: [(&str, &str); 0] = [];
@@ -135,7 +141,9 @@ fn directory_problems() -> Vec<String> {
 fn unread_top_level_key<'a>(parsed: &'a serde_json::Value, file: &str) -> Option<&'a str> {
     parsed.as_object()?.keys().map(String::as_str).find(|key| {
         !CONSUMED_KEYS.contains(key)
-            && !(file == SECURE_CHANNEL_FILE && *key == SECURE_CHANNEL_SECTION)
+            && !SECTIONS
+                .iter()
+                .any(|(section_file, section)| *section_file == file && section == key)
     })
 }
 
@@ -190,11 +198,19 @@ async fn main() {
                 }
             }
         }
-        if file == SECURE_CHANNEL_FILE {
+        if let Some((_, section_key)) = SECTIONS
+            .iter()
+            .find(|(section_file, _)| *section_file == file)
+        {
             let section = parsed
-                .get(SECURE_CHANNEL_SECTION)
-                .unwrap_or_else(|| panic!("{file} has no {SECURE_CHANNEL_SECTION} section"));
-            for (name, outcome) in secure_channel::check_section(section, &wires).await {
+                .get(*section_key)
+                .unwrap_or_else(|| panic!("{file} has no {section_key} section"));
+            let outcomes = if file == MINT_FILE {
+                mint::check_section(section, &wires).await
+            } else {
+                secure_channel::check_section(section, &wires).await
+            };
+            for (name, outcome) in outcomes {
                 total += 1;
                 match outcome {
                     Ok(()) => {
@@ -345,6 +361,12 @@ async fn check_vector(file: &str, vector: Vector, verifier: &NodeIdentity) -> Re
             }) if vector.name.starts_with("establish_") => {}
             Err(e) => return Err(format!("typed decode failed: {e}")),
         },
+        MINT_FILE => {
+            // Tokens and revocation entries alike are COSE_Sign1 structures: what a mint produced decodes and re-encodes to the same bytes.
+            let cose = CoseSign1::decode_bytes(&expected)
+                .map_err(|e| format!("COSE decode failed: {e}"))?;
+            report_first_divergence(&expected, &cose.encode_to_vec())?;
+        }
         "tokens.v1.json" => {
             let cose = CoseSign1::decode_bytes(&expected)
                 .map_err(|e| format!("COSE decode failed: {e}"))?;

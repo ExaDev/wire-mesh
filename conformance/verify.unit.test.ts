@@ -12,6 +12,9 @@ const SHARED_KEYS = ["protocol_version", "description", "vectors"];
 const SIDECAR_SECTIONS: Readonly<
   Record<string, Readonly<Record<string, string>>>
 > = {
+  "mint.v1.json": {
+    mint: "ts/packages/core/test/conformance-mint.unit.test.ts",
+  },
   "secure-channel.v1.json": {
     secure_channel:
       "ts/packages/core/test/conformance-secure-channel.unit.test.ts",
