@@ -118,6 +118,10 @@
       "import": "./dist/domain/erasure-coding.mjs",
       "require": "./dist/domain/erasure-coding.cjs"
     },
+    "./domain/fault-report": {
+      "import": "./dist/domain/fault-report.mjs",
+      "require": "./dist/domain/fault-report.cjs"
+    },
     "./domain/gossip-expansion": {
       "import": "./dist/domain/gossip-expansion.mjs",
       "require": "./dist/domain/gossip-expansion.cjs"

@@ -4,14 +4,26 @@
  * A failure of the stream itself (the iterator throws, as it does when the session behind it has gone) ends the loop and is reported once with no item. A stream that simply finishes ends the loop without a report.
  */
 
+import { deviceIdToHex } from "./device-id.js";
+import { createFaultReporter } from "./fault-report.js";
 import type { IncomingManageRequest, ManageOutcome } from "./mesh-session.js";
 
-/** What a consumer is told about a failure. `item` is the item whose handling failed, or undefined when the stream itself failed. */
-export type ConsumeFault<T> = (error: unknown, item: T | undefined) => void;
+/** What a consumer is told about a failure. `item` is the item whose handling failed, or undefined when the stream itself failed. `suppressed` is how many failures from the same source were not reported since the previous report (see FAULT_REPORT_INTERVAL_MS). */
+export type ConsumeFault<T> = (
+  error: unknown,
+  item: T | undefined,
+  suppressed: number,
+) => void | Promise<void>;
 
 export interface ConsumeOptions<T> {
-  /** Told once per failure. A throw from this callback is ignored: reporting a fault never ends the loop either. Omit to drop failures silently. */
+  /** Told of a failure, at most once per source per FAULT_REPORT_INTERVAL_MS, so a peer cannot drive one report per failing item. A throw from this callback, or a promise it returns that rejects, is reported once to the console and dropped: reporting a fault never ends the loop either. Omit to drop failures silently. */
   onFault?: ConsumeFault<T> | undefined;
+  /** Names the source an item's failure is counted against, so that one peer's failures do not hide another's. Items share one source when omitted. */
+  sourceOf?: ((item: T) => string) | undefined;
+  /** Ends the loop when aborted, between items or while it waits for one, and closes the stream's iterator so no item it would have taken is lost to a later reader. An item being handled is finished first. */
+  signal?: AbortSignal | undefined;
+  /** The clock the report interval is read from. */
+  now?: (() => number) | undefined;
 }
 
 /**
@@ -22,27 +34,89 @@ export async function consumeEach<T>(
   handle: (item: T) => void | Promise<void>,
   options: Readonly<ConsumeOptions<T>> = {},
 ): Promise<void> {
+  const reporter = createFaultReporter(options.now);
   const report = (error: unknown, item: T | undefined): void => {
-    try {
-      options.onFault?.(error, item);
-    } catch {
-      // A listener that throws must not end the loop it is told about.
+    const { onFault } = options;
+    if (onFault === undefined) {
+      return;
     }
+    const origin = item === undefined ? "" : (options.sourceOf?.(item) ?? "");
+    reporter(origin, async (suppressed) => onFault(error, item, suppressed));
   };
-  try {
-    for await (const item of source) {
-      try {
-        await handle(item);
-      } catch (error) {
-        report(error, item);
-      }
+  const iterator = source[Symbol.asyncIterator]();
+  let closing: Promise<unknown> | undefined;
+  // Closing the iterator withdraws the wait it holds on the stream, so it is done the moment the signal aborts: an item that arrives later belongs to the stream's next reader.
+  const close = (): void => {
+    closing ??= iterator.return?.().catch((error: unknown) => {
+      report(error, undefined);
+    });
+  };
+  const stopped = new Promise<undefined>((resolve) => {
+    options.signal?.addEventListener(
+      "abort",
+      () => {
+        close();
+        resolve(undefined);
+      },
+      { once: true },
+    );
+  });
+  // An object property, so the compiler does not narrow it to `false` where the steps below flip it.
+  const state = { finished: false };
+
+  /** Takes and handles one item. Resolves true when there may be another, false when the stream ended or the loop was stopped; rejects when the stream itself failed. */
+  async function step(): Promise<boolean> {
+    if (options.signal?.aborted === true) {
+      return false;
     }
-  } catch (error) {
-    report(error, undefined);
+    const pending = iterator.next();
+    // An abandoned wait that later fails is the iterator's own business once it has been told to stop.
+    pending.catch(() => undefined);
+    const result = await Promise.race([pending, stopped]);
+    if (result === undefined) {
+      return false;
+    }
+    if (result.done === true) {
+      state.finished = true;
+
+      return false;
+    }
+    try {
+      await handle(result.value);
+    } catch (error) {
+      report(error, result.value);
+    }
+
+    return true;
   }
+
+  // One item at a time, in order, which is what a consumer of a stream relies on; the next step starts from the previous one's settlement, so a long-lived loop holds no chain of pending promises.
+  await new Promise<void>((resolve) => {
+    const pump = (): void => {
+      step().then(
+        (more) => {
+          if (more) {
+            pump();
+          } else {
+            resolve();
+          }
+        },
+        (error: unknown) => {
+          state.finished = true;
+          report(error, undefined);
+          resolve();
+        },
+      );
+    };
+    pump();
+  });
+  if (!state.finished) {
+    close();
+  }
+  await closing;
 }
 
-/** The refusal sent for a request whose handling failed before it was answered. */
+/** The refusal sent for a request whose handling failed before it was answered. It is a fixed code with no text from the failure, so a peer learns nothing of this side's internals; the code is this repository's convention for it, beside the codes a handler itself answers with. */
 export const HANDLER_FAILED_OUTCOME: ManageOutcome = {
   result: "error",
   code: "internal-error",
@@ -76,6 +150,14 @@ export async function serveManageRequests(
         throw error;
       }
     },
-    options,
+    {
+      ...options,
+      sourceOf:
+        options.sourceOf ??
+        ((incoming) =>
+          incoming.fromDevice === undefined
+            ? ""
+            : deviceIdToHex(incoming.fromDevice)),
+    },
   );
 }

@@ -1,6 +1,7 @@
 // The shared rule for consuming a session's incoming streams: a failure while handling one item is contained to it, reported once, and the loop goes on; nothing rejects to whoever started the loop.
 
 import { describe, expect, it, vi } from "vitest";
+import { FAULT_REPORT_INTERVAL_MS } from "../src/domain/fault-report.js";
 import {
   HANDLER_FAILED_OUTCOME,
   consumeEach,
@@ -15,6 +16,7 @@ import { createAsyncQueue } from "../src/domain/async-queue.js";
 const FIRST = 1;
 const SECOND = 2;
 const THIRD = 3;
+const ITEMS_PER_INTERVAL = 4;
 
 /** A stream of `values` that then ends, or that throws `error` instead of ending. */
 function streamOf<T>(values: readonly T[], error?: Error): AsyncIterable<T> {
@@ -134,7 +136,192 @@ describe("consumeEach", () => {
   });
 });
 
+describe("consumeEach, told to stop", () => {
+  it("ends as soon as it is aborted, even while waiting for an item, and closes the stream's iterator", async () => {
+    const stop = new AbortController();
+    const seen: number[] = [];
+    let closed = false;
+    const queue = createAsyncQueue<number>();
+    const source: AsyncIterable<number> = {
+      [Symbol.asyncIterator]() {
+        const inner = queue.stream[Symbol.asyncIterator]();
+
+        return {
+          next: async () => inner.next(),
+          return: async () => {
+            closed = true;
+
+            return Promise.resolve({ value: undefined, done: true });
+          },
+        };
+      },
+    };
+    const done = consumeEach(
+      source,
+      (item) => {
+        seen.push(item);
+      },
+      { signal: stop.signal },
+    );
+
+    queue.push(FIRST);
+    await vi.waitFor(() => {
+      expect(seen).toEqual([FIRST]);
+    });
+    stop.abort();
+    await done;
+    queue.push(SECOND);
+
+    expect(seen).toEqual([FIRST]);
+    expect(closed).toBe(true);
+  });
+
+  it("takes no item a later reader of the same stream needs, even one pushed in the same turn as the abort", async () => {
+    const queue = createAsyncQueue<number>();
+    const stop = new AbortController();
+    const first = consumeEach(queue.stream, () => undefined, {
+      signal: stop.signal,
+    });
+    const later: number[] = [];
+    const second = consumeEach(queue.stream, (item) => {
+      later.push(item);
+    });
+    stop.abort();
+    queue.push(FIRST);
+    queue.push(SECOND);
+    queue.push(THIRD);
+    await first;
+
+    await vi.waitFor(() => {
+      expect(later).toEqual([FIRST, SECOND, THIRD]);
+    });
+    expect(second).toBeInstanceOf(Promise);
+  });
+});
+
+describe("a fault listener", () => {
+  it("that returns a promise which rejects does not raise an unhandled rejection or end the loop", async () => {
+    const unhandled: unknown[] = [];
+    const record = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", record);
+    const reported = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const seen: number[] = [];
+    try {
+      await consumeEach(
+        items(FIRST, SECOND),
+        (item) => {
+          seen.push(item);
+          throw new Error("always fails");
+        },
+        {
+          onFault: async () =>
+            Promise.reject(new Error("the listener rejects")),
+        },
+      );
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+
+      expect(unhandled).toEqual([]);
+      expect(seen).toEqual([FIRST, SECOND]);
+      expect(reported).toHaveBeenCalledTimes(1);
+    } finally {
+      process.off("unhandledRejection", record);
+      reported.mockRestore();
+    }
+  });
+
+  it("is told of one failure per source per interval, with the count it was not told of", async () => {
+    let clock = 0;
+    const told: [number | undefined, number][] = [];
+
+    await consumeEach(
+      items(FIRST, FIRST, FIRST, SECOND, FIRST),
+      (item) => {
+        if (item === FIRST) {
+          clock += FAULT_REPORT_INTERVAL_MS / ITEMS_PER_INTERVAL;
+        }
+        throw new Error(`item ${String(item)} fails`);
+      },
+      {
+        onFault: (_error, item, suppressed) => {
+          told.push([item, suppressed]);
+        },
+        sourceOf: (item) => (item === SECOND ? "other" : "first"),
+        now: () => clock,
+      },
+    );
+
+    // The first failure is told at once; the next two in the same interval are counted; a failure from another source is told at once; the fifth falls in the same interval as the first, which has not yet passed.
+    expect(told).toEqual([
+      [FIRST, 0],
+      [SECOND, 0],
+    ]);
+  });
+
+  it("is told, after the interval, how many failures from that source it was not told of", async () => {
+    let clock = 0;
+    const told: number[] = [];
+    const fail = (): never => {
+      throw new Error("fails");
+    };
+    const options = {
+      onFault: (_error: unknown, _item: unknown, suppressed: number): void => {
+        told.push(suppressed);
+      },
+      now: () => clock,
+    };
+    const queue = createAsyncQueue<number>();
+    const stop = new AbortController();
+    const done = consumeEach(queue.stream, fail, {
+      ...options,
+      signal: stop.signal,
+    });
+    queue.push(FIRST);
+    queue.push(FIRST);
+    queue.push(FIRST);
+    await vi.waitFor(() => {
+      expect(told).toEqual([0]);
+    });
+    clock += FAULT_REPORT_INTERVAL_MS;
+    queue.push(FIRST);
+    await vi.waitFor(() => {
+      expect(told).toEqual([0, 2]);
+    });
+    stop.abort();
+    queue.push(FIRST);
+    await done;
+  });
+});
+
 describe("serveManageRequests", () => {
+  it("never puts text from the failure in the refusal a requester receives", async () => {
+    const answers: ManageOutcome[] = [];
+
+    await serveManageRequests(
+      requestsOf(
+        request(FIRST, async (outcome) => {
+          answers.push(outcome);
+
+          return Promise.resolve();
+        }),
+      ),
+      async () => Promise.reject(new Error("distinctive-internal-detail")),
+    );
+
+    expect(answers).toEqual([HANDLER_FAILED_OUTCOME]);
+    expect(JSON.stringify(answers)).not.toContain(
+      "distinctive-internal-detail",
+    );
+  });
+
   it("answers a request whose handling failed before it was answered with a refusal, and serves the next", async () => {
     const queue = createAsyncQueue<IncomingManageRequest>();
     const answers: [number, ManageOutcome][] = [];
