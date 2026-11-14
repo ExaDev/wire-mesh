@@ -1,3 +1,13 @@
+## [4.1.1](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.1.0...wire-mesh-core%404.1.1) (2026-11-14)
+
+### Bug Fixes
+
+* **core:** anchor the generated string patterns and refuse malformed verbs at minting ([912ca14](https://github.com/ExaDev/wire-mesh/commit/912ca1413d9837d405d531f09d750261c3c1318c))
+
+### Tests
+
+* **conformance:** pin the whole-string patterns with values outside the grammar ([e2fdd16](https://github.com/ExaDev/wire-mesh/commit/e2fdd16600e87d6789ac276d5be4c293978e3247))
+
 ## [4.1.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.0.8...wire-mesh-core%404.1.0) (2026-11-14)
 
 ### Features

@@ -1,3 +1,15 @@
+## [2.18.1](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.18.0...%40exadev%2Fwire-mesh-web-console%402.18.1) (2026-11-14)
+
+### Bug Fixes
+
+* **core:** anchor the generated string patterns and refuse malformed verbs at minting ([912ca14](https://github.com/ExaDev/wire-mesh/commit/912ca1413d9837d405d531f09d750261c3c1318c))
+* **web-console:** wait for the responder reply to be delivered before the container e2e ends ([1a5deb9](https://github.com/ExaDev/wire-mesh/commit/1a5deb99657e561211dd37eebca5ece2fa29fb5c))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 4.1.1
+
 ## [2.18.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.17.9...%40exadev%2Fwire-mesh-web-console%402.18.0) (2026-11-14)
 
 ### Features

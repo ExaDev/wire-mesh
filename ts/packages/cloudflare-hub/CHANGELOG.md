@@ -1,3 +1,10 @@
+## [2.3.1](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%402.3.0...%40exadev%2Fwire-mesh-cloudflare-hub%402.3.1) (2026-11-14)
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 4.1.1
+
 ## [2.3.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%402.2.10...%40exadev%2Fwire-mesh-cloudflare-hub%402.3.0) (2026-11-14)
 
 ### Features
