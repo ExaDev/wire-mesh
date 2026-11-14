@@ -96,16 +96,17 @@ function pumpSenderAcks(
     onConnectionEnd: (connection: Readonly<Connection>) => void;
   }>,
 ): void {
-  // A receive that fails is the connection ending, which is what the sender is told next; the failure is nobody's to handle.
+  // A receive that fails, or a frame the sender cannot take, ends the reading: the connection is closed, since nothing reads it any more, and the sender is told it has ended. A callback of the sender's that throws has no one to tell.
   void (async (): Promise<void> => {
-    for await (const frame of connection.receive()) {
-      sender.onFrame(connection, frame);
+    try {
+      for await (const frame of connection.receive()) {
+        sender.onFrame(connection, frame);
+      }
+    } catch {
+      await connection.close().catch(() => undefined);
     }
-  })()
-    .catch(() => undefined)
-    .finally(() => {
-      sender.onConnectionEnd(connection);
-    });
+    sender.onConnectionEnd(connection);
+  })().catch(() => undefined);
 }
 
 /* ---------------------------------------------------------------------
@@ -305,6 +306,9 @@ export function createShardCollector(
     rejectResult = reject;
   });
 
+  // The caller reads `result` when it chooses; a rejection before that is an expected end, not an unhandled one. The caller still sees it through `result` itself.
+  result.catch(() => undefined);
+
   function maybeFinish(): void {
     if (settled || presented.size < manifest.threshold) return;
     settled = true;
@@ -331,33 +335,39 @@ export function createShardCollector(
           location === undefined ||
           !bytesEqual(event.transferId, location["transfer-id"])
         ) {
-          void event.decide({
-            kind: "reject",
-            reason: "shard offer does not match the manifest",
-          });
+          // A refusal that cannot be sent is the connection failing, which ends the transfer by its own bound.
+          event
+            .decide({
+              kind: "reject",
+              reason: "shard offer does not match the manifest",
+            })
+            .catch(() => undefined);
 
           return;
         }
-        void event.decide({
-          kind: "accept",
-          window: event.totalSize ?? manifest["original-length"],
-          onComplete: (completion: Readonly<BulkReceiveResult>) => {
-            if (settled || !completion.ok) return;
-            readStoredTransferBytes(
-              storage,
-              Uint8Array.from(location["transfer-id"]),
-            )
-              .then((data) => {
-                presented.set(index, data);
-                maybeFinish();
-              })
-              .catch((error: unknown) => {
-                rejectResult(
-                  error instanceof Error ? error : new Error(String(error)),
-                );
-              });
-          },
-        });
+        // An acceptance that cannot be sent is the connection failing, which ends the transfer by its own bound.
+        event
+          .decide({
+            kind: "accept",
+            window: event.totalSize ?? manifest["original-length"],
+            onComplete: (completion: Readonly<BulkReceiveResult>) => {
+              if (settled || !completion.ok) return;
+              readStoredTransferBytes(
+                storage,
+                Uint8Array.from(location["transfer-id"]),
+              )
+                .then((data) => {
+                  presented.set(index, data);
+                  maybeFinish();
+                })
+                .catch((error: unknown) => {
+                  rejectResult(
+                    error instanceof Error ? error : new Error(String(error)),
+                  );
+                });
+            },
+          })
+          .catch(() => undefined);
       };
     },
     result,

@@ -263,7 +263,8 @@ export function startThresholdParticipant(
       await handleAbort(incoming, { "session-id": params["session-id"] });
     }
   }
-  void serveManageRequests(options.session.incomingManageRequests, handle, {
+  // serveManageRequests contains every failure of its own and never rejects; the catch states that for the lint rule.
+  serveManageRequests(options.session.incomingManageRequests, handle, {
     onFault: options.onFault,
-  });
+  }).catch(() => undefined);
 }

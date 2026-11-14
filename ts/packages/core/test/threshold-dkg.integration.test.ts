@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { runFreshThresholdDkg } from "../src/adapters/threshold-dkg.js";
 import { deviceIdToHex } from "../src/domain/device-id.js";
 import type {
@@ -191,5 +191,83 @@ describe("threshold-dkg: runFreshThresholdDkg", () => {
       signature,
     );
     expect(ok).toBe(true);
+  });
+
+  const SILENT_PEER_TIMEOUT_MS = 50;
+
+  /** A session whose manage-requests are acknowledged and whose incoming stream is `incoming`: the peer accepts everything and sends nothing back. */
+  function silentPeerSession(
+    incoming: Readonly<AsyncIterable<IncomingManageRequest>>,
+  ): Pick<MeshSession, "sendManageRequest" | "incomingManageRequests"> {
+    return {
+      sendManageRequest: async () => Promise.resolve({ result: "ok" }),
+      incomingManageRequests: incoming,
+    };
+  }
+
+  it("fails, rather than waits for ever, when a peer acknowledges its requests and never sends its round", async () => {
+    const never: AsyncIterable<IncomingManageRequest> = {
+      [Symbol.asyncIterator]: () => ({
+        next: async () =>
+          new Promise<IteratorResult<IncomingManageRequest>>(() => undefined),
+      }),
+    };
+
+    await expect(
+      runFreshThresholdDkg({
+        session: silentPeerSession(never),
+        ownDeviceId: deviceId(1),
+        otherParticipants: [deviceId(SECOND_DEVICE_BYTE)],
+        threshold: THRESHOLD,
+        sessionId: SESSION_ID,
+        timeoutMs: SILENT_PEER_TIMEOUT_MS,
+      }),
+    ).rejects.toThrow(/timed out/u);
+  });
+
+  it("fails, rather than waits for ever, when the request stream ends before the ceremony does", async () => {
+    const ended: AsyncIterable<IncomingManageRequest> = {
+      [Symbol.asyncIterator]: () => ({
+        next: async () => Promise.resolve({ value: undefined, done: true }),
+      }),
+    };
+
+    await expect(
+      runFreshThresholdDkg({
+        session: silentPeerSession(ended),
+        ownDeviceId: deviceId(1),
+        otherParticipants: [deviceId(SECOND_DEVICE_BYTE)],
+        threshold: THRESHOLD,
+        sessionId: SESSION_ID,
+      }),
+    ).rejects.toThrow(/request stream ended/u);
+  });
+
+  it("stops reading the session's requests once the ceremony has ended", async () => {
+    const returned = vi.fn();
+    const source: AsyncIterable<IncomingManageRequest> = {
+      [Symbol.asyncIterator]: () => ({
+        next: async () =>
+          new Promise<IteratorResult<IncomingManageRequest>>(() => undefined),
+        return: async () => {
+          returned();
+
+          return Promise.resolve({ value: undefined, done: true });
+        },
+      }),
+    };
+
+    await expect(
+      runFreshThresholdDkg({
+        session: silentPeerSession(source),
+        ownDeviceId: deviceId(1),
+        otherParticipants: [deviceId(SECOND_DEVICE_BYTE)],
+        threshold: THRESHOLD,
+        sessionId: SESSION_ID,
+        timeoutMs: SILENT_PEER_TIMEOUT_MS,
+      }),
+    ).rejects.toThrow();
+
+    expect(returned).toHaveBeenCalledTimes(1);
   });
 });

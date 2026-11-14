@@ -78,6 +78,8 @@ export class FakeConnection {
 
   private heldSends: (() => void)[] | null = null;
 
+  private heldCloses: (() => void)[] | null = null;
+
   /** How many sends were rejected because rejectSends was in force. */
   rejectedSendCount = 0;
 
@@ -109,6 +111,12 @@ export class FakeConnection {
       },
       receive: () => this.stream(),
       close: async (): Promise<void> => {
+        if (this.heldCloses !== null) {
+          const held = this.heldCloses;
+          await new Promise<void>((resolve) => {
+            held.push(resolve);
+          });
+        }
         this.ended = true;
         this.wake();
 
@@ -156,6 +164,20 @@ export class FakeConnection {
   releaseSends(): void {
     const held = this.heldSends ?? [];
     this.heldSends = null;
+    for (const release of held) {
+      release();
+    }
+  }
+
+  /** Holds every later close, unfinished, until releaseCloses: a connection that is still closing while the session is used. */
+  holdCloses(): void {
+    this.heldCloses = [];
+  }
+
+  /** Finishes every held close and stops holding. */
+  releaseCloses(): void {
+    const held = this.heldCloses ?? [];
+    this.heldCloses = null;
     for (const release of held) {
       release();
     }

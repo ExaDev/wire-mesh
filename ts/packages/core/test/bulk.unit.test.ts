@@ -47,6 +47,7 @@ const TEST_SCOPE: CapabilityScope = { kind: "folder", path: "/transfers" };
 const TEST_ACK_SEQ = 3;
 const SENDER_DEVICE: DeviceId = deviceIdFromFillHex("11");
 const DEFAULT_WINDOW = 4096;
+const SILENT_RECEIVER_TIMEOUT_MS = 50;
 
 /** A one-directional, wake-on-push frame queue -- the same async-iterator-with-a-wait-queue shape mesh-session-fixtures.ts's own FakeConnection uses internally, factored out here so linkedConnections() below can compose two of them into a genuine bidirectional pair. */
 class FakeInbound {
@@ -279,6 +280,41 @@ describe("buildBulkOpenCommand / buildBulkResumeCommand / buildBulkCancelCommand
         reason: "no longer needed",
       },
     } satisfies ManageCommand);
+  });
+});
+
+describe("bulk sender, waiting for a receiver that goes silent", () => {
+  it("gives the stream up as incomplete after its ack bound, with no registration left behind", async () => {
+    const chunks = [new TextEncoder().encode("a chunk larger than the window")];
+    const { senderConn, receiverConn } = linkedConnections();
+    const receiver = createBulkReceiver({ storage: createMemoryStorage() });
+    const sender = createBulkSender({
+      source: chunkedSource(chunks),
+      ackTimeoutMs: SILENT_RECEIVER_TIMEOUT_MS,
+    });
+    const openHandler = receiver.createOpenHandler(
+      SENDER_DEVICE,
+      receiverConn,
+      (event: Readonly<BulkOfferEvent>) => {
+        void event.decide({
+          kind: "accept",
+          window: 1,
+          onComplete: () => undefined,
+        });
+      },
+    );
+    pump(senderConn, (frame) => {
+      sender.onFrame(senderConn, frame);
+    });
+
+    const outcome = await sender.open(
+      senderConn,
+      sessionDispatchingTo(openHandler),
+      TEST_SCOPE,
+      { transferId: transferIdFromFillHex("02") },
+    );
+
+    expect(outcome.status).toBe("incomplete");
   });
 });
 

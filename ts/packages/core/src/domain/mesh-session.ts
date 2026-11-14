@@ -304,7 +304,8 @@ function createSessionCore(
 
   /** The "not connected" guard every send* method on the public session needs, deduplicated into one place rather than repeated inline at each call site: throws unless there is a live connection AND the session's own state machine agrees it is "connected" (transmit's own connection===null check alone doesn't cover the latter). Returns the connection itself, narrowed non-null, for a caller that needs to send directly on it (sendPing/sendPingMeasureRtt); a caller that only needs the throwing side effect (sendManageRequest and friends, which go through transmit instead) calls this and discards the result. */
   function requireConnectedLink(): Connection {
-    if (connection === null || state.status !== "connected") {
+    // A session being closed takes no new round trip: the close has already settled the pending ones, so one registered while the connection is still closing would never be settled.
+    if (feedCancelled || connection === null || state.status !== "connected") {
       throw new Error("not connected");
     }
 
