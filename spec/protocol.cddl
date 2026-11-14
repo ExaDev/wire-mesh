@@ -1172,14 +1172,38 @@ room-notice-claims = {
 ;    data-entries frame may be sealed inside a `secure-data-frame`; anything
 ;    else MUST be dropped after opening. A core/data frame is attributed to the
 ;    device the channel authenticated, never to the log its `peer` field names.
-; 6. Ephemeral keys and nonces are fresh for every channel and MUST NOT be
-;    reused. A channel does not outlive the relay connection it was set up on.
-; 7. A hello whose ephemeral key is the one an established channel with that
-;    peer was built from MUST be dropped, and MUST NOT replace that channel.
+; 6. Every hello carries an ephemeral key and nonce generated for it and sent
+;    in no other hello. At most one channel built from a given ephemeral key
+;    is ever confirmed (obligation 8). A channel does not outlive the relay
+;    connection it was set up on.
+; 7. A hello MUST be dropped, changing nothing, when its ephemeral key is one
+;    the receiver already holds for that peer: that of the current channel,
+;    of a replaced channel still opening frames in flight, or of a candidate.
+; 8. A hello received while a channel with its sender exists MUST NOT replace
+;    that channel. It yields a candidate channel held beside it. The candidate
+;    replaces the channel only once a secure-data frame from that peer opens
+;    under it; until then the receiver seals under the existing channel.
+;    Afterwards the replaced channel may open frames, never seal them, for at
+;    most the receiver's handshake window, and is then discarded. A side with
+;    no channel seals under each of its candidates, and the first under which
+;    a frame from the peer opens is kept, the others discarded.
+; 9. A side MUST NOT answer a hello while a handshake of its own with that
+;    peer is outstanding: such a hello is completed against the outstanding
+;    hello. A handshake is outstanding from the sending of its hello until a
+;    channel from it is confirmed or the sender's handshake window has passed.
+;    The window is the implementation's choice and does not affect
+;    interoperation.
+; 10. A hello MUST be dropped unless the device-id its identity-key hashes to
+;    equals the `from-device` of the relay-data that carried it. This does
+;    not make `from-device` a source of identity (obligation 2): it only stops
+;    a hello arriving on a pairing that is not its sender's.
 ;
-; Availability against the relay is not a goal: it can drop, delay or replay
-; frames, and a replayed old hello can only make a channel unusable, never
-; readable or forgeable.
+; What this achieves: a hello its sender did not just send never replaces a
+; channel, and a side answers a peer at most once per handshake window unless
+; that peer has confirmed the channel built from the earlier answer.
+; Replacing a channel needs the peer, since only the holder of a candidate's
+; ephemeral secret can seal a frame that opens under it. Availability against
+; the relay is not a goal: it can drop or delay any frame.
 
 secure-hello-frame = {
   type: "secure-hello",
