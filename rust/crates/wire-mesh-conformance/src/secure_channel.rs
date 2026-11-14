@@ -25,6 +25,9 @@ use wire_mesh_wire::{decode_frame, encode_frame, Frame};
 
 use super::{decode_hex, report_first_divergence};
 
+/// The layout of the `secure_channel` section this binary reads.
+const LAYOUT_VERSION: i64 = 2;
+
 type Check = Result<(), String>;
 
 /// A JSON object read field by field. [`Obj::finish`] fails while any field is left, so a field nothing reads cannot go unnoticed.
@@ -106,19 +109,6 @@ impl Obj {
         }
     }
 
-    fn strings(&mut self, key: &str) -> Result<Vec<String>, String> {
-        match self.take(key)? {
-            Value::Array(items) => items
-                .into_iter()
-                .map(|item| match item {
-                    Value::String(text) => Ok(text),
-                    _ => Err(format!("{}.{key} holds a non-string", self.path)),
-                })
-                .collect(),
-            _ => Err(format!("{}.{key} is not an array", self.path)),
-        }
-    }
-
     /// Fails when the object has a field nothing read.
     fn finish(self) -> Check {
         if self.map.is_empty() {
@@ -188,7 +178,6 @@ struct HelloVerdict {
     receiver: String,
     hello_vector: String,
     expected: String,
-    also_acceptable: Vec<String>,
     peer_device_id: Option<Vec<u8>>,
     signing_input: Option<Vec<u8>>,
     signature: Option<Vec<u8>>,
@@ -324,7 +313,6 @@ fn parse_hello_verdict(mut obj: Obj) -> Result<HelloVerdict, String> {
         receiver: obj.string("receiver")?,
         hello_vector: obj.string("hello_vector")?,
         expected: obj.string("expected")?,
-        also_acceptable: obj.strings("also_acceptable")?,
         peer_device_id: obj.optional_hex("peer_device_id_hex")?,
         signing_input: obj.optional_hex("signing_input_hex")?,
         signature: obj.optional_hex("signature_hex")?,
@@ -392,8 +380,10 @@ impl Section {
     /// Parses the section, failing on a field it does not read.
     pub fn parse(value: &Value) -> Result<Section, String> {
         let mut root = Obj::new(value, "secure_channel")?;
-        if root.integer("layout_version")? != 1 {
-            return Err("secure_channel.layout_version is not 1".to_owned());
+        if root.integer("layout_version")? != LAYOUT_VERSION {
+            return Err(format!(
+                "secure_channel.layout_version is not {LAYOUT_VERSION}"
+            ));
         }
         let mut identities = Vec::new();
         let mut table = root.object("identities")?;
@@ -797,11 +787,8 @@ async fn check_hello_verdict(ctx: &Ctx<'_>, verdict: &HelloVerdict) -> Check {
     }
     let result = verify_hello(node, &hello).await;
     let class = hello_class(&result);
-    if class != verdict.expected && !verdict.also_acceptable.iter().any(|a| a == class) {
-        return Err(format!(
-            "expected {} (also acceptable: {:?}), got {class}",
-            verdict.expected, verdict.also_acceptable
-        ));
+    if class != verdict.expected {
+        return Err(format!("expected {}, got {class}", verdict.expected));
     }
     match (&result, &verdict.peer_device_id) {
         (Ok(verified), Some(expected)) => {
@@ -983,6 +970,35 @@ mod tests {
         assert_eq!(obj.string("read").expect("string"), "x");
         let error = obj.finish().expect_err("an unread field");
         assert!(error.contains("extra"), "{error}");
+    }
+
+    #[test]
+    fn a_hello_verdict_with_a_second_acceptable_answer_is_refused() {
+        let verdict = serde_json::json!({
+            "name": "n",
+            "handshake": "h",
+            "receiver": "r",
+            "hello_vector": "v",
+            "expected": "ok",
+            "peer_device_id_hex": null,
+            "signing_input_hex": null,
+            "signature_hex": null,
+        });
+        let parse = |value: &serde_json::Value| {
+            parse_hello_verdict(Obj::new(value, "verdict").expect("object"))
+        };
+        assert!(parse(&verdict).is_ok());
+        let mut with_second = verdict;
+        with_second["also_acceptable"] = serde_json::json!(["bad_signature"]);
+        let error = parse(&with_second).err().expect("a second answer");
+        assert!(error.contains("also_acceptable"), "{error}");
+    }
+
+    #[test]
+    fn a_section_of_the_layout_that_allowed_a_second_answer_is_refused() {
+        let section = serde_json::json!({ "layout_version": 1 });
+        let error = Section::parse(&section).err().expect("an older layout");
+        assert!(error.contains("layout_version"), "{error}");
     }
 
     #[test]

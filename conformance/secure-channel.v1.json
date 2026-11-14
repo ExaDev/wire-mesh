@@ -1726,7 +1726,7 @@
     }
   ],
   "secure_channel": {
-    "layout_version": 1,
+    "layout_version": 2,
     "identities": {
       "a": {
         "alg": -8,
@@ -2153,7 +2153,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_valid",
         "expected": "ok",
-        "also_acceptable": [],
         "peer_device_id_hex": "730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8",
         "signing_input_hex": null,
         "signature_hex": null
@@ -2164,7 +2163,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_addressed_to_outsider",
         "expected": "wrong_recipient",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a824b03a0e3818a49e05631efc80768d08e32a81a944748730f14f613af9e909a6",
         "signature_hex": "fe22cceac1a4e109999c8f1377b985a18db71e47d09dcb2fed32127c3241c1b76c866de287b1c9bbe376a5b719c88183fb1bd46d63db471266aff795a23e6102"
@@ -2175,7 +2173,6 @@
         "receiver": "a",
         "hello_vector": "verdict_ed25519_reflected_to_its_sender",
         "expected": "wrong_recipient",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": null,
         "signature_hex": null
@@ -2186,7 +2183,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_ephemeral_key_swapped",
         "expected": "bad_signature",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": null,
         "signature_hex": null
@@ -2197,7 +2193,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_signed_by_outsider",
         "expected": "bad_signature",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
         "signature_hex": "3eaf6b576e668ef9ddedeaf5ae88500952d873ec50c8dacbd77782ff24b1344877a842d63dfbf73e8ae8c44cd66c5061205134a05a2e7074d5fca13e4358530a"
@@ -2208,7 +2203,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_signature_byte_flipped",
         "expected": "bad_signature",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": null,
         "signature_hex": null
@@ -2219,7 +2213,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_unsupported_identity_alg",
         "expected": "unsupported_identity_alg",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": null,
         "signature_hex": null
@@ -2230,7 +2223,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_identity_key_wrong_size",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": null,
         "signature_hex": null
@@ -2241,7 +2233,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_identity_key_not_on_curve",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": null,
         "signature_hex": null
@@ -2252,7 +2243,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_wrong_recipient_and_unsupported_alg",
         "expected": "wrong_recipient",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": null,
         "signature_hex": null
@@ -2263,7 +2253,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_identity_key_not_a_point",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": null,
         "signature_hex": null
@@ -2274,7 +2263,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_identity_key_small_order_identity_element",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a001d0fabd251fcbbe2b93b4b927b26ad2a1a99077152e45ded1e678afa45dbec5b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
         "signature_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
@@ -2285,7 +2273,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_identity_key_small_order_order_two",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0ffe1ea08f3af443b5a2d6497c9b7c5a74a25a2b60ac58b44a22b7b1dd2218bfcb28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
         "signature_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
@@ -2296,7 +2283,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_identity_key_small_order_order_four_even",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a066687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
         "signature_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
@@ -2307,7 +2293,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_identity_key_small_order_order_four_odd",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a063794a3bf8875ac2c32ba6238d27e7e15e56a3b794b8d2d6aec82faef2360e3ab28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
         "signature_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
@@ -2318,7 +2303,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_identity_key_small_order_order_eight_a_even",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a00d34fd0d99957c53e4dc954ddaae5934077f594e73c3fda29f2fff1b232d549ab28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
         "signature_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
@@ -2329,7 +2313,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_identity_key_small_order_order_eight_a_odd",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a05204010488ca3338ed6c56bb34a9e26cbc3602857b8d5ec720144dc8fa2b95cab28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
         "signature_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
@@ -2340,7 +2323,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_identity_key_small_order_order_eight_b_even",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a01381231a2021f331f1b9b69d2f5ff04a2cc77582d08b909ffc0ace9530351722b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
         "signature_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
@@ -2351,7 +2333,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_identity_key_small_order_order_eight_b_odd",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0ea4d97c02b411d7bc6e52582295463fe73127094421423255452b673644001cbb28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
         "signature_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
@@ -2362,7 +2343,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_identity_key_non_canonical_identity_element",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0ebcaabd64b0947b64d68135119c54f2d3466bd7ed11257b3a3059689ae2dbd91b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
         "signature_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
@@ -2373,7 +2353,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_identity_key_non_canonical_order_four",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0bd6174a7c16e1af07272966a9c071c8a3cf16b2726c50d672a09f60636b08901b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
         "signature_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
@@ -2384,7 +2363,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_identity_key_non_canonical_identity_element_sign_bit",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a005e33a7a25dc39ab258dacfea5a955d0d3742731d8f1c42c427bf98ca9c75cccb28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
         "signature_hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
@@ -2395,7 +2373,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_identity_key_non_canonical_ordinary_point",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0e7e7d5048bfba44795508d0358d4cf95e6c1a29b10da91263b7ddecf40a91817b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
         "signature_hex": "1d11a644e5b400a8fb3730ac9254897e09ee99d49136739cb653ab996c07cf24e53bfb778cca0d9c4435045f6b0659110885f0d8093824d1a41ce0c2c5876c07"
@@ -2406,7 +2383,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_identity_key_non_canonical_ordinary_point_sign_bit",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a05ed600a90eb0bdae34e011dfc87a1bdcf5cf21879b8aa5d61a0b114a2ac328bcb28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
         "signature_hex": "c7da0fff4529c92f444d9383752b28338525aa612f91b678fffd4458ab460d0134e27f7932a71e15cde5dcc712149454c464905f492646a468418ec788504704"
@@ -2417,7 +2393,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_identity_key_other_key_wrong_signature",
         "expected": "bad_signature",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a024b03a0e3818a49e05631efc80768d08e32a81a944748730f14f613af9e909a6b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
         "signature_hex": "612c847c0ae3df7f9a0e0f22ecefc9420e3f27d60d882e1308d866107297cf578fa8ee2bf10f5a826516eb03529a76bc53f4c2b45707778b5593182d7d103c09"
@@ -2428,7 +2403,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_signature_s_not_reduced",
         "expected": "bad_signature",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
         "signature_hex": "537d120b49787a187eb3d0cb1ceaede8b16c47aaa81be549849297d47c12ab968638549bce06c295e3dc7e930b2c9cf328c168df722df3db63e34ae8f3b5a318"
@@ -2439,7 +2413,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_signature_r_small_order",
         "expected": "bad_signature",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
         "signature_hex": "01000000000000000000000000000000000000000000000000000000000000001fc977d6780a77254e58b0166a75a1e53389a4dd2cfab1f292d9fdc772087906"
@@ -2450,7 +2423,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_signature_r_non_canonical",
         "expected": "bad_signature",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
         "signature_hex": "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f6273ea9c6713efca2bcf3091679ac51fda4b92c0387ed9348704477aa53c8303"
@@ -2461,7 +2433,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_signature_r_mixed_order",
         "expected": "bad_signature",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
         "signature_hex": "7c1ee86a45156b9fa319c3d26abdea32f03e23e8c26413c9f419c8045b8ac5c31706a803902982c8bc8e942f600c90a8d913572b283e4c97e2574440f0ee6f0a"
@@ -2472,7 +2443,6 @@
         "receiver": "b",
         "hello_vector": "verdict_ed25519_identity_key_mixed_order",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0deb168d61655503c73294b9834c91e2ce999ded4fb030f4d13b403624f70258cb28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
         "signature_hex": "9742506ad88911bcb4f140c57fb3fd3f55b4cd023568482ffe961bcdfd7533efd64806a5bed4f5aea64e1f7b8bbb4caa27260dfb5a71961de161fb5b084cec0e"
@@ -2483,7 +2453,6 @@
         "receiver": "a",
         "hello_vector": "verdict_es256_valid",
         "expected": "ok",
-        "also_acceptable": [],
         "peer_device_id_hex": "1eb2fb86691cdf34135617553ade70c37343aa971164967ac76b47fc8c5e7e3e",
         "signing_input_hex": null,
         "signature_hex": null
@@ -2494,7 +2463,6 @@
         "receiver": "a",
         "hello_vector": "verdict_es256_addressed_to_outsider",
         "expected": "wrong_recipient",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f7631000451a7580833898ea1b183cbd7350a4099078c6ef1c1e18e970cd7683035f25e7d0110522712b0b5a7cff081685486984a94e6831edac46e7360fa9d834a7a81a1c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c01eb2fb86691cdf34135617553ade70c37343aa971164967ac76b47fc8c5e7e3e24b03a0e3818a49e05631efc80768d08e32a81a944748730f14f613af9e909a6",
         "signature_hex": "80c9b65dea0dada3c5e98d4f378123a6939319487cc51695fcad27a20e7069784a5dfe7a1a12774636892dbb92b707cb49fa28e5362bb4212406f6be6006724c"
@@ -2505,7 +2473,6 @@
         "receiver": "e",
         "hello_vector": "verdict_es256_reflected_to_its_sender",
         "expected": "wrong_recipient",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": null,
         "signature_hex": null
@@ -2516,7 +2483,6 @@
         "receiver": "a",
         "hello_vector": "verdict_es256_ephemeral_key_swapped",
         "expected": "bad_signature",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": null,
         "signature_hex": null
@@ -2527,7 +2493,6 @@
         "receiver": "a",
         "hello_vector": "verdict_es256_signed_by_outsider",
         "expected": "bad_signature",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f7631000451a7580833898ea1b183cbd7350a4099078c6ef1c1e18e970cd7683035f25e7d0110522712b0b5a7cff081685486984a94e6831edac46e7360fa9d834a7a81a1c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c01eb2fb86691cdf34135617553ade70c37343aa971164967ac76b47fc8c5e7e3e730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8",
         "signature_hex": "be4541f57edfbb2c6382355613de3a352a3717a8152b029eb7c1c49d1dc2847af11ab11634ea6ae4f9a8bc856ccbd8b56bee1efb4296131df1aef843f41d770e"
@@ -2538,7 +2503,6 @@
         "receiver": "a",
         "hello_vector": "verdict_es256_signature_byte_flipped",
         "expected": "bad_signature",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": null,
         "signature_hex": null
@@ -2549,7 +2513,6 @@
         "receiver": "a",
         "hello_vector": "verdict_es256_unsupported_identity_alg",
         "expected": "unsupported_identity_alg",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": null,
         "signature_hex": null
@@ -2560,7 +2523,6 @@
         "receiver": "a",
         "hello_vector": "verdict_es256_identity_key_wrong_size",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": null,
         "signature_hex": null
@@ -2571,7 +2533,6 @@
         "receiver": "a",
         "hello_vector": "verdict_es256_identity_key_not_on_curve",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": null,
         "signature_hex": null
@@ -2582,7 +2543,6 @@
         "receiver": "a",
         "hello_vector": "verdict_es256_wrong_recipient_and_unsupported_alg",
         "expected": "wrong_recipient",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": null,
         "signature_hex": null
@@ -2593,7 +2553,6 @@
         "receiver": "a",
         "hello_vector": "verdict_es256_identity_key_compressed",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f7631000451a7580833898ea1b183cbd7350a4099078c6ef1c1e18e970cd7683035f25e7d0110522712b0b5a7cff081685486984a94e6831edac46e7360fa9d834a7a81a1c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0a89777f3a2ac708b0ec517a7ae4fb3a283436f4c6b7cbbaa67175bc2f592d1ba730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8",
         "signature_hex": "7a7602719308ad9bdf535936a378026c2d00a9c708416fa1a0498c1d06e0d5c85d039d6c435c465cb92909379eef8b3c5ec754ede1381b7fc2674d2e9ca54f96"
@@ -2604,7 +2563,6 @@
         "receiver": "a",
         "hello_vector": "verdict_es256_identity_key_compact",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f7631000451a7580833898ea1b183cbd7350a4099078c6ef1c1e18e970cd7683035f25e7d0110522712b0b5a7cff081685486984a94e6831edac46e7360fa9d834a7a81a1c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c07dd10a0242c3d1e00a76bdbcae16ce938809b47d50b4049501a76676cfd2d1fe730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8",
         "signature_hex": "91e4a266f39a18eac4e7d15f2f471ad095d3ce52e1092588e982e6e55e0c8aee83904580288ffcd39553452692e00ef55d814a59ff5b324bdbac5494003ec79e"
@@ -2615,7 +2573,6 @@
         "receiver": "a",
         "hello_vector": "verdict_es256_identity_key_point_at_infinity",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f7631000451a7580833898ea1b183cbd7350a4099078c6ef1c1e18e970cd7683035f25e7d0110522712b0b5a7cff081685486984a94e6831edac46e7360fa9d834a7a81a1c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c06e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8",
         "signature_hex": "b187e09b567e354f0eb68831eb831625c18c2e60d3aa15b824d105322c7e2355b2b9355010e27c73961e313851e49cf26ff09050a6dea2fc51919044cbf2d2df"
@@ -2626,7 +2583,6 @@
         "receiver": "a",
         "hello_vector": "verdict_es256_identity_key_zero_point",
         "expected": "invalid_identity_key",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f7631000451a7580833898ea1b183cbd7350a4099078c6ef1c1e18e970cd7683035f25e7d0110522712b0b5a7cff081685486984a94e6831edac46e7360fa9d834a7a81a1c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c059ef1a5a00f35b1a722da56ca70b52a721f33998634d4fa4259301f170f7b6bd730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8",
         "signature_hex": "99e9f10c5d1a1c440b8e91cae0b48a7a8746a898a8ef502b53f369c09c2bdb62722cc640866d894b55b497ef9b9c1f6290c541466cfbcf4adc915c4553b52e11"
@@ -2637,7 +2593,6 @@
         "receiver": "a",
         "hello_vector": "verdict_es256_der_encoded_signature",
         "expected": "bad_signature",
-        "also_acceptable": [],
         "peer_device_id_hex": null,
         "signing_input_hex": null,
         "signature_hex": null
@@ -2648,7 +2603,6 @@
         "receiver": "a",
         "hello_vector": "verdict_es256_high_s_signature",
         "expected": "ok",
-        "also_acceptable": [],
         "peer_device_id_hex": "1eb2fb86691cdf34135617553ade70c37343aa971164967ac76b47fc8c5e7e3e",
         "signing_input_hex": null,
         "signature_hex": null
