@@ -220,6 +220,82 @@ function readerChannel(
   return { holderChannel: { connection: senderConn, session } };
 }
 
+describe("distributeShardedPayload over a connection whose receive fails", () => {
+  it("treats the failure as the connection ending, with nothing unhandled", async () => {
+    const unhandled: unknown[] = [];
+    const record = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", record);
+    try {
+      const senderIdentity = identityFor("aa");
+      const holders = ["01", "02", "03"].map((fill) => ({
+        device: deviceIdFromFillHex(fill),
+        link: holderAcceptingChannel(
+          createShardHolder({ storage: createMemoryStorage() }),
+          senderIdentity.deviceId,
+        ),
+      }));
+      const failing = (channel: ShardChannel): ShardChannel => ({
+        ...channel,
+        connection: {
+          ...channel.connection,
+          receive: () => ({
+            [Symbol.asyncIterator]: () => ({
+              next: async () =>
+                Promise.reject(new Error("the link stopped reading")),
+            }),
+          }),
+        },
+      });
+
+      const closed: string[] = [];
+      const distributed = await distributeShardedPayload(text("a payload"), {
+        config: K2_N3,
+        contentType: "text/plain",
+        targets: holders.map(({ device }) => device),
+        channels: holders.map(({ link }, index) => {
+          const channel = failing(link.channel);
+
+          return {
+            ...channel,
+            connection: {
+              ...channel.connection,
+              close: async () => {
+                closed.push(String(index));
+
+                return channel.connection.close();
+              },
+            },
+          };
+        }),
+        nextTransferId: (i) =>
+          new Uint8Array(TRANSFER_ID_BYTE_LENGTH).fill(i + 1),
+        scope: TEST_SCOPE,
+        identity: senderIdentity,
+        storage: createMemoryStorage(),
+      });
+      // Node reports a rejection nothing handled on a later turn of the event loop.
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+
+      expect(distributed.outcomes.map((outcome) => outcome.status)).toEqual([
+        "incomplete",
+        "incomplete",
+        "incomplete",
+      ]);
+      expect(closed.sort()).toEqual(["0", "1", "2"]);
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", record);
+    }
+  });
+});
+
 describe("distributeShardedPayload", () => {
   it("pushes every shard to its target holder and publishes the manifest to the sender's own log", async () => {
     const senderIdentity = identityFor("aa");

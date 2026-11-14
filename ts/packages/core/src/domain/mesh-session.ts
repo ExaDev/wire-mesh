@@ -304,7 +304,8 @@ function createSessionCore(
 
   /** The "not connected" guard every send* method on the public session needs, deduplicated into one place rather than repeated inline at each call site: throws unless there is a live connection AND the session's own state machine agrees it is "connected" (transmit's own connection===null check alone doesn't cover the latter). Returns the connection itself, narrowed non-null, for a caller that needs to send directly on it (sendPing/sendPingMeasureRtt); a caller that only needs the throwing side effect (sendManageRequest and friends, which go through transmit instead) calls this and discards the result. */
   function requireConnectedLink(): Connection {
-    if (connection === null || state.status !== "connected") {
+    // A session being closed takes no new round trip: the close has already settled the pending ones, so one registered while the connection is still closing would never be settled.
+    if (feedCancelled || connection === null || state.status !== "connected") {
       throw new Error("not connected");
     }
 
@@ -727,6 +728,8 @@ function createSessionCore(
         requireConnectedLink();
         if (targetDevice !== undefined) {
           await ensureRelayPairing(targetDevice);
+          // A close that ran during the await has already settled every pending request, so one registered now would never be settled.
+          requireConnectedLink();
         }
         const frame = buildManageRequest(command, scope, token);
         const requestId = frame["request-id"];
@@ -737,6 +740,8 @@ function createSessionCore(
             expectedFrom: targetDevice,
           });
         });
+        // A close can reject the pending request while the frame is still being sent, before anything waits on `outcome`. Giving it a handler now keeps that from being an unhandled rejection; the caller still sees the rejection through the promise this returns.
+        outcome.catch(() => undefined);
         recordFrame({ direction: "sent", frame });
         // The timeout below covers the whole exchange, secure-channel handshake included: a peer that never answers the hello would otherwise leave a request with a timeout waiting for ever.
         const exchange = (async (): Promise<ManageOutcome> => {
@@ -745,7 +750,6 @@ function createSessionCore(
           } catch (error) {
             // The request never left, so nothing will answer it, and the caller learns why from this rejection rather than from the pending entry's.
             pendingManageRequests.delete(requestId);
-            void outcome.catch(() => undefined);
             throw error;
           }
           emit();

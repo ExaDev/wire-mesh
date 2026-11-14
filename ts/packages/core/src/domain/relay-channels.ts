@@ -1,5 +1,6 @@
 // The secure channels a MeshSession holds with the devices it reaches through a relay (spec/secure-channel.cddl), one per peer, and the state machine that opens them. secure-channel.ts is the crypto; this decides when to start a handshake, whose hello completes which, and which channel a received frame belongs to. Kept out of mesh-session.ts, which only says how a hello reaches the wire and what to do with a frame once it has been opened.
 
+import { deliverContained } from "./fault-report.js";
 import type {
   DeviceId,
   Frame,
@@ -79,24 +80,9 @@ export function createRelayChannels(
   }
   const channels = new Map<string, ChannelState>();
 
-  /** Tells the owner of a failure that is local to this side. The callback is the owner's code: its own failure, thrown or as a rejected promise it returns, must not end the session or go unobserved, so it is reported once and swallowed. */
+  /** Tells the owner of a failure that is local to this side. The callback is the owner's code: its own failure, thrown or as a rejected promise it returns, must not end the session or go unobserved, so it goes through the shared containment in fault-report.ts. */
   function reportFault(error: unknown): void {
-    const report = (faultError: unknown): void => {
-      console.error("the local fault callback failed", faultError);
-    };
-    try {
-      const result: unknown = options.onFault?.(error);
-      if (
-        typeof result === "object" &&
-        result !== null &&
-        "then" in result &&
-        typeof result.then === "function"
-      ) {
-        void Promise.resolve(result).catch(report);
-      }
-    } catch (faultError) {
-      report(faultError);
-    }
+    deliverContained(async () => options.onFault?.(error), 0);
   }
 
   /** Abandons a handshake that failed: the entry goes if it is still the one held for the peer, and whoever awaits it is told. */

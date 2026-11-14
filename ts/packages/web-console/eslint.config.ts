@@ -25,6 +25,23 @@ export default defineConfig(
         "error",
         { fixStyle: "inline-type-imports" },
       ],
+      // A promise nobody awaits is an unhandled rejection when it fails: `void` is not a handler, so the rule does not accept it as one.
+      "@typescript-eslint/no-floating-promises": [
+        "error",
+        {
+          ignoreVoid: false,
+        },
+      ],
+    },
+  },
+  {
+    // A test starts work it then inspects, and its own runner reports a rejection nothing handled, so the production rule against bare `void` starts does not apply to it.
+    files: ["test/**", "**/*.test.ts", "**/*.test.tsx"],
+    rules: {
+      "@typescript-eslint/no-floating-promises": [
+        "error",
+        { ignoreVoid: true },
+      ],
     },
   },
   {
@@ -32,6 +49,48 @@ export default defineConfig(
     files: ["src/components/ConnectionPanel.tsx"],
     rules: {
       "react/no-array-index-key": "off",
+    },
+  },
+  {
+    /* Runtime-specific API in browser source. A timer handle's `unref()`, `process`, `Buffer`, `node:` modules and the like exist only in Node: `setTimeout` returns a number in a browser or a Worker, so `timer.unref()` throws there, and a throw inside a consumer loop's failure handling ends the loop. Source that can run outside Node asks the runtime-neutral helper (src/domain/timers.ts in wire-mesh-core) or does not use them. */
+    files: ["src/**/*.ts", "src/**/*.tsx"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "CallExpression[callee.property.name=/^(unref|ref|hasRef)$/]",
+          message:
+            "A timer handle's unref(), ref() and hasRef() exist only in Node; use unrefIfSupported from wire-mesh-core's timers module.",
+        },
+      ],
+      "no-restricted-globals": [
+        "error",
+        ...[
+          "process",
+          "Buffer",
+          "setImmediate",
+          "clearImmediate",
+          "__dirname",
+          "__filename",
+          "require",
+        ].map((name) => ({
+          name,
+          message: `${name} exists only in Node, and this source can run in a browser or a Worker.`,
+        })),
+      ],
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["node:*"],
+              message:
+                "node: modules exist only in Node, and this source can run in a browser or a Worker.",
+            },
+          ],
+        },
+      ],
     },
   },
   eslintPluginPrettierRecommended,

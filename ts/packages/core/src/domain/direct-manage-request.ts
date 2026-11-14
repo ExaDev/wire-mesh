@@ -88,22 +88,37 @@ export async function sendDirectManageRequest(
     scope,
     ...(options.token !== undefined ? { token: options.token } : {}),
   };
-  await link.send(frame);
+  try {
+    await link.send(frame);
+  } catch (error) {
+    // Nothing will answer a request that never left, and the connection is this function's to close.
+    await link.close().catch(() => undefined);
+    throw error;
+  }
   const responsePromise = waitForDirectManageResponse(link, requestId);
   let outcome: ManageOutcome;
-  if (options.timeoutMs === undefined) {
-    outcome = await responsePromise;
-  } else {
-    outcome = await Promise.race([
-      responsePromise,
-      new Promise<ManageOutcome>((resolve) => {
-        setTimeout(() => {
-          resolve({ result: "error", code: "timeout" });
-        }, options.timeoutMs);
-      }),
-    ]);
-    // Closing below ends the losing branch's own receive() iteration, which then throws -- caught here so that rejection is never left unhandled once this function has already settled via the timeout branch.
-    responsePromise.catch(() => undefined);
+  try {
+    if (options.timeoutMs === undefined) {
+      outcome = await responsePromise;
+    } else {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      outcome = await Promise.race([
+        responsePromise,
+        new Promise<ManageOutcome>((resolve) => {
+          timer = setTimeout(() => {
+            resolve({ result: "error", code: "timeout" });
+          }, options.timeoutMs);
+        }),
+      ]).finally(() => {
+        clearTimeout(timer);
+      });
+      // Closing below ends the losing branch's own receive() iteration, which then throws -- caught here so that rejection is never left unhandled once this function has already settled via the timeout branch.
+      responsePromise.catch(() => undefined);
+    }
+  } catch (error) {
+    // The connection ended before it answered: nothing more will come, and the connection is this function's to close.
+    await link.close().catch(() => undefined);
+    throw error;
   }
   await link.close();
 

@@ -1,5 +1,6 @@
 // Adds a grant another device gave this one, from the grant code it copied. Core's verifier decides whether this device can hold it: it must name this device as bearer and still be valid.
 
+import { startInBackground } from "../background.js";
 import { useState } from "react";
 import { Alert, Button, Stack, Text, Textarea } from "@mantine/core";
 import type { GrantActionResult } from "../hooks/use-grants.js";
@@ -20,12 +21,14 @@ export function ImportGrantForm({
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        void onImport(code).then((result) => {
-          setOutcome(result);
-          if (result.ok) {
-            setCode("");
-          }
-        });
+        startInBackground(
+          onImport(code).then((result) => {
+            setOutcome(result);
+            if (result.ok) {
+              setCode("");
+            }
+          }),
+        );
       }}
     >
       <Stack gap="xs">

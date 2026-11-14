@@ -76,13 +76,27 @@ export class FakeConnection {
 
   private sendFailureDelayMs = 0;
 
+  private heldSends: (() => void)[] | null = null;
+
+  private heldCloses: (() => void)[] | null = null;
+
+  /** How many sends were rejected because rejectSends was in force. */
+  rejectedSendCount = 0;
+
   /** Constructs a fake, already-authenticated connection whose own `peerDeviceId` is set from the start -- the transport-authenticated case topology self-advertisement's own `direct` field prefers over any gossip-derived guess (mesh-session.ts's directPeerDevice). Omit for the default, unauthenticated case every other test here relies on. */
   constructor(private readonly authenticatedPeerDeviceId?: DeviceId) {}
 
   get connection(): Readonly<Connection> {
     return {
       send: async (frame: Frame): Promise<void> => {
+        if (this.heldSends !== null) {
+          const held = this.heldSends;
+          await new Promise<void>((resolve) => {
+            held.push(resolve);
+          });
+        }
         if (this.sendFailure !== null) {
+          this.rejectedSendCount += 1;
           const { sendFailure, sendFailureDelayMs } = this;
           if (sendFailureDelayMs > 0) {
             await new Promise((resolve) => {
@@ -97,6 +111,12 @@ export class FakeConnection {
       },
       receive: () => this.stream(),
       close: async (): Promise<void> => {
+        if (this.heldCloses !== null) {
+          const held = this.heldCloses;
+          await new Promise<void>((resolve) => {
+            held.push(resolve);
+          });
+        }
         this.ended = true;
         this.wake();
 
@@ -128,6 +148,39 @@ export class FakeConnection {
   rejectSends(error: Error, afterMs = 0): void {
     this.sendFailure = error;
     this.sendFailureDelayMs = afterMs;
+  }
+
+  /** How many sends are held right now. */
+  get heldSendCount(): number {
+    return this.heldSends?.length ?? 0;
+  }
+
+  /** Holds every later send, unfinished, until releaseSends: a send that is still in flight when a test closes the connection. */
+  holdSends(): void {
+    this.heldSends = [];
+  }
+
+  /** Finishes every held send and stops holding. */
+  releaseSends(): void {
+    const held = this.heldSends ?? [];
+    this.heldSends = null;
+    for (const release of held) {
+      release();
+    }
+  }
+
+  /** Holds every later close, unfinished, until releaseCloses: a connection that is still closing while the session is used. */
+  holdCloses(): void {
+    this.heldCloses = [];
+  }
+
+  /** Finishes every held close and stops holding. */
+  releaseCloses(): void {
+    const held = this.heldCloses ?? [];
+    this.heldCloses = null;
+    for (const release of held) {
+      release();
+    }
   }
 
   /** Undoes rejectSends: later sends are recorded again. */

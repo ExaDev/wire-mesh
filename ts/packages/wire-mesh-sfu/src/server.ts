@@ -5,10 +5,15 @@
 
 import { webcrypto } from "node:crypto";
 import { createNodeIdentity } from "wire-mesh-core/adapters/node-identity";
+import { describeFault } from "wire-mesh-core/domain/fault-report";
 import { acceptMeshSession } from "wire-mesh-core/domain/mesh-session";
 import type { RevocationCheck } from "wire-mesh-core/domain/tokens";
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import { createNodeWebSocketTransport } from "wire-mesh/adapters/node-websocket-transport";
+import {
+  createParticipantFailureLog,
+  failureLine,
+} from "./domain/failure-log.js";
 import { createSfuCall } from "./domain/sfu-session.js";
 import { createMediasoupMediaBackend } from "./adapters/mediasoup-media-backend.js";
 
@@ -72,11 +77,23 @@ async function main(): Promise<void> {
     listenIp: listenIpFromArgs(argv),
     ...(announcedIp !== undefined ? { announcedIp } : {}),
   });
-  const call = createSfuCall(backend, {
-    identity,
-    clock: { now: () => Date.now() },
-    revocation: noRevocationCheck,
-  });
+  const writeLine = (line: string): void => {
+    process.stderr.write(line);
+  };
+  const logParticipantFailure = createParticipantFailureLog(writeLine);
+  const call = createSfuCall(
+    backend,
+    {
+      identity,
+      clock: { now: () => Date.now() },
+      revocation: noRevocationCheck,
+    },
+    {
+      onFault: (error, _item, suppressed) => {
+        writeLine(failureLine("request", error, suppressed));
+      },
+    },
+  );
   const transport = createNodeWebSocketTransport({
     onHttpRequest: (_request, response) => {
       response.writeHead(HTTP_OK, { "content-type": "application/json" });
@@ -95,7 +112,10 @@ async function main(): Promise<void> {
         const deviceId = await session.peerDeviceId;
         await call.addParticipant(deviceId, session);
         await call.removeParticipant(deviceId);
-      })();
+      })().catch((error: unknown) => {
+        // One connection failing to set up or tear down is that connection's alone.
+        logParticipantFailure(error);
+      });
     },
   );
   logStartup(`wire-mesh-sfu listening on ${listener.address}`);
@@ -104,5 +124,11 @@ async function main(): Promise<void> {
 // Only run as a side effect when executed directly (the CLI bin entry): never on a plain import, matching wire-mesh's own ts/packages/node/src/server.ts guard, which is how a future test suite would reach healthResponse()/bindAddressFromArgs() without binding a real port.
 const invokedPath = process.argv[1];
 if (invokedPath !== undefined && import.meta.url === `file://${invokedPath}`) {
-  void main();
+  main().catch((error: unknown) => {
+    // A service that cannot start has nothing to run: say why and exit non-zero.
+    process.stderr.write(
+      `wire-mesh-sfu could not start: ${describeFault(error)}\n`,
+    );
+    process.exitCode = 1;
+  });
 }

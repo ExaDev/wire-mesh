@@ -101,7 +101,10 @@ export function createGossipExpansion(
       }
       // Marked considered synchronously, before shouldExpand's own promise ever resolves -- a second considerAdvert() call for the same device while the first is still being decided must not fire a second, racing expansion attempt.
       considered.add(hex);
-      void expand({ device: advert.device, addresses: advert.addresses });
+      // expand reports every outcome it can have through the options' callbacks; a callback of the owner's that throws has no one to tell.
+      expand({ device: advert.device, addresses: advert.addresses }).catch(
+        () => undefined,
+      );
     },
   };
 }

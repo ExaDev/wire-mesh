@@ -164,11 +164,11 @@ window.harness = {
       },
     });
     negotiatorRef = negotiator;
-    void (async (): Promise<void> => {
+    (async (): Promise<void> => {
       for await (const event of session.events) {
         latestSessionEvent = event;
       }
-    })();
+    })().catch(() => undefined);
     await session.connect(address, []);
 
     return Array.from(identity.deviceId);

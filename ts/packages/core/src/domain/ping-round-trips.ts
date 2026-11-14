@@ -32,8 +32,8 @@ export interface PingRoundTrips {
 export function createPingRoundTrips(): PingRoundTrips {
   const pending: PendingPingRoundTrip[] = [];
 
-  function cancel(sentAt: number): boolean {
-    const index = pending.findIndex((entry) => entry.sentAt === sentAt);
+  function cancel(registration: Readonly<PendingPingRoundTrip>): boolean {
+    const index = pending.indexOf(registration);
     if (index === -1) {
       return false;
     }
@@ -55,24 +55,42 @@ export function createPingRoundTrips(): PingRoundTrips {
       }
     },
     async sendAndAwait(sentAt, sendPing, timeoutMs): Promise<number> {
+      let registration: PendingPingRoundTrip | undefined;
       const rtt = new Promise<number>((resolve, reject) => {
-        pending.push({ sentAt, resolve, reject });
+        registration = { sentAt, resolve, reject };
+        pending.push(registration);
       });
-      await sendPing();
+      if (registration === undefined) {
+        throw new Error("the round trip was not registered");
+      }
+      const registered = registration;
+      // A close can settle the registration while the ping is still being sent, or after sending it failed, before anything waits on `rtt`. Giving it a handler now keeps that from being an unhandled rejection; the caller still sees the rejection through the promise this returns.
+      rtt.catch(() => undefined);
+      try {
+        await sendPing();
+      } catch (error) {
+        // The ping never left, so no pong will answer it: leaving it registered would pair the next live ping's pong with this dead entry.
+        cancel(registered);
+        throw error;
+      }
       if (timeoutMs === undefined) {
         return rtt;
       }
 
+      let timer: ReturnType<typeof setTimeout> | undefined;
+
       return Promise.race([
         rtt,
         new Promise<number>((_resolve, reject) => {
-          setTimeout(() => {
-            if (cancel(sentAt)) {
+          timer = setTimeout(() => {
+            if (cancel(registered)) {
               reject(new PingTimeoutError());
             }
           }, timeoutMs);
         }),
-      ]);
+      ]).finally(() => {
+        clearTimeout(timer);
+      });
     },
   };
 }

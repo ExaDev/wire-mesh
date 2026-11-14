@@ -294,6 +294,55 @@ describe("a conversation over a hub", () => {
     expect(respond).toHaveBeenCalledWith({ result: "ok" });
   });
 
+  it("keeps reading the hub's requests after one that cannot be routed", async () => {
+    const { result } = render();
+    const incoming = createAsyncQueue<IncomingManageRequest>();
+    const unhandled: unknown[] = [];
+    const record = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", record);
+    act(() => {
+      result.current.watchHub({
+        sendManageRequest: async () => Promise.resolve({ result: "ok" }),
+        sendDataFrame: async () => Promise.resolve(),
+        incomingManageRequests: incoming.stream,
+      });
+    });
+    const token = await mintRoomInviteGrant(own, clock, {
+      roomPath,
+      invitee: peer.deviceId,
+      expires: TOKEN_EXPIRES,
+    });
+    const respond = vi.fn<IncomingManageRequest["respond"]>(async () =>
+      Promise.resolve(),
+    );
+    const unroutable: IncomingManageRequest = {
+      ...incomingFromPeer({}),
+      get fromDevice(): never {
+        throw new Error("a request that cannot be read");
+      },
+    };
+
+    incoming.push(unroutable);
+    incoming.push(
+      incomingFromPeer({
+        command: buildRoomSendCommand("after the bad one", MESSAGE_ID, SENT_AT),
+        token,
+        respond,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.conversations[0]?.messages).toHaveLength(1);
+    });
+    expect(result.current.conversations[0]?.messages[0]?.text).toBe(
+      "after the bad one",
+    );
+    process.off("unhandledRejection", record);
+    expect(unhandled).toEqual([]);
+  });
+
   it("refuses a message from the hub whose token was not issued for this conversation's peer", async () => {
     const { result } = render();
     const incoming = createAsyncQueue<IncomingManageRequest>();
@@ -502,6 +551,57 @@ describe("a conversation over a hub", () => {
     expect(await send("after")).toHaveBeenCalledWith({
       result: "error",
       code: "unauthorized",
+    });
+  });
+
+  it("serves a peer's later request after the setup for its first one failed, instead of queueing it where nothing reads it", async () => {
+    const store = createMessageStore(createMemoryStorage());
+    let failures = 1;
+    // A getter, so that reading `list` fails on the call that opens the conversation, as a store that cannot be reached does: a failure of the conversation's setup step, not a rejected promise.
+    const flaky = {
+      ...store,
+      get list() {
+        if (failures > 0) {
+          failures -= 1;
+          throw new Error("the store is not ready");
+        }
+
+        return store.list;
+      },
+    };
+    const roomStorage = createMemoryStorage();
+    const { result } = renderHook(() =>
+      useRoomMessaging({
+        identity: own,
+        clock,
+        messageStore: flaky,
+        roomStorage,
+        capabilities: capabilities.services,
+      }),
+    );
+    const incoming = createAsyncQueue<IncomingManageRequest>();
+    act(() => {
+      result.current.watchHub({
+        sendManageRequest: async () => Promise.resolve({ result: "ok" }),
+        sendDataFrame: async () => Promise.resolve(),
+        incomingManageRequests: incoming.stream,
+      });
+    });
+
+    incoming.push(
+      incomingFromPeer({
+        respond: async () => Promise.resolve(),
+      }),
+    );
+    incoming.push(
+      incomingFromPeer({
+        requestId: 2,
+        respond: async () => Promise.resolve(),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.conversations[0]?.pendingJoinRequest).toBeDefined();
     });
   });
 });

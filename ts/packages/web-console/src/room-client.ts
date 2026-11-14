@@ -1,5 +1,6 @@
 // Drives core/room over an existing MeshSession -- the console's own client for sending/receiving room and DM messages and handling join/invite admission, kept free of DOM APIs (like webrtc-negotiation.ts beside it) so it is unit-testable against a fake MeshSession. One RoomRouter is constructed per session, mirroring how one WebrtcNegotiator is constructed per session: MeshSession.attach() gives this module a session over an already-negotiated Connection, and from that point this is the one place that speaks core/room on it.
 
+import { startInBackground } from "./background.js";
 import type {
   CapabilityToken,
   DeviceId,
@@ -19,6 +20,10 @@ import {
   mintCapabilityToken,
   type VerifyCapabilityTokenOptions,
 } from "wire-mesh-core/domain/tokens";
+import {
+  serveManageRequests,
+  type ConsumeFault,
+} from "wire-mesh-core/domain/consume-incoming";
 import type { IdentityPort } from "wire-mesh-core/ports/identity";
 import type { Clock } from "wire-mesh-core/ports/clock";
 import {
@@ -240,6 +245,8 @@ export interface RoomRouterOptions extends VerifyCapabilityTokenOptions {
   currentMembers?: () => readonly DeviceId[];
   /** Overrides DEFAULT_JOIN_REQUEST_TIMEOUT_MS -- how long an incoming room.join may sit awaiting a human decision before this side auto-responds with a timeout manage-error (capability-request.ts's own receiver-side timeout, wire-mesh#81). */
   joinRequestTimeoutMs?: number;
+  /** Told of a failure while handling one incoming request: the request is answered with a refusal where it can be and the router goes on to the next. Absent, the failure is dropped. */
+  onFault?: ConsumeFault<IncomingManageRequest> | undefined;
 }
 
 export interface RoomRouterHandlers {
@@ -343,7 +350,10 @@ export function createRoomRouter(
       const onJoinRequest = handlers.onJoinRequest;
       // Both unreachable in practice -- handleRoomJoin below already refuses (missing_scope_path/unsupported_verb, matching this router's own pre-rewiring codes exactly) before ever calling this handler when either precondition fails. Kept because CapabilityGrantRequestEvent's own scope/handlers types don't encode either precondition structurally, so TS cannot narrow across this callback boundary on its own.
       if (roomPath === undefined || onJoinRequest === undefined) {
-        void event.decide({ kind: "reject", reason: "unsupported verb" });
+        // A refusal that cannot be sent is the connection failing, which the requester sees as its own timeout.
+        event
+          .decide({ kind: "reject", reason: "unsupported verb" })
+          .catch(() => undefined);
 
         return;
       }
@@ -423,27 +433,30 @@ export function createRoomRouter(
     await handleCapabilityGrant(incoming);
   }
 
-  void (async () => {
-    for await (const incoming of session.incomingManageRequests) {
-      if (incoming.command.verb !== ROOM_MEMBER_CAPABILITY) {
-        continue;
-      }
-      const params = incoming.command.params;
-      if (typeof params !== "object" || !("verb" in params)) {
-        continue;
-      }
-      if (params.verb === "room.send") {
-        await handleRoomSend(incoming, params);
-      } else if (params.verb === "capability.request") {
-        await handleRoomJoin(incoming);
-      } else if (params.verb === "capability.grant") {
-        await handleRoomInvite(incoming);
-      } else if (
-        params.verb === "room.rekey" &&
-        handlers.onRekey !== undefined
-      ) {
-        await handlers.onRekey(incoming);
-      }
+  async function handleIncoming(
+    incoming: Readonly<IncomingManageRequest>,
+  ): Promise<void> {
+    if (incoming.command.verb !== ROOM_MEMBER_CAPABILITY) {
+      return;
     }
-  })();
+    const params = incoming.command.params;
+    if (typeof params !== "object" || !("verb" in params)) {
+      return;
+    }
+    if (params.verb === "room.send") {
+      await handleRoomSend(incoming, params);
+    } else if (params.verb === "capability.request") {
+      await handleRoomJoin(incoming);
+    } else if (params.verb === "capability.grant") {
+      await handleRoomInvite(incoming);
+    } else if (params.verb === "room.rekey" && handlers.onRekey !== undefined) {
+      await handlers.onRekey(incoming);
+    }
+  }
+
+  startInBackground(
+    serveManageRequests(session.incomingManageRequests, handleIncoming, {
+      onFault: options.onFault,
+    }),
+  );
 }
