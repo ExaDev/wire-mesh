@@ -737,6 +737,8 @@ function createSessionCore(
             expectedFrom: targetDevice,
           });
         });
+        // A close can reject the pending request while the frame is still being sent, before anything waits on `outcome`. Giving it a handler now keeps that from being an unhandled rejection; the caller still sees the rejection through the promise this returns.
+        outcome.catch(() => undefined);
         recordFrame({ direction: "sent", frame });
         // The timeout below covers the whole exchange, secure-channel handshake included: a peer that never answers the hello would otherwise leave a request with a timeout waiting for ever.
         const exchange = (async (): Promise<ManageOutcome> => {
@@ -745,7 +747,6 @@ function createSessionCore(
           } catch (error) {
             // The request never left, so nothing will answer it, and the caller learns why from this rejection rather than from the pending entry's.
             pendingManageRequests.delete(requestId);
-            void outcome.catch(() => undefined);
             throw error;
           }
           emit();
