@@ -108,10 +108,9 @@
 ; and key usability before the signature (a hello whose key is unusable and
 ; whose signature is another key's is invalid_identity_key). A key's algorithm
 ; is supported or not whatever else is wrong with it, so that check has no
-; order against key usability to pin. Where an implementation
-; does not check that a key is a point when it imports it (an Ed25519 public
-; key, in Node's Web Crypto), such a key gives bad_signature instead of
-; invalid_identity_key, and either is conformant.
+; order against key usability to pin. A usable key is as identity.cddl
+; defines it, so an Ed25519 key that is not a canonical encoding of a curve
+; point, or is a point of small order, is invalid_identity_key.
 ;
 ; Verifier obligations, none of which the grammar can express:
 ;

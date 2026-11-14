@@ -1,6 +1,10 @@
 // A Worker-runtime IdentityPort implementation using the standard Web Crypto API (globalThis.crypto.subtle), which exists identically in Cloudflare Workers and in Node >= 19 -- mirroring core's node-identity adapter's algorithm coverage (ES256 P-256 and Ed25519, the two algorithms identity-key.alg carries in the spec's own conformance vectors) so the two adapters are drop-in substitutes for each other behind the same port.
 
 import { cdeDecodeOptions, cdeEncodeOptions, decode, encode } from "cbor2";
+import {
+  ed25519KeyFault,
+  ed25519SignatureIsStrict,
+} from "wire-mesh-core/domain/ed25519-identity-key";
 import type { DeviceId, IdentityKey } from "wire-mesh-core/generated/protocol";
 import {
   IdentityKeyError,
@@ -28,7 +32,7 @@ function toBufferSource(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(bytes);
 }
 
-/** Imports the raw public key, reporting an algorithm this adapter does not implement, and a key Web Crypto cannot import (the wrong size, or not a point on the curve), as an IdentityKeyError, so a caller can tell a key it cannot use from a failure of this adapter. An Ed25519 import does not check that the bytes are a curve point: such a key imports and every signature under it fails to verify. */
+/** Imports the raw public key, reporting an algorithm this adapter does not implement, and a key Web Crypto cannot import (the wrong size, or not a point on the curve), as an IdentityKeyError, so a caller can tell a key it cannot use from a failure of this adapter. An Ed25519 key is checked before the import by `ed25519KeyFault`, since the import itself accepts keys that are not points. */
 async function importPublicKey(key: IdentityKey): Promise<CryptoKey> {
   const algorithm =
     key.alg === ES256
@@ -41,6 +45,16 @@ async function importPublicKey(key: IdentityKey): Promise<CryptoKey> {
       "unsupported_alg",
       `unsupported identity-key alg ${String(key.alg)}`,
     );
+  }
+  if (key.alg === EDDSA) {
+    // Decided here, never by the platform's Ed25519 import, which differs between crypto libraries on a small-order or non-canonical key.
+    const fault = ed25519KeyFault(key["public-key"]);
+    if (fault !== undefined) {
+      throw new IdentityKeyError(
+        "invalid_key",
+        `identity-key public-key is not a usable Ed25519 key (${fault})`,
+      );
+    }
   }
   try {
     return await crypto.subtle.importKey(
@@ -71,6 +85,9 @@ export async function verifyWithPublicKey(
   signature: Uint8Array,
 ): Promise<boolean> {
   const cryptoKey = await importPublicKey(key);
+  if (key.alg === EDDSA && !ed25519SignatureIsStrict(signature)) {
+    return false;
+  }
 
   return crypto.subtle.verify(
     algParams(key.alg),
