@@ -20,6 +20,8 @@
 //!    and encoded, pinning the JSON-to-wire convention itself, not just
 //!    the frozen bytes.
 //!
+//! `secure-channel.v1.json` additionally carries a `secure_channel` section of recomputed cryptography and verdicts, which [`secure_channel`] checks field by field against the real handshake, key schedule, sealing and opening.
+//!
 //! Every `conformance/*.v1.json` is accounted for: it is either checked by
 //! this binary ([`CONSUMED`]) or listed with its tracking issue in
 //! [`NOT_YET_CONSUMED`], and a file in neither, or a listed file that no
@@ -34,27 +36,38 @@
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
+use std::collections::HashMap;
+
 use wire_mesh_core::adapters::NodeIdentity;
 use wire_mesh_core::domain::{verify_peer_advert, PeerAdvertVerdict};
 use wire_mesh_wire::tokens::{CoseSign1, TokenClaims};
 use wire_mesh_wire::transport::{peer_advert_signing_input, PeerAdvert};
 use wire_mesh_wire::value::{CanonicalMap, CborValue};
-use wire_mesh_wire::{decode_frame, encode_frame, minicbor};
+use wire_mesh_wire::{decode_frame, encode_frame, minicbor, DecodeError};
+
+mod secure_channel;
 
 /// The vector files this binary checks, each with the top-level keys it reads.
-const CONSUMED: [&str; 5] = [
+const CONSUMED: [&str; 6] = [
     "frames.v1.json",
     "handshake.v1.json",
     "tokens.v1.json",
     "adverts.v1.json",
     "invalid-frames.v1.json",
+    SECURE_CHANNEL_FILE,
 ];
 
-/// The top-level keys of a consumed file: the ones `validate_vector_file` reads.
+/// The vector file whose `secure_channel` section [`secure_channel`] checks.
+const SECURE_CHANNEL_FILE: &str = "secure-channel.v1.json";
+
+/// The top-level keys every consumed file may carry: the ones `validate_vector_file` reads.
 const CONSUMED_KEYS: [&str; 3] = ["protocol_version", "description", "vectors"];
 
+/// The top-level key only [`SECURE_CHANNEL_FILE`] carries, and [`secure_channel`] reads.
+const SECURE_CHANNEL_SECTION: &str = "secure_channel";
+
 /// Vector files this binary does not check yet, each with the issue that tracks checking it. The run reports them as not consumed and fails if a file is missing from here and from [`CONSUMED`].
-const NOT_YET_CONSUMED: [(&str, &str); 1] = [("secure-channel.v1.json", "ExaDev/wire-mesh#270")];
+const NOT_YET_CONSUMED: [(&str, &str); 0] = [];
 
 /// Every `*.v1.json` in `dir`, by file name.
 fn vector_files_in(dir: &std::path::Path) -> Vec<String> {
@@ -119,12 +132,11 @@ fn directory_problems() -> Vec<String> {
 }
 
 /// The first top-level key of a vector file that this binary does not read.
-fn unread_top_level_key(parsed: &serde_json::Value) -> Option<&str> {
-    parsed
-        .as_object()?
-        .keys()
-        .map(String::as_str)
-        .find(|key| !CONSUMED_KEYS.contains(key))
+fn unread_top_level_key<'a>(parsed: &'a serde_json::Value, file: &str) -> Option<&'a str> {
+    parsed.as_object()?.keys().map(String::as_str).find(|key| {
+        !CONSUMED_KEYS.contains(key)
+            && !(file == SECURE_CHANNEL_FILE && *key == SECURE_CHANNEL_SECTION)
+    })
 }
 
 #[tokio::main]
@@ -154,6 +166,14 @@ async fn main() {
         let parsed: serde_json::Value = serde_json::from_str(&raw)
             .unwrap_or_else(|e| panic!("{} is not valid JSON: {e}", path.display()));
         let vectors = validate_vector_file(&parsed, file);
+        let wires: HashMap<String, Vec<u8>> = vectors
+            .iter()
+            .map(|v| {
+                decode_hex(&v.wire_hex)
+                    .map(|bytes| (v.name.clone(), bytes))
+                    .unwrap_or_else(|e| panic!("{file}:{}: {e}", v.name))
+            })
+            .collect();
         for vector in vectors {
             total += 1;
             let name = vector.name.clone();
@@ -167,6 +187,25 @@ async fn main() {
                     let message = format!("{file}:{name}: {failure}");
                     println!("FAIL  {message}");
                     failures.push(message);
+                }
+            }
+        }
+        if file == SECURE_CHANNEL_FILE {
+            let section = parsed
+                .get(SECURE_CHANNEL_SECTION)
+                .unwrap_or_else(|| panic!("{file} has no {SECURE_CHANNEL_SECTION} section"));
+            for (name, outcome) in secure_channel::check_section(section, &wires).await {
+                total += 1;
+                match outcome {
+                    Ok(()) => {
+                        passed += 1;
+                        println!("PASS  {file}:{name}");
+                    }
+                    Err(failure) => {
+                        let message = format!("{file}:{name}: {failure}");
+                        println!("FAIL  {message}");
+                        failures.push(message);
+                    }
                 }
             }
         }
@@ -207,7 +246,7 @@ struct AdvertExpectations {
 
 fn validate_vector_file(parsed: &serde_json::Value, file: &str) -> Vec<Vector> {
     let fail = |what: &str| -> ! { panic!("{file} is not a valid vector file: {what}") };
-    if let Some(key) = unread_top_level_key(parsed) {
+    if let Some(key) = unread_top_level_key(parsed, file) {
         fail(&format!("top-level key {key} is not read by this binary"));
     }
     let protocol_version = parsed
@@ -292,6 +331,20 @@ async fn check_vector(file: &str, vector: Vector, verifier: &NodeIdentity) -> Re
             let actual = encode_frame(&frame);
             report_first_divergence(&expected, &actual)?;
         }
+        SECURE_CHANNEL_FILE => match decode_frame(&expected) {
+            Ok(frame) => {
+                frame
+                    .validate()
+                    .map_err(|e| format!("frame validation failed: {e}"))?;
+                report_first_divergence(&expected, &encode_frame(&frame))?;
+            }
+            // A hello whose ephemeral key is not 65 bytes is refused where the frame is decoded, which the spec allows (the establish verdicts require the refusal, whichever stage gives it). Only that refusal is let through, so any other decode failure still fails the vector; the message-to-wire loop below still pins its bytes.
+            Err(DecodeError::InvalidLength {
+                field: "ephemeral-key",
+                ..
+            }) if vector.name.starts_with("establish_") => {}
+            Err(e) => return Err(format!("typed decode failed: {e}")),
+        },
         "tokens.v1.json" => {
             let cose = CoseSign1::decode_bytes(&expected)
                 .map_err(|e| format!("COSE decode failed: {e}"))?;
@@ -587,8 +640,29 @@ mod tests {
             "vectors": [],
             "extra_section": {},
         });
-        assert_eq!(unread_top_level_key(&with_extra), Some("extra_section"));
+        assert_eq!(
+            unread_top_level_key(&with_extra, "frames.v1.json"),
+            Some("extra_section")
+        );
         let plain = serde_json::json!({ "protocol_version": 1, "description": "d", "vectors": [] });
-        assert_eq!(unread_top_level_key(&plain), None);
+        assert_eq!(unread_top_level_key(&plain, "frames.v1.json"), None);
+    }
+
+    #[test]
+    fn the_secure_channel_section_is_read_only_for_its_own_file() {
+        let with_section = serde_json::json!({
+            "protocol_version": 1,
+            "description": "d",
+            "vectors": [],
+            "secure_channel": {},
+        });
+        assert_eq!(
+            unread_top_level_key(&with_section, SECURE_CHANNEL_FILE),
+            None
+        );
+        assert_eq!(
+            unread_top_level_key(&with_section, "frames.v1.json"),
+            Some("secure_channel")
+        );
     }
 }
