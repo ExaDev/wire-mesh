@@ -1,7 +1,13 @@
 // One side of a conversation between two consoles that have no route to the internet. Phase "warm" loads the console from the cloud container so its service worker caches the app shell. Phase "connect" runs after the cloud has been stopped: the console must load from the cache, and both sides then connect to the LAN node at NODE_ADDRESS and exchange a message each way, as in test/e2e-containers. TRUST_LAN_NODE=spki tells the browser to accept the LAN node's certificate by the hash of its public key, which stands in for a certificate the browser's own trust store would accept.
 
 import { cpSync, readFileSync } from "node:fs";
-import { chromium, expect, test, type Page } from "@playwright/test";
+import {
+  chromium,
+  expect,
+  test,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 
 const STEP_TIMEOUT_MS = 60_000;
 const FIRST_MESSAGE = "hello from the initiator container";
@@ -60,6 +66,13 @@ async function openConsole(): Promise<Page> {
 async function send(page: Readonly<Page>, text: string): Promise<void> {
   await page.getByPlaceholder("Message", { exact: true }).fill(text);
   await page.getByRole("button", { name: "Send", exact: true }).click();
+}
+
+/** The time shown with a message, which only a message in the conversation's history has: a message still held for consent or in flight is listed without one, whatever else is shown for it. */
+function delivered(page: Readonly<Page>, text: string): Locator {
+  return page
+    .getByText(text, { exact: true })
+    .locator("xpath=following-sibling::time");
 }
 
 async function allowRequest(page: Readonly<Page>): Promise<void> {
@@ -133,12 +146,10 @@ if (phase === "warm") {
           timeout: STEP_TIMEOUT_MS,
         });
         await send(page, REPLY_MESSAGE);
-        await expect(
-          page.getByText(/Waiting for .* to allow messages/),
-        ).toBeHidden({ timeout: STEP_TIMEOUT_MS });
-        await expect(
-          page.getByText(REPLY_MESSAGE, { exact: true }),
-        ).toBeVisible();
+        // The test ending closes the browser, so this waits until the reply has been delivered (it is sent only once the initiator has allowed it), which is when it moves into the history and shows a time; the reply text alone is on screen from the moment it is typed.
+        await expect(delivered(page, REPLY_MESSAGE)).toBeVisible({
+          timeout: STEP_TIMEOUT_MS,
+        });
       }
     } catch (error) {
       // The page as the user would see it, so a failed exchange shows what each side had on screen.
