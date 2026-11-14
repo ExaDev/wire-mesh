@@ -409,6 +409,7 @@ export function App({
           // ConnectionPanel's own render of the session's events already surfaces a connect failure via its status line; nothing further to do here beyond letting the entry remain (its own close button still works on a failed session).
         });
       })
+      .catch(() => undefined)
       .finally(() => {
         confirmingRef.current.delete(targetAddress);
       });
@@ -429,11 +430,15 @@ export function App({
   useEffect(() => {
     if (autoDiscoverRanRef.current) return;
     autoDiscoverRanRef.current = true;
-    void discoverLocalNodeRef.current().then((discoveredAddress) => {
-      if (discoveredAddress !== undefined) {
-        connectToRef.current(discoveredAddress);
-      }
-    });
+    void discoverLocalNodeRef
+      .current()
+      .then((discoveredAddress) => {
+        if (discoveredAddress !== undefined) {
+          connectToRef.current(discoveredAddress);
+        }
+      })
+      // A failed discovery finds nothing, as a discovery that finds no node does.
+      .catch(() => undefined);
   }, []);
 
   function handleSubmit(event: React.SubmitEvent<HTMLFormElement>): void {

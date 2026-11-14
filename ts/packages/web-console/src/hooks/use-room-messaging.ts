@@ -206,7 +206,9 @@ export function useRoomMessaging({
       )
       .then((notices) => {
         dispatch({ type: "notices", roomPath, notices: [...notices] });
-      });
+      })
+      // A notice that cannot be read now is read again on the next refresh.
+      .catch(() => undefined);
   }
   useEffect(() => {
     refreshAllRef.current = (): void => {
@@ -270,9 +272,11 @@ export function useRoomMessaging({
           )
           .then((notices) => {
             dispatch({ type: "notices", roomPath, notices: [...notices] });
-          });
+          })
+          // A notice that cannot be read now is read again on the next refresh.
+          .catch(() => undefined);
       });
-    })();
+    })().catch(() => undefined);
 
     return () => {
       unmounted.abort();
@@ -321,11 +325,14 @@ export function useRoomMessaging({
         persist(messageStore.append(roomPath, stored));
         dispatch({ type: "message", roomPath, message: stored });
         // A peer that is writing may have written notices too, and a hub does not announce them to the other side.
-        void noticeWiring.pull(
-          (sessionsRef.current.get(roomPath)?.participants ?? []).map((hex) =>
-            deviceIdFromHex(hex),
-          ),
-        );
+        void noticeWiring
+          .pull(
+            (sessionsRef.current.get(roomPath)?.participants ?? []).map((hex) =>
+              deviceIdFromHex(hex),
+            ),
+          )
+          // A pull that fails is repeated by the next message from that peer.
+          .catch(() => undefined);
       },
       onGrantIssued: (token) => {
         persist(grants.record("issued", token, clock.now()));
