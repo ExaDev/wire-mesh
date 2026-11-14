@@ -58,6 +58,8 @@ export function createPingRoundTrips(): PingRoundTrips {
       const rtt = new Promise<number>((resolve, reject) => {
         pending.push({ sentAt, resolve, reject });
       });
+      // A close can settle the registration while the ping is still being sent, or after sending it failed, before anything waits on `rtt`. Giving it a handler now keeps that from being an unhandled rejection; the caller still sees the rejection through the promise this returns.
+      rtt.catch(() => undefined);
       await sendPing();
       if (timeoutMs === undefined) {
         return rtt;

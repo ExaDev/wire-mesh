@@ -254,6 +254,8 @@ export function createWebrtcNegotiator(
           { once: true },
         );
       });
+      // The channel can fail while the offer is still being negotiated, or the offer be refused so nothing ever waits on it: either is an expected end, not an unhandled rejection. The caller still sees the rejection through the promise this returns.
+      channelOpen.catch(() => undefined);
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       const outcome = await session.sendManageRequest(

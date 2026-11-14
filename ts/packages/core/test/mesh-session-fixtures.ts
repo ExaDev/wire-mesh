@@ -76,6 +76,8 @@ export class FakeConnection {
 
   private sendFailureDelayMs = 0;
 
+  private heldSends: (() => void)[] | null = null;
+
   /** How many sends were rejected because rejectSends was in force. */
   rejectedSendCount = 0;
 
@@ -85,6 +87,12 @@ export class FakeConnection {
   get connection(): Readonly<Connection> {
     return {
       send: async (frame: Frame): Promise<void> => {
+        if (this.heldSends !== null) {
+          const held = this.heldSends;
+          await new Promise<void>((resolve) => {
+            held.push(resolve);
+          });
+        }
         if (this.sendFailure !== null) {
           this.rejectedSendCount += 1;
           const { sendFailure, sendFailureDelayMs } = this;
@@ -132,6 +140,25 @@ export class FakeConnection {
   rejectSends(error: Error, afterMs = 0): void {
     this.sendFailure = error;
     this.sendFailureDelayMs = afterMs;
+  }
+
+  /** How many sends are held right now. */
+  get heldSendCount(): number {
+    return this.heldSends?.length ?? 0;
+  }
+
+  /** Holds every later send, unfinished, until releaseSends: a send that is still in flight when a test closes the connection. */
+  holdSends(): void {
+    this.heldSends = [];
+  }
+
+  /** Finishes every held send and stops holding. */
+  releaseSends(): void {
+    const held = this.heldSends ?? [];
+    this.heldSends = null;
+    for (const release of held) {
+      release();
+    }
   }
 
   /** Undoes rejectSends: later sends are recorded again. */
