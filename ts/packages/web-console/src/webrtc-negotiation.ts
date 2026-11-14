@@ -140,6 +140,8 @@ export function createWebrtcNegotiator(
   const peerConnections = new Map<number, RTCPeerConnection>();
   // The peer device each negotiation was addressed to via relay, if any -- undefined for a direct (non-relayed) negotiation. Recorded once, when the negotiation starts (initiate() for the offering side, the offer's own incoming.fromDevice for the answering side), and reused for every later manage-request this same negotiation sends (the answer, every ice candidate) so they all route the same way as the negotiation's first message.
   const negotiationTargets = new Map<number, DeviceId | undefined>();
+  // The bound on each answered negotiation's channel opening, by negotiation-id.
+  const openBounds = new Map<number, ReturnType<typeof setTimeout>>();
   const allocateNegotiationId = createNegotiationIdAllocator();
 
   /** Releases everything a negotiation holds: both registrations and the peer connection. Safe to call for a negotiation that is already gone. */
@@ -147,9 +149,36 @@ export function createWebrtcNegotiator(
     negotiationId: number,
     pc: Readonly<RTCPeerConnection>,
   ): void {
+    clearTimeout(openBounds.get(negotiationId));
+    openBounds.delete(negotiationId);
     peerConnections.delete(negotiationId);
     negotiationTargets.delete(negotiationId);
     pc.close();
+  }
+
+  /** Releases a negotiation when its peer connection fails or closes later, which nothing else observes. */
+  function releaseWhenClosed(
+    negotiationId: number,
+    pc: Readonly<RTCPeerConnection>,
+  ): void {
+    pc.addEventListener("connectionstatechange", () => {
+      if (pc.connectionState === "closed" || pc.connectionState === "failed") {
+        discard(negotiationId, pc);
+      }
+    });
+  }
+
+  /** Gives an answered negotiation its bound: a peer that signals and never opens a channel does not hold the peer connection for ever. */
+  function boundOpen(
+    negotiationId: number,
+    pc: Readonly<RTCPeerConnection>,
+  ): void {
+    openBounds.set(
+      negotiationId,
+      setTimeout(() => {
+        discard(negotiationId, pc);
+      }, options.channelOpenTimeoutMs ?? DEFAULT_CHANNEL_OPEN_TIMEOUT_MS),
+    );
   }
 
   /** Sends one ICE candidate. A candidate that cannot be sent (the session is no longer connected) is dropped: the negotiation it belonged to then fails by its own bound. */
@@ -196,8 +225,14 @@ export function createWebrtcNegotiator(
     pc.addEventListener("datachannel", (event) => {
       const { channel } = event;
       channel.binaryType = "arraybuffer";
-      wireOpenChannel(channel, options.onIncomingConnection);
+      wireOpenChannel(channel, (connection) => {
+        clearTimeout(openBounds.get(negotiationId));
+        openBounds.delete(negotiationId);
+        options.onIncomingConnection(connection);
+      });
     });
+    releaseWhenClosed(negotiationId, pc);
+    boundOpen(negotiationId, pc);
     try {
       await pc.setRemoteDescription({ type: "offer", sdp: offer.sdp });
       const answer = await pc.createAnswer();
@@ -273,6 +308,7 @@ export function createWebrtcNegotiator(
       pc.addEventListener("icecandidate", (event) => {
         sendIceCandidateQuietly(negotiationId, event.candidate);
       });
+      releaseWhenClosed(negotiationId, pc);
       const channel = pc.createDataChannel(DATA_CHANNEL_LABEL);
       channel.binaryType = "arraybuffer";
       const channelOpen = new Promise<Connection>((resolve, reject) => {
@@ -296,6 +332,8 @@ export function createWebrtcNegotiator(
           WEBRTC_SIGNAL_SCOPE,
           targetDevice,
           await mintOfferToken(options.identity, options.clock),
+          // The offer is bounded too: a peer that never answers it does not hold the negotiation for ever.
+          options.channelOpenTimeoutMs ?? DEFAULT_CHANNEL_OPEN_TIMEOUT_MS,
         );
         if (outcome.result === "error") {
           throw new Error(`webrtc offer rejected: ${outcome.code}`);

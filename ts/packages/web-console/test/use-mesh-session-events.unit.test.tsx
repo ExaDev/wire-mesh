@@ -48,27 +48,34 @@ describe("useMeshSessionEvents", () => {
     });
   });
 
-  it("delivers an event that was already waiting before mount to the live effect, not to the one cancelled in the same turn", async () => {
+  it("describes each thing once when an event waiting before mount was handled by the effect that StrictMode then cancels", async () => {
     const queue = createAsyncQueue<SessionEvent>();
-    const waiting = eventNumber(0);
-    queue.push(waiting);
+    // The first event is already waiting when the component mounts, so the first effect takes it before its cleanup runs; the second event repeats its connection stage.
+    queue.push(eventNumber(0));
     const session = { events: queue.stream };
     const clock = { now: () => 0 };
     const { result } = renderHook(() => useMeshSessionEvents(session, clock), {
       wrapper: StrictMode,
     });
-
     await waitFor(() => {
-      expect(result.current.event).toBe(waiting);
+      expect(result.current.activity).toHaveLength(1);
     });
-    const next = eventNumber(1);
+
     await act(async () => {
-      queue.push(next);
+      queue.push(eventNumber(0));
       await Promise.resolve();
     });
-
-    await waitFor(() => {
-      expect(result.current.event).toBe(next);
+    await act(async () => {
+      queue.push(eventNumber(1));
+      await Promise.resolve();
     });
+    await waitFor(() => {
+      expect(result.current.event).toEqual(eventNumber(1));
+    });
+
+    const summaries = result.current.activity.map((entry) => entry.summary);
+    const keys = result.current.activity.map((entry) => entry.key);
+    expect(summaries).toEqual(["Connecting to ws://node-0"]);
+    expect(new Set(keys).size).toBe(keys.length);
   });
 });
