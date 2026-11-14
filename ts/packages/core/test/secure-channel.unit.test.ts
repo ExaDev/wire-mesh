@@ -497,3 +497,16 @@ describe("the first send counter", () => {
     );
   });
 });
+
+describe("fresh keys for every channel", () => {
+  it("gives each handshake its own ephemeral key and nonce, even between the same two devices", async () => {
+    const a = await generateEd25519Identity();
+    const b = await generateEd25519Identity();
+
+    const first = (await beginHandshake(a, b.deviceId)).hello;
+    const second = (await beginHandshake(a, b.deviceId)).hello;
+
+    expect(second["ephemeral-key"]).not.toEqual(first["ephemeral-key"]);
+    expect(second.nonce).not.toEqual(first.nonce);
+  });
+});
