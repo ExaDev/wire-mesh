@@ -1,3 +1,9 @@
+## [4.1.2](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.1.1...wire-mesh-core%404.1.2) (2026-11-14)
+
+### Bug Fixes
+
+* **core:** drop a hello whose handling fails without ending the session or losing a channel ([c23bf9b](https://github.com/ExaDev/wire-mesh/commit/c23bf9b57a7311316364b6555ff3133e1818d47f))
+
 ## [4.1.1](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.1.0...wire-mesh-core%404.1.1) (2026-11-14)
 
 ### Bug Fixes
