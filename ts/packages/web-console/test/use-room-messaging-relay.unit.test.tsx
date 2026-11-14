@@ -294,6 +294,55 @@ describe("a conversation over a hub", () => {
     expect(respond).toHaveBeenCalledWith({ result: "ok" });
   });
 
+  it("keeps reading the hub's requests after one that cannot be routed", async () => {
+    const { result } = render();
+    const incoming = createAsyncQueue<IncomingManageRequest>();
+    const unhandled: unknown[] = [];
+    const record = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", record);
+    act(() => {
+      result.current.watchHub({
+        sendManageRequest: async () => Promise.resolve({ result: "ok" }),
+        sendDataFrame: async () => Promise.resolve(),
+        incomingManageRequests: incoming.stream,
+      });
+    });
+    const token = await mintRoomInviteGrant(own, clock, {
+      roomPath,
+      invitee: peer.deviceId,
+      expires: TOKEN_EXPIRES,
+    });
+    const respond = vi.fn<IncomingManageRequest["respond"]>(async () =>
+      Promise.resolve(),
+    );
+    const unroutable: IncomingManageRequest = {
+      ...incomingFromPeer({}),
+      get fromDevice(): never {
+        throw new Error("a request that cannot be read");
+      },
+    };
+
+    incoming.push(unroutable);
+    incoming.push(
+      incomingFromPeer({
+        command: buildRoomSendCommand("after the bad one", MESSAGE_ID, SENT_AT),
+        token,
+        respond,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.conversations[0]?.messages).toHaveLength(1);
+    });
+    expect(result.current.conversations[0]?.messages[0]?.text).toBe(
+      "after the bad one",
+    );
+    process.off("unhandledRejection", record);
+    expect(unhandled).toEqual([]);
+  });
+
   it("refuses a message from the hub whose token was not issued for this conversation's peer", async () => {
     const { result } = render();
     const incoming = createAsyncQueue<IncomingManageRequest>();

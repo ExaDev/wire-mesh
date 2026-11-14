@@ -13,6 +13,7 @@ import type {
   IncomingManageRequest,
   MeshSession,
 } from "wire-mesh-core/domain/mesh-session";
+import { consumeEach } from "wire-mesh-core/domain/consume-incoming";
 import { createAsyncQueue } from "wire-mesh-core/domain/async-queue";
 import type { AsyncQueue } from "wire-mesh-core/domain/async-queue";
 import type { Connection } from "wire-mesh-core/ports/transport";
@@ -447,13 +448,11 @@ export function useRoomMessaging({
         roomHandlers(roomPath),
       );
 
-      void (async (): Promise<void> => {
-        for await (const sessionEvent of accepted.events) {
-          if (sessionEvent.state.status === "closed") {
-            dispatch({ type: "direct-closed", roomPath });
-          }
+      void consumeEach(accepted.events, (sessionEvent) => {
+        if (sessionEvent.state.status === "closed") {
+          dispatch({ type: "direct-closed", roomPath });
         }
-      })();
+      });
     },
     [identity, clock, ownDeviceHex, sessions, messageStore, noticeWiring],
   );
@@ -634,32 +633,30 @@ export function useRoomMessaging({
       // One reader for the hub's room requests, splitting them by the device each channel authenticated: a conversation's router reads only its own peer's, and the first request from a peer opens that peer's conversation.
       const perPeer = new Map<string, AsyncQueue<IncomingManageRequest>>();
       hubsRef.current.add(hub);
-      void (async (): Promise<void> => {
-        for await (const incoming of hub.incomingManageRequests) {
-          const peer = incoming.fromDevice;
-          if (peer === undefined) continue;
-          const key = deviceIdToHex(peer);
-          let queue = perPeer.get(key);
-          if (queue === undefined) {
-            queue = createAsyncQueue<IncomingManageRequest>();
-            perPeer.set(key, queue);
-            const roomPath = dmRoomPath(ownDeviceHex, key);
-            openRelay(hub, peer);
-            createRoomRouter(
-              { incomingManageRequests: queue.stream },
-              {
-                identity,
-                clock,
-                revocation: revocation,
-                peerDevice: peer,
-                currentMembers: () => [identity.deviceId, peer],
-              },
-              roomHandlers(roomPath),
-            );
-          }
-          queue.push(incoming);
+      void consumeEach(hub.incomingManageRequests, (incoming) => {
+        const peer = incoming.fromDevice;
+        if (peer === undefined) return;
+        const key = deviceIdToHex(peer);
+        let queue = perPeer.get(key);
+        if (queue === undefined) {
+          queue = createAsyncQueue<IncomingManageRequest>();
+          perPeer.set(key, queue);
+          const roomPath = dmRoomPath(ownDeviceHex, key);
+          openRelay(hub, peer);
+          createRoomRouter(
+            { incomingManageRequests: queue.stream },
+            {
+              identity,
+              clock,
+              revocation: revocation,
+              peerDevice: peer,
+              currentMembers: () => [identity.deviceId, peer],
+            },
+            roomHandlers(roomPath),
+          );
         }
-      })();
+        queue.push(incoming);
+      });
     },
     [identity, clock, ownDeviceHex, openRelay],
   );

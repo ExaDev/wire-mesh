@@ -10,6 +10,7 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
+import { consumeEach } from "wire-mesh-core/domain/consume-incoming";
 import { createMeshSession } from "wire-mesh-core/domain/mesh-session";
 import type { MeshSession } from "wire-mesh-core/domain/mesh-session";
 import { createGossipExpansion } from "wire-mesh-core/domain/gossip-expansion";
@@ -238,17 +239,19 @@ export function App({
       },
     );
     // Revocations a node announces are verified and recorded by the store, so every token check in the console honours them. One that cannot be stored is reported and the next is still read, since one storage failure must not end ingestion for the rest of the connection.
-    void (async (): Promise<void> => {
-      for await (const entry of session.revocationAnnouncements) {
-        try {
-          await revocations.ingest(entry);
-        } catch (error) {
+    void consumeEach(
+      session.revocationAnnouncements,
+      async (entry) => {
+        await revocations.ingest(entry);
+      },
+      {
+        onFault: (error) => {
           setRevocationFailure(
             error instanceof Error ? error.message : String(error),
           );
-        }
-      }
-    })();
+        },
+      },
+    );
     const hub: HubEndpoint = {
       sendManageRequest: async (...args) => session.sendManageRequest(...args),
       sendDataFrame: async (frame) => session.sendDataFrame(frame),
