@@ -1,3 +1,13 @@
+## [4.1.5](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.1.4...wire-mesh-core%404.1.5) (2026-11-14)
+
+### Code Refactoring
+
+* **conformance:** let a hello verdict have exactly one answer ([f5a0f14](https://github.com/ExaDev/wire-mesh/commit/f5a0f14b99727631bd1d4a02f0f1a03ae3b15a48))
+
+### Tests
+
+* **conformance:** refuse a layout-1 file through the section schema ([6d2db6f](https://github.com/ExaDev/wire-mesh/commit/6d2db6f7f933d885ffd8f053199c4c1b38172b81))
+
 ## [4.1.4](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.1.3...wire-mesh-core%404.1.4) (2026-11-14)
 
 ### Styles
