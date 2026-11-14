@@ -28,6 +28,8 @@ zeroize = { workspace = true }
 p256 = { workspace = true }
 hkdf = { workspace = true }
 aes-gcm = { workspace = true }
+# Only to switch on its `zeroize` feature, for the round keys of every AES-GCM key this crate uses.
+aes = { workspace = true }
 rand = { workspace = true }
 minicbor = { workspace = true }
 

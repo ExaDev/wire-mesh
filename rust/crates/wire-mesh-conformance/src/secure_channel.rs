@@ -15,8 +15,8 @@ use wire_mesh_core::adapters::NodeIdentity;
 use wire_mesh_core::domain::secure_channel::{
     begin_handshake_with, channel_hkdf_info, channel_salt, data_associated_data, data_iv,
     derive_direction_keys, establish_channel, hello_signing_input, is_sealable, verify_hello,
-    EstablishError, HelloRefusal, OpenError, PendingHandshake, SecureChannel, LABEL_HIGH_TO_LOW,
-    LABEL_LOW_TO_HIGH,
+    EstablishError, HelloRefusal, OpenError, PendingHandshake, SecureChannel, VerifiedHello,
+    VerifyHelloError, LABEL_HIGH_TO_LOW, LABEL_LOW_TO_HIGH,
 };
 use wire_mesh_core::ports::Identity;
 use wire_mesh_wire::identity::{DeviceId, IdentityKey};
@@ -497,10 +497,10 @@ impl Ctx<'_> {
         remote: &SecureHelloFrame,
     ) -> Result<SecureChannel, String> {
         let node = self.ident(&side.identity)?;
-        let peer = verify_hello(node, remote)
+        let verified = verify_hello(node, remote)
             .await
             .map_err(|e| format!("the peer's hello was refused: {e}"))?;
-        establish_channel(node.device_id(), self.pending(side).await?, remote, peer)
+        establish_channel(self.pending(side).await?, verified)
             .map_err(|e| format!("establish_channel: {e}"))
     }
 }
@@ -517,15 +517,17 @@ fn same_text(label: &str, expected: &str, actual: &str) -> Check {
     }
 }
 
-fn hello_class(
-    verdict: &Result<wire_mesh_core::domain::secure_channel::SecureChannelPeer, HelloRefusal>,
-) -> &'static str {
+fn hello_class(verdict: &Result<VerifiedHello, VerifyHelloError>) -> &'static str {
     match verdict {
         Ok(_) => "ok",
-        Err(HelloRefusal::WrongRecipient) => "wrong_recipient",
-        Err(HelloRefusal::UnsupportedIdentityAlgorithm) => "unsupported_identity_alg",
-        Err(HelloRefusal::InvalidIdentityKey) => "invalid_identity_key",
-        Err(HelloRefusal::BadSignature) => "bad_signature",
+        Err(VerifyHelloError::Refused(HelloRefusal::WrongRecipient)) => "wrong_recipient",
+        Err(VerifyHelloError::Refused(HelloRefusal::UnsupportedIdentityAlgorithm)) => {
+            "unsupported_identity_alg"
+        }
+        Err(VerifyHelloError::Refused(HelloRefusal::InvalidIdentityKey)) => "invalid_identity_key",
+        Err(VerifyHelloError::Refused(HelloRefusal::BadSignature)) => "bad_signature",
+        // Not a verdict a vector can expect: the port of a test identity does not fail.
+        Err(VerifyHelloError::Port(_)) => "port_failure",
     }
 }
 
@@ -534,6 +536,7 @@ fn establish_class(result: &Result<SecureChannel, EstablishError>) -> &'static s
         Ok(_) => "established",
         Err(EstablishError::UnusableEphemeralKey) => "unusable_ephemeral_key",
         Err(EstablishError::InvalidNonce) => "invalid_nonce",
+        Err(EstablishError::PeerMismatch) => "peer_mismatch",
     }
 }
 
@@ -801,9 +804,10 @@ async fn check_hello_verdict(ctx: &Ctx<'_>, verdict: &HelloVerdict) -> Check {
         ));
     }
     match (&result, &verdict.peer_device_id) {
-        (Ok(peer), Some(expected)) => {
+        (Ok(verified), Some(expected)) => {
+            let peer = verified.peer();
             same("peer device-id", expected, peer.device_id.as_bytes())?;
-            if peer.identity_key != hello.identity_key {
+            if peer.identity_key != hello.identity_key || *verified.hello() != hello {
                 return Err("the peer's identity key is not the hello's".to_owned());
             }
             Ok(())
@@ -839,8 +843,8 @@ async fn check_establish_verdict(ctx: &Ctx<'_>, verdict: &EstablishVerdict) -> C
         &verdict.hello_verdict,
         hello_class(&result),
     )?;
-    let peer = result.map_err(|e| format!("the hello was refused: {e}"))?;
-    let established = establish_channel(node.device_id(), ctx.pending(side).await?, &hello, peer);
+    let verified = result.map_err(|e| format!("the hello was refused: {e}"))?;
+    let established = establish_channel(ctx.pending(side).await?, verified);
     let class = establish_class(&established);
     if verdict.expected == "refused" {
         if established.is_ok() {
