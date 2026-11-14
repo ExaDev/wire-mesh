@@ -18,6 +18,7 @@ import {
   testIdentity,
 } from "./mesh-session-fixtures.js";
 import { RelayPeer } from "./relay-peer.js";
+import { watchSession } from "./session-barrier.js";
 
 const command: ManageCommand = {
   verb: "exec:proc",
@@ -28,14 +29,6 @@ const FIRST_REQUEST_ID = 51;
 const SECOND_REQUEST_ID = 52;
 const THIRD_REQUEST_ID = 53;
 const REQUESTS_ANSWERED = 3;
-const SETTLE_MS = 30;
-
-async function settle(): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, SETTLE_MS);
-  });
-}
-
 function helloPayloads(frames: readonly Frame[]): Frame[] {
   return frames.filter(
     (frame) =>
@@ -58,6 +51,9 @@ describe("a session reached through a relay", () => {
         incoming.push(request);
       }
     })();
+    const { barrier } = watchSession(session, (frame) => {
+      connection.push(frame);
+    });
     const pushed: Frame[] = [];
     const push = connection.push.bind(connection);
     connection.push = (frame): void => {
@@ -104,8 +100,8 @@ describe("a session reached through a relay", () => {
     await vi.waitFor(() => {
       expect(helloPayloads(connection.sent)).toHaveLength(hellosBefore + 1);
     });
-    // Nothing further follows: the session answers once.
-    await settle();
+    // Nothing further follows: the session answers once, and applies the next frame only after the answer is out.
+    await barrier();
     expect(helloPayloads(connection.sent)).toHaveLength(hellosBefore + 1);
 
     // The channel the second peer confirmed is unchanged.

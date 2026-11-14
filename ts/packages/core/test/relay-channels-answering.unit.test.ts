@@ -7,7 +7,6 @@ import type { Frame, SecureHelloFrame } from "../src/generated/protocol.js";
 import type { IdentityPort } from "../src/ports/identity.js";
 import {
   establish,
-  flush,
   freshHello,
   TestRelay,
   useUnhandledRecorder,
@@ -72,7 +71,7 @@ describe("a hello that cannot be used, beside an established channel", () => {
     const sent = a.hellosSent.length;
 
     await a.receiveHello(await helloWithUnusableKey(b.identity, a), b.deviceId);
-    await flush();
+    await relay.idle();
 
     expect(generated).toBe(keysBefore);
     expect(a.hellosSent).toHaveLength(sent);
@@ -94,7 +93,7 @@ describe("a hello that cannot be used, beside an established channel", () => {
     a.failSends = true;
 
     await a.receiveHello(await freshHello(b.identity, a), b.deviceId);
-    await flush();
+    await relay.idle();
     a.failSends = false;
 
     expect(faults).toHaveLength(1);
@@ -116,7 +115,7 @@ describe("a hello that cannot be used, beside an established channel", () => {
     a.failSigning = true;
 
     await a.receiveHello(await freshHello(b.identity, a), b.deviceId);
-    await flush();
+    await relay.idle();
     a.failSigning = false;
 
     expect(faults).toHaveLength(1);
@@ -146,7 +145,7 @@ describe("a hello that cannot be used, beside an established channel", () => {
 
     await a.receiveHello(await freshHello(b.identity, a), c.deviceId);
     await a.receiveHello(await freshHello(b.identity, a), undefined);
-    await flush();
+    await relay.idle();
 
     expect(verified).toBe(verifiedBefore);
     expect(a.hellosSent).toHaveLength(sent);

@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from "vitest";
 import { HANDSHAKE_WINDOW_MS } from "../src/domain/relay-channels.js";
 import type { DeviceId } from "../src/generated/protocol.js";
 import {
-  flush,
   freshHello,
   TestRelay,
   useUnhandledRecorder,
@@ -31,13 +30,13 @@ describe("local fault reports", () => {
     await repeatInSequence(FAILURES, async () => {
       await a.receiveHello(await freshHello(b.identity, a), b.deviceId);
     });
-    await flush();
+    await relay.idle();
     expect(reports).toHaveLength(1);
     expect(reports[0]?.suppressed).toBe(0);
 
     relay.clock.advance(PAST_WINDOW_MS);
     await a.receiveHello(await freshHello(b.identity, a), b.deviceId);
-    await flush();
+    await relay.idle();
     expect(reports).toHaveLength(2);
     expect(reports[1]?.suppressed).toBe(FAILURES - 1);
     expect(unhandled()).toEqual([]);
@@ -55,7 +54,7 @@ describe("local fault reports", () => {
     a.failSigning = true;
 
     await a.receiveHello(await freshHello(b.identity, a), b.deviceId);
-    await flush();
+    await relay.idle();
 
     expect(consoleError).toHaveBeenCalledTimes(1);
     expect(unhandled()).toEqual([]);

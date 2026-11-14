@@ -14,6 +14,7 @@ import type {
   SecureHelloFrame,
 } from "../src/generated/protocol.js";
 import type { IdentityPort } from "../src/ports/identity.js";
+import { watchSession } from "./session-barrier.js";
 import {
   deviceA,
   fakeTransport,
@@ -29,18 +30,11 @@ const command: ManageCommand = {
 };
 const scope: CapabilityScope = { kind: "folder" };
 const REQUEST_ID = 77;
-const SETTLE_MS = 30;
 const UNSUPPORTED_ALG = -999;
 const ES256 = -7;
 const P256_POINT_BYTES = 65;
 const SEC1_UNCOMPRESSED = 4;
 const WRONG_SIZE_KEY_BYTES = 3;
-
-async function settle(): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, SETTLE_MS);
-  });
-}
 
 function offCurveP256(): Uint8Array<ArrayBuffer> {
   const point = new Uint8Array(P256_POINT_BYTES).fill(1);
@@ -57,6 +51,7 @@ async function sessionWith(
   connection: ReturnType<typeof fakeTransport>["connection"];
   incoming: IncomingManageRequest[];
   states: string[];
+  barrier: () => Promise<void>;
 }> {
   const { transport, connection } = fakeTransport();
   const session = createMeshSession(
@@ -71,19 +66,16 @@ async function sessionWith(
   );
   await session.connect("ws://node", ["core/management"]);
   const incoming: IncomingManageRequest[] = [];
-  const states: string[] = [];
+  const { states, barrier } = watchSession(session, (frame) => {
+    connection.push(frame);
+  });
   void (async (): Promise<void> => {
     for await (const request of session.incomingManageRequests) {
       incoming.push(request);
     }
   })();
-  void (async (): Promise<void> => {
-    for await (const event of session.events) {
-      states.push(event.state.status);
-    }
-  })();
 
-  return { session, connection, incoming, states };
+  return { session, connection, incoming, states, barrier };
 }
 
 async function helloTo(identity: IdentityPort): Promise<SecureHelloFrame> {
@@ -153,15 +145,13 @@ describe("a hostile hello", () => {
   for (const [name, corrupt] of hostile) {
     it(`with ${name} is dropped: no reply, the session stays up and serves the next peer`, async () => {
       const faults: unknown[] = [];
-      const { session, connection, incoming, states } = await sessionWith(
-        testIdentity,
-        (fault) => {
+      const { session, barrier, connection, incoming, states } =
+        await sessionWith(testIdentity, (fault) => {
           faults.push(fault);
-        },
-      );
+        });
 
       pushHello(connection, corrupt(await helloTo(testIdentity)));
-      await settle();
+      await barrier();
       expect(sentHellos(connection)).toEqual([]);
 
       const peer = new RelayPeer(identityA, testIdentity, connection);
@@ -192,7 +182,7 @@ describe("a hostile hello", () => {
         Promise.reject(new TypeError("the hardware key went away")),
     };
     const faults: unknown[] = [];
-    const { session, connection, states } = await sessionWith(
+    const { session, barrier, connection, states } = await sessionWith(
       failing,
       (fault) => {
         faults.push(fault);
@@ -200,7 +190,7 @@ describe("a hostile hello", () => {
     );
 
     pushHello(connection, await helloTo(failing));
-    await settle();
+    await barrier();
 
     expect(faults).toHaveLength(1);
     expect(faults[0]).toBeInstanceOf(TypeError);
@@ -216,7 +206,7 @@ describe("a hostile hello", () => {
       deriveDeviceId: async () => Promise.reject(new Error("no digest")),
     };
     const faults: unknown[] = [];
-    const { session, connection, states } = await sessionWith(
+    const { session, barrier, connection, states } = await sessionWith(
       failing,
       (fault) => {
         faults.push(fault);
@@ -224,7 +214,7 @@ describe("a hostile hello", () => {
     );
 
     pushHello(connection, await helloTo(failing));
-    await settle();
+    await barrier();
 
     expect(faults).toHaveLength(1);
     expect(sentHellos(connection)).toEqual([]);
@@ -240,9 +230,12 @@ describe("a hostile hello", () => {
     const { transport, connection } = fakeTransport();
     const session = createMeshSession(transport, failing, testClock);
     await session.connect("ws://node", ["core/management"]);
+    const { barrier } = watchSession(session, (frame) => {
+      connection.push(frame);
+    });
 
     pushHello(connection, await helloTo(failing));
-    await settle();
+    await barrier();
 
     expect(sentHellos(connection)).toEqual([]);
     await session.close();

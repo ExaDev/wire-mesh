@@ -20,6 +20,7 @@ import type {
   SecureHelloFrame,
 } from "../src/generated/protocol.js";
 import type { IdentityPort } from "../src/ports/identity.js";
+import { watchSession } from "./session-barrier.js";
 import {
   deviceA,
   fakeTransport,
@@ -36,19 +37,12 @@ const command: ManageCommand = {
 const scope: CapabilityScope = { kind: "folder" };
 const REQUEST_ID = 91;
 const CONFIRMING_REQUEST_ID = 90;
-const SETTLE_MS = 40;
 const P256_POINT_BYTES = 65;
 const SEC1_UNCOMPRESSED = 4;
 const FLIPPED_BYTE = 0xff;
 const UNDECODABLE_PAYLOAD = [FLIPPED_BYTE, 0, 1];
 
 type Link = ReturnType<typeof fakeTransport>["connection"];
-
-async function settle(): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, SETTLE_MS);
-  });
-}
 
 let unhandled: unknown[] = [];
 const recordUnhandled = (reason: unknown): void => {
@@ -71,6 +65,7 @@ async function sessionWith(
   connection: Link;
   incoming: IncomingManageRequest[];
   states: string[];
+  barrier: () => Promise<void>;
 }> {
   const { transport, connection } = fakeTransport();
   const session = createMeshSession(
@@ -85,19 +80,16 @@ async function sessionWith(
   );
   await session.connect("ws://node", ["core/management"]);
   const incoming: IncomingManageRequest[] = [];
-  const states: string[] = [];
+  const { states, barrier } = watchSession(session, (frame) => {
+    connection.push(frame);
+  });
   void (async (): Promise<void> => {
     for await (const request of session.incomingManageRequests) {
       incoming.push(request);
     }
   })();
-  void (async (): Promise<void> => {
-    for await (const event of session.events) {
-      states.push(event.state.status);
-    }
-  })();
 
-  return { session, connection, incoming, states };
+  return { session, connection, incoming, states, barrier };
 }
 
 function pushHello(connection: Link, hello: SecureHelloFrame): void {
@@ -163,15 +155,13 @@ function expectSessionUp(states: readonly string[]): void {
 describe("a hello that verifies but cannot be completed", () => {
   it("with an unusable ephemeral key is dropped without an unhandled rejection, and a later valid hello works", async () => {
     const faults: unknown[] = [];
-    const { session, connection, incoming, states } = await sessionWith(
-      testIdentity,
-      (fault) => {
+    const { session, barrier, connection, incoming, states } =
+      await sessionWith(testIdentity, (fault) => {
         faults.push(fault);
-      },
-    );
+      });
 
     pushHello(connection, await helloWithUnusableEphemeralKey(testIdentity));
-    await settle();
+    await barrier();
     // The key is found unusable before any key of this side's own is generated, so nothing is sent.
     expect(sentHellos(connection)).toEqual([]);
     expect(unhandled).toEqual([]);
@@ -222,20 +212,21 @@ describe("a hello that verifies but cannot be completed", () => {
 
   it("whose answer cannot be sent is dropped, reported locally, leaves no channel, and a later valid hello works", async () => {
     const faults: unknown[] = [];
-    const { session, connection, incoming, states } = await sessionWith(
-      testIdentity,
-      (fault) => {
+    const { session, barrier, connection, incoming, states } =
+      await sessionWith(testIdentity, (fault) => {
         faults.push(fault);
-      },
-    );
+      });
     connection.rejectSends(new Error("the link stopped accepting writes"));
 
     pushHello(
       connection,
       (await beginHandshake(identityA, testIdentity.deviceId)).hello,
     );
-    await settle();
-    expect(faults).toHaveLength(1);
+    // The failure is reported from the answering send, which the session does not wait for.
+    await vi.waitFor(() => {
+      expect(faults).toHaveLength(1);
+    });
+    await barrier();
     expect(unhandled).toEqual([]);
     expectSessionUp(states);
 
@@ -251,7 +242,7 @@ describe("a hello that verifies but cannot be completed", () => {
       deriveDeviceId: async () => Promise.reject(new Error("no digest")),
     };
     const faults: unknown[] = [];
-    const { session, connection, states } = await sessionWith(
+    const { session, barrier, connection, states } = await sessionWith(
       failing,
       (fault) => {
         faults.push(fault);
@@ -262,7 +253,7 @@ describe("a hello that verifies but cannot be completed", () => {
       connection,
       (await beginHandshake(identityA, failing.deviceId)).hello,
     );
-    await settle();
+    await barrier();
 
     expect(faults).toHaveLength(1);
     expect(unhandled).toEqual([]);
@@ -280,15 +271,18 @@ describe("the local fault callback", () => {
       ...testIdentity,
       verify: async () => Promise.reject(new Error("failing")),
     };
-    const { session, connection, states } = await sessionWith(failing, () => {
-      throw new Error("the callback is broken");
-    });
+    const { session, barrier, connection, states } = await sessionWith(
+      failing,
+      () => {
+        throw new Error("the callback is broken");
+      },
+    );
 
     pushHello(
       connection,
       (await beginHandshake(identityA, failing.deviceId)).hello,
     );
-    await settle();
+    await barrier();
 
     expect(consoleError).toHaveBeenCalledTimes(1);
     expect(unhandled).toEqual([]);
@@ -299,7 +293,8 @@ describe("the local fault callback", () => {
 
 describe("a hello repeated after its channel was built", () => {
   it("does not replace the channel, and a hello with a fresh ephemeral key does", async () => {
-    const { session, connection, incoming } = await sessionWith(testIdentity);
+    const { session, barrier, connection, incoming } =
+      await sessionWith(testIdentity);
     const pushed: Frame[] = [];
     const push = connection.push.bind(connection);
     connection.push = (frame): void => {
@@ -321,7 +316,7 @@ describe("a hello repeated after its channel was built", () => {
     if (recorded !== undefined) {
       connection.push(recorded);
     }
-    await settle();
+    await barrier();
     expect(connection.sent.length).toBe(sentBefore);
 
     await peer.deliver({
@@ -356,7 +351,7 @@ describe("a hello repeated after its channel was built", () => {
 
 describe("frames a peer or relay can send over an established channel", () => {
   it("never wedge it, and are refused without a word to the sender", async () => {
-    const { session, connection, incoming, states } =
+    const { session, barrier, connection, incoming, states } =
       await sessionWith(testIdentity);
     const pushed: Frame[] = [];
     const push = connection.push.bind(connection);
@@ -396,7 +391,7 @@ describe("frames a peer or relay can send over an established channel", () => {
       payload: new Uint8Array(UNDECODABLE_PAYLOAD),
       "from-device": deviceA,
     });
-    await settle();
+    await barrier();
     expect(connection.sent.length).toBe(sentBefore);
     expect(unhandled).toEqual([]);
     expectSessionUp(states);
@@ -429,12 +424,13 @@ function tryInner(
 
 describe("a verified hello that carries an unusable ephemeral key", () => {
   it("leaves the established channel with that peer in place", async () => {
-    const { session, connection, incoming } = await sessionWith(testIdentity);
+    const { session, barrier, connection, incoming } =
+      await sessionWith(testIdentity);
     const peer = new RelayPeer(identityA, testIdentity, connection);
     await peer.openTowardSession();
 
     pushHello(connection, await helloWithUnusableEphemeralKey(testIdentity));
-    await settle();
+    await barrier();
     expect(unhandled).toEqual([]);
 
     await peer.deliver({
@@ -453,16 +449,16 @@ describe("a verified hello that carries an unusable ephemeral key", () => {
 });
 
 describe("a verified hello whose answer cannot be sent, with a channel established", () => {
-  const LATE_FAILURE_MS = 60;
-  const cases: readonly (readonly [string, number])[] = [
-    ["at once", 0],
-    ["after the new channel has been built", LATE_FAILURE_MS],
+  // "at once": the send fails as soon as it is made. "late": it is held while the candidate channel is built, and fails afterwards.
+  const cases: readonly (readonly [string, boolean])[] = [
+    ["at once", false],
+    ["after the new channel has been built", true],
   ];
 
-  for (const [when, afterMs] of cases) {
+  for (const [when, late] of cases) {
     it(`leaves the established channel installed and in use when the failure comes ${when}`, async () => {
       const faults: unknown[] = [];
-      const { session, connection, incoming } = await sessionWith(
+      const { session, barrier, connection, incoming } = await sessionWith(
         testIdentity,
         (fault) => {
           faults.push(fault);
@@ -480,19 +476,24 @@ describe("a verified hello whose answer cannot be sent, with a channel establish
       await vi.waitFor(() => {
         expect(incoming).toHaveLength(1);
       });
-      connection.rejectSends(
-        new Error("the link stopped accepting writes"),
-        afterMs,
-      );
+      connection.rejectSends(new Error("the link stopped accepting writes"));
+      if (late) {
+        connection.holdSends();
+      }
 
       pushHello(
         connection,
         (await beginHandshake(identityA, testIdentity.deviceId)).hello,
       );
+      if (late) {
+        // The session applies the hello in full, candidate included, before the next frame, while its answering send is still held.
+        await barrier();
+        connection.releaseSends();
+      }
       await vi.waitFor(() => {
         expect(faults).toHaveLength(1);
       });
-      await settle();
+      await barrier();
       connection.acceptSends();
       expect(unhandled).toEqual([]);
 
@@ -527,15 +528,16 @@ describe("the local fault callback returning a promise", () => {
       ...testIdentity,
       verify: async () => Promise.reject(new Error("failing")),
     };
-    const { session, connection } = await sessionWith(failing, async () =>
-      Promise.reject(new Error("the callback rejected")),
+    const { session, barrier, connection } = await sessionWith(
+      failing,
+      async () => Promise.reject(new Error("the callback rejected")),
     );
 
     pushHello(
       connection,
       (await beginHandshake(identityA, failing.deviceId)).hello,
     );
-    await settle();
+    await barrier();
 
     expect(consoleError).toHaveBeenCalledTimes(1);
     expect(unhandled).toEqual([]);

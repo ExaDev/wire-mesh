@@ -10,7 +10,6 @@ import { MAX_COUNTER } from "../src/domain/secure-channel.js";
 import type { Frame } from "../src/generated/protocol.js";
 import {
   establish,
-  flush,
   freshHello,
   TestRelay,
   useUnhandledRecorder,
@@ -60,14 +59,14 @@ async function carriesFrames(a: Node, b: Node): Promise<void> {
 
 describe("a hello that repeats one already held", () => {
   it("is dropped when it is the current channel's, sending nothing", async () => {
-    const { a, b } = await pair();
+    const { relay, a, b } = await pair();
     await establish(a, b);
     const sentA = a.hellosSent.length;
     const sentB = b.hellosSent.length;
 
     await a.receiveHello(first(b.hellosSent).hello, b.deviceId);
     await b.receiveHello(first(a.hellosSent).hello, a.deviceId);
-    await flush();
+    await relay.idle();
 
     expect(a.hellosSent).toHaveLength(sentA);
     expect(b.hellosSent).toHaveLength(sentB);
@@ -351,12 +350,12 @@ describe("a relay that holds or reorders", () => {
     relay.clock.advance(BEFORE_WINDOW_MS);
     const otherOlder = await freshHello(b.identity, a);
     await a.receiveHello(otherOlder, b.deviceId);
-    await flush();
+    await relay.idle();
     expect(a.hellosSent).toHaveLength(sent);
 
     relay.clock.advance(2);
     await a.receiveHello(await freshHello(b.identity, a), b.deviceId);
-    await flush();
+    await relay.idle();
     expect(a.hellosSent).toHaveLength(sent + 1);
     expect(unhandled()).toEqual([]);
   });

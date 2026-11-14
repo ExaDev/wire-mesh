@@ -9,7 +9,6 @@ import { beginHandshake } from "../src/domain/secure-channel.js";
 import type { Frame } from "../src/generated/protocol.js";
 import {
   establish,
-  flush,
   TestRelay,
   useUnhandledRecorder,
   type Node,
@@ -54,7 +53,7 @@ describe("hellos from identities this side never chose", () => {
         const stranger = await generateEd25519Identity();
         await a.receiveHello(await hello(stranger, a), stranger.deviceId);
       });
-      await flush();
+      await relay.idle();
 
       // Each answer needs a free entry, and an entry younger than the window is never reused, and none of these is the chosen peer's.
       expect(a.hellosSent.length - sent).toBeLessThanOrEqual(
@@ -84,7 +83,7 @@ describe("hellos from identities this side never chose", () => {
         const stranger = await generateEd25519Identity();
         await a.receiveHello(await hello(stranger, a), stranger.deviceId);
       });
-      await flush();
+      await relay.idle();
 
       expect(await carries(a, requested, ping)).toBe(true);
       expect(await carries(requested, a, pong)).toBe(true);

@@ -25,11 +25,8 @@ import {
 } from "../src/domain/secure-channel.js";
 import { generateEd25519Identity } from "./tokens-fixtures.js";
 
-const TICK_MS = 0;
-const FLUSH_TICKS = 4;
-const PUMP_ROUNDS = 30;
-const TAKE_INTERVAL_MS = 1;
-const TAKE_TIMEOUT_MS = 5_000;
+const POLL_INTERVAL_MS = 1;
+const WAIT_TIMEOUT_MS = 5_000;
 
 /** A clock that only moves when a test moves it. */
 export class ManualClock implements Clock {
@@ -75,18 +72,11 @@ export interface DataRecord {
   readonly data: SecureDataFrame;
 }
 
-async function tick(): Promise<void> {
+/** Lets every microtask and every already-queued callback run once: not a wait for anything, only a way to observe state after what is settled has settled. */
+export async function drain(): Promise<void> {
   return new Promise((resolve) => {
-    setTimeout(resolve, TICK_MS);
+    setImmediate(resolve);
   });
-}
-
-/** Lets everything that can settle without a timer settle. */
-export async function flush(ticks = FLUSH_TICKS): Promise<void> {
-  if (ticks > 0) {
-    await tick();
-    await flush(ticks - 1);
-  }
 }
 
 /** The model of the previous release's channel handling: a hello whose key is not the current channel's is answered, unless this side's own hello is already out, and the channel it completes replaces the current one at once. */
@@ -215,12 +205,17 @@ export class Node {
           ? Promise.reject(new Error("the key is locked"))
           : base.sign(data),
     };
+    const tracked = options.kind !== "released";
     const sendHello = async (
       peer: DeviceId,
       hello: SecureHelloFrame,
     ): Promise<void> => {
+      // Nothing below waits, so the handshake counts as finished from here whichever way the send goes.
+      if (tracked) {
+        relay.workStopped();
+      }
       if (this.failSends) {
-        throw new Error("the link stopped accepting writes");
+        return Promise.reject(new Error("the link stopped accepting writes"));
       }
       const record: HelloRecord = {
         kind: "hello",
@@ -233,6 +228,20 @@ export class Node {
 
       return Promise.resolve();
     };
+    // Every handshake this node begins is work the endpoint carries on in the background, until its hello is sent or signing fails: counted, so a test can wait for it to end instead of sleeping.
+    const generate =
+      options.newHandshake ??
+      (async (peer: DeviceId): Promise<PendingHandshake> =>
+        beginHandshake(this.identity, peer));
+    const newHandshake = async (peer: DeviceId): Promise<PendingHandshake> => {
+      relay.workStarted();
+      try {
+        return await generate(peer);
+      } catch (error) {
+        relay.workStopped();
+        throw error;
+      }
+    };
     this.endpoint =
       options.kind === "released"
         ? new ReleasedChannels(this.identity, sendHello)
@@ -243,9 +252,7 @@ export class Node {
             ...(options.onFault === undefined
               ? {}
               : { onFault: options.onFault }),
-            ...(options.newHandshake === undefined
-              ? {}
-              : { newHandshake: options.newHandshake }),
+            newHandshake,
           });
   }
 
@@ -328,6 +335,16 @@ export class TestRelay {
 
   private readonly nodes = new Map<string, Node>();
 
+  private inFlight = 0;
+
+  workStarted(): void {
+    this.inFlight += 1;
+  }
+
+  workStopped(): void {
+    this.inFlight -= 1;
+  }
+
   async node(name: string, options: NodeOptions = {}): Promise<Node> {
     const node = new Node(
       name,
@@ -349,6 +366,19 @@ export class TestRelay {
     return this.nodes.get(deviceIdToHex(device));
   }
 
+  /** Resolves once no handshake any node began is still being signed or sent, and what that left to run has run. */
+  async idle(): Promise<void> {
+    await vi.waitFor(
+      () => {
+        if (this.inFlight > 0) {
+          throw new Error("a handshake is still being begun or sent");
+        }
+      },
+      { interval: POLL_INTERVAL_MS, timeout: WAIT_TIMEOUT_MS },
+    );
+    await drain();
+  }
+
   /** Waits until `count` hellos are queued, then removes and returns them without delivering any. */
   async take(count = 1): Promise<HelloRecord[]> {
     await vi.waitFor(
@@ -357,32 +387,42 @@ export class TestRelay {
           throw new Error("the hellos have not been sent yet");
         }
       },
-      { interval: TAKE_INTERVAL_MS, timeout: TAKE_TIMEOUT_MS },
+      { interval: POLL_INTERVAL_MS, timeout: WAIT_TIMEOUT_MS },
     );
 
     return this.queue.splice(0, count);
   }
 
-  /** Delivers one queued hello to its addressee, as stamped by the relay. */
+  /** Delivers one queued hello to its addressee, as stamped by the relay, and waits for what it set going to end. */
   async deliver(record: HelloRecord): Promise<void> {
     await record.to?.receiveHello(record.hello, record.from.deviceId);
-    await flush();
+    await this.idle();
   }
 
-  /** Delivers every queued hello in the order sent, including those that delivery itself queues, until none is left. */
-  async pump(rounds = PUMP_ROUNDS): Promise<void> {
+  /** Delivers hellos in the order sent, including those that delivery itself queues, until `done` holds. */
+  async pumpUntil(done: () => boolean): Promise<void> {
+    await vi.waitFor(
+      () => {
+        if (!done() && this.queue.length === 0) {
+          throw new Error("nothing is queued and the work is not done");
+        }
+      },
+      { interval: POLL_INTERVAL_MS, timeout: WAIT_TIMEOUT_MS },
+    );
     const next = this.queue.shift();
-    if (next !== undefined && rounds > 0) {
+    if (!done() && next !== undefined) {
       await this.deliver(next);
-      await this.pump(rounds - 1);
+      await this.pumpUntil(done);
     }
   }
 
-  async pumpUntil(done: () => boolean, rounds = PUMP_ROUNDS): Promise<void> {
-    await flush();
-    if (!done() && rounds > 0) {
+  /** Delivers every hello queued now and any that delivering them queues. */
+  async pump(): Promise<void> {
+    await this.idle();
+    const next = this.queue.shift();
+    if (next !== undefined) {
+      await this.deliver(next);
       await this.pump();
-      await this.pumpUntil(done, rounds - 1);
     }
   }
 }
