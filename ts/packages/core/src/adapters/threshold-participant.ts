@@ -13,6 +13,10 @@ import type {
   MeshSession,
 } from "../domain/mesh-session.js";
 import {
+  serveManageRequests,
+  type ConsumeFault,
+} from "../domain/consume-incoming.js";
+import {
   THRESHOLD_GROUP_SCOPE,
   THRESHOLD_SIGN_VERB,
   isThresholdAbort,
@@ -54,6 +58,8 @@ export interface ThresholdParticipantOptions {
   keyPackagesByGroup: ReadonlyMap<string, Uint8Array>;
   nonceStore: Readonly<NonceStore>;
   clock: Readonly<Clock>;
+  /** Told of a failure while handling one incoming request: the request is answered with a refusal where it can be and the responder goes on to the next. Absent, the failure is dropped. */
+  onFault?: ConsumeFault<IncomingManageRequest> | undefined;
   /** No silent default: a caller with no revocation-gossip ingestion wired yet must opt in explicitly (e.g. web-console's own exported `noRevocationCheck`), matching webrtc-signaling.ts's own convention for exactly this situation. */
   revocation: Readonly<RevocationCheck>;
   /** Runs after refuseUnrecognisedKind already passed -- an additional, caller-supplied content policy over a subject this participant is being asked to co-sign. Returning undefined defers to "authorised" (refuseUnrecognisedKind's own pass is enough on its own); returning a decision short-circuits either way. Absent, every recognised kind is authorised with no further scrutiny. */
@@ -230,33 +236,34 @@ export function startThresholdParticipant(
     await incoming.respond({ result: "ok" });
   }
 
-  async function consume(): Promise<void> {
-    for await (const incoming of options.session.incomingManageRequests) {
-      if (incoming.command.verb !== THRESHOLD_SIGN_VERB) {
-        continue;
-      }
-      const authorized = await authorizeIncomingRequest(incoming, options);
-      if (!authorized) {
-        await incoming.respond({ result: "error", code: "unauthorized" });
-        continue;
-      }
-      const params = incoming.command.params;
-      if (isThresholdCommit(params)) {
-        await handleCommit(incoming, {
-          "session-id": params["session-id"],
-          group: params.group,
-          subject: params.subject,
-          deadline: params.deadline,
-        });
-      } else if (isThresholdSign(params)) {
-        await handleSign(incoming, {
-          "session-id": params["session-id"],
-          commitments: params.commitments,
-        });
-      } else if (isThresholdAbort(params)) {
-        await handleAbort(incoming, { "session-id": params["session-id"] });
-      }
+  async function handle(incoming: IncomingManageRequest): Promise<void> {
+    if (incoming.command.verb !== THRESHOLD_SIGN_VERB) {
+      return;
+    }
+    const authorized = await authorizeIncomingRequest(incoming, options);
+    if (!authorized) {
+      await incoming.respond({ result: "error", code: "unauthorized" });
+
+      return;
+    }
+    const params = incoming.command.params;
+    if (isThresholdCommit(params)) {
+      await handleCommit(incoming, {
+        "session-id": params["session-id"],
+        group: params.group,
+        subject: params.subject,
+        deadline: params.deadline,
+      });
+    } else if (isThresholdSign(params)) {
+      await handleSign(incoming, {
+        "session-id": params["session-id"],
+        commitments: params.commitments,
+      });
+    } else if (isThresholdAbort(params)) {
+      await handleAbort(incoming, { "session-id": params["session-id"] });
     }
   }
-  void consume();
+  void serveManageRequests(options.session.incomingManageRequests, handle, {
+    onFault: options.onFault,
+  });
 }

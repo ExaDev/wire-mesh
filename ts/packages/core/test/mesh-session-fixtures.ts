@@ -76,6 +76,9 @@ export class FakeConnection {
 
   private sendFailureDelayMs = 0;
 
+  /** How many sends were rejected because rejectSends was in force. */
+  rejectedSendCount = 0;
+
   /** Constructs a fake, already-authenticated connection whose own `peerDeviceId` is set from the start -- the transport-authenticated case topology self-advertisement's own `direct` field prefers over any gossip-derived guess (mesh-session.ts's directPeerDevice). Omit for the default, unauthenticated case every other test here relies on. */
   constructor(private readonly authenticatedPeerDeviceId?: DeviceId) {}
 
@@ -83,6 +86,7 @@ export class FakeConnection {
     return {
       send: async (frame: Frame): Promise<void> => {
         if (this.sendFailure !== null) {
+          this.rejectedSendCount += 1;
           const { sendFailure, sendFailureDelayMs } = this;
           if (sendFailureDelayMs > 0) {
             await new Promise((resolve) => {

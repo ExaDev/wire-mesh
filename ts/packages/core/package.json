@@ -90,6 +90,10 @@
       "import": "./dist/domain/channel-exhausted-error.mjs",
       "require": "./dist/domain/channel-exhausted-error.cjs"
     },
+    "./domain/consume-incoming": {
+      "import": "./dist/domain/consume-incoming.mjs",
+      "require": "./dist/domain/consume-incoming.cjs"
+    },
     "./domain/coordinator-election": {
       "import": "./dist/domain/coordinator-election.mjs",
       "require": "./dist/domain/coordinator-election.cjs"

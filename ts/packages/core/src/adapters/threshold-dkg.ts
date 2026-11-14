@@ -9,7 +9,14 @@ import type {
   DeviceId,
 } from "../generated/protocol.js";
 import { deviceIdToHex } from "../domain/device-id.js";
-import type { MeshSession } from "../domain/mesh-session.js";
+import {
+  serveManageRequests,
+  type ConsumeFault,
+} from "../domain/consume-incoming.js";
+import type {
+  IncomingManageRequest,
+  MeshSession,
+} from "../domain/mesh-session.js";
 import { bytesEqual } from "../domain/token-scope.js";
 import {
   buildKeygenConfirmCommand,
@@ -118,56 +125,63 @@ interface DkgCollectors {
   confirm: PerDeviceCollector<ConfirmPayload>;
 }
 
-/** Starts the single shared consume loop for this device's whole DKG/reshare ceremony: every incoming threshold.keygen-round1/round2/confirm for `sessionId`, from whichever peer sent it (via `incoming.fromDevice` -- see this module's own doc comment), is delivered to the matching collector and acknowledged. Anything else (a different session-id, a message with no fromDevice, an unrecognised verb) is left unanswered, matching webrtc-negotiation.ts's own "not this consumer's business" convention for a shared incoming stream. */
-function startDkgConsumeLoop(
-  session: Readonly<ThresholdDkgTransport>,
-  expectedVerb: string,
-  sessionId: bigint,
-  collectors: Readonly<DkgCollectors>,
-): void {
-  async function consume(): Promise<void> {
-    for await (const incoming of session.incomingManageRequests) {
-      if (
-        incoming.command.verb !== expectedVerb ||
-        incoming.fromDevice === undefined
-      ) {
-        continue;
+/** Starts the single shared consume loop for this device's whole DKG/reshare ceremony: every incoming threshold.keygen-round1/round2/confirm for `sessionId`, from whichever peer sent it (via `incoming.fromDevice` -- see this module's own doc comment), is delivered to the matching collector and acknowledged. Anything else (a different session-id, a message with no fromDevice, an unrecognised verb) is left unanswered, matching webrtc-negotiation.ts's own "not this consumer's business" convention for a shared incoming stream. A request whose handling fails is answered with a refusal, reported to `onFault` and the loop goes on to the next. */
+function startDkgConsumeLoop({
+  session,
+  expectedVerb,
+  sessionId,
+  collectors,
+  onFault,
+}: Readonly<{
+  session: Readonly<ThresholdDkgTransport>;
+  expectedVerb: string;
+  sessionId: bigint;
+  collectors: Readonly<DkgCollectors>;
+  onFault: ConsumeFault<IncomingManageRequest> | undefined;
+}>): void {
+  async function handle(incoming: IncomingManageRequest): Promise<void> {
+    if (
+      incoming.command.verb !== expectedVerb ||
+      incoming.fromDevice === undefined
+    ) {
+      return;
+    }
+    const fromHex = deviceIdToHex(incoming.fromDevice);
+    const params = incoming.command.params;
+    if (isThresholdKeygenRound1(params)) {
+      if (params["session-id"] !== Number(sessionId)) {
+        return;
       }
-      const fromHex = deviceIdToHex(incoming.fromDevice);
-      const params = incoming.command.params;
-      if (isThresholdKeygenRound1(params)) {
-        if (params["session-id"] !== Number(sessionId)) {
-          continue;
-        }
-        collectors.round1.deliver(fromHex, {
-          commitment: params.commitment,
-          ...(params["proof-of-knowledge"] !== undefined
-            ? { proofOfKnowledge: params["proof-of-knowledge"] }
-            : {}),
-          ...(params["existing-group-key"] !== undefined
-            ? { existingGroupKey: params["existing-group-key"] }
-            : {}),
-        });
-        await incoming.respond({ result: "ok" });
-      } else if (isThresholdKeygenRound2(params)) {
-        if (params["session-id"] !== Number(sessionId)) {
-          continue;
-        }
-        collectors.round2.deliver(fromHex, params.share);
-        await incoming.respond({ result: "ok" });
-      } else if (isThresholdKeygenConfirm(params)) {
-        if (params["session-id"] !== Number(sessionId)) {
-          continue;
-        }
-        collectors.confirm.deliver(fromHex, {
-          transcriptDigest: params["transcript-digest"],
-          groupKey: params["group-key"],
-        });
-        await incoming.respond({ result: "ok" });
+      collectors.round1.deliver(fromHex, {
+        commitment: params.commitment,
+        ...(params["proof-of-knowledge"] !== undefined
+          ? { proofOfKnowledge: params["proof-of-knowledge"] }
+          : {}),
+        ...(params["existing-group-key"] !== undefined
+          ? { existingGroupKey: params["existing-group-key"] }
+          : {}),
+      });
+      await incoming.respond({ result: "ok" });
+    } else if (isThresholdKeygenRound2(params)) {
+      if (params["session-id"] !== Number(sessionId)) {
+        return;
       }
+      collectors.round2.deliver(fromHex, params.share);
+      await incoming.respond({ result: "ok" });
+    } else if (isThresholdKeygenConfirm(params)) {
+      if (params["session-id"] !== Number(sessionId)) {
+        return;
+      }
+      collectors.confirm.deliver(fromHex, {
+        transcriptDigest: params["transcript-digest"],
+        groupKey: params["group-key"],
+      });
+      await incoming.respond({ result: "ok" });
     }
   }
-  void consume();
+  void serveManageRequests(session.incomingManageRequests, handle, {
+    onFault,
+  });
 }
 
 export interface RunFreshThresholdDkgOptions {
@@ -180,6 +194,8 @@ export interface RunFreshThresholdDkgOptions {
   scope?: Readonly<CapabilityScope>;
   token?: CapabilityToken;
   timeoutMs?: number;
+  /** Told of a failure while handling one incoming request: the request is answered with a refusal and the ceremony's loop goes on. */
+  onFault?: ConsumeFault<IncomingManageRequest>;
 }
 
 /** Runs a fresh DKG ceremony's full choreography for ONE device: broadcast round 1, exchange round 2 pairwise, compute round 3 locally, then confirm. Every participant calls this with the identical `sessionId` and `otherParticipants`-plus-`ownDeviceId` set. Rejects (without ever returning a result) if any peer's confirm digest or group key mismatches this device's own -- the ceremony MUST abort, never be repaired in place, per spec/threshold.cddl's own confirm-round obligation. */
@@ -195,7 +211,13 @@ export async function runFreshThresholdDkg(
     round2: new PerDeviceCollector(),
     confirm: new PerDeviceCollector(),
   };
-  startDkgConsumeLoop(options.session, verb, options.sessionId, collectors);
+  startDkgConsumeLoop({
+    session: options.session,
+    expectedVerb: verb,
+    sessionId: options.sessionId,
+    collectors,
+    onFault: options.onFault,
+  });
 
   const own = dkgRound1(options.ownDeviceId, maxSigners, options.threshold);
   const ownSplit = splitRound1Package(own.package);
@@ -459,6 +481,8 @@ export interface JoinThresholdReshareOptions {
   scope?: Readonly<CapabilityScope>;
   token?: CapabilityToken;
   timeoutMs?: number;
+  /** Told of a failure while handling one incoming request: the request is answered with a refusal and the ceremony's loop goes on. */
+  onFault?: ConsumeFault<IncomingManageRequest>;
 }
 
 /**
@@ -474,7 +498,13 @@ export async function joinThresholdReshare(
     round2: new PerDeviceCollector(),
     confirm: new PerDeviceCollector(),
   };
-  startDkgConsumeLoop(options.session, verb, options.sessionId, collectors);
+  startDkgConsumeLoop({
+    session: options.session,
+    expectedVerb: verb,
+    sessionId: options.sessionId,
+    collectors,
+    onFault: options.onFault,
+  });
 
   const otherSurvivorEntries: DeviceKeyed[] = await Promise.all(
     options.otherSurvivors.map(async (peer): Promise<DeviceKeyed> => {
