@@ -139,12 +139,17 @@ export interface CreateBulkSenderOptions {
    * Yields every chunk of the transfer starting at `fromSeq` (0 for a fresh transfer) -- MUST be callable more than once, from any previously-reached seq, and yield the identical bytes each time (spec/bulk.cddl's own "a file is inherently durable/re-readable" design point): this is what makes both mid-transfer resume and the post-transfer digest re-derivation below correct without this module buffering the whole transfer in memory during the send itself.
    */
   source: (fromSeq: number) => AsyncIterable<Uint8Array<ArrayBuffer>>;
+  /** How long to wait for each ack before the stream returns "incomplete"; DEFAULT_ACK_TIMEOUT_MS when absent. */
+  ackTimeoutMs?: number;
 }
 
 interface PendingAck {
   resolve: (frame: BulkAckFrame) => void;
   reject: (error: Error) => void;
 }
+
+/** How long a sender waits for the receiver's next ack before giving the stream up as incomplete, so that a receiver that stays connected and goes silent cannot hold the stream, and its registration, for ever. A transfer resumes from the receiver's own ack-seq, so giving up loses nothing. */
+export const DEFAULT_ACK_TIMEOUT_MS = 60_000;
 
 export interface BulkSenderOpenOptions {
   transferId?: Uint8Array<ArrayBuffer>;
@@ -191,27 +196,65 @@ export function createBulkSender(
 ): BulkSender {
   const pendingAcks = new Map<string, PendingAck[]>();
   const cancelled = new Set<string>();
+  /** Connections whose receive ended. A transfer started over one, or an ack awaited after it ended, is incomplete at once: nothing will ever deliver an ack over it. */
+  const ended = new WeakSet<Readonly<Connection>>();
 
   function resolveNextAck(id: string, frame: BulkAckFrame): void {
     const queue = pendingAcks.get(id);
-    if (queue === undefined || queue.length === 0) return;
-    const waiter = queue.shift();
+    const waiter = queue?.shift();
+    if (queue?.length === 0) pendingAcks.delete(id);
     waiter?.resolve(frame);
   }
 
   function rejectAllAcks(id: string, error: Error): void {
     const queue = pendingAcks.get(id);
     if (queue === undefined) return;
-    pendingAcks.set(id, []);
+    pendingAcks.delete(id);
     for (const waiter of queue) waiter.reject(error);
   }
 
+  /** Resolves with the next ack for `id`. Rejects when the connection ends or when `ackTimeoutMs` passes first, removing its registration either way, and the transfer's entry goes with its last registration. */
   async function waitForAck(id: string): Promise<BulkAckFrame> {
     return new Promise((resolve, reject) => {
       const queue = pendingAcks.get(id) ?? [];
-      queue.push({ resolve, reject });
+      const timer: { handle?: ReturnType<typeof setTimeout> } = {};
+      const entry: PendingAck = {
+        resolve: (frame) => {
+          clearTimeout(timer.handle);
+          resolve(frame);
+        },
+        reject: (error) => {
+          clearTimeout(timer.handle);
+          reject(error);
+        },
+      };
+      timer.handle = setTimeout(() => {
+        remove(id, entry);
+        reject(new Error("timed out waiting for the receiver's ack"));
+      }, options.ackTimeoutMs ?? DEFAULT_ACK_TIMEOUT_MS);
+      queue.push(entry);
       pendingAcks.set(id, queue);
     });
+  }
+
+  /** waitForAck over a connection: refused at once when that connection has already ended. */
+  async function waitForAckOver(
+    connection: Readonly<Connection>,
+    id: string,
+  ): Promise<BulkAckFrame> {
+    if (ended.has(connection)) {
+      throw new Error("connection ended");
+    }
+
+    return waitForAck(id);
+  }
+
+  function remove(id: string, entry: Readonly<PendingAck>): void {
+    const queue = pendingAcks.get(id);
+    if (queue === undefined) return;
+    const index = queue.indexOf(entry);
+    if (index !== -1) queue.splice(index, 1);
+    if (queue.length === 0) pendingAcks.delete(id);
   }
 
   async function stream(
@@ -246,7 +289,7 @@ export function createBulkSender(
       bytesInFlight + length > window;
     /** Takes acks until `length` more bytes fit in the window. */
     const awaitCredit = async (length: number): Promise<void> => {
-      applyAck(await waitForAck(id));
+      applyAck(await waitForAckOver(connection, id));
       if (exceedsWindow(length)) {
         await awaitCredit(length);
       }
@@ -259,7 +302,7 @@ export function createBulkSender(
         }
         // The first ack is awaited here rather than inside awaitCredit: an ack arriving while nothing is waiting for one is dropped, and a connection that ends while nothing waits rejects nothing, so the turns between a chunk's send and the next registered wait are kept to the ones the loop itself takes.
         if (exceedsWindow(chunk.length)) {
-          applyAck(await waitForAck(id));
+          applyAck(await waitForAckOver(connection, id));
           if (exceedsWindow(chunk.length)) {
             await awaitCredit(chunk.length);
           }
@@ -300,7 +343,13 @@ export function createBulkSender(
     connection: Readonly<Connection>,
     transferId: Uint8Array<ArrayBuffer>,
   ): Promise<BulkSendOutcome> {
-    const ack = await waitForAck(transferIdHex(transferId));
+    let ack: BulkAckFrame;
+    try {
+      ack = await waitForAckOver(connection, transferIdHex(transferId));
+    } catch {
+      // No ack will come: the connection ended, or the receiver stayed silent past the bound. The transfer resumes from the receiver's own ack-seq on a fresh connection.
+      return { status: "incomplete", ackedCount: 0 };
+    }
 
     return stream(connection, transferId, ack["ack-seq"], ack.window);
   }
@@ -314,6 +363,7 @@ export function createBulkSender(
       resolveNextAck(transferIdHex(frame["transfer-id"]), frame);
     },
     onConnectionEnd(connection) {
+      ended.add(connection);
       if (activeTransferId === undefined || activeConnection !== connection) {
         return;
       }

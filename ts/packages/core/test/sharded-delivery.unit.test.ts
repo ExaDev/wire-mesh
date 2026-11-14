@@ -29,7 +29,6 @@ import type { IdentityPort } from "../src/ports/identity.js";
 import { deviceIdFromFillHex } from "./hex.js";
 
 const TEST_SCOPE: CapabilityScope = { kind: "folder", path: "/shards" };
-const SETTLE_MS = 50;
 const K2_N3 = { dataShards: 2, totalShards: 3 };
 const TRANSFER_ID_BYTE_LENGTH = 16;
 const MISMATCHED_TRANSFER_ID_BYTE = 99;
@@ -250,24 +249,46 @@ describe("distributeShardedPayload over a connection whose receive fails", () =>
         },
       });
 
-      const settledInTime = Promise.race([
-        distributeShardedPayload(text("a payload"), {
-          config: K2_N3,
-          contentType: "text/plain",
-          targets: holders.map(({ device }) => device),
-          channels: holders.map(({ link }) => failing(link.channel)),
-          nextTransferId: (i) =>
-            new Uint8Array(TRANSFER_ID_BYTE_LENGTH).fill(i + 1),
-          scope: TEST_SCOPE,
-          identity: senderIdentity,
-          storage: createMemoryStorage(),
-        }),
-        new Promise<void>((resolve) => {
-          setTimeout(resolve, SETTLE_MS);
-        }),
-      ]);
-      await settledInTime;
+      const closed: string[] = [];
+      const distributed = await distributeShardedPayload(text("a payload"), {
+        config: K2_N3,
+        contentType: "text/plain",
+        targets: holders.map(({ device }) => device),
+        channels: holders.map(({ link }, index) => {
+          const channel = failing(link.channel);
 
+          return {
+            ...channel,
+            connection: {
+              ...channel.connection,
+              close: async () => {
+                closed.push(String(index));
+
+                return channel.connection.close();
+              },
+            },
+          };
+        }),
+        nextTransferId: (i) =>
+          new Uint8Array(TRANSFER_ID_BYTE_LENGTH).fill(i + 1),
+        scope: TEST_SCOPE,
+        identity: senderIdentity,
+        storage: createMemoryStorage(),
+      });
+      // Node reports a rejection nothing handled on a later turn of the event loop.
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+
+      expect(distributed.outcomes.map((outcome) => outcome.status)).toEqual([
+        "incomplete",
+        "incomplete",
+        "incomplete",
+      ]);
+      expect(closed.sort()).toEqual(["0", "1", "2"]);
       expect(unhandled).toEqual([]);
     } finally {
       process.off("unhandledRejection", record);

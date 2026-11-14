@@ -17,6 +17,7 @@ import type {
   IncomingManageRequest,
   MeshSession,
 } from "../domain/mesh-session.js";
+import { PerDeviceCollector } from "../domain/per-device-collector.js";
 import { bytesEqual } from "../domain/token-scope.js";
 import {
   buildKeygenConfirmCommand,
@@ -59,55 +60,6 @@ export interface ThresholdDkgResult {
   groupVerifyingKey: Uint8Array<ArrayBuffer>;
 }
 
-interface PendingWaiter<T> {
-  resolve: (value: T) => void;
-  reject: (error: Error) => void;
-}
-
-/** One (verb-family, session-id)'s worth of per-sender-device delivery: a message that arrives before anyone is waiting for it is buffered; a waiter that arrives before the message does is queued. Mirrors mesh-session.ts's own backlog/waiter pattern for its incomingManageRequests iterator, scoped down to "exactly one value per device-id" rather than an ordered stream. */
-class PerDeviceCollector<T> {
-  private readonly waiters = new Map<string, PendingWaiter<T>>();
-
-  private readonly backlog = new Map<string, T>();
-
-  private failure: Error | undefined;
-
-  async awaitFrom(deviceHex: string): Promise<T> {
-    if (this.failure !== undefined) {
-      throw this.failure;
-    }
-    const buffered = this.backlog.get(deviceHex);
-    if (buffered !== undefined) {
-      this.backlog.delete(deviceHex);
-
-      return buffered;
-    }
-
-    return new Promise((resolve, reject) => {
-      this.waiters.set(deviceHex, { resolve, reject });
-    });
-  }
-
-  deliver(deviceHex: string, value: T): void {
-    const waiter = this.waiters.get(deviceHex);
-    if (waiter !== undefined) {
-      this.waiters.delete(deviceHex);
-      waiter.resolve(value);
-    } else {
-      this.backlog.set(deviceHex, value);
-    }
-  }
-
-  /** Aborts every pending and future wait -- the ceremony failed for a reason no single awaitFrom call caused (e.g. a peer sent threshold.abort). */
-  fail(error: Error): void {
-    this.failure = error;
-    for (const waiter of this.waiters.values()) {
-      waiter.reject(error);
-    }
-    this.waiters.clear();
-  }
-}
-
 interface Round1Payload {
   commitment: Uint8Array[];
   proofOfKnowledge?: Uint8Array;
@@ -138,7 +90,7 @@ function startDkgConsumeLoop({
   sessionId: bigint;
   collectors: Readonly<DkgCollectors>;
   onFault: ConsumeFault<IncomingManageRequest> | undefined;
-}>): void {
+}>): () => void {
   async function handle(incoming: IncomingManageRequest): Promise<void> {
     if (
       incoming.command.verb !== expectedVerb ||
@@ -179,9 +131,61 @@ function startDkgConsumeLoop({
       await incoming.respond({ result: "ok" });
     }
   }
+  const stop = new AbortController();
+  // serveManageRequests never rejects; the handler below only fails collectors, which cannot throw.
   void serveManageRequests(session.incomingManageRequests, handle, {
     onFault,
+    signal: stop.signal,
+  })
+    .then(() => {
+      if (!stop.signal.aborted) {
+        const ended = new Error(
+          "the request stream ended before the ceremony finished",
+        );
+        collectors.round1.fail(ended);
+        collectors.round2.fail(ended);
+        collectors.confirm.fail(ended);
+      }
+    })
+    .catch(() => undefined);
+
+  return () => {
+    stop.abort();
+  };
+}
+
+/** Runs one ceremony with the request loop that feeds it: the loop starts first and is stopped when the ceremony ends, however it ends, so a finished ceremony does not keep taking requests that belong to the next consumer of the session. */
+async function withDkgLoop<Result>(
+  options: Readonly<{
+    session: Readonly<ThresholdDkgTransport>;
+    sessionId: bigint;
+    onFault?: ConsumeFault<IncomingManageRequest> | undefined;
+  }>,
+  expectedVerb: string,
+  ceremony: (collectors: DkgCollectors) => Promise<Result>,
+): Promise<Result> {
+  const collectors: DkgCollectors = {
+    round1: new PerDeviceCollector(),
+    round2: new PerDeviceCollector(),
+    confirm: new PerDeviceCollector(),
+  };
+  const stop = startDkgConsumeLoop({
+    session: options.session,
+    expectedVerb,
+    sessionId: options.sessionId,
+    collectors,
+    onFault: options.onFault,
   });
+  try {
+    return await ceremony(collectors);
+  } finally {
+    stop();
+    // A wait still registered when the ceremony ends (another wait failed first) is settled and removed.
+    const ended = new Error("the ceremony ended");
+    collectors.round1.fail(ended);
+    collectors.round2.fail(ended);
+    collectors.confirm.fail(ended);
+  }
 }
 
 export interface RunFreshThresholdDkgOptions {
@@ -202,23 +206,18 @@ export interface RunFreshThresholdDkgOptions {
 export async function runFreshThresholdDkg(
   options: Readonly<RunFreshThresholdDkgOptions>,
 ): Promise<ThresholdDkgResult> {
-  const verb = keygenCapabilityVerb(false);
+  return withDkgLoop(options, keygenCapabilityVerb(false), async (collectors) =>
+    runFreshCeremony(options, collectors),
+  );
+}
+
+async function runFreshCeremony(
+  options: Readonly<RunFreshThresholdDkgOptions>,
+  collectors: Readonly<DkgCollectors>,
+): Promise<ThresholdDkgResult> {
   const scope = options.scope ?? THRESHOLD_GROUP_SCOPE;
   const maxSigners = options.otherParticipants.length + 1;
   const allParticipants = [options.ownDeviceId, ...options.otherParticipants];
-  const collectors: DkgCollectors = {
-    round1: new PerDeviceCollector(),
-    round2: new PerDeviceCollector(),
-    confirm: new PerDeviceCollector(),
-  };
-  startDkgConsumeLoop({
-    session: options.session,
-    expectedVerb: verb,
-    sessionId: options.sessionId,
-    collectors,
-    onFault: options.onFault,
-  });
-
   const own = dkgRound1(options.ownDeviceId, maxSigners, options.threshold);
   const ownSplit = splitRound1Package(own.package);
 
@@ -243,7 +242,10 @@ export async function runFreshThresholdDkg(
 
   const round1Entries: DeviceKeyed[] = await Promise.all(
     options.otherParticipants.map(async (peer): Promise<DeviceKeyed> => {
-      const payload = await collectors.round1.awaitFrom(deviceIdToHex(peer));
+      const payload = await collectors.round1.awaitFrom(
+        deviceIdToHex(peer),
+        options.timeoutMs,
+      );
       if (payload.proofOfKnowledge === undefined) {
         throw new Error(
           `threshold.keygen-round1 from ${deviceIdToHex(peer)} is missing proof-of-knowledge, REQUIRED for a fresh DKG`,
@@ -277,7 +279,10 @@ export async function runFreshThresholdDkg(
 
   const round2Entries: DeviceKeyed[] = await Promise.all(
     options.otherParticipants.map(async (peer): Promise<DeviceKeyed> => {
-      const share = await collectors.round2.awaitFrom(deviceIdToHex(peer));
+      const share = await collectors.round2.awaitFrom(
+        deviceIdToHex(peer),
+        options.timeoutMs,
+      );
 
       return { deviceId: peer, value: Uint8Array.from(share) };
     }),
@@ -314,7 +319,10 @@ export async function runFreshThresholdDkg(
 
   await Promise.all(
     options.otherParticipants.map(async (peer) => {
-      const confirm = await collectors.confirm.awaitFrom(deviceIdToHex(peer));
+      const confirm = await collectors.confirm.awaitFrom(
+        deviceIdToHex(peer),
+        options.timeoutMs,
+      );
       const matches = dkgConfirmMatches(
         ownDigest,
         round3.groupVerifyingKey,
@@ -491,24 +499,23 @@ export interface JoinThresholdReshareOptions {
 export async function joinThresholdReshare(
   options: Readonly<JoinThresholdReshareOptions>,
 ): Promise<ThresholdDkgResult> {
-  const verb = keygenCapabilityVerb(true);
+  return withDkgLoop(options, keygenCapabilityVerb(true), async (collectors) =>
+    joinReshareCeremony(options, collectors),
+  );
+}
+
+async function joinReshareCeremony(
+  options: Readonly<JoinThresholdReshareOptions>,
+  collectors: Readonly<DkgCollectors>,
+): Promise<ThresholdDkgResult> {
   const scope = options.scope ?? THRESHOLD_GROUP_SCOPE;
-  const collectors: DkgCollectors = {
-    round1: new PerDeviceCollector(),
-    round2: new PerDeviceCollector(),
-    confirm: new PerDeviceCollector(),
-  };
-  startDkgConsumeLoop({
-    session: options.session,
-    expectedVerb: verb,
-    sessionId: options.sessionId,
-    collectors,
-    onFault: options.onFault,
-  });
 
   const otherSurvivorEntries: DeviceKeyed[] = await Promise.all(
     options.otherSurvivors.map(async (peer): Promise<DeviceKeyed> => {
-      const payload = await collectors.round1.awaitFrom(deviceIdToHex(peer));
+      const payload = await collectors.round1.awaitFrom(
+        deviceIdToHex(peer),
+        options.timeoutMs,
+      );
 
       return {
         deviceId: peer,
@@ -542,7 +549,7 @@ export async function joinThresholdReshare(
 
   const receivedShares: Uint8Array[] = await Promise.all(
     options.otherSurvivors.map(async (peer) =>
-      collectors.round2.awaitFrom(deviceIdToHex(peer)),
+      collectors.round2.awaitFrom(deviceIdToHex(peer), options.timeoutMs),
     ),
   );
   if (options.ownContribution !== undefined) {
@@ -582,7 +589,10 @@ export async function joinThresholdReshare(
   );
   await Promise.all(
     otherNewParticipants.map(async (peer) => {
-      const confirm = await collectors.confirm.awaitFrom(deviceIdToHex(peer));
+      const confirm = await collectors.confirm.awaitFrom(
+        deviceIdToHex(peer),
+        options.timeoutMs,
+      );
       const matches = dkgConfirmMatches(
         ownDigest,
         derived.groupVerifyingKey,

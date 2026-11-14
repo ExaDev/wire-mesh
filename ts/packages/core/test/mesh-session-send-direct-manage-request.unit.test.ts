@@ -218,6 +218,47 @@ describe("sendDirectManageRequest", () => {
     }
   });
 
+  it("leaves no timer running once the response has arrived", async () => {
+    vi.useFakeTimers();
+    try {
+      const { transport, fake } = directTransport();
+      const pending = sendDirectManageRequest(
+        transport,
+        DIRECT_ADDRESS,
+        testCommand,
+        testScope,
+        { timeoutMs: TIMEOUT_MS },
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      fake.push({
+        type: "manage-response",
+        "request-id": 0,
+        outcome: { result: "ok" },
+      } satisfies ManageResponseFrame);
+      await vi.advanceTimersByTimeAsync(0);
+      await pending;
+
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("closes the connection when the request cannot be sent", async () => {
+    const { transport, fake } = directTransport();
+    fake.rejectSends(new Error("the link refused the request"));
+
+    await expect(
+      sendDirectManageRequest(
+        transport,
+        DIRECT_ADDRESS,
+        testCommand,
+        testScope,
+      ),
+    ).rejects.toThrow("the link refused the request");
+    expect(fake.isClosed).toBe(true);
+  });
+
   it("never times out when no timeoutMs is given", async () => {
     const { transport, fake } = directTransport();
     const pending = sendDirectManageRequest(

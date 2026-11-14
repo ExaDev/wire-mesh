@@ -166,4 +166,22 @@ describe("a manage-request abandoned by a close", () => {
 
     expect(unhandled).toEqual([]);
   });
+
+  it("is refused at once, rather than left pending for ever, when made while the session is closing", async () => {
+    const { session, connection } = await connected();
+    connection.holdCloses();
+    const closing = session.close();
+
+    await expect(
+      session.sendManageRequest(command, { kind: "folder" }),
+    ).rejects.toThrow("not connected");
+    await expect(session.sendPingMeasureRtt(PONG_TIMEOUT_MS)).rejects.toThrow(
+      "not connected",
+    );
+    connection.releaseCloses();
+    await closing;
+    await letUnhandledRejectionsSurface();
+
+    expect(unhandled).toEqual([]);
+  });
 });

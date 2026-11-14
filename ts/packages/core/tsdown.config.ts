@@ -15,6 +15,7 @@ const INTERNAL_MODULES = [
   "src/adapters/threshold-participant.ts",
   "src/domain/bounded-log.ts",
   "src/domain/own-version.ts",
+  "src/domain/per-device-collector.ts",
   "src/domain/sequential.ts",
   "src/domain/relay-channels.ts",
   "src/domain/relay-pairing.ts",
