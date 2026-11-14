@@ -18,7 +18,6 @@ use wire_mesh_wire::identity::{DeviceId, IdentityKey};
 use wire_mesh_wire::tokens::CoseSign1;
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::domain::cose::sig_structure;
 use crate::domain::identity_key::{ed25519_public_key, es256_public_key};
 use crate::ports::{CoreError, Identity};
 
@@ -141,21 +140,7 @@ impl NodeIdentity {
     /// unprotected header, and a signature over the RFC 9052
     /// Sig_structure. The same construction every verifier checks.
     pub async fn mint_cose_sign1(&self, payload: &[u8]) -> Result<CoseSign1, CoreError> {
-        let protected = {
-            let headers = wire_mesh_wire::tokens::CoseTokenHeaders {
-                alg: Some(self.identity_key.alg),
-                kid: Some(self.device_id.as_bytes().to_vec()),
-                extra: wire_mesh_wire::value::CanonicalMap::new(),
-            };
-            wire_mesh_wire::to_vec(&headers)
-        };
-        let signature = self.sign(&sig_structure(&protected, payload)).await?;
-        Ok(CoseSign1 {
-            protected,
-            unprotected: wire_mesh_wire::tokens::CoseTokenHeaders::new(),
-            payload: Some(payload.to_vec()),
-            signature,
-        })
+        crate::domain::cose::sign_cose_sign1(self, payload).await
     }
 }
 

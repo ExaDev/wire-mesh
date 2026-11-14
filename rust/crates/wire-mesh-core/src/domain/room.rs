@@ -11,7 +11,7 @@ use wire_mesh_wire::room::RoomNoticeClaims;
 use wire_mesh_wire::tokens::CoseSign1;
 
 use crate::domain::cose::sig_structure;
-use crate::domain::revocation::RevocationView;
+use crate::domain::revocation::RevocationCheck;
 use crate::domain::room_token_verification::{verify_room_token, RoomTokenRejection};
 use crate::ports::{Clock, Identity};
 
@@ -84,7 +84,7 @@ pub enum RoomNoticeVerdict {
 pub async fn verify_room_notice(
     identity: &dyn Identity,
     clock: &dyn Clock,
-    revocations: &RevocationView,
+    revocations: &dyn RevocationCheck,
     notice: &CoseSign1,
     // When given, refuses any notice not claiming exactly this room --
     // "is this the room I actually asked to read", checked against the

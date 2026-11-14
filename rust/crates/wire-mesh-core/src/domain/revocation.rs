@@ -89,6 +89,20 @@ pub struct RevocationView {
     entries: BTreeMap<Vec<u8>, Vec<RevocationClaims>>,
 }
 
+/// The revocation view a verifier consults: every recorded, already signature-verified revocation-claims for a token-id, across every issuer that has submitted one, unfiltered by the store itself. The verifier decides which entries count (an entry counts against a token when its own issuer is the token's issuer, or when it carries a verified delegated `manage:revoke` authorisation). Asynchronous so a store backed by something that is not in memory can answer it.
+#[async_trait::async_trait]
+pub trait RevocationCheck: Send + Sync {
+    /// Every revocation-claims recorded for `token_id`.
+    async fn entries_for(&self, token_id: &[u8]) -> Vec<RevocationClaims>;
+}
+
+#[async_trait::async_trait]
+impl RevocationCheck for RevocationView {
+    async fn entries_for(&self, token_id: &[u8]) -> Vec<RevocationClaims> {
+        RevocationView::entries_for(self, token_id).to_vec()
+    }
+}
+
 impl RevocationView {
     pub fn new() -> Self {
         Self::default()
