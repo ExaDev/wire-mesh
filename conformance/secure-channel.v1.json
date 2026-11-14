@@ -1050,7 +1050,7 @@
       "wire_hex": "a664747970656c7365637572652d68656c6c6f656e6f6e636550a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0697369676e61747572655840c7da0fff4529c92f444d9383752b28338525aa612f91b678fffd4458ab460d0134e27f7932a71e15cde5dcc712149454c464905f492646a468418ec78850470469746f2d6465766963655820b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd66c6964656e746974792d6b6579a263616c67276a7075626c69632d6b65795820f0ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff6d657068656d6572616c2d6b65795841040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794"
     },
     {
-      "name": "verdict_ed25519_identity_key_ordinary_point_wrong_signature",
+      "name": "verdict_ed25519_identity_key_other_key_wrong_signature",
       "message": {
         "type": "secure-hello",
         "ephemeral-key": {
@@ -1062,17 +1062,142 @@
         "identity-key": {
           "alg": -8,
           "public-key": {
-            "hex": "0300000000000000000000000000000000000000000000000000000000000000"
+            "hex": "d404bc44565aedbb899150e5b0b3b32b9441bf0cb7884c33130da8dbc27dd2cf"
           }
         },
         "to-device": {
           "hex": "b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6"
         },
         "signature": {
-          "hex": "760c98ef92bf2a1a2dabd77d67a528b75f615f56031ec40ed6b1b567c6cefddb040bf2b68be360e16005dfbcf7d7a1e5bb5f84bcbf4bca327c4b82d473563400"
+          "hex": "612c847c0ae3df7f9a0e0f22ecefc9420e3f27d60d882e1308d866107297cf578fa8ee2bf10f5a826516eb03529a76bc53f4c2b45707778b5593182d7d103c09"
         }
       },
-      "wire_hex": "a664747970656c7365637572652d68656c6c6f656e6f6e636550a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0697369676e61747572655840760c98ef92bf2a1a2dabd77d67a528b75f615f56031ec40ed6b1b567c6cefddb040bf2b68be360e16005dfbcf7d7a1e5bb5f84bcbf4bca327c4b82d47356340069746f2d6465766963655820b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd66c6964656e746974792d6b6579a263616c67276a7075626c69632d6b6579582003000000000000000000000000000000000000000000000000000000000000006d657068656d6572616c2d6b65795841040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794"
+      "wire_hex": "a664747970656c7365637572652d68656c6c6f656e6f6e636550a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0697369676e61747572655840612c847c0ae3df7f9a0e0f22ecefc9420e3f27d60d882e1308d866107297cf578fa8ee2bf10f5a826516eb03529a76bc53f4c2b45707778b5593182d7d103c0969746f2d6465766963655820b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd66c6964656e746974792d6b6579a263616c67276a7075626c69632d6b65795820d404bc44565aedbb899150e5b0b3b32b9441bf0cb7884c33130da8dbc27dd2cf6d657068656d6572616c2d6b65795841040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794"
+    },
+    {
+      "name": "verdict_ed25519_signature_s_not_reduced",
+      "message": {
+        "type": "secure-hello",
+        "ephemeral-key": {
+          "hex": "040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794"
+        },
+        "nonce": {
+          "hex": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
+        },
+        "identity-key": {
+          "alg": -8,
+          "public-key": {
+            "hex": "bc7cbcb5636375fa1d82434d466724d92377f53b980695dd49d26d0ce12205a5"
+          }
+        },
+        "to-device": {
+          "hex": "b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6"
+        },
+        "signature": {
+          "hex": "537d120b49787a187eb3d0cb1ceaede8b16c47aaa81be549849297d47c12ab968638549bce06c295e3dc7e930b2c9cf328c168df722df3db63e34ae8f3b5a318"
+        }
+      },
+      "wire_hex": "a664747970656c7365637572652d68656c6c6f656e6f6e636550a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0697369676e61747572655840537d120b49787a187eb3d0cb1ceaede8b16c47aaa81be549849297d47c12ab968638549bce06c295e3dc7e930b2c9cf328c168df722df3db63e34ae8f3b5a31869746f2d6465766963655820b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd66c6964656e746974792d6b6579a263616c67276a7075626c69632d6b65795820bc7cbcb5636375fa1d82434d466724d92377f53b980695dd49d26d0ce12205a56d657068656d6572616c2d6b65795841040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794"
+    },
+    {
+      "name": "verdict_ed25519_signature_r_small_order",
+      "message": {
+        "type": "secure-hello",
+        "ephemeral-key": {
+          "hex": "040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794"
+        },
+        "nonce": {
+          "hex": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
+        },
+        "identity-key": {
+          "alg": -8,
+          "public-key": {
+            "hex": "bc7cbcb5636375fa1d82434d466724d92377f53b980695dd49d26d0ce12205a5"
+          }
+        },
+        "to-device": {
+          "hex": "b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6"
+        },
+        "signature": {
+          "hex": "01000000000000000000000000000000000000000000000000000000000000001fc977d6780a77254e58b0166a75a1e53389a4dd2cfab1f292d9fdc772087906"
+        }
+      },
+      "wire_hex": "a664747970656c7365637572652d68656c6c6f656e6f6e636550a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0697369676e6174757265584001000000000000000000000000000000000000000000000000000000000000001fc977d6780a77254e58b0166a75a1e53389a4dd2cfab1f292d9fdc77208790669746f2d6465766963655820b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd66c6964656e746974792d6b6579a263616c67276a7075626c69632d6b65795820bc7cbcb5636375fa1d82434d466724d92377f53b980695dd49d26d0ce12205a56d657068656d6572616c2d6b65795841040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794"
+    },
+    {
+      "name": "verdict_ed25519_signature_r_non_canonical",
+      "message": {
+        "type": "secure-hello",
+        "ephemeral-key": {
+          "hex": "040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794"
+        },
+        "nonce": {
+          "hex": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
+        },
+        "identity-key": {
+          "alg": -8,
+          "public-key": {
+            "hex": "bc7cbcb5636375fa1d82434d466724d92377f53b980695dd49d26d0ce12205a5"
+          }
+        },
+        "to-device": {
+          "hex": "b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6"
+        },
+        "signature": {
+          "hex": "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f6273ea9c6713efca2bcf3091679ac51fda4b92c0387ed9348704477aa53c8303"
+        }
+      },
+      "wire_hex": "a664747970656c7365637572652d68656c6c6f656e6f6e636550a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0697369676e61747572655840eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f6273ea9c6713efca2bcf3091679ac51fda4b92c0387ed9348704477aa53c830369746f2d6465766963655820b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd66c6964656e746974792d6b6579a263616c67276a7075626c69632d6b65795820bc7cbcb5636375fa1d82434d466724d92377f53b980695dd49d26d0ce12205a56d657068656d6572616c2d6b65795841040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794"
+    },
+    {
+      "name": "verdict_ed25519_signature_r_mixed_order",
+      "message": {
+        "type": "secure-hello",
+        "ephemeral-key": {
+          "hex": "040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794"
+        },
+        "nonce": {
+          "hex": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
+        },
+        "identity-key": {
+          "alg": -8,
+          "public-key": {
+            "hex": "bc7cbcb5636375fa1d82434d466724d92377f53b980695dd49d26d0ce12205a5"
+          }
+        },
+        "to-device": {
+          "hex": "b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6"
+        },
+        "signature": {
+          "hex": "7c1ee86a45156b9fa319c3d26abdea32f03e23e8c26413c9f419c8045b8ac5c31706a803902982c8bc8e942f600c90a8d913572b283e4c97e2574440f0ee6f0a"
+        }
+      },
+      "wire_hex": "a664747970656c7365637572652d68656c6c6f656e6f6e636550a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0697369676e617475726558407c1ee86a45156b9fa319c3d26abdea32f03e23e8c26413c9f419c8045b8ac5c31706a803902982c8bc8e942f600c90a8d913572b283e4c97e2574440f0ee6f0a69746f2d6465766963655820b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd66c6964656e746974792d6b6579a263616c67276a7075626c69632d6b65795820bc7cbcb5636375fa1d82434d466724d92377f53b980695dd49d26d0ce12205a56d657068656d6572616c2d6b65795841040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794"
+    },
+    {
+      "name": "verdict_ed25519_identity_key_mixed_order",
+      "message": {
+        "type": "secure-hello",
+        "ephemeral-key": {
+          "hex": "040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794"
+        },
+        "nonce": {
+          "hex": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
+        },
+        "identity-key": {
+          "alg": -8,
+          "public-key": {
+            "hex": "3757f16eb7863067eb5a91dfd00c556e71f2308e660497b711f9c222c4b50684"
+          }
+        },
+        "to-device": {
+          "hex": "b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6"
+        },
+        "signature": {
+          "hex": "9742506ad88911bcb4f140c57fb3fd3f55b4cd023568482ffe961bcdfd7533efd64806a5bed4f5aea64e1f7b8bbb4caa27260dfb5a71961de161fb5b084cec0e"
+        }
+      },
+      "wire_hex": "a664747970656c7365637572652d68656c6c6f656e6f6e636550a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0697369676e617475726558409742506ad88911bcb4f140c57fb3fd3f55b4cd023568482ffe961bcdfd7533efd64806a5bed4f5aea64e1f7b8bbb4caa27260dfb5a71961de161fb5b084cec0e69746f2d6465766963655820b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd66c6964656e746974792d6b6579a263616c67276a7075626c69632d6b657958203757f16eb7863067eb5a91dfd00c556e71f2308e660497b711f9c222c4b506846d657068656d6572616c2d6b65795841040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794"
     },
     {
       "name": "verdict_es256_valid",
@@ -1323,6 +1448,56 @@
         }
       },
       "wire_hex": "a664747970656c7365637572652d68656c6c6f656e6f6e636550c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0697369676e6174757265584080c9b65dea0dada3c5e98d4f378123a6939319487cc51695fcad27a20e7069784a5dfe7a1a12774636892dbb92b707cb49fa28e5362bb4212406f6be6006724c69746f2d646576696365582024b03a0e3818a49e05631efc80768d08e32a81a944748730f14f613af9e909a66c6964656e746974792d6b6579a263616c673903e66a7075626c69632d6b65795841043bb91001a52587b5a1dbb94006df9af61fa8d4e89da16fe406e45f1371eb27df7162d4da78ae018e4ae514237606a38a95d0fe5550be9dccefed1e9beb99d3356d657068656d6572616c2d6b657958410451a7580833898ea1b183cbd7350a4099078c6ef1c1e18e970cd7683035f25e7d0110522712b0b5a7cff081685486984a94e6831edac46e7360fa9d834a7a81a1"
+    },
+    {
+      "name": "verdict_es256_identity_key_compressed",
+      "message": {
+        "type": "secure-hello",
+        "ephemeral-key": {
+          "hex": "0451a7580833898ea1b183cbd7350a4099078c6ef1c1e18e970cd7683035f25e7d0110522712b0b5a7cff081685486984a94e6831edac46e7360fa9d834a7a81a1"
+        },
+        "nonce": {
+          "hex": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+        },
+        "identity-key": {
+          "alg": -7,
+          "public-key": {
+            "hex": "033bb91001a52587b5a1dbb94006df9af61fa8d4e89da16fe406e45f1371eb27df"
+          }
+        },
+        "to-device": {
+          "hex": "730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8"
+        },
+        "signature": {
+          "hex": "7a7602719308ad9bdf535936a378026c2d00a9c708416fa1a0498c1d06e0d5c85d039d6c435c465cb92909379eef8b3c5ec754ede1381b7fc2674d2e9ca54f96"
+        }
+      },
+      "wire_hex": "a664747970656c7365637572652d68656c6c6f656e6f6e636550c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0697369676e617475726558407a7602719308ad9bdf535936a378026c2d00a9c708416fa1a0498c1d06e0d5c85d039d6c435c465cb92909379eef8b3c5ec754ede1381b7fc2674d2e9ca54f9669746f2d6465766963655820730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a86c6964656e746974792d6b6579a263616c67266a7075626c69632d6b65795821033bb91001a52587b5a1dbb94006df9af61fa8d4e89da16fe406e45f1371eb27df6d657068656d6572616c2d6b657958410451a7580833898ea1b183cbd7350a4099078c6ef1c1e18e970cd7683035f25e7d0110522712b0b5a7cff081685486984a94e6831edac46e7360fa9d834a7a81a1"
+    },
+    {
+      "name": "verdict_es256_identity_key_compact",
+      "message": {
+        "type": "secure-hello",
+        "ephemeral-key": {
+          "hex": "0451a7580833898ea1b183cbd7350a4099078c6ef1c1e18e970cd7683035f25e7d0110522712b0b5a7cff081685486984a94e6831edac46e7360fa9d834a7a81a1"
+        },
+        "nonce": {
+          "hex": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+        },
+        "identity-key": {
+          "alg": -7,
+          "public-key": {
+            "hex": "053bb91001a52587b5a1dbb94006df9af61fa8d4e89da16fe406e45f1371eb27df"
+          }
+        },
+        "to-device": {
+          "hex": "730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8"
+        },
+        "signature": {
+          "hex": "91e4a266f39a18eac4e7d15f2f471ad095d3ce52e1092588e982e6e55e0c8aee83904580288ffcd39553452692e00ef55d814a59ff5b324bdbac5494003ec79e"
+        }
+      },
+      "wire_hex": "a664747970656c7365637572652d68656c6c6f656e6f6e636550c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0697369676e6174757265584091e4a266f39a18eac4e7d15f2f471ad095d3ce52e1092588e982e6e55e0c8aee83904580288ffcd39553452692e00ef55d814a59ff5b324bdbac5494003ec79e69746f2d6465766963655820730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a86c6964656e746974792d6b6579a263616c67266a7075626c69632d6b65795821053bb91001a52587b5a1dbb94006df9af61fa8d4e89da16fe406e45f1371eb27df6d657068656d6572616c2d6b657958410451a7580833898ea1b183cbd7350a4099078c6ef1c1e18e970cd7683035f25e7d0110522712b0b5a7cff081685486984a94e6831edac46e7360fa9d834a7a81a1"
     },
     {
       "name": "verdict_es256_identity_key_point_at_infinity",
@@ -2237,15 +2412,70 @@
         "signature_hex": "c7da0fff4529c92f444d9383752b28338525aa612f91b678fffd4458ab460d0134e27f7932a71e15cde5dcc712149454c464905f492646a468418ec788504704"
       },
       {
-        "name": "verdict_ed25519_identity_key_ordinary_point_wrong_signature",
+        "name": "verdict_ed25519_identity_key_other_key_wrong_signature",
         "handshake": "ed25519",
         "receiver": "b",
-        "hello_vector": "verdict_ed25519_identity_key_ordinary_point_wrong_signature",
+        "hello_vector": "verdict_ed25519_identity_key_other_key_wrong_signature",
         "expected": "bad_signature",
         "also_acceptable": [],
         "peer_device_id_hex": null,
-        "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a091d3827f052f5a4b44d5fe2bed657c752247365d94f80a33cb09c1436a16b125b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
-        "signature_hex": "760c98ef92bf2a1a2dabd77d67a528b75f615f56031ec40ed6b1b567c6cefddb040bf2b68be360e16005dfbcf7d7a1e5bb5f84bcbf4bca327c4b82d473563400"
+        "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a024b03a0e3818a49e05631efc80768d08e32a81a944748730f14f613af9e909a6b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
+        "signature_hex": "612c847c0ae3df7f9a0e0f22ecefc9420e3f27d60d882e1308d866107297cf578fa8ee2bf10f5a826516eb03529a76bc53f4c2b45707778b5593182d7d103c09"
+      },
+      {
+        "name": "verdict_ed25519_signature_s_not_reduced",
+        "handshake": "ed25519",
+        "receiver": "b",
+        "hello_vector": "verdict_ed25519_signature_s_not_reduced",
+        "expected": "bad_signature",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
+        "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
+        "signature_hex": "537d120b49787a187eb3d0cb1ceaede8b16c47aaa81be549849297d47c12ab968638549bce06c295e3dc7e930b2c9cf328c168df722df3db63e34ae8f3b5a318"
+      },
+      {
+        "name": "verdict_ed25519_signature_r_small_order",
+        "handshake": "ed25519",
+        "receiver": "b",
+        "hello_vector": "verdict_ed25519_signature_r_small_order",
+        "expected": "bad_signature",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
+        "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
+        "signature_hex": "01000000000000000000000000000000000000000000000000000000000000001fc977d6780a77254e58b0166a75a1e53389a4dd2cfab1f292d9fdc772087906"
+      },
+      {
+        "name": "verdict_ed25519_signature_r_non_canonical",
+        "handshake": "ed25519",
+        "receiver": "b",
+        "hello_vector": "verdict_ed25519_signature_r_non_canonical",
+        "expected": "bad_signature",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
+        "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
+        "signature_hex": "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f6273ea9c6713efca2bcf3091679ac51fda4b92c0387ed9348704477aa53c8303"
+      },
+      {
+        "name": "verdict_ed25519_signature_r_mixed_order",
+        "handshake": "ed25519",
+        "receiver": "b",
+        "hello_vector": "verdict_ed25519_signature_r_mixed_order",
+        "expected": "bad_signature",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
+        "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8b28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
+        "signature_hex": "7c1ee86a45156b9fa319c3d26abdea32f03e23e8c26413c9f419c8045b8ac5c31706a803902982c8bc8e942f600c90a8d913572b283e4c97e2574440f0ee6f0a"
+      },
+      {
+        "name": "verdict_ed25519_identity_key_mixed_order",
+        "handshake": "ed25519",
+        "receiver": "b",
+        "hello_vector": "verdict_ed25519_identity_key_mixed_order",
+        "expected": "invalid_identity_key",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
+        "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f763100040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0deb168d61655503c73294b9834c91e2ce999ded4fb030f4d13b403624f70258cb28baab33e1f95a78c7e9547554c3e95a2e38030a2c64ce45378f15d33a4ddd6",
+        "signature_hex": "9742506ad88911bcb4f140c57fb3fd3f55b4cd023568482ffe961bcdfd7533efd64806a5bed4f5aea64e1f7b8bbb4caa27260dfb5a71961de161fb5b084cec0e"
       },
       {
         "name": "verdict_es256_valid",
@@ -2356,6 +2586,28 @@
         "peer_device_id_hex": null,
         "signing_input_hex": null,
         "signature_hex": null
+      },
+      {
+        "name": "verdict_es256_identity_key_compressed",
+        "handshake": "es256",
+        "receiver": "a",
+        "hello_vector": "verdict_es256_identity_key_compressed",
+        "expected": "invalid_identity_key",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
+        "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f7631000451a7580833898ea1b183cbd7350a4099078c6ef1c1e18e970cd7683035f25e7d0110522712b0b5a7cff081685486984a94e6831edac46e7360fa9d834a7a81a1c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0a89777f3a2ac708b0ec517a7ae4fb3a283436f4c6b7cbbaa67175bc2f592d1ba730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8",
+        "signature_hex": "7a7602719308ad9bdf535936a378026c2d00a9c708416fa1a0498c1d06e0d5c85d039d6c435c465cb92909379eef8b3c5ec754ede1381b7fc2674d2e9ca54f96"
+      },
+      {
+        "name": "verdict_es256_identity_key_compact",
+        "handshake": "es256",
+        "receiver": "a",
+        "hello_vector": "verdict_es256_identity_key_compact",
+        "expected": "invalid_identity_key",
+        "also_acceptable": [],
+        "peer_device_id_hex": null,
+        "signing_input_hex": "776972652d6d6573682f7365637572652d68656c6c6f2f7631000451a7580833898ea1b183cbd7350a4099078c6ef1c1e18e970cd7683035f25e7d0110522712b0b5a7cff081685486984a94e6831edac46e7360fa9d834a7a81a1c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c07dd10a0242c3d1e00a76bdbcae16ce938809b47d50b4049501a76676cfd2d1fe730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8",
+        "signature_hex": "91e4a266f39a18eac4e7d15f2f471ad095d3ce52e1092588e982e6e55e0c8aee83904580288ffcd39553452692e00ef55d814a59ff5b324bdbac5494003ec79e"
       },
       {
         "name": "verdict_es256_identity_key_point_at_infinity",
