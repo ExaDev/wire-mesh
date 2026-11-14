@@ -20,6 +20,10 @@ import type {
   MeshSession,
 } from "wire-mesh-core/domain/mesh-session";
 import {
+  serveManageRequests,
+  type ConsumeFault,
+} from "wire-mesh-core/domain/consume-incoming";
+import {
   WEBRTC_SIGNAL_SCOPE,
   WEBRTC_SIGNAL_VERB,
   authorizeIncomingOffer,
@@ -51,6 +55,8 @@ export interface WebrtcNegotiatorOptions {
   localTracks?: readonly MediaStreamTrack[];
   /** Fired for every remote track received on any peer connection this negotiator manages, offering or answering alike. */
   onRemoteTrack?: (event: Readonly<RTCTrackEvent>) => void;
+  /** Told of a failure while handling one incoming signalling request: the request is answered with a refusal where it can be and the negotiator goes on to the next. Absent, the failure is dropped. */
+  onFault?: ConsumeFault<IncomingManageRequest> | undefined;
 }
 
 export interface WebrtcNegotiator {
@@ -206,23 +212,25 @@ export function createWebrtcNegotiator(
     await incoming.respond({ result: "ok" });
   }
 
-  async function consumeIncoming(): Promise<void> {
-    for await (const incoming of session.incomingManageRequests) {
-      if (incoming.command.verb !== WEBRTC_SIGNAL_VERB) {
-        // Not this negotiator's business. Today it is the session's only incomingManageRequests consumer (no other module in this package reads that stream), so an unrelated verb is left unanswered rather than misrouted -- a shared request router across domains is future work for whenever a second consumer actually exists.
-        continue;
-      }
-      const params = incoming.command.params;
-      if (isWebrtcOffer(params)) {
-        await handleIncomingOffer(incoming, params);
-      } else if (isWebrtcAnswer(params)) {
-        await handleIncomingAnswer(incoming, params);
-      } else if (isWebrtcIceCandidate(params)) {
-        await handleIncomingIceCandidate(incoming, params);
-      }
+  async function handleIncoming(
+    incoming: Readonly<IncomingManageRequest>,
+  ): Promise<void> {
+    if (incoming.command.verb !== WEBRTC_SIGNAL_VERB) {
+      // Not this negotiator's business. Today it is the session's only incomingManageRequests consumer (no other module in this package reads that stream), so an unrelated verb is left unanswered rather than misrouted -- a shared request router across domains is future work for whenever a second consumer actually exists.
+      return;
+    }
+    const params = incoming.command.params;
+    if (isWebrtcOffer(params)) {
+      await handleIncomingOffer(incoming, params);
+    } else if (isWebrtcAnswer(params)) {
+      await handleIncomingAnswer(incoming, params);
+    } else if (isWebrtcIceCandidate(params)) {
+      await handleIncomingIceCandidate(incoming, params);
     }
   }
-  void consumeIncoming();
+  void serveManageRequests(session.incomingManageRequests, handleIncoming, {
+    onFault: options.onFault,
+  });
 
   return {
     async initiate(targetDevice?: DeviceId): Promise<Connection> {
