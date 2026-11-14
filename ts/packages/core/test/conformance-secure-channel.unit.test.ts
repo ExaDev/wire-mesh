@@ -756,18 +756,30 @@ describe("secure-channel open sequences", () => {
 });
 
 describe("the vector file format", () => {
-  const [first] = channelVectors.hello_verdicts;
+  const [first, ...others] = channelVectors.hello_verdicts;
 
-  it("refuses a hello verdict that lists a second acceptable answer", () => {
+  /** `file` with its secure_channel section changed, parsed the way the loader above parses the committed file. */
+  function parsed(change: Readonly<Record<string, unknown>>): boolean {
+    return fileSchema.safeParse({
+      ...file,
+      secure_channel: { ...channelVectors, ...change },
+    }).success;
+  }
+
+  it("accepts the committed file", () => {
+    expect(parsed({})).toBe(true);
+  });
+
+  it("refuses a file in which a hello verdict lists a second acceptable answer", () => {
     expect(first).toBeDefined();
     expect(
-      helloVerdictSchema.safeParse({ ...first, also_acceptable: [] }).success,
+      parsed({
+        hello_verdicts: [{ ...first, also_acceptable: [] }, ...others],
+      }),
     ).toBe(false);
-    expect(helloVerdictSchema.safeParse(first).success).toBe(true);
   });
 
   it("refuses a file of the layout that allowed a second answer", () => {
-    const section = z.literal(LAYOUT_VERSION);
-    expect(section.safeParse(LAYOUT_VERSION - 1).success).toBe(false);
+    expect(parsed({ layout_version: LAYOUT_VERSION - 1 })).toBe(false);
   });
 });
