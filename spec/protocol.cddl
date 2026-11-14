@@ -1156,6 +1156,8 @@ room-notice-claims = {
 ;    device the channel authenticated, never to the log its `peer` field names.
 ; 6. Ephemeral keys and nonces are fresh for every channel and MUST NOT be
 ;    reused. A channel does not outlive the relay connection it was set up on.
+; 7. A hello whose ephemeral key is the one an established channel with that
+;    peer was built from MUST be dropped, and MUST NOT replace that channel.
 ;
 ; Availability against the relay is not a goal: it can drop, delay or replay
 ; frames, and a replayed old hello can only make a channel unusable, never
