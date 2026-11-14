@@ -1,3 +1,31 @@
+## [4.1.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.0.8...wire-mesh-core%404.1.0) (2026-11-14)
+
+### Features
+
+* **conformance:** make the secure-channel vectors uniformly typed, fully checked and registered ([4c571c4](https://github.com/ExaDev/wire-mesh/commit/4c571c4aef6e8cf76f47a7f30ade3cbe48980a1f))
+* **conformance:** pin counter width, refusal reasons and malformed input in the vectors ([d8b73fb](https://github.com/ExaDev/wire-mesh/commit/d8b73fb44158ad44a85a66c4fccb6a67d968aae0))
+* **core:** drop a channel whose counter is spent and refuse hellos only for key faults ([0b2c703](https://github.com/ExaDev/wire-mesh/commit/0b2c703cc4412fefcce523891bc0901c29ba8b16))
+* **core:** never let a hello take the session down, and wrap key faults in every identity adapter ([014f81c](https://github.com/ExaDev/wire-mesh/commit/014f81c2c1527619607e65f6a269255e11ab6c86))
+* **core:** report why a hello or a sealed frame was refused ([844cec5](https://github.com/ExaDev/wire-mesh/commit/844cec5f9eec20af0d89548ec720ffff34ad0232))
+
+### Bug Fixes
+
+* **core:** refuse to seal past the largest counter held exactly ([de932d3](https://github.com/ExaDev/wire-mesh/commit/de932d37c0b4abf155969b2cd1231e5828a435bf))
+* **core:** validate the first send counter when the relay channels are built ([03d80fc](https://github.com/ExaDev/wire-mesh/commit/03d80fc7bb1244fe0fbc2cd03d47d43dd5a266b1))
+
+### Documentation
+
+* **conformance:** say only what the registrations and the vector description check ([8cc52d8](https://github.com/ExaDev/wire-mesh/commit/8cc52d8cd98495f4feba47923a1e99d0e56934db))
+
+### Styles
+
+* **core:** format the new identity and channel tests as the linter does ([39dd69c](https://github.com/ExaDev/wire-mesh/commit/39dd69ca2ca58225f7871a9764f395185e85f281))
+* **core:** format the secure-channel conformance test as the linter does ([e265553](https://github.com/ExaDev/wire-mesh/commit/e26555350a6a51f75e4448d9a10eca1c423f561c))
+
+### Tests
+
+* **core:** check every secure-channel vector against the real channel ([9bdf0d0](https://github.com/ExaDev/wire-mesh/commit/9bdf0d02a59ba8fe7e590f4a9a37a7f18975f069))
+
 ## [4.0.8](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.0.7...wire-mesh-core%404.0.8) (2026-11-04)
 
 ### Bug Fixes

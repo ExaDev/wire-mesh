@@ -1,3 +1,18 @@
+## [2.3.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%402.2.10...%40exadev%2Fwire-mesh-cloudflare-hub%402.3.0) (2026-11-14)
+
+### Features
+
+* **core:** never let a hello take the session down, and wrap key faults in every identity adapter ([014f81c](https://github.com/ExaDev/wire-mesh/commit/014f81c2c1527619607e65f6a269255e11ab6c86))
+
+### Styles
+
+* **core:** format the new identity and channel tests as the linter does ([39dd69c](https://github.com/ExaDev/wire-mesh/commit/39dd69ca2ca58225f7871a9764f395185e85f281))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 4.1.0
+
 ## [2.2.10](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%402.2.9...%40exadev%2Fwire-mesh-cloudflare-hub%402.2.10) (2026-11-04)
 
 
