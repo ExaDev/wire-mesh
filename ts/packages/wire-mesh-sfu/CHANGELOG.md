@@ -1,3 +1,18 @@
+## [1.1.16](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-sfu%401.1.15...wire-mesh-sfu%401.1.16) (2026-11-14)
+
+### Bug Fixes
+
+* **sfu:** contain a failed request to itself in each participant's loop, and guard the rule ([c361e71](https://github.com/ExaDev/wire-mesh/commit/c361e71610ef5c7979e44d34b4684401fc74f9da))
+* **sfu:** log request failures per peer and participant failures within a limit ([93c0959](https://github.com/ExaDev/wire-mesh/commit/93c095944e7dc3ff37ed36565a9f344d26e3e0e6))
+* **web-console:** handle every started promise, close a failed negotiation, queue a peer late ([5f92ae4](https://github.com/ExaDev/wire-mesh/commit/5f92ae4eb674570756a4a0f8e9e682acc1303180))
+* **web-console:** stop the session-event reader when its effect is cancelled, handle promises ([6801bba](https://github.com/ExaDev/wire-mesh/commit/6801bba39ddc7d408f31f30e02cccd933cc419d0))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 4.2.0
+- Updated wire-mesh to 3.6.17
+
 ## [1.1.15](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-sfu%401.1.14...wire-mesh-sfu%401.1.15) (2026-11-14)
 
 

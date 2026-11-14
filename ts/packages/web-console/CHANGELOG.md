@@ -1,3 +1,23 @@
+## [2.18.6](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.18.5...%40exadev%2Fwire-mesh-web-console%402.18.6) (2026-11-14)
+
+### Bug Fixes
+
+* **core:** handle a round trip's promise from its creation, so a close cannot leave it unhandled ([f4b31fa](https://github.com/ExaDev/wire-mesh/commit/f4b31fa2ea8c224d64253149c42f9cc9e076eec7))
+* **web-console:** bound every negotiation, keep the activity tracker, report background failures ([ca8d490](https://github.com/ExaDev/wire-mesh/commit/ca8d49089b27077547d17b85174c8a5fa87bddfe))
+* **web-console:** contain a failed request to itself in every consumer of a session's streams ([b3ffe26](https://github.com/ExaDev/wire-mesh/commit/b3ffe26182ebb20df9adc4aa95c88ba88ad8a3f8))
+* **web-console:** handle every started promise, close a failed negotiation, queue a peer late ([5f92ae4](https://github.com/ExaDev/wire-mesh/commit/5f92ae4eb674570756a4a0f8e9e682acc1303180))
+* **web-console:** stop the session-event reader when its effect is cancelled, handle promises ([6801bba](https://github.com/ExaDev/wire-mesh/commit/6801bba39ddc7d408f31f30e02cccd933cc419d0))
+
+### Miscellaneous Chores
+
+* **lint:** refuse Node-only APIs in the source of packages that run outside Node ([d662f65](https://github.com/ExaDev/wire-mesh/commit/d662f650b9c0f4338ef8e1038208963f8ee97db2))
+* **lint:** say the unref ban in the console and hub packages without naming an internal helper ([964ff10](https://github.com/ExaDev/wire-mesh/commit/964ff10bc498b34b5a625af80f86f21071fc480b))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 4.2.0
+
 ## [2.18.5](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.18.4...%40exadev%2Fwire-mesh-web-console%402.18.5) (2026-11-14)
 
 

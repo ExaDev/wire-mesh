@@ -1,3 +1,15 @@
+## [3.6.17](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.6.16...wire-mesh%403.6.17) (2026-11-14)
+
+### Bug Fixes
+
+* **web-console:** handle every started promise, close a failed negotiation, queue a peer late ([5f92ae4](https://github.com/ExaDev/wire-mesh/commit/5f92ae4eb674570756a4a0f8e9e682acc1303180))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 4.2.0
+- Updated @exadev/wire-mesh-web-console to 2.18.6
+
 ## [3.6.16](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.6.15...wire-mesh%403.6.16) (2026-11-14)
 
 

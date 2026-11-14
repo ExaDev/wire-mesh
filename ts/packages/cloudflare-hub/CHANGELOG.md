@@ -1,3 +1,19 @@
+## [2.3.6](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%402.3.5...%40exadev%2Fwire-mesh-cloudflare-hub%402.3.6) (2026-11-14)
+
+### Bug Fixes
+
+* **web-console:** handle every started promise, close a failed negotiation, queue a peer late ([5f92ae4](https://github.com/ExaDev/wire-mesh/commit/5f92ae4eb674570756a4a0f8e9e682acc1303180))
+
+### Miscellaneous Chores
+
+* **lint:** refuse Node-only APIs in the source of packages that run outside Node ([d662f65](https://github.com/ExaDev/wire-mesh/commit/d662f650b9c0f4338ef8e1038208963f8ee97db2))
+* **lint:** say the unref ban in the console and hub packages without naming an internal helper ([964ff10](https://github.com/ExaDev/wire-mesh/commit/964ff10bc498b34b5a625af80f86f21071fc480b))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 4.2.0
+
 ## [2.3.5](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%402.3.4...%40exadev%2Fwire-mesh-cloudflare-hub%402.3.5) (2026-11-14)
 
 

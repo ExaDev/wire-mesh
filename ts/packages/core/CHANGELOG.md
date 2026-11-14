@@ -1,3 +1,30 @@
+## [4.2.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.1.5...wire-mesh-core%404.2.0) (2026-11-14)
+
+### Features
+
+* **core:** bound and contain the fault reports of a consumer loop, and let one be stopped ([603bc11](https://github.com/ExaDev/wire-mesh/commit/603bc11adabf629d76f6f4dd72f1b692ca240c07))
+* **core:** contain a failed request to itself in the threshold consumers ([8aac57e](https://github.com/ExaDev/wire-mesh/commit/8aac57e55004fd522daebec8913fb35c8a1f18c5))
+
+### Bug Fixes
+
+* **core:** arm the fault reporter's timers where the runtime has no unref ([e18620e](https://github.com/ExaDev/wire-mesh/commit/e18620e85c3f2ace890037247a74b88fa11f9342))
+* **core:** drop a ping's registration when its send fails and clear its timer once settled ([1576d9a](https://github.com/ExaDev/wire-mesh/commit/1576d9a772ba408d3dbce47060e17cca2bd97d65))
+* **core:** handle a round trip's promise from its creation, so a close cannot leave it unhandled ([f4b31fa](https://github.com/ExaDev/wire-mesh/commit/f4b31fa2ea8c224d64253149c42f9cc9e076eec7))
+* **core:** handle the rejection of the ack pump and of an unidentified connection, and guard loops ([1ba69cb](https://github.com/ExaDev/wire-mesh/commit/1ba69cbd8fc3a1ec28600192981469f64c73c930))
+* **core:** never drop an item a stopped loop has taken, and report what the interval suppressed ([af1d02d](https://github.com/ExaDev/wire-mesh/commit/af1d02d8741ad78aade3c9c406d1170f53066b14))
+* **core:** settle a request made during pairing setup, and close a link that ends unanswered ([22e93f4](https://github.com/ExaDev/wire-mesh/commit/22e93f4427f91b80cfd4e3b08a90ba005c27189a))
+* **core:** settle every waiter on close, loop end and silence, and remove its registration ([b19e2f3](https://github.com/ExaDev/wire-mesh/commit/b19e2f3079ad121f1f0cd909467a5fa92383a304))
+* **sfu:** contain a failed request to itself in each participant's loop, and guard the rule ([c361e71](https://github.com/ExaDev/wire-mesh/commit/c361e71610ef5c7979e44d34b4684401fc74f9da))
+* **web-console:** handle every started promise, close a failed negotiation, queue a peer late ([5f92ae4](https://github.com/ExaDev/wire-mesh/commit/5f92ae4eb674570756a4a0f8e9e682acc1303180))
+
+### Styles
+
+* **core:** keep the fault reporter's leading comment above its import ([e522e04](https://github.com/ExaDev/wire-mesh/commit/e522e040838f42b9b998641e6970303355ac2eac))
+
+### Miscellaneous Chores
+
+* **lint:** refuse Node-only APIs in the source of packages that run outside Node ([d662f65](https://github.com/ExaDev/wire-mesh/commit/d662f650b9c0f4338ef8e1038208963f8ee97db2))
+
 ## [4.1.5](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.1.4...wire-mesh-core%404.1.5) (2026-11-14)
 
 ### Code Refactoring
