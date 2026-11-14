@@ -7,7 +7,6 @@
 use aes_gcm::aead::generic_array::typenum::U12;
 use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::Aes256Gcm;
-use ed25519_dalek::VerifyingKey as Ed25519VerifyingKey;
 use hkdf::Hkdf;
 use p256::elliptic_curve::sec1::ToSec1Point;
 use p256::elliptic_curve::Generate;
@@ -20,7 +19,7 @@ use wire_mesh_wire::secure_channel::{
 use wire_mesh_wire::{decode_frame, encode_frame, DecodeError, Frame, ValidationError};
 use zeroize::{ZeroizeOnDrop, Zeroizing};
 
-use crate::domain::identity_key::{es256_public_key, UNCOMPRESSED_POINT_TAG};
+use crate::domain::identity_key::{ed25519_public_key, es256_public_key, UNCOMPRESSED_POINT_TAG};
 use crate::ports::{CoreError, Identity};
 
 /// Domain separation for the bytes a hello's signature covers.
@@ -357,19 +356,12 @@ async fn begin_with(
     })
 }
 
-/// Whether `key` is a usable key for its algorithm, as far as importing it can tell: Ed25519 is 32 bytes that decompress to a curve point, ES256 is exactly the 65-byte uncompressed SEC1 encoding of a P-256 point. Both are the canonical encoding the device-id hashes, so no key has a second device-id.
+/// Whether `key` is a usable key for its algorithm, as far as importing it can tell: the rules are those of `domain::identity_key` (the spec's usable keys, `spec/identity.cddl`), shared with every other verifier, so no key has a second device-id and no platform decides a key's fate.
 fn check_identity_key(key: &IdentityKey) -> Result<(), HelloRefusal> {
     match key.alg {
-        IdentityKey::ALG_ED25519 => {
-            let bytes: &[u8; 32] = key
-                .public_key
-                .as_slice()
-                .try_into()
-                .map_err(|_| HelloRefusal::InvalidIdentityKey)?;
-            Ed25519VerifyingKey::from_bytes(bytes)
-                .map(|_| ())
-                .map_err(|_| HelloRefusal::InvalidIdentityKey)
-        }
+        IdentityKey::ALG_ED25519 => ed25519_public_key(&key.public_key)
+            .map(|_| ())
+            .map_err(|_| HelloRefusal::InvalidIdentityKey),
         IdentityKey::ALG_ES256 => es256_public_key(&key.public_key)
             .map(|_| ())
             .map_err(|_| HelloRefusal::InvalidIdentityKey),
