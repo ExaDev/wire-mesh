@@ -11,7 +11,11 @@ import {
   verifyCapabilityToken,
   verifyRevocationEntry,
 } from "../src/domain/tokens.js";
-import type { IdentityPort } from "../src/ports/identity.js";
+import {
+  IdentityKeyError,
+  verifiesOrRefuses,
+  type IdentityPort,
+} from "../src/ports/identity.js";
 import {
   EDDSA,
   HOUR_MS,
@@ -131,5 +135,27 @@ describe("every verifier gives a verdict for a key it refuses", () => {
     });
 
     expect(verdict).toBe(false);
+  });
+});
+
+describe("verifiesOrRefuses", () => {
+  const key = { alg: EDDSA, "public-key": new Uint8Array(KEY_BYTES) };
+  const message = new Uint8Array(1);
+
+  it("turns an identity-key error into a signature that does not verify", async () => {
+    const port = {
+      verify: () => Promise.reject(new IdentityKeyError("invalid_key", "no")),
+    };
+
+    expect(await verifiesOrRefuses(port, key, message, message)).toBe(false);
+  });
+
+  it("lets any other error through unchanged, since it is a failure of the port and not a verdict about the peer", async () => {
+    const failure = new Error("key store unavailable");
+    const port = { verify: () => Promise.reject(failure) };
+
+    await expect(verifiesOrRefuses(port, key, message, message)).rejects.toBe(
+      failure,
+    );
   });
 });
