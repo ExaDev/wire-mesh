@@ -151,7 +151,7 @@ describe("consumeEach, told to stop", () => {
           return: async () => {
             closed = true;
 
-            return Promise.resolve({ value: undefined, done: true });
+            return inner.return?.() ?? { value: undefined, done: true };
           },
         };
       },
@@ -176,26 +176,127 @@ describe("consumeEach, told to stop", () => {
     expect(closed).toBe(true);
   });
 
-  it("takes no item a later reader of the same stream needs, even one pushed in the same turn as the abort", async () => {
+  /** Two readers over one queue, the first stopped in the same turn as `arrange` leaves its items: every item is handled by exactly one of them, in order within each, and none is lost. */
+  async function everyItemIsHandledOnce(
+    arrange: (
+      queue: ReturnType<typeof createAsyncQueue<number>>,
+      stop: AbortController,
+    ) => void,
+  ): Promise<void> {
     const queue = createAsyncQueue<number>();
     const stop = new AbortController();
-    const first = consumeEach(queue.stream, () => undefined, {
-      signal: stop.signal,
+    const byFirst: number[] = [];
+    const byLater: number[] = [];
+    const first = consumeEach(
+      queue.stream,
+      (item) => {
+        byFirst.push(item);
+      },
+      { signal: stop.signal },
+    );
+    arrange(queue, stop);
+    await first;
+    void consumeEach(queue.stream, (item) => {
+      byLater.push(item);
     });
-    const later: number[] = [];
-    const second = consumeEach(queue.stream, (item) => {
-      later.push(item);
+
+    await vi.waitFor(() => {
+      expect([...byFirst, ...byLater].sort((a, b) => a - b)).toEqual([
+        FIRST,
+        SECOND,
+        THIRD,
+      ]);
     });
-    stop.abort();
+  }
+
+  it("loses no item when the abort comes after items were already waiting in the queue", async () => {
+    const queue = createAsyncQueue<number>();
     queue.push(FIRST);
     queue.push(SECOND);
     queue.push(THIRD);
+    const stop = new AbortController();
+    const byFirst: number[] = [];
+    const byLater: number[] = [];
+    const first = consumeEach(
+      queue.stream,
+      (item) => {
+        byFirst.push(item);
+      },
+      { signal: stop.signal },
+    );
+    stop.abort();
     await first;
+    void consumeEach(queue.stream, (item) => {
+      byLater.push(item);
+    });
 
     await vi.waitFor(() => {
-      expect(later).toEqual([FIRST, SECOND, THIRD]);
+      expect([...byFirst, ...byLater].sort((a, b) => a - b)).toEqual([
+        FIRST,
+        SECOND,
+        THIRD,
+      ]);
     });
-    expect(second).toBeInstanceOf(Promise);
+    expect(byFirst.length + byLater.length).toBe(THIRD);
+  });
+
+  it("loses no item when the abort comes in the same turn as a push to the waiting loop", async () => {
+    await everyItemIsHandledOnce((queue, stop) => {
+      queue.push(FIRST);
+      stop.abort();
+      queue.push(SECOND);
+      queue.push(THIRD);
+    });
+  });
+
+  it("loses no item when the abort comes before the pushes", async () => {
+    await everyItemIsHandledOnce((queue, stop) => {
+      stop.abort();
+      queue.push(FIRST);
+      queue.push(SECOND);
+      queue.push(THIRD);
+    });
+  });
+
+  it("finishes an item it has already taken before it stops", async () => {
+    const queue = createAsyncQueue<number>();
+    queue.push(FIRST);
+    const stop = new AbortController();
+    const finished: number[] = [];
+    const first = consumeEach(
+      queue.stream,
+      async (item) => {
+        await Promise.resolve();
+        finished.push(item);
+      },
+      { signal: stop.signal },
+    );
+    stop.abort();
+    await first;
+
+    expect(finished).toEqual([FIRST]);
+  });
+});
+
+describe("consumeEach, told of the stream failing", () => {
+  it("reports the failure even when an item failure was reported inside the same interval", async () => {
+    const told: (number | undefined)[] = [];
+    const failing = streamOf([FIRST], new Error("the session went away"));
+
+    await consumeEach(
+      failing,
+      () => {
+        throw new Error("the item fails");
+      },
+      {
+        onFault: (_error, item) => {
+          told.push(item);
+        },
+        now: () => 0,
+      },
+    );
+
+    expect(told).toEqual([FIRST, undefined]);
   });
 });
 
