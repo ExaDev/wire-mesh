@@ -72,11 +72,19 @@ async function main(): Promise<void> {
     listenIp: listenIpFromArgs(argv),
     ...(announcedIp !== undefined ? { announcedIp } : {}),
   });
-  const call = createSfuCall(backend, {
-    identity,
-    clock: { now: () => Date.now() },
-    revocation: noRevocationCheck,
-  });
+  const call = createSfuCall(
+    backend,
+    {
+      identity,
+      clock: { now: () => Date.now() },
+      revocation: noRevocationCheck,
+    },
+    {
+      onFault: (error) => {
+        process.stderr.write(`request failed: ${String(error)}\n`);
+      },
+    },
+  );
   const transport = createNodeWebSocketTransport({
     onHttpRequest: (_request, response) => {
       response.writeHead(HTTP_OK, { "content-type": "application/json" });
@@ -95,7 +103,10 @@ async function main(): Promise<void> {
         const deviceId = await session.peerDeviceId;
         await call.addParticipant(deviceId, session);
         await call.removeParticipant(deviceId);
-      })();
+      })().catch((error: unknown) => {
+        // One connection failing to set up or tear down is that connection's alone.
+        process.stderr.write(`participant failed: ${String(error)}\n`);
+      });
     },
   );
   logStartup(`wire-mesh-sfu listening on ${listener.address}`);

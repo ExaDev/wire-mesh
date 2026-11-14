@@ -20,6 +20,10 @@ import {
   rtcIceCandidateInitFromWire,
 } from "wire-mesh-core/domain/webrtc-signaling";
 import { eachInOrder } from "./in-order.js";
+import {
+  serveManageRequests,
+  type ConsumeFault,
+} from "wire-mesh-core/domain/consume-incoming";
 import type { SfuMediaBackend } from "./media-backend.js";
 
 export interface SfuCall {
@@ -73,6 +77,10 @@ async function sendTrackMap(
 export function createSfuCall(
   backend: Readonly<SfuMediaBackend>,
   verifyOptions: Readonly<VerifyCapabilityTokenOptions>,
+  options: Readonly<{
+    /** Told of a failure while handling one participant's request: the request is answered with a refusal where it can be and that participant's loop goes on to its next request. Absent, the failure is dropped. */
+    onFault?: ConsumeFault<IncomingManageRequest> | undefined;
+  }> = {},
 ): SfuCall {
   const participants = new Map<string, ParticipantEntry>();
   // Each participant entry's own current negotiation-id, learned from its offer. Keyed by the entry, not the device, so an offer still being authorised when its participant is removed cannot hand its id to the same device added again.
@@ -185,20 +193,24 @@ export function createSfuCall(
   }
 
   async function consumeParticipant(entry: ParticipantEntry): Promise<void> {
-    for await (const incoming of entry.session.incomingManageRequests) {
-      if (incoming.command.verb !== WEBRTC_SIGNAL_VERB) {
-        continue;
-      }
-      const params = incoming.command.params;
-      if (isWebrtcOffer(params)) {
-        await handleOffer(entry, incoming, params);
-      } else if (isWebrtcIceCandidate(params)) {
-        await handleIceCandidate(entry, incoming, params);
-      } else if (isWebrtcAnswer(params) || isSfuTrackMap(params)) {
-        // An ordinary participant never sends either: webrtc.answer only ever answers this SFU's own offer (this SFU never offers), and webrtc.sfu-track-map is this SFU's own outbound-only report. Answered so a misbehaving or confused peer doesn't hang waiting for a response that will never come, never dispatched further.
-        await incoming.respond({ result: "error", code: "unexpected-verb" });
-      }
-    }
+    await serveManageRequests(
+      entry.session.incomingManageRequests,
+      async (incoming) => {
+        if (incoming.command.verb !== WEBRTC_SIGNAL_VERB) {
+          return;
+        }
+        const params = incoming.command.params;
+        if (isWebrtcOffer(params)) {
+          await handleOffer(entry, incoming, params);
+        } else if (isWebrtcIceCandidate(params)) {
+          await handleIceCandidate(entry, incoming, params);
+        } else if (isWebrtcAnswer(params) || isSfuTrackMap(params)) {
+          // An ordinary participant never sends either: webrtc.answer only ever answers this SFU's own offer (this SFU never offers), and webrtc.sfu-track-map is this SFU's own outbound-only report. Answered so a misbehaving or confused peer doesn't hang waiting for a response that will never come, never dispatched further.
+          await incoming.respond({ result: "error", code: "unexpected-verb" });
+        }
+      },
+      { onFault: options.onFault },
+    );
   }
 
   return {
