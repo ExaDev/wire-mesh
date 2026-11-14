@@ -344,6 +344,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_store_that_cannot_answer_refuses_the_notice_and_never_reads_as_not_revoked() {
+        use crate::domain::revocation::{RevocationCheck, RevocationUnavailable};
+        use wire_mesh_wire::management::RevocationClaims;
+        struct Down;
+        #[async_trait::async_trait]
+        impl RevocationCheck for Down {
+            async fn entries_for(
+                &self,
+                _: &[u8],
+            ) -> Result<Vec<RevocationClaims>, RevocationUnavailable> {
+                Err(RevocationUnavailable {
+                    reason: "the store is down".to_owned(),
+                })
+            }
+        }
+        let owner = NodeIdentity::generate_ed25519();
+        let poster = NodeIdentity::generate_ed25519();
+        let room_path = owner_named_room_path(
+            &crate::domain::room_path::device_id_to_hex(owner.device_id()),
+            "general",
+        );
+        let token = mint_room_member_token(&owner, &poster, &room_path, NOW + HOUR_MS).await;
+        let notice = sign_room_notice(NoticeSeed {
+            room: room_path,
+            poster: None,
+            token,
+            posted_at: NOW,
+            valid_until: None,
+            content_type: None,
+            key_epoch: None,
+            signer: &poster,
+        })
+        .await;
+
+        let verdict = verify_room_notice(&owner, &FixedClock(NOW), &Down, &notice, None).await;
+
+        assert_eq!(
+            verdict,
+            RoomNoticeVerdict::Invalid(RoomNoticeRejection::Token(RoomTokenRejection::Token(
+                crate::domain::tokens::TokenRejection::RevocationUnavailable(
+                    "the store is down".to_owned()
+                )
+            )))
+        );
+    }
+
+    #[tokio::test]
     async fn accepts_a_well_formed_notice_posted_in_a_dm_room_verified_by_one_participant() {
         let me = NodeIdentity::generate_ed25519();
         let them = NodeIdentity::generate_ed25519();

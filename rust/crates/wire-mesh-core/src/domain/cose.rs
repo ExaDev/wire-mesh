@@ -32,6 +32,8 @@ pub fn sig_structure(protected: &[u8], payload: &[u8]) -> Vec<u8> {
 }
 
 /// The protected header of every wire-mesh COSE_Sign1 an identity signs: `alg` and `kid` (the signer's device-id), canonically encoded under the text keys "1" and "4", exactly as the TypeScript core writes them and as the frozen vectors carry them. `spec/tokens.cddl` names the integer labels 1 and 4 for these; every verifier reads either form, and signing uses the text form so that both implementations mint the same bytes.
+///
+/// The text keys are a quirk of the TypeScript core, not of RFC 9052, which defines `alg` as the integer label 1 and `kid` as 4: a strict COSE reader looking for the integer labels does not find them on a token minted here or by the TypeScript. The frozen vectors carry the text form and every verifier in this repository reads both, so it is kept until both implementations move to the integer labels together (a change of the signed bytes, so one for both at once); `wire-mesh-threshold`'s share envelope already writes integers, so the workspace holds both encodings.
 fn protected_header(alg: i64, device_id: &DeviceId) -> Vec<u8> {
     let mut extra = wire_mesh_wire::value::CanonicalMap::new();
     for (label, value) in [

@@ -22,7 +22,7 @@ pub use handshake::{negotiate, NegotiationResult, SUPPORTED_PROTOCOL_VERSION};
 pub use peer_advert::{
     sign_peer_advert, verify_peer_advert, PeerAdvertRejection, PeerAdvertVerdict,
 };
-pub use revocation::{RevocationCheck, RevocationError, RevocationView};
+pub use revocation::{RevocationCheck, RevocationError, RevocationUnavailable, RevocationView};
 pub use room::{compare_room_notices, verify_room_notice, RoomNoticeRejection, RoomNoticeVerdict};
 pub use room_path::{device_id_from_hex, device_id_to_hex, parse_room_path, ParsedRoomPath};
 pub use room_token_verification::{
