@@ -80,5 +80,54 @@ export default defineConfig(
     files: ["test/threshold-network-coordinator.integration.test.ts"],
     rules: { "exadev/prefer-options-object-param": "off" },
   },
+  {
+    /* Runtime-specific API in shared source (core): the adapters named here are Node-only by design, and timers.ts is the one place that inspects a handle. A timer handle's `unref()`, `process`, `Buffer`, `node:` modules and the like exist only in Node: `setTimeout` returns a number in a browser or a Worker, so `timer.unref()` throws there, and a throw inside a consumer loop's failure handling ends the loop. Source that can run outside Node asks the runtime-neutral helper (src/domain/timers.ts in wire-mesh-core) or does not use them. */
+    files: ["src/**/*.ts", "src/**/*.tsx"],
+    ignores: [
+      "src/adapters/node-*.ts",
+      "src/adapters/tcp-transport.ts",
+      "src/adapters/tls-transport.ts",
+      "src/domain/timers.ts",
+      "src/domain/own-version.ts",
+    ],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "CallExpression[callee.property.name=/^(unref|ref|hasRef)$/]",
+          message:
+            "A timer handle's unref(), ref() and hasRef() exist only in Node; use unrefIfSupported from wire-mesh-core's timers module.",
+        },
+      ],
+      "no-restricted-globals": [
+        "error",
+        ...[
+          "process",
+          "Buffer",
+          "setImmediate",
+          "clearImmediate",
+          "__dirname",
+          "__filename",
+          "require",
+        ].map((name) => ({
+          name,
+          message: `${name} exists only in Node, and this source can run in a browser or a Worker.`,
+        })),
+      ],
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["node:*"],
+              message:
+                "node: modules exist only in Node, and this source can run in a browser or a Worker.",
+            },
+          ],
+        },
+      ],
+    },
+  },
   eslintPluginPrettierRecommended,
 );
