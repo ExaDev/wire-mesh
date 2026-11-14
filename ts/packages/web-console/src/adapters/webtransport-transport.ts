@@ -130,7 +130,9 @@ export function createBrowserWebTransportTransport(
       // The stream alone does not always end when the server ends the session, and a console that is not told keeps a connection that no longer works until it next sends. The session's own close is the signal, so it ends the connection, which lets the mesh session reconnect.
       void session.closed
         .catch(() => undefined)
-        .then(async () => connection.close());
+        .then(async () => connection.close())
+        // The connection is already ending when its close fails.
+        .catch(() => undefined);
       let announced: Uint8Array<ArrayBuffer>[] | undefined;
       // The announcement is advisory: a node that sends none, or one this console cannot read, leaves the address as it was given.
       void readAnnouncement(session)

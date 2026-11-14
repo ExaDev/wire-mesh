@@ -624,4 +624,52 @@ describe("createNoticeWiring", () => {
     expect(connected.sent).toHaveLength(1);
     expect(await wiring.readRoom(roomPath, [])).toHaveLength(1);
   });
+
+  it("applies a data-entries frame whose storage fails without raising an unhandled rejection", async () => {
+    const unhandled: unknown[] = [];
+    const record = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", record);
+    try {
+      const owner = await generateEs256Identity();
+      const failing = async (): Promise<never> =>
+        Promise.reject(new Error("the storage is unavailable"));
+      const session = fakeSession();
+      const wiring = createNoticeWiring({
+        senders: () => [session],
+        storage: {
+          get: failing,
+          set: failing,
+          delete: failing,
+          keys: failing,
+        },
+        identity: owner,
+        clock: fixedClock(NOW_MS),
+        revocation: createRevocationView(),
+        roomKeys: memoryKeyStore(),
+        onChange: () => undefined,
+      });
+
+      wiring.handleFrame(
+        {
+          type: "data-entries",
+          peer: Uint8Array.from({ length: 32 }, (_, i) => i),
+          "from-seq": 0,
+          entries: [],
+        },
+        session,
+      );
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", record);
+    }
+  });
 });

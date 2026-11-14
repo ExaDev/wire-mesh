@@ -24,7 +24,7 @@ export interface MeshSessionView {
 
 /** Mirrors the latest SessionEvent a MeshSession yields into React state, with the activity and status timing derived from the whole stream of events. */
 export function useMeshSessionEvents(
-  session: Readonly<MeshSession>,
+  session: Readonly<Pick<MeshSession, "events">>,
   clock: Readonly<Clock>,
 ): MeshSessionView {
   const [view, setView] = useState<MeshSessionView>({
@@ -34,28 +34,29 @@ export function useMeshSessionEvents(
   });
 
   useEffect(() => {
-    // A mutable object property, not a plain `let`, so the compiler can't narrow this to a literal `false` inside the loop below -- the cleanup closure genuinely can flip it between iterations, on the next tick after an await, which a plain boolean's own static narrowing doesn't account for.
-    const lifecycle = { cancelled: false };
+    // Aborted by the cleanup: the loop ends at once and withdraws its wait on the session's stream, so a cancelled effect never takes an event a live one needs (the stream wakes one reader per event).
+    const cancelled = new AbortController();
     let tracker = initialTracker;
-    void consumeEach(session.events, (sessionEvent) => {
-      if (lifecycle.cancelled) {
-        return;
-      }
-      const at = clock.now();
-      const advanced = advanceActivity(tracker, sessionEvent, at);
-      const stageChanged = advanced.tracker.stage !== tracker.stage;
-      tracker = advanced.tracker;
-      setView((current) => ({
-        event: sessionEvent,
-        activity: [...current.activity, ...advanced.entries].slice(
-          -MAX_ACTIVITY_ENTRIES,
-        ),
-        statusSince: stageChanged ? at : current.statusSince,
-      }));
-    });
+    void consumeEach(
+      session.events,
+      (sessionEvent) => {
+        const at = clock.now();
+        const advanced = advanceActivity(tracker, sessionEvent, at);
+        const stageChanged = advanced.tracker.stage !== tracker.stage;
+        tracker = advanced.tracker;
+        setView((current) => ({
+          event: sessionEvent,
+          activity: [...current.activity, ...advanced.entries].slice(
+            -MAX_ACTIVITY_ENTRIES,
+          ),
+          statusSince: stageChanged ? at : current.statusSince,
+        }));
+      },
+      { signal: cancelled.signal },
+    );
 
     return () => {
-      lifecycle.cancelled = true;
+      cancelled.abort();
     };
   }, [session, clock]);
 

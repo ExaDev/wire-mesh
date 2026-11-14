@@ -81,7 +81,9 @@ async function main(): Promise<void> {
     },
     {
       onFault: (error) => {
-        process.stderr.write(`request failed: ${String(error)}\n`);
+        process.stderr.write(
+          `request failed: ${JSON.stringify(String(error))}\n`,
+        );
       },
     },
   );
@@ -105,7 +107,9 @@ async function main(): Promise<void> {
         await call.removeParticipant(deviceId);
       })().catch((error: unknown) => {
         // One connection failing to set up or tear down is that connection's alone.
-        process.stderr.write(`participant failed: ${String(error)}\n`);
+        process.stderr.write(
+          `participant failed: ${JSON.stringify(String(error))}\n`,
+        );
       });
     },
   );

@@ -118,12 +118,13 @@ export function createNoticeWiring(
       void (async (): Promise<void> => {
         const result = await handleDataEntries(storage, frame);
         if (!result.ok) return;
-        // A full batch means the sender may have had more; a short batch means its log ended there. One more round per full batch keeps catch-up bounded without a second bookkeeping mechanism.
+        /* A storage failure below leaves the entries unapplied, and the next sync asks for them again.
+           A full batch means the sender may have had more; a short batch means its log ended there. One more round per full batch keeps catch-up bounded without a second bookkeeping mechanism. */
         if (frame.entries.length >= CATCH_UP_BATCH_LIMIT) {
           await requestCatchUp(from, frame.peer).catch(() => undefined);
         }
         onChange();
-      })();
+      })().catch(() => undefined);
 
       return;
     }
