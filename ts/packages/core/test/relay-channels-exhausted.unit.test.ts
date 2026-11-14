@@ -8,6 +8,7 @@ import type { Frame } from "../src/generated/protocol.js";
 import { generateEd25519Identity } from "./tokens-fixtures.js";
 
 const ping: Frame = { type: "ping" };
+const FRACTIONAL_COUNTER = 1.5;
 
 describe("a channel whose send counter is spent", () => {
   it("is forgotten, and the next ensure opens a fresh one that the peer accepts", async () => {
@@ -39,5 +40,19 @@ describe("a channel whose send counter is spent", () => {
     const sealed = await second.seal(ping);
     expect(sealed.counter).toBe(MAX_COUNTER);
     expect(await atB.open(sealed, a.deviceId)).toMatchObject({ frame: ping });
+  });
+});
+
+describe("the first send counter of every channel", () => {
+  it("is validated when the relay channels are constructed", async () => {
+    const a = await generateEd25519Identity();
+
+    for (const bad of [Number.NaN, -1, FRACTIONAL_COUNTER]) {
+      expect(() =>
+        createRelayChannels(a, async () => Promise.resolve(), {
+          firstSendCounter: bad,
+        }),
+      ).toThrow(RangeError);
+    }
   });
 });

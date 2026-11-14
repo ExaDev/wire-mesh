@@ -1,4 +1,4 @@
-// A hello from a paired peer can never take the session down: whatever checking it throws, the hello is dropped, nothing is sent to the peer, and the session keeps serving everyone else. A key the identity port reports as unusable is a verdict about the peer; any other failure of the port is local, reported to the owner and not to the peer.
+// A hello whose verification fails or throws is dropped: nothing is sent to the peer, and the session keeps serving everyone else. This covers the checking of the hello, not everything a hello could provoke. A key the identity port reports as unusable is a verdict about the peer; any other failure of the port is local, reported to the owner and not to the peer.
 
 import { describe, expect, it } from "vitest";
 import { messageFromFrame } from "../src/adapters/frame-codec.js";

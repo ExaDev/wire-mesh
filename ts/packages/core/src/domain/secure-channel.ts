@@ -195,6 +195,15 @@ export type OpenOutcome =
 /** The largest counter a channel uses: the counter is an unsigned 64-bit integer on the wire, and this implementation holds it as a JavaScript number, exact up to this value. A frame above it is refused at decoding, never truncated, and sealing refuses to go past it, never wraps. */
 export const MAX_COUNTER = Number.MAX_SAFE_INTEGER;
 
+/** Throws a RangeError unless `counter` is a counter a channel can start from: a non-negative safe integer. */
+export function assertFirstSendCounter(counter: number): void {
+  if (!Number.isSafeInteger(counter) || counter < 0) {
+    throw new RangeError(
+      "firstSendCounter must be a non-negative safe integer",
+    );
+  }
+}
+
 /**
  * Takes the next send counter from `next`, the counter the next seal would use: returns it with the counter that follows. Throws once `next` is past MAX_COUNTER, since a counter that cannot be held exactly would repeat an IV under the same key.
  */
@@ -290,11 +299,7 @@ export async function establishChannelFrom(
     firstSendCounter?: number;
   }>,
 ): Promise<SecureChannel | undefined> {
-  if (!Number.isSafeInteger(firstSendCounter) || firstSendCounter < 0) {
-    throw new RangeError(
-      "firstSendCounter must be a non-negative safe integer",
-    );
-  }
+  assertFirstSendCounter(firstSendCounter);
   let secret: Uint8Array;
   try {
     const remoteKey = await crypto.subtle.importKey(

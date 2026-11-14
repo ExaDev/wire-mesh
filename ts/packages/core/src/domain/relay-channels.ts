@@ -10,6 +10,7 @@ import type { IdentityPort } from "../ports/identity.js";
 import { deviceIdToHex } from "./device-id.js";
 import { ChannelExhaustedError } from "./channel-exhausted-error.js";
 import {
+  assertFirstSendCounter,
   beginHandshake,
   establishChannelFrom,
   verifyHello,
@@ -38,7 +39,7 @@ export interface OpenedFrame {
 export interface RelayChannels {
   /** The channel with peer, starting a handshake when there is none. Resolves once both hellos have been exchanged. */
   ensure: (peer: DeviceId) => Promise<SecureChannel>;
-  /** Handles a hello received through a relay pairing: verifies it, answers with this side's own unless one is already outstanding for that peer, and completes the handshake. A hello that does not verify is dropped, since there is nobody to tell. A failure of the identity port itself is not a verdict on the hello and propagates. */
+  /** Handles a hello received through a relay pairing: verifies it, answers with this side's own unless one is already outstanding for that peer, and completes the handshake. A hello that does not verify is dropped, since there is nobody to tell. So is a hello whose verification throws (a failure of the identity port itself, which is not a verdict on the hello): it is reported to the `onFault` option, nothing is sent to the peer, and the returned promise resolves. A failure while establishing the channel from a hello that verified is not caught here. */
   applyHello: (hello: Readonly<SecureHelloFrame>) => Promise<void>;
   /** Opens sealed data received through a relay pairing. `claimedFrom` is the `from-device` the relay stamped, which only picks the channel to try; the result is undefined unless the frame opens under it, and names the peer that channel authenticated. */
   open: (
@@ -62,6 +63,9 @@ export function createRelayChannels(
     onFault?: ((error: unknown) => void) | undefined;
   }> = {},
 ): RelayChannels {
+  if (options.firstSendCounter !== undefined) {
+    assertFirstSendCounter(options.firstSendCounter);
+  }
   const channels = new Map<string, ChannelState>();
 
   /** Registers the peer as awaiting at once, so a hello arriving meanwhile completes this handshake instead of starting a second, then sends this side's hello. */
@@ -99,7 +103,7 @@ export function createRelayChannels(
       try {
         verdict = await verifyHello(identity, hello);
       } catch (error) {
-        // verifyHello gives a verdict for every hello whose key the port reports as unusable, and lets any other failure of the port out. Such a failure is this side's, not the peer's, and a hello must never take the session down: drop it, tell the owner locally, say nothing to the peer.
+        // verifyHello gives a verdict for every hello whose key the port reports as unusable, and lets any other failure of the port out. Such a failure is this side's, not the peer's, and must not end the session: drop the hello, tell the owner locally, say nothing to the peer.
         options.onFault?.(error);
 
         return;
