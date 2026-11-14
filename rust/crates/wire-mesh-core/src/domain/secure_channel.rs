@@ -1,6 +1,6 @@
 //! The end-to-end channel two devices open between themselves inside a relay pairing (`spec/secure-channel.cddl`), the Rust port of `ts/packages/core/src/domain/secure-channel.ts`. A relay only forwards the bytes of a `relay-data` frame; here the two devices authenticate each other's identity keys over a fresh ECDH exchange, derive one AES-256-GCM key per direction and seal every frame they exchange, so the relay sees ciphertext and a receiver learns the sender from the handshake and from nothing a relay asserts.
 //!
-//! Pure crypto and framing, with no connection or session in it. The handshake is three steps: [`begin_handshake`] makes this side's hello, [`verify_hello`] checks a received one, and [`establish_channel`] derives the keys once both hellos exist. A [`SecureChannel`] then seals and opens frames. A transport decides when to run each step and carries the hellos and sealed frames as the payload of `relay-data`.
+//! Pure crypto and framing, with no connection or session in it. The handshake is three steps: [`begin_handshake`] makes this side's hello, [`verify_hello`] checks a received one, and [`establish_channel`] derives the keys from this side's pending handshake and the verified hello. A [`SecureChannel`] then seals and opens frames. A transport decides when to run each step and carries the hellos and sealed frames as the payload of `relay-data`.
 //!
 //! The module has no dependency on an operating system, a socket or a runtime, and builds for `wasm32-unknown-unknown` with the rest of this crate.
 
@@ -12,8 +12,6 @@ use hkdf::Hkdf;
 use p256::elliptic_curve::sec1::ToSec1Point;
 use p256::elliptic_curve::Generate;
 use p256::{NonZeroScalar, PublicKey};
-use rand::rngs::OsRng;
-use rand::RngCore;
 use sha2::Sha256;
 use wire_mesh_wire::identity::{DeviceId, IdentityKey};
 use wire_mesh_wire::secure_channel::{
@@ -22,6 +20,7 @@ use wire_mesh_wire::secure_channel::{
 use wire_mesh_wire::{decode_frame, encode_frame, DecodeError, Frame, ValidationError};
 use zeroize::{ZeroizeOnDrop, Zeroizing};
 
+use crate::domain::identity_key::{es256_public_key, UNCOMPRESSED_POINT_TAG};
 use crate::ports::{CoreError, Identity};
 
 /// Domain separation for the bytes a hello's signature covers.
@@ -38,9 +37,6 @@ pub const LABEL_HIGH_TO_LOW: &[u8] = b"hi-to-lo";
 const KEY_SIZE: usize = 32;
 const COUNTER_SIZE: usize = 8;
 const IV_SIZE: usize = 12;
-/// SEC1 tag byte of an uncompressed point.
-const UNCOMPRESSED_POINT_TAG: u8 = 0x04;
-
 /// The bytes a hello's signature covers: `HELLO_CONTEXT || ephemeral_key || nonce || sender || recipient`. Every part but the context has a fixed length, so the concatenation is unambiguous. `sender` is the device-id derived from the hello's own identity-key and `recipient` is the hello's `to-device`.
 pub fn hello_signing_input(
     ephemeral_key: &[u8; EPHEMERAL_KEY_SIZE],
@@ -143,6 +139,32 @@ impl core::fmt::Display for HelloRefusal {
 
 impl std::error::Error for HelloRefusal {}
 
+/// Why [`verify_hello`] gave no verified hello: the hello was refused, or the identity port failed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VerifyHelloError {
+    /// The hello is refused, with the class a receiver gives for it. This is a verdict about the peer.
+    Refused(HelloRefusal),
+    /// The identity port failed (a key store or module that is unavailable, say) for a reason that says nothing about the peer. The hello may be genuine, so a caller retries or reports it and does not treat the peer as a forger.
+    Port(CoreError),
+}
+
+impl core::fmt::Display for VerifyHelloError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            VerifyHelloError::Refused(refusal) => refusal.fmt(f),
+            VerifyHelloError::Port(error) => write!(f, "the identity port failed: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for VerifyHelloError {}
+
+impl From<HelloRefusal> for VerifyHelloError {
+    fn from(refusal: HelloRefusal) -> Self {
+        VerifyHelloError::Refused(refusal)
+    }
+}
+
 /// Why [`establish_channel`] could not derive a channel from a verified hello.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EstablishError {
@@ -150,6 +172,8 @@ pub enum EstablishError {
     UnusableEphemeralKey,
     /// The peer's nonce is not 16 bytes.
     InvalidNonce,
+    /// The verified hello is not the answer to this handshake: it was verified by another device, or the device it proves is not the one the handshake was addressed to.
+    PeerMismatch,
 }
 
 impl core::fmt::Display for EstablishError {
@@ -159,6 +183,7 @@ impl core::fmt::Display for EstablishError {
                 "the peer's ephemeral key is not an uncompressed P-256 point on the curve"
             }
             EstablishError::InvalidNonce => "the peer's nonce is not 16 bytes",
+            EstablishError::PeerMismatch => "the verified hello does not answer this handshake",
         })
     }
 }
@@ -224,6 +249,7 @@ impl std::error::Error for OpenError {}
 
 /// One side's half of a handshake, between sending its hello and receiving the peer's. [`establish_channel`] consumes it, so an ephemeral key serves exactly one channel. The ephemeral secret is zeroised when this is dropped, and `Debug` prints neither it nor anything derived from it.
 pub struct PendingHandshake {
+    local: DeviceId,
     peer: DeviceId,
     hello: SecureHelloFrame,
     nonce: [u8; NONCE_SIZE],
@@ -235,6 +261,7 @@ impl ZeroizeOnDrop for PendingHandshake {}
 impl core::fmt::Debug for PendingHandshake {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("PendingHandshake")
+            .field("local", &self.local)
             .field("peer", &self.peer)
             .field("hello", &self.hello)
             .finish_non_exhaustive()
@@ -253,7 +280,7 @@ impl PendingHandshake {
     }
 }
 
-/// Starts a handshake with `peer`: draws a fresh ephemeral P-256 key and a fresh 16-byte nonce and signs a hello for `peer` with `identity`. Both are drawn from the operating system's generator and are never reused.
+/// Starts a handshake with `peer`: draws a fresh ephemeral P-256 key and a fresh 16-byte nonce, both from the operating system's generator, and signs a hello for `peer` with `identity`. Neither is ever reused.
 ///
 /// # Errors
 ///
@@ -262,10 +289,14 @@ pub async fn begin_handshake(
     identity: &dyn Identity,
     peer: DeviceId,
 ) -> Result<PendingHandshake, CoreError> {
-    let ephemeral = NonZeroScalar::generate();
-    let mut nonce = [0u8; NONCE_SIZE];
-    OsRng.fill_bytes(&mut nonce);
-    begin_with(identity, peer, Zeroizing::new(ephemeral), nonce).await
+    // One generator for both values: p256's `Generate`, which draws from the operating system. The scalar is built inside `Zeroizing::new` in one expression, because `NonZeroScalar` is `Copy` and a named copy would stay in this future's state across the await below, unzeroised.
+    begin_with(
+        identity,
+        peer,
+        Zeroizing::new(NonZeroScalar::generate()),
+        <[u8; NONCE_SIZE]>::generate(),
+    )
+    .await
 }
 
 /// [`begin_handshake`] with the ephemeral secret scalar and the nonce chosen by the caller, so a handshake can be reproduced byte for byte. Reusing either breaks the channel's security; only conformance checks and tests call this, which is why it exists only with the `conformance` feature or under test.
@@ -280,9 +311,15 @@ pub async fn begin_handshake_with(
     ephemeral_secret: &[u8; KEY_SIZE],
     nonce: [u8; NONCE_SIZE],
 ) -> Result<PendingHandshake, CoreError> {
-    let ephemeral = NonZeroScalar::try_from(&ephemeral_secret[..])
-        .map_err(|_| CoreError::Crypto("the ephemeral secret is not a P-256 scalar".to_owned()))?;
-    begin_with(identity, peer, Zeroizing::new(ephemeral), nonce).await
+    begin_with(
+        identity,
+        peer,
+        Zeroizing::new(NonZeroScalar::try_from(&ephemeral_secret[..]).map_err(|_| {
+            CoreError::Crypto("the ephemeral secret is not a P-256 scalar".to_owned())
+        })?),
+        nonce,
+    )
+    .await
 }
 
 async fn begin_with(
@@ -306,6 +343,7 @@ async fn begin_with(
         ))
         .await?;
     Ok(PendingHandshake {
+        local: *identity.device_id(),
         peer,
         nonce,
         ephemeral,
@@ -319,7 +357,7 @@ async fn begin_with(
     })
 }
 
-/// Whether `key` is a usable key for its algorithm, as far as importing it can tell: Ed25519 is 32 bytes that decompress to a curve point, ES256 is a SEC1 point on P-256.
+/// Whether `key` is a usable key for its algorithm, as far as importing it can tell: Ed25519 is 32 bytes that decompress to a curve point, ES256 is exactly the 65-byte uncompressed SEC1 encoding of a P-256 point. Both are the canonical encoding the device-id hashes, so no key has a second device-id.
 fn check_identity_key(key: &IdentityKey) -> Result<(), HelloRefusal> {
     match key.alg {
         IdentityKey::ALG_ED25519 => {
@@ -332,27 +370,56 @@ fn check_identity_key(key: &IdentityKey) -> Result<(), HelloRefusal> {
                 .map(|_| ())
                 .map_err(|_| HelloRefusal::InvalidIdentityKey)
         }
-        IdentityKey::ALG_ES256 => PublicKey::from_sec1_bytes(&key.public_key)
+        IdentityKey::ALG_ES256 => es256_public_key(&key.public_key)
             .map(|_| ())
             .map_err(|_| HelloRefusal::InvalidIdentityKey),
         _ => Err(HelloRefusal::UnsupportedIdentityAlgorithm),
     }
 }
 
-/// Checks a received hello and returns the device it proves. In order: the hello is addressed to `identity`'s device, its identity key's algorithm is supported, the key is usable, and its signature verifies over [`hello_signing_input`] with the sender derived from the key. The sender is never claimed, so no check can refuse a hello for naming the wrong sender.
+/// A hello that [`verify_hello`] accepted, with the device it proved. It is the only thing [`establish_channel`] takes for the peer's side, so a channel cannot be established from a hello nobody verified.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifiedHello {
+    verified_by: DeviceId,
+    hello: SecureHelloFrame,
+    peer: SecureChannelPeer,
+}
+
+impl VerifiedHello {
+    /// The hello that was verified.
+    pub fn hello(&self) -> &SecureHelloFrame {
+        &self.hello
+    }
+
+    /// The device the hello proved, with its device-id derived from the hello's identity key.
+    pub fn peer(&self) -> &SecureChannelPeer {
+        &self.peer
+    }
+}
+
+/// Whether `signature` has the form its algorithm's signatures have: 64 bytes for EdDSA, and for ES256 the raw `r || s` of two scalars in range. A signature without that form does not verify, which is a verdict about the peer; any failure after this check is the identity port's.
+fn signature_has_form(alg: i64, signature: &[u8]) -> bool {
+    match alg {
+        IdentityKey::ALG_ED25519 => signature.len() == 64,
+        IdentityKey::ALG_ES256 => p256::ecdsa::Signature::from_slice(signature).is_ok(),
+        _ => false,
+    }
+}
+
+/// Checks a received hello and returns it with the device it proves. In order: the hello is addressed to `identity`'s device, its identity key's algorithm is supported, the key is usable, and its signature verifies over [`hello_signing_input`] with the sender derived from the key. The sender is never claimed, so no check can refuse a hello for naming the wrong sender.
 ///
-/// A signature that is malformed for its algorithm (a DER-encoded ES256 signature, a short Ed25519 one) is a [`HelloRefusal::BadSignature`], as is any error the identity port gives for it, since by then the key has been checked and the signature is the only input left. An ES256 signature is raw `r || s` and is accepted with `s` in either half of the group order.
+/// A signature that is malformed for its algorithm (a DER-encoded ES256 signature, a short Ed25519 one) is a [`HelloRefusal::BadSignature`], as is a hello whose ephemeral key or nonce has the wrong size, which no signature can cover. An ES256 signature is raw `r || s` and is accepted with `s` in either half of the group order. An error from `identity.verify` after those checks is the port failing and is returned as [`VerifyHelloError::Port`], never as a verdict about the peer.
 ///
 /// # Errors
 ///
-/// The [`HelloRefusal`] for the first check that fails.
+/// [`VerifyHelloError::Refused`] with the [`HelloRefusal`] for the first check that fails, or [`VerifyHelloError::Port`].
 pub async fn verify_hello(
     identity: &dyn Identity,
     hello: &SecureHelloFrame,
-) -> Result<SecureChannelPeer, HelloRefusal> {
+) -> Result<VerifiedHello, VerifyHelloError> {
     let key = &hello.identity_key;
     if hello.to_device != *identity.device_id() {
-        return Err(HelloRefusal::WrongRecipient);
+        return Err(HelloRefusal::WrongRecipient.into());
     }
     check_identity_key(key)?;
     let sender = identity.derive_device_id(&key.public_key);
@@ -366,13 +433,21 @@ pub async fn verify_hello(
         .as_slice()
         .try_into()
         .map_err(|_| HelloRefusal::BadSignature)?;
+    if !signature_has_form(key.alg, &hello.signature) {
+        return Err(HelloRefusal::BadSignature.into());
+    }
     let input = hello_signing_input(ephemeral_key, nonce, &sender, identity.device_id());
     match identity.verify(key, &input, &hello.signature).await {
-        Ok(true) => Ok(SecureChannelPeer {
-            device_id: sender,
-            identity_key: key.clone(),
+        Ok(true) => Ok(VerifiedHello {
+            verified_by: *identity.device_id(),
+            hello: hello.clone(),
+            peer: SecureChannelPeer {
+                device_id: sender,
+                identity_key: key.clone(),
+            },
         }),
-        Ok(false) | Err(_) => Err(HelloRefusal::BadSignature),
+        Ok(false) => Err(HelloRefusal::BadSignature.into()),
+        Err(error) => Err(VerifyHelloError::Port(error)),
     }
 }
 
@@ -391,6 +466,8 @@ impl core::fmt::Debug for DirectionKeys {
 }
 
 /// The key schedule: HKDF-SHA256 with `shared_secret` as input keying material, [`channel_salt`] as salt and [`channel_hkdf_info`] as info, to 32 bytes per direction. `low` and `high` are the two device-ids in bytewise order and `nonce_low` and `nonce_high` the nonces of the hellos those devices sent.
+///
+/// What is zeroised: the two returned keys, when dropped. What is not: `hkdf` 0.13 offers no zeroising path, so the HKDF pseudo-random key (enough to derive both keys again) lives in a value that is dropped, scoped here so that happens before this function returns, and not overwritten.
 pub fn derive_direction_keys(
     shared_secret: &[u8; KEY_SIZE],
     low: &DeviceId,
@@ -399,21 +476,26 @@ pub fn derive_direction_keys(
     nonce_high: &[u8; NONCE_SIZE],
 ) -> DirectionKeys {
     let salt = channel_salt(nonce_low, nonce_high);
-    let hkdf = Hkdf::<Sha256>::new(Some(&salt), shared_secret);
-    let derive = |label: &[u8]| {
-        let mut key = Zeroizing::new([0u8; KEY_SIZE]);
-        // The output length is one HMAC block of SHA-256, far below HKDF's limit, so expansion cannot fail.
-        if hkdf
-            .expand(&channel_hkdf_info(low, high, label), key.as_mut_slice())
-            .is_err()
-        {
-            unreachable!("32 bytes is within the HKDF-SHA256 output limit");
+    let mut low_to_high = Zeroizing::new([0u8; KEY_SIZE]);
+    let mut high_to_low = Zeroizing::new([0u8; KEY_SIZE]);
+    {
+        let hkdf = Hkdf::<Sha256>::new(Some(&salt), shared_secret);
+        for (label, key) in [
+            (LABEL_LOW_TO_HIGH, &mut low_to_high),
+            (LABEL_HIGH_TO_LOW, &mut high_to_low),
+        ] {
+            // The output length is one HMAC block of SHA-256, far below HKDF's limit, so expansion cannot fail.
+            if hkdf
+                .expand(&channel_hkdf_info(low, high, label), key.as_mut_slice())
+                .is_err()
+            {
+                unreachable!("32 bytes is within the HKDF-SHA256 output limit");
+            }
         }
-        key
-    };
+    }
     DirectionKeys {
-        low_to_high: derive(LABEL_LOW_TO_HIGH),
-        high_to_low: derive(LABEL_HIGH_TO_LOW),
+        low_to_high,
+        high_to_low,
     }
 }
 
@@ -450,19 +532,22 @@ impl PendingHandshake {
     }
 }
 
-/// Completes a handshake once the peer's hello has verified: derives the two direction keys from the ECDH result of the ephemeral keys and returns the channel. `local` is this device's id, `pending` this side's own half (begun here, or in answer to `remote`), `remote` the peer's hello and `peer` the device [`verify_hello`] authenticated for it.
+/// Completes a handshake: derives the two direction keys from the ECDH result of this side's ephemeral key and the peer's, and returns the channel. `pending` is this side's own half, begun here or in answer to the peer's hello, and `verified` is the peer's hello as [`verify_hello`] accepted it, so there is no way to establish from a hello nobody verified. This device's id comes from `pending`.
 ///
 /// # Errors
 ///
-/// [`EstablishError::UnusableEphemeralKey`] when the peer's ephemeral key is not an uncompressed P-256 point on the curve, which only a hostile or broken peer sends, and [`EstablishError::InvalidNonce`] when its nonce is not 16 bytes.
+/// [`EstablishError::PeerMismatch`] when `verified` was verified by another device or proves a device other than the one `pending` is addressed to. [`EstablishError::UnusableEphemeralKey`] when the peer's ephemeral key is not an uncompressed P-256 point on the curve, which only a hostile or broken peer sends, and [`EstablishError::InvalidNonce`] when its nonce is not 16 bytes.
 pub fn establish_channel(
-    local: &DeviceId,
     pending: PendingHandshake,
-    remote: &SecureHelloFrame,
-    peer: SecureChannelPeer,
+    verified: VerifiedHello,
 ) -> Result<SecureChannel, EstablishError> {
-    let shared = ecdh_shared_secret(&pending.ephemeral, &remote.ephemeral_key)?;
-    let remote_nonce: [u8; NONCE_SIZE] = remote
+    if verified.verified_by != pending.local || verified.peer.device_id != pending.peer {
+        return Err(EstablishError::PeerMismatch);
+    }
+    let VerifiedHello { hello, peer, .. } = verified;
+    let local = &pending.local;
+    let shared = ecdh_shared_secret(&pending.ephemeral, &hello.ephemeral_key)?;
+    let remote_nonce: [u8; NONCE_SIZE] = hello
         .nonce
         .as_slice()
         .try_into()
@@ -489,7 +574,7 @@ pub fn establish_channel(
     };
     Ok(SecureChannel {
         peer,
-        local: *local,
+        local: pending.local,
         send_key,
         receive_key,
         next_send: Some(0),
@@ -614,11 +699,11 @@ mod tests {
         let pending_b = begin_handshake(b, *a.device_id()).await.expect("begin b");
         let hello_a = pending_a.hello().clone();
         let hello_b = pending_b.hello().clone();
-        let peer_b = verify_hello(a, &hello_b).await.expect("verify b");
-        let peer_a = verify_hello(b, &hello_a).await.expect("verify a");
+        let verified_b = verify_hello(a, &hello_b).await.expect("verify b");
+        let verified_a = verify_hello(b, &hello_a).await.expect("verify a");
         (
-            establish_channel(a.device_id(), pending_a, &hello_b, peer_b).expect("establish a"),
-            establish_channel(b.device_id(), pending_b, &hello_a, peer_a).expect("establish b"),
+            establish_channel(pending_a, verified_b).expect("establish a"),
+            establish_channel(pending_b, verified_a).expect("establish b"),
         )
     }
 
@@ -765,28 +850,80 @@ mod tests {
         assert_eq!(b_end.open(&next), Ok(have(9)));
     }
 
+    /// A hello from `identity` to `to` carrying exactly the given ephemeral key and identity key, signed as a sender would, so it passes [`verify_hello`] wherever the key and signature checks allow.
+    async fn signed_hello(
+        identity: &NodeIdentity,
+        to: DeviceId,
+        ephemeral_key: Vec<u8>,
+        identity_key: IdentityKey,
+    ) -> SecureHelloFrame {
+        let sender = identity.derive_device_id(&identity_key.public_key);
+        let nonce = [0x5a; NONCE_SIZE];
+        let mut input = Vec::new();
+        input.extend_from_slice(HELLO_CONTEXT);
+        input.extend_from_slice(&ephemeral_key);
+        input.extend_from_slice(&nonce);
+        input.extend_from_slice(sender.as_bytes());
+        input.extend_from_slice(to.as_bytes());
+        SecureHelloFrame {
+            ephemeral_key,
+            nonce: nonce.to_vec(),
+            identity_key,
+            to_device: to,
+            signature: identity.sign(&input).await.expect("sign"),
+        }
+    }
+
     #[tokio::test]
     async fn an_unusable_ephemeral_key_is_refused_when_the_channel_is_established() {
         let (a, b) = (
             NodeIdentity::generate_ed25519(),
             NodeIdentity::generate_ed25519(),
         );
-        let remote = begin_handshake(&b, *a.device_id()).await.expect("begin");
-        let peer = SecureChannelPeer {
-            device_id: *b.device_id(),
-            identity_key: b.identity_key().clone(),
-        };
-        let mut hello = remote.hello().clone();
+        let genuine = begin_handshake(&b, *a.device_id()).await.expect("begin");
         let mut compressed = vec![0x02];
-        compressed.extend_from_slice(&hello.ephemeral_key[1..33]);
+        compressed.extend_from_slice(&genuine.hello().ephemeral_key[1..33]);
         for key in [vec![0x04; 65], compressed, vec![0u8; 65], Vec::new()] {
-            hello.ephemeral_key = key;
-            let consumed = begin_handshake(&a, *b.device_id()).await.expect("begin");
+            let hello = signed_hello(&b, *a.device_id(), key, b.identity_key().clone()).await;
+            // The signature covers whatever bytes the hello carries, so the hello itself verifies.
+            let verified = verify_hello(&a, &hello).await;
+            let verified = match verified {
+                Ok(verified) => verified,
+                // A key that is not 65 bytes cannot be covered by the signing input, so it is refused before the channel.
+                Err(VerifyHelloError::Refused(HelloRefusal::BadSignature)) => continue,
+                Err(other) => panic!("{other}"),
+            };
+            let pending = begin_handshake(&a, *b.device_id()).await.expect("begin");
             assert_eq!(
-                establish_channel(a.device_id(), consumed, &hello, peer.clone()).unwrap_err(),
+                establish_channel(pending, verified).unwrap_err(),
                 EstablishError::UnusableEphemeralKey
             );
         }
+    }
+
+    #[tokio::test]
+    async fn a_channel_is_established_only_from_the_hello_that_answers_the_handshake() {
+        let (a, b, c) = (
+            NodeIdentity::generate_ed25519(),
+            NodeIdentity::generate_ed25519(),
+            NodeIdentity::generate_ed25519(),
+        );
+        let pending_a = begin_handshake(&a, *b.device_id()).await.expect("begin");
+        // A hello from c to a, verified by a: a genuine hello, but not from the device the handshake is addressed to.
+        let from_c = begin_handshake(&c, *a.device_id()).await.expect("begin");
+        let verified_from_c = verify_hello(&a, from_c.hello()).await.expect("verify");
+        assert_eq!(
+            establish_channel(pending_a, verified_from_c).unwrap_err(),
+            EstablishError::PeerMismatch
+        );
+        // A hello from b to c, verified by c: right peer, wrong verifier.
+        let pending_a = begin_handshake(&a, *b.device_id()).await.expect("begin");
+        let from_b = begin_handshake(&b, *c.device_id()).await.expect("begin");
+        let verified_by_c = verify_hello(&c, from_b.hello()).await.expect("verify");
+        assert_eq!(
+            establish_channel(pending_a, verified_by_c).unwrap_err(),
+            EstablishError::PeerMismatch
+        );
     }
 
     #[tokio::test]
@@ -798,30 +935,108 @@ mod tests {
         );
         let hello = begin_handshake(&a, *b.device_id()).await.expect("begin");
         assert!(verify_hello(&b, hello.hello()).await.is_ok());
+        let refused = |result: Result<VerifiedHello, VerifyHelloError>| match result {
+            Err(VerifyHelloError::Refused(refusal)) => refusal,
+            other => panic!("{other:?}"),
+        };
         assert_eq!(
-            verify_hello(&c, hello.hello()).await.unwrap_err(),
+            refused(verify_hello(&c, hello.hello()).await),
             HelloRefusal::WrongRecipient
         );
         let mut swapped = hello.hello().clone();
         swapped.nonce[0] ^= 1;
         assert_eq!(
-            verify_hello(&b, &swapped).await.unwrap_err(),
+            refused(verify_hello(&b, &swapped).await),
             HelloRefusal::BadSignature
         );
         let mut unsupported = hello.hello().clone();
         unsupported.identity_key.alg = -35;
         assert_eq!(
-            verify_hello(&b, &unsupported).await.unwrap_err(),
+            refused(verify_hello(&b, &unsupported).await),
             HelloRefusal::UnsupportedIdentityAlgorithm
         );
     }
 
     #[tokio::test]
+    async fn an_es256_identity_key_in_another_encoding_of_the_same_point_is_refused() {
+        let (a, e) = (
+            NodeIdentity::generate_ed25519(),
+            NodeIdentity::generate_es256(),
+        );
+        let uncompressed = e.identity_key().public_key.clone();
+        let genuine = begin_handshake(&e, *a.device_id()).await.expect("begin");
+        let ephemeral = genuine.hello().ephemeral_key.clone();
+        let mut compressed = vec![0x02 | (uncompressed[64] & 1)];
+        compressed.extend_from_slice(&uncompressed[1..33]);
+        let mut compact = vec![0x05];
+        compact.extend_from_slice(&uncompressed[1..33]);
+        for encoding in [compressed, compact] {
+            let key = IdentityKey {
+                alg: IdentityKey::ALG_ES256,
+                public_key: encoding,
+            };
+            let hello = signed_hello(&e, *a.device_id(), ephemeral.clone(), key).await;
+            assert_eq!(
+                verify_hello(&a, &hello).await.unwrap_err(),
+                VerifyHelloError::Refused(HelloRefusal::InvalidIdentityKey)
+            );
+        }
+        let hello = signed_hello(&e, *a.device_id(), ephemeral, e.identity_key().clone()).await;
+        assert!(verify_hello(&a, &hello).await.is_ok());
+    }
+
+    /// An identity whose key store fails every verification, as a hardware key or module that is unavailable would.
+    struct UnavailablePort(NodeIdentity);
+
+    #[async_trait::async_trait]
+    impl Identity for UnavailablePort {
+        fn device_id(&self) -> &DeviceId {
+            self.0.device_id()
+        }
+        fn identity_key(&self) -> &IdentityKey {
+            self.0.identity_key()
+        }
+        async fn sign(&self, message: &[u8]) -> Result<Vec<u8>, CoreError> {
+            self.0.sign(message).await
+        }
+        async fn verify(&self, _: &IdentityKey, _: &[u8], _: &[u8]) -> Result<bool, CoreError> {
+            Err(CoreError::Crypto("key store unavailable".to_owned()))
+        }
+        fn derive_device_id(&self, public_key: &[u8]) -> DeviceId {
+            self.0.derive_device_id(public_key)
+        }
+    }
+
+    #[tokio::test]
+    async fn a_failure_of_the_identity_port_is_not_a_verdict_about_the_peer() {
+        for sender in [
+            NodeIdentity::generate_ed25519(),
+            NodeIdentity::generate_es256(),
+        ] {
+            let receiver = UnavailablePort(NodeIdentity::generate_ed25519());
+            let hello = begin_handshake(&sender, *receiver.device_id())
+                .await
+                .expect("begin");
+            assert_eq!(
+                verify_hello(&receiver, hello.hello()).await.unwrap_err(),
+                VerifyHelloError::Port(CoreError::Crypto("key store unavailable".to_owned()))
+            );
+            // A signature of the wrong form is still the peer's fault, even when the port is down.
+            let mut malformed = hello.hello().clone();
+            malformed.signature.truncate(10);
+            assert_eq!(
+                verify_hello(&receiver, &malformed).await.unwrap_err(),
+                VerifyHelloError::Refused(HelloRefusal::BadSignature)
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn secrets_are_zeroised_on_drop_and_absent_from_debug_output() {
+        // Rust gives no safe way to read a value after its drop, so what can be observed is the explicit wipe of a key held in `Zeroizing`, which drop performs through the same `Zeroize` call. The marker assertions pin that every type holding a secret is wiped on drop.
         fn assert_zeroize_on_drop<T: ZeroizeOnDrop>() {}
         assert_zeroize_on_drop::<PendingHandshake>();
         assert_zeroize_on_drop::<SecureChannel>();
-        // The key fields themselves are `Zeroizing`, which wipes on drop and on an explicit call; this observes the explicit call on a derived key.
         let mut keys = derive_direction_keys(
             &[3; 32],
             &DeviceId([1; 32]),

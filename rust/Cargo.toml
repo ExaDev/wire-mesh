@@ -40,7 +40,9 @@ frost-core = { version = "2.2.0", default-features = false, features = ["std", "
 zeroize = { version = "1", default-features = false, features = ["alloc"] }
 p256 = { version = "0.14", default-features = false, features = ["std", "ecdsa", "ecdh"] }
 hkdf = { version = "0.13", default-features = false }
-aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
+# "zeroize" makes aes-gcm wipe its GHASH key. It does not reach the block cipher: aes-gcm 0.10 does not forward it to `aes`, so the `aes` entry below turns it on there, which wipes the expanded round keys when a cipher is dropped.
+aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc", "zeroize"] }
+aes = { version = "0.8", default-features = false, features = ["zeroize"] }
 # "std" and "std_rng" are what `OsRng` and `thread_rng` need.
 rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
 serde_json = { version = "1", default-features = false, features = ["std"] }
