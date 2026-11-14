@@ -19,13 +19,15 @@ import {
   type JsonWire,
 } from "@exadev/wire-mesh-conformance";
 
-const ED25519_SEED_BYTE_LENGTH = 32;
+export const ED25519_SEED_BYTE_LENGTH = 32;
 // COSE algorithm identifier for pure Ed25519 (RFC 9053)
-const EDDSA = -8;
+export const EDDSA = -8;
 // XOR operand keeping a corrupted byte within one octet
 const LOW_BYTE_MASK = 0xff;
-// an arbitrary fixed Unix-seconds instant, so regenerating reproduces the committed bytes
-const SNAPSHOT_SECONDS = 1861833600;
+/**
+ * an arbitrary fixed Unix-seconds instant, so regenerating reproduces the committed bytes
+ */
+export const SNAPSHOT_SECONDS = 1861833600;
 
 /** RFC 8410 section 7's PKCS#8 prefix for an Ed25519 private key, sitting ahead of the 32 raw seed bytes and encoding the version, the 1.3.101.112 algorithm identifier, and the octet-string wrapper around the seed. Node accepts no rawer form for an Ed25519 private key, so the seed is wrapped rather than imported directly. */
 const PKCS8_ED25519_PREFIX = Buffer.from(
@@ -68,12 +70,12 @@ function identityFromSeed(seedFillHex: string): AdvertIdentity {
   };
 }
 
-const advertiser = identityFromSeed("7c");
+export const advertiser = identityFromSeed("7c");
 /** A second real key, used only to sign an advert naming a device it does not derive: the wrong-key case, which self-certification catches before any signature work. */
 const impostor = identityFromSeed("9d");
 
 /** The advert's own entries minus `signature`, canonically encoded and prefixed: exactly what spec/transport.cddl defines as the signing input. */
-function advertSigningInput(
+export function advertSigningInput(
   advert: Readonly<Record<string, JsonWire>>,
 ): Buffer {
   const content: Record<string, JsonWire> = {};
@@ -90,7 +92,7 @@ function advertSigningInput(
   ]);
 }
 
-function wireHex(message: JsonWire): string {
+export function wireHex(message: JsonWire): string {
   return Buffer.from(encode(toWire(message), cdeEncodeOptions)).toString("hex");
 }
 

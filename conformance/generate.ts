@@ -10,6 +10,7 @@ import {
   type Vector,
 } from "@exadev/wire-mesh-conformance";
 import { advertVectors } from "./adverts.ts";
+import { advertIdentityKeyVectors } from "./advert-identity-key-vectors.ts";
 import { relayVectors } from "./relay-vectors.ts";
 import {
   grantTokenVectors,
@@ -884,6 +885,6 @@ const frameVectors: Vector[] = [
 writeVectorFiles({
   handshake: handshakeVectors,
   tokens: tokenVectors,
-  adverts: advertVectors,
+  adverts: [...advertVectors, ...advertIdentityKeyVectors],
   frames: frameVectors,
 });
