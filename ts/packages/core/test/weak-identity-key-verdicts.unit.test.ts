@@ -144,7 +144,8 @@ describe("verifiesOrRefuses", () => {
 
   it("turns an identity-key error into a signature that does not verify", async () => {
     const port = {
-      verify: () => Promise.reject(new IdentityKeyError("invalid_key", "no")),
+      verify: async () =>
+        Promise.reject(new IdentityKeyError("invalid_key", "no")),
     };
 
     expect(await verifiesOrRefuses(port, key, message, message)).toBe(false);
@@ -152,7 +153,7 @@ describe("verifiesOrRefuses", () => {
 
   it("lets any other error through unchanged, since it is a failure of the port and not a verdict about the peer", async () => {
     const failure = new Error("key store unavailable");
-    const port = { verify: () => Promise.reject(failure) };
+    const port = { verify: async () => Promise.reject(failure) };
 
     await expect(verifiesOrRefuses(port, key, message, message)).rejects.toBe(
       failure,
