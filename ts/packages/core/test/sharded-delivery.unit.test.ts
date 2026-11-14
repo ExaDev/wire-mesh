@@ -29,6 +29,7 @@ import type { IdentityPort } from "../src/ports/identity.js";
 import { deviceIdFromFillHex } from "./hex.js";
 
 const TEST_SCOPE: CapabilityScope = { kind: "folder", path: "/shards" };
+const SETTLE_MS = 50;
 const K2_N3 = { dataShards: 2, totalShards: 3 };
 const TRANSFER_ID_BYTE_LENGTH = 16;
 const MISMATCHED_TRANSFER_ID_BYTE = 99;
@@ -219,6 +220,60 @@ function readerChannel(
 
   return { holderChannel: { connection: senderConn, session } };
 }
+
+describe("distributeShardedPayload over a connection whose receive fails", () => {
+  it("treats the failure as the connection ending, with nothing unhandled", async () => {
+    const unhandled: unknown[] = [];
+    const record = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", record);
+    try {
+      const senderIdentity = identityFor("aa");
+      const holders = ["01", "02", "03"].map((fill) => ({
+        device: deviceIdFromFillHex(fill),
+        link: holderAcceptingChannel(
+          createShardHolder({ storage: createMemoryStorage() }),
+          senderIdentity.deviceId,
+        ),
+      }));
+      const failing = (channel: ShardChannel): ShardChannel => ({
+        ...channel,
+        connection: {
+          ...channel.connection,
+          receive: () => ({
+            [Symbol.asyncIterator]: () => ({
+              next: async () =>
+                Promise.reject(new Error("the link stopped reading")),
+            }),
+          }),
+        },
+      });
+
+      const settledInTime = Promise.race([
+        distributeShardedPayload(text("a payload"), {
+          config: K2_N3,
+          contentType: "text/plain",
+          targets: holders.map(({ device }) => device),
+          channels: holders.map(({ link }) => failing(link.channel)),
+          nextTransferId: (i) =>
+            new Uint8Array(TRANSFER_ID_BYTE_LENGTH).fill(i + 1),
+          scope: TEST_SCOPE,
+          identity: senderIdentity,
+          storage: createMemoryStorage(),
+        }),
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, SETTLE_MS);
+        }),
+      ]);
+      await settledInTime;
+
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", record);
+    }
+  });
+});
 
 describe("distributeShardedPayload", () => {
   it("pushes every shard to its target holder and publishes the manifest to the sender's own log", async () => {

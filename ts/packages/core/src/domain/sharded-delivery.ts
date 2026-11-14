@@ -96,12 +96,16 @@ function pumpSenderAcks(
     onConnectionEnd: (connection: Readonly<Connection>) => void;
   }>,
 ): void {
+  // A receive that fails is the connection ending, which is what the sender is told next; the failure is nobody's to handle.
   void (async (): Promise<void> => {
     for await (const frame of connection.receive()) {
       sender.onFrame(connection, frame);
     }
-    sender.onConnectionEnd(connection);
-  })();
+  })()
+    .catch(() => undefined)
+    .finally(() => {
+      sender.onConnectionEnd(connection);
+    });
 }
 
 /* ---------------------------------------------------------------------
