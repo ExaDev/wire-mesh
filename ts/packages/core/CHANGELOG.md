@@ -1,3 +1,19 @@
+## [4.1.3](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.1.2...wire-mesh-core%404.1.3) (2026-11-14)
+
+### Bug Fixes
+
+* **core:** give a verdict for a refused key and refuse keys with a torsion component ([be4001f](https://github.com/ExaDev/wire-mesh/commit/be4001f26879511e456f73896246c0900864f9a9))
+* **core:** refuse small-order and non-canonical Ed25519 identity keys ([73365de](https://github.com/ExaDev/wire-mesh/commit/73365def1b0608aae9f4b55d891040e559c7a68d))
+
+### Styles
+
+* **core:** apply the lint formatting that the build step rewrites ([be099d6](https://github.com/ExaDev/wire-mesh/commit/be099d64079ad6569e1d889e4dd4a795e2131656))
+* **core:** format the port stubs of the passthrough test as the linter does ([09eeca2](https://github.com/ExaDev/wire-mesh/commit/09eeca2d14f36e14fe88025eb1f7b09779749856))
+
+### Tests
+
+* **core:** pin the cached key verdict, the non-canonical R rule and the error passthrough ([a1cb88a](https://github.com/ExaDev/wire-mesh/commit/a1cb88aacd8bbd5497ab10936a0da9a51b215bb8))
+
 ## [4.1.2](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.1.1...wire-mesh-core%404.1.2) (2026-11-14)
 
 ### Bug Fixes

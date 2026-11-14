@@ -1,3 +1,14 @@
+## [2.18.3](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.18.2...%40exadev%2Fwire-mesh-web-console%402.18.3) (2026-11-14)
+
+### Bug Fixes
+
+* **core:** refuse small-order and non-canonical Ed25519 identity keys ([73365de](https://github.com/ExaDev/wire-mesh/commit/73365def1b0608aae9f4b55d891040e559c7a68d))
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 4.1.3
+
 ## [2.18.2](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-web-console%402.18.1...%40exadev%2Fwire-mesh-web-console%402.18.2) (2026-11-14)
 
 
