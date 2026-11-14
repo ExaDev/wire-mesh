@@ -211,8 +211,8 @@ function createSessionCore(
   ) => void | Promise<void>,
   /** Fired once this session's own connection.receive() stream ends, regardless of whether the session itself goes on to reconnect with a fresh connection -- the counterpart hook a RelayHub's own forgetConnection needs, since its registry and pairing state is keyed by this exact Connection instance and must be cleaned up when it specifically ends, not when the session as a whole gives up. */
   onSessionEnd?: (connection: Readonly<Connection>) => void,
-  /** Told of a failure that is local to this session and did not end it: an identity port that failed while checking a hello from a peer. The hello is dropped and the peer is told nothing. Omit for a caller with no use for it, exactly today's behaviour. */
-  onLocalFault?: (error: unknown) => void,
+  /** Told of a failure that is local to this session and did not end it, while handling a hello from a peer: an identity port that failed to check or sign, an answering hello that could not be sent, a channel that could not be established. The hello is dropped, any half-made handshake for that peer is discarded, and the peer is told nothing, so no failure in handling a hello ends the session. Called once per failing hello; if it throws, or returns a promise that rejects, that is reported once to the console and swallowed. Omit for a caller with no use for it. */
+  onLocalFault?: (error: unknown) => void | Promise<void>,
 ): SessionCore {
   let connection: Connection | null = null;
   let state: ConnectionState = { status: "idle" };
@@ -870,8 +870,8 @@ export function createMeshSession(
     connection: Readonly<Connection>,
     frame: Frame,
   ) => void | Promise<void>,
-  /** Told of a failure that is local to this session and did not end it: an identity port that failed while checking a hello from a peer. The hello is dropped and the peer is told nothing. Omit for a caller with no use for it: the failure is then not reported anywhere. */
-  onLocalFault?: (error: unknown) => void,
+  /** Told of a failure that is local to this session and did not end it, while handling a hello from a peer: an identity port that failed to check or sign, an answering hello that could not be sent, a channel that could not be established. The hello is dropped, any half-made handshake for that peer is discarded, and the peer is told nothing, so no failure in handling a hello ends the session. Called once per failing hello; if it throws, or returns a promise that rejects, that is reported once to the console and swallowed. Omit for a caller with no use for it. */
+  onLocalFault?: (error: unknown) => void | Promise<void>,
 ): MeshSession {
   const { session } = createSessionCore(
     identity,

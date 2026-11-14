@@ -64,7 +64,7 @@ function counterBytes(counter: number): Uint8Array<ArrayBuffer> {
 }
 
 /** Exactly what a hello's signature covers: see spec/secure-channel.cddl. */
-function helloSigningInput(
+export function helloSigningInput(
   ephemeralKey: Uint8Array,
   nonce: Uint8Array,
   sender: DeviceId,
