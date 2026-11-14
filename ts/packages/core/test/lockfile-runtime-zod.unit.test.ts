@@ -73,7 +73,9 @@ function parseLock(text: string): Lock {
     } else if (section === "importers" && indent === INDENT_ENTRY) {
       pendingName = unquote(content.replace(/:$/u, ""));
     } else if (section === "importers" && content.startsWith("version: ")) {
-      entries.push(`${pendingName}@${bareVersion(content.slice("version: ".length))}`);
+      entries.push(
+        `${pendingName}@${bareVersion(content.slice("version: ".length))}`,
+      );
     }
   }
 
