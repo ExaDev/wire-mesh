@@ -259,6 +259,23 @@ describe("sendDirectManageRequest", () => {
     expect(fake.isClosed).toBe(true);
   });
 
+  it("closes the connection when it ends before a response arrives", async () => {
+    const { transport, fake } = directTransport();
+    const pending = sendDirectManageRequest(
+      transport,
+      DIRECT_ADDRESS,
+      testCommand,
+      testScope,
+      { timeoutMs: TIMEOUT_MS },
+    );
+    const outcome = expect(pending).rejects.toThrow("the link dropped");
+    await tick();
+    fake.fail(new Error("the link dropped"));
+    await outcome;
+
+    expect(fake.isClosed).toBe(true);
+  });
+
   it("never times out when no timeoutMs is given", async () => {
     const { transport, fake } = directTransport();
     const pending = sendDirectManageRequest(
