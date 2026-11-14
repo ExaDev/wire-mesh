@@ -7,7 +7,7 @@ import { MantineProvider } from "@mantine/core";
 import { PwaUpdatePrompt } from "../src/components/PwaUpdatePrompt.js";
 import { stubMantineJsdomGlobals } from "./jsdom-mantine-polyfills.js";
 
-const updateServiceWorker = vi.fn();
+const updateServiceWorker = vi.fn(async () => Promise.resolve());
 const setOfflineReady = vi.fn();
 const setNeedRefresh = vi.fn();
 

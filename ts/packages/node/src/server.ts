@@ -144,7 +144,7 @@ async function main(argv: readonly string[]): Promise<void> {
     ...(tls ? { tls } : {}),
   });
   const listener = await transport.listen(command.bindAddress, (connection) => {
-    void hub.handleConnection(connection);
+    hub.handleConnection(connection).catch(logConnectionFailure);
   });
   logOutput(
     `wire-mesh listening on ${tls ? "wss" : "ws"}://${listener.address}`,
@@ -170,7 +170,7 @@ async function main(argv: readonly string[]): Promise<void> {
         );
       },
     }).listen(command.webTransportAddress, (connection) => {
-      void hub.handleConnection(connection);
+      hub.handleConnection(connection).catch(logConnectionFailure);
     });
     for (const address of webTransport.advertisedAddresses) {
       logOutput(`wire-mesh serving WebTransport at ${address}`);
@@ -179,6 +179,11 @@ async function main(argv: readonly string[]): Promise<void> {
 }
 
 /** Runs the CLI and turns a failure into a one-line message on stderr and a non-zero exit code, instead of an unhandled rejection's stack trace. */
+/** One connection failing is that connection's alone: it is logged and the hub goes on. */
+function logConnectionFailure(error: unknown): void {
+  logError(`wire-mesh: a connection failed: ${JSON.stringify(String(error))}`);
+}
+
 async function run(argv: readonly string[]): Promise<void> {
   try {
     await main(argv);
@@ -202,5 +207,8 @@ if (
   invokedPath !== undefined &&
   realpathSync(fileURLToPath(import.meta.url)) === realpathSync(invokedPath)
 ) {
-  void run(process.argv.slice(2));
+  run(process.argv.slice(2)).catch((error: unknown) => {
+    logError(`wire-mesh: ${String(error)}`);
+    process.exitCode = EXIT_FAILURE;
+  });
 }

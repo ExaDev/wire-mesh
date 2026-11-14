@@ -1,5 +1,6 @@
 // One conversation's own UI: message history, a compose box, and (when the peer has asked to message this console) an inline approve/deny prompt. All room-protocol behaviour lives in room-client.ts and the useRoomMessaging hook; this component only renders a ConversationView and forwards clicks back onto it.
 
+import { startInBackground } from "../background.js";
 import { Alert, Button, Divider, Group, Stack, Text } from "@mantine/core";
 import { SubmitRow } from "web-ui-primitives";
 import { participantLabel, type ConversationView } from "../conversations.js";
@@ -63,11 +64,13 @@ export function RoomPanel({
               <Button
                 size="xs"
                 onClick={() => {
-                  void view.pendingJoinRequest?.decide({
-                    kind: "accept",
-                    capability: "room:member",
-                    expires: Date.now() + ROOM_TOKEN_LIFETIME_MS,
-                  });
+                  startInBackground(
+                    view.pendingJoinRequest?.decide({
+                      kind: "accept",
+                      capability: "room:member",
+                      expires: Date.now() + ROOM_TOKEN_LIFETIME_MS,
+                    }) ?? Promise.resolve(),
+                  );
                 }}
               >
                 Allow
@@ -77,7 +80,10 @@ export function RoomPanel({
                 color="red"
                 variant="light"
                 onClick={() => {
-                  void view.pendingJoinRequest?.decide({ kind: "reject" });
+                  startInBackground(
+                    view.pendingJoinRequest?.decide({ kind: "reject" }) ??
+                      Promise.resolve(),
+                  );
                 }}
               >
                 Deny

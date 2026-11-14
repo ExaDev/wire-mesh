@@ -1,5 +1,6 @@
 // Bridges a MeshSession's own events AsyncIterable onto React's push-based re-render model, the one place this console adapts the domain layer's pull-based iterator to a hook, so every consuming component just reads plain state. The session's event stream has a single reader, so the human-readable activity is accumulated here from the same events rather than by a second consumer.
 
+import { startInBackground } from "../background.js";
 import { consumeEach } from "wire-mesh-core/domain/consume-incoming";
 import { useEffect, useState } from "react";
 import type {
@@ -37,22 +38,24 @@ export function useMeshSessionEvents(
     // Aborted by the cleanup: the loop ends at once and withdraws its wait on the session's stream, so a cancelled effect never takes an event a live one needs (the stream wakes one reader per event).
     const cancelled = new AbortController();
     let tracker = initialTracker;
-    void consumeEach(
-      session.events,
-      (sessionEvent) => {
-        const at = clock.now();
-        const advanced = advanceActivity(tracker, sessionEvent, at);
-        const stageChanged = advanced.tracker.stage !== tracker.stage;
-        tracker = advanced.tracker;
-        setView((current) => ({
-          event: sessionEvent,
-          activity: [...current.activity, ...advanced.entries].slice(
-            -MAX_ACTIVITY_ENTRIES,
-          ),
-          statusSince: stageChanged ? at : current.statusSince,
-        }));
-      },
-      { signal: cancelled.signal },
+    startInBackground(
+      consumeEach(
+        session.events,
+        (sessionEvent) => {
+          const at = clock.now();
+          const advanced = advanceActivity(tracker, sessionEvent, at);
+          const stageChanged = advanced.tracker.stage !== tracker.stage;
+          tracker = advanced.tracker;
+          setView((current) => ({
+            event: sessionEvent,
+            activity: [...current.activity, ...advanced.entries].slice(
+              -MAX_ACTIVITY_ENTRIES,
+            ),
+            statusSince: stageChanged ? at : current.statusSince,
+          }));
+        },
+        { signal: cancelled.signal },
+      ),
     );
 
     return () => {

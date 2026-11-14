@@ -1,5 +1,6 @@
 // Top-level layout: the connect form, the list of currently open relay connection panels, and every peer-to-peer room-messaging panel. Owns only the set of live sessions and negotiators -- everything about rendering one relay session's own state lives in ConnectionPanel, and everything about a room session's own state lives in the useRoomMessaging hook plus RoomPanel.
 
+import { startInBackground } from "./background.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
@@ -209,7 +210,7 @@ export function App({
     return () => {
       closedRef.current = true;
       for (const entry of connectionsRef.current) {
-        void entry.session.close();
+        startInBackground(entry.session.close());
       }
     };
   }, []);
@@ -234,23 +235,25 @@ export function App({
         revocation: capabilities.revocation,
         iceServers: DEFAULT_ICE_SERVERS,
         onIncomingConnection: (connection: Readonly<Connection>) => {
-          void attachRef.current(connection);
+          startInBackground(attachRef.current(connection));
         },
       },
     );
     // Revocations a node announces are verified and recorded by the store, so every token check in the console honours them. One that cannot be stored is reported and the next is still read, since one storage failure must not end ingestion for the rest of the connection.
-    void consumeEach(
-      session.revocationAnnouncements,
-      async (entry) => {
-        await revocations.ingest(entry);
-      },
-      {
-        onFault: (error) => {
-          setRevocationFailure(
-            error instanceof Error ? error.message : String(error),
-          );
+    startInBackground(
+      consumeEach(
+        session.revocationAnnouncements,
+        async (entry) => {
+          await revocations.ingest(entry);
         },
-      },
+        {
+          onFault: (error) => {
+            setRevocationFailure(
+              error instanceof Error ? error.message : String(error),
+            );
+          },
+        },
+      ),
     );
     const hub: HubEndpoint = {
       sendManageRequest: async (...args) => session.sendManageRequest(...args),
@@ -465,7 +468,7 @@ export function App({
 
   function handleClose(target: Readonly<ConnectionEntry>): void {
     roomMessaging.dropHub(target.hub);
-    void target.session.close();
+    startInBackground(target.session.close());
     setConnections((current) =>
       current.filter((entry) => entry.session !== target.session),
     );
@@ -633,7 +636,9 @@ export function App({
               roomMessaging.postNotice(selectedConversation.roomPath, text)
             }
             onRetry={(localId) => {
-              void roomMessaging.retry(selectedConversation.roomPath, localId);
+              startInBackground(
+                roomMessaging.retry(selectedConversation.roomPath, localId),
+              );
             }}
             onDiscard={(localId) => {
               roomMessaging.discard(selectedConversation.roomPath, localId);

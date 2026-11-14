@@ -1,5 +1,6 @@
 // Owns every conversation this console holds, keyed by room path. A conversation reaches its peer by up to two routes at once: a direct WebRTC connection, when one has been negotiated, and a hub, through a relay pairing and a secure channel, which needs nothing but a connection both sides already have. This module attaches each route as it appears, restores persisted conversations that have no route yet, tracks each one's message history, unread count and any pending join request, and exposes send and respond actions the UI calls into. Kept as one reducer-backed hook rather than one useState per conversation, since a message arriving in one conversation must never re-render (or lose) another's own independently-evolving state.
 
+import { startInBackground } from "../background.js";
 import {
   useCallback,
   useEffect,
@@ -455,11 +456,13 @@ export function useRoomMessaging({
         roomHandlers(roomPath),
       );
 
-      void consumeEach(accepted.events, (sessionEvent) => {
-        if (sessionEvent.state.status === "closed") {
-          dispatch({ type: "direct-closed", roomPath });
-        }
-      });
+      startInBackground(
+        consumeEach(accepted.events, (sessionEvent) => {
+          if (sessionEvent.state.status === "closed") {
+            dispatch({ type: "direct-closed", roomPath });
+          }
+        }),
+      );
     },
     [identity, clock, ownDeviceHex, sessions, messageStore, noticeWiring],
   );
@@ -627,9 +630,13 @@ export function useRoomMessaging({
         participants,
         route: { hub, peer },
       });
-      void messageStore.list(roomPath).then((messages) => {
-        dispatch({ type: "restored", roomPath, participants, messages });
-      });
+      messageStore
+        .list(roomPath)
+        .then((messages) => {
+          dispatch({ type: "restored", roomPath, participants, messages });
+        })
+        // A conversation whose stored messages cannot be read opens empty; the next restore reads them again.
+        .catch(() => undefined);
       void noticeWiring.sync(hub, [peer]).catch(() => undefined);
     },
     [ownDeviceHex, messageStore, noticeWiring],
@@ -640,30 +647,34 @@ export function useRoomMessaging({
       // One reader for the hub's room requests, splitting them by the device each channel authenticated: a conversation's router reads only its own peer's, and the first request from a peer opens that peer's conversation.
       const perPeer = new Map<string, AsyncQueue<IncomingManageRequest>>();
       hubsRef.current.add(hub);
-      void consumeEach(hub.incomingManageRequests, (incoming) => {
-        const peer = incoming.fromDevice;
-        if (peer === undefined) return;
-        const key = deviceIdToHex(peer);
-        let queue = perPeer.get(key);
-        if (queue === undefined) {
-          queue = createAsyncQueue<IncomingManageRequest>();
-          perPeer.set(key, queue);
-          const roomPath = dmRoomPath(ownDeviceHex, key);
-          openRelay(hub, peer);
-          createRoomRouter(
-            { incomingManageRequests: queue.stream },
-            {
-              identity,
-              clock,
-              revocation: revocation,
-              peerDevice: peer,
-              currentMembers: () => [identity.deviceId, peer],
-            },
-            roomHandlers(roomPath),
-          );
-        }
-        queue.push(incoming);
-      });
+      startInBackground(
+        consumeEach(hub.incomingManageRequests, (incoming) => {
+          const peer = incoming.fromDevice;
+          if (peer === undefined) return;
+          const key = deviceIdToHex(peer);
+          let queue = perPeer.get(key);
+          if (queue === undefined) {
+            // Registered only once its router exists: a setup step that fails must not leave a queue that nothing reads, which would swallow every later request from this peer.
+            const created = createAsyncQueue<IncomingManageRequest>();
+            const roomPath = dmRoomPath(ownDeviceHex, key);
+            openRelay(hub, peer);
+            createRoomRouter(
+              { incomingManageRequests: created.stream },
+              {
+                identity,
+                clock,
+                revocation: revocation,
+                peerDevice: peer,
+                currentMembers: () => [identity.deviceId, peer],
+              },
+              roomHandlers(roomPath),
+            );
+            perPeer.set(key, created);
+            queue = created;
+          }
+          queue.push(incoming);
+        }),
+      );
     },
     [identity, clock, ownDeviceHex, openRelay],
   );

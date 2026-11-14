@@ -1,5 +1,6 @@
 // Splits one session's stream of incoming manage-requests by verb. A session's stream has a single backlog, so two consumers reading it race for each request and either can take one meant for the other. A hub connection needs more than one: the WebRTC negotiator answers webrtc:signal, and the conversations reached through that hub answer the room verbs. This is the one reader; each consumer gets a stream of just its own verb.
 
+import { startInBackground } from "./background.js";
 import { createAsyncQueue } from "wire-mesh-core/domain/async-queue";
 import {
   consumeEach,
@@ -27,12 +28,14 @@ export function createRequestDemux(
   const queues = new Map<string, AsyncQueue<IncomingManageRequest>>(
     verbs.map((verb) => [verb, createAsyncQueue<IncomingManageRequest>()]),
   );
-  void consumeEach(
-    source,
-    (request) => {
-      queues.get(request.command.verb)?.push(request);
-    },
-    { onFault: options.onFault },
+  startInBackground(
+    consumeEach(
+      source,
+      (request) => {
+        queues.get(request.command.verb)?.push(request);
+      },
+      { onFault: options.onFault },
+    ),
   );
 
   return {

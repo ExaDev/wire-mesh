@@ -553,4 +553,55 @@ describe("a conversation over a hub", () => {
       code: "unauthorized",
     });
   });
+
+  it("serves a peer's later request after the setup for its first one failed, instead of queueing it where nothing reads it", async () => {
+    const store = createMessageStore(createMemoryStorage());
+    let failures = 1;
+    // A getter, so that reading `list` fails on the call that opens the conversation, as a store that cannot be reached does: a failure of the conversation's setup step, not a rejected promise.
+    const flaky = {
+      ...store,
+      get list() {
+        if (failures > 0) {
+          failures -= 1;
+          throw new Error("the store is not ready");
+        }
+
+        return store.list;
+      },
+    };
+    const roomStorage = createMemoryStorage();
+    const { result } = renderHook(() =>
+      useRoomMessaging({
+        identity: own,
+        clock,
+        messageStore: flaky,
+        roomStorage,
+        capabilities: capabilities.services,
+      }),
+    );
+    const incoming = createAsyncQueue<IncomingManageRequest>();
+    act(() => {
+      result.current.watchHub({
+        sendManageRequest: async () => Promise.resolve({ result: "ok" }),
+        sendDataFrame: async () => Promise.resolve(),
+        incomingManageRequests: incoming.stream,
+      });
+    });
+
+    incoming.push(
+      incomingFromPeer({
+        respond: async () => Promise.resolve(),
+      }),
+    );
+    incoming.push(
+      incomingFromPeer({
+        requestId: 2,
+        respond: async () => Promise.resolve(),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.conversations[0]?.pendingJoinRequest).toBeDefined();
+    });
+  });
 });

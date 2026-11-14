@@ -1,5 +1,6 @@
 // This device's identity as the console knows it, and the ceremony around losing or moving it. Exporting writes the private key into a file the person saves; it asks first, says what the file is, and never shows the key. Restoring replaces this device's identity, names both before it does, and takes effect on the next load.
 
+import { startInBackground } from "../background.js";
 import { useState } from "react";
 import {
   Alert,
@@ -138,7 +139,7 @@ export function IdentityPanel({
                 color="orange"
                 disabled={!understood}
                 onClick={() => {
-                  void exportBackup();
+                  startInBackground(exportBackup());
                 }}
               >
                 Save backup file
@@ -185,7 +186,7 @@ export function IdentityPanel({
                 size="xs"
                 color="red"
                 onClick={() => {
-                  void restoreBackup(step.backup);
+                  startInBackground(restoreBackup(step.backup));
                 }}
               >
                 Replace this identity
@@ -240,7 +241,7 @@ export function IdentityPanel({
           <FileButton
             accept="application/json,.json"
             onChange={(file) => {
-              void chooseBackup(file);
+              startInBackground(chooseBackup(file));
             }}
           >
             {(props) => (

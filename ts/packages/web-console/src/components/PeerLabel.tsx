@@ -1,5 +1,6 @@
 // One peer as a person reads it: the label from the naming convention, the short id as a copy target for the full device-id, and an inline rename that sets this viewer's own petname.
 
+import { startInBackground } from "../background.js";
 import { useState } from "react";
 import {
   ActionIcon,
@@ -33,9 +34,11 @@ export function PeerLabel({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          void names.rename(deviceHex, draft).then(() => {
-            setDraft(undefined);
-          });
+          startInBackground(
+            names.rename(deviceHex, draft).then(() => {
+              setDraft(undefined);
+            }),
+          );
         }}
       >
         <Group gap="xs" wrap="nowrap">

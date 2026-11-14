@@ -1,5 +1,6 @@
 // One open relay/hub connection's own UI: status line, ping/disconnect controls, peer directory, and frame log. All behaviour lives in wire-mesh-core's own mesh-session domain module; this component only renders whatever useMeshSessionEvents last reported and forwards clicks back onto the session.
 
+import { startInBackground } from "../background.js";
 import { Alert, Button, Card, Group, Text, Tooltip } from "@mantine/core";
 import type {
   MeshSession,
@@ -130,12 +131,14 @@ export function ConnectionPanel({
     // Set only while this effect is still current, so a slow answer cannot overwrite a newer one.
     const current = { value: true };
     if (failing) {
-      void explainLocalNetworkBlock(address, pageHost, permissions).then(
-        (message) => {
-          if (current.value) {
-            setExplained({ address, message });
-          }
-        },
+      startInBackground(
+        explainLocalNetworkBlock(address, pageHost, permissions).then(
+          (message) => {
+            if (current.value) {
+              setExplained({ address, message });
+            }
+          },
+        ),
       );
     }
 

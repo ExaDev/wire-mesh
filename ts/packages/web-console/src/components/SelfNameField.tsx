@@ -1,5 +1,6 @@
 // The field for this console's own display name: what it publishes, signed by its device key, to every node it connects to. Empty means it publishes none and peers see only its short id.
 
+import { startInBackground } from "../background.js";
 import { useState } from "react";
 import { Button, Group, TextInput } from "@mantine/core";
 import { usePeerNames } from "../hooks/use-peer-names.js";
@@ -15,9 +16,11 @@ export function SelfNameField(): React.JSX.Element {
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        void setSelfName(draft).then(() => {
-          setEdit(undefined);
-        });
+        startInBackground(
+          setSelfName(draft).then(() => {
+            setEdit(undefined);
+          }),
+        );
       }}
     >
       <Group align="flex-end" wrap="wrap">
