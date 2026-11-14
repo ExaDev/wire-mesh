@@ -462,14 +462,19 @@ handshake-frame = {
 ; that is not usable before it looks at any signature made under it. For ES256
 ; (-7) the bytes are the 65-byte SEC1 uncompressed point (0x04 || X || Y) of a
 ; point on P-256; a compressed or compact encoding of the same point, a point
-; not on the curve and the point at infinity are all refused. For EdDSA (-8)
-; the bytes are 32 bytes that are the canonical encoding of a point on the
-; curve (the y coordinate below 2^255 - 19), and a point of small order (the
-; eight points of the torsion subgroup, the identity element among them) is
-; refused. A verifier of Ed25519 signatures also refuses a signature whose S
-; is not below the group order or whose R is not a canonical encoding of a
-; point that is not of small order, so every implementation gives the same
-; verdict for the same bytes whatever crypto library it runs on.
+; not on the curve and the point at infinity are refused. For EdDSA (-8) the
+; bytes are 32 bytes that are the canonical encoding (the y coordinate below
+; 2^255 - 19) of a point on the curve that is in the prime-order subgroup: a
+; point of small order (the eight points of the torsion subgroup, the identity
+; element among them) and a point with a torsion component are refused.
+;
+; An Ed25519 signature is 64 bytes, R || S. A verifier refuses it when S is not
+; below the group order, when R is not a canonical encoding, or when R is a
+; point of small order, and otherwise accepts it exactly when the cofactorless
+; equation [S]B = R + [k]A holds, with the two sides compared as encodings and
+; k the SHA-512 of R || A || message reduced modulo the group order. These
+; rules are pinned by vectors, so an implementation whose crypto library
+; verifies differently on any of them fails the conformance vectors.
 
 identity-key = {
   alg: int,          ; COSE algorithm identifier (RFC 9053), e.g. -7 ES256, -8 EdDSA
@@ -1143,8 +1148,8 @@ room-notice-claims = {
 ; whose signature is another key's is invalid_identity_key). A key's algorithm
 ; is supported or not whatever else is wrong with it, so that check has no
 ; order against key usability to pin. A usable key is as identity.cddl
-; defines it, so an Ed25519 key that is not a canonical encoding of a curve
-; point, or is a point of small order, is invalid_identity_key.
+; defines it, so an Ed25519 key that is not a canonical encoding of a point in
+; the prime-order subgroup is invalid_identity_key.
 ;
 ; Verifier obligations, none of which the grammar can express:
 ;

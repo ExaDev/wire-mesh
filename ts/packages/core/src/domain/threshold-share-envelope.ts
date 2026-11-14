@@ -8,7 +8,7 @@ import {
   type ThresholdShareClaims,
   type ThresholdShareEnvelope,
 } from "../generated/protocol.js";
-import type { IdentityPort } from "../ports/identity.js";
+import { verifiesOrRefuses, type IdentityPort } from "../ports/identity.js";
 import { bytesEqual } from "./token-scope.js";
 import { sig1ToBeSigned } from "./tokens.js";
 
@@ -87,7 +87,12 @@ export async function verifyShareEnvelope(
   }
 
   const toBeSigned = sig1ToBeSigned(protectedHeader, payload);
-  const ok = await identity.verify(claims["issuer-key"], toBeSigned, signature);
+  const ok = await verifiesOrRefuses(
+    identity,
+    claims["issuer-key"],
+    toBeSigned,
+    signature,
+  );
   if (!ok) {
     return undefined;
   }

@@ -11,7 +11,6 @@ use p256::ecdsa::signature::{DigestSigner, DigestVerifier};
 use p256::ecdsa::{
     Signature as P256Signature, SigningKey as P256SigningKey, VerifyingKey as P256VerifyingKey,
 };
-use p256::PublicKey;
 use rand::rngs::OsRng;
 use rand::RngCore;
 use sha2::{Digest, Sha256};
@@ -20,7 +19,7 @@ use wire_mesh_wire::tokens::CoseSign1;
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::domain::cose::sig_structure;
-use crate::domain::identity_key::ed25519_public_key;
+use crate::domain::identity_key::{ed25519_public_key, es256_public_key};
 use crate::ports::{CoreError, Identity};
 
 /// A fresh P-256 secret scalar from the operating system's randomness, by rejection sampling. The curve crate's own generator takes a `rand_core` 0.10 generator, and `rand` 0.8's `OsRng` is a 0.6 one.
@@ -195,7 +194,7 @@ pub fn verify_with_identity_key(
             Ok(verifying.verify_strict(message, &sig).is_ok())
         }
         IdentityKey::ALG_ES256 => {
-            let public_key = PublicKey::from_sec1_bytes(&key.public_key)
+            let public_key = es256_public_key(&key.public_key)
                 .map_err(|e| CoreError::Crypto(format!("invalid ES256 public key: {e}")))?;
             let verifying = P256VerifyingKey::from(&public_key);
             let sig = P256Signature::from_slice(signature)
@@ -274,7 +273,7 @@ impl Identity for NodeIdentity {
                 "ECDH requires an ES256 (P-256) local identity-key".to_owned(),
             ));
         };
-        let peer_public = p256::PublicKey::from_sec1_bytes(&peer_key.public_key).map_err(|e| {
+        let peer_public = es256_public_key(&peer_key.public_key).map_err(|e| {
             CoreError::Crypto(format!("peer identity-key is not a valid P-256 point: {e}"))
         })?;
         let shared =
@@ -341,6 +340,34 @@ mod tests {
             .verify(signer.identity_key(), b"message", &signature)
             .await
             .unwrap());
+    }
+
+    #[tokio::test]
+    async fn an_es256_key_in_another_encoding_of_the_same_point_is_refused() {
+        use p256::elliptic_curve::sec1::ToSec1Point;
+        let a = NodeIdentity::generate_es256();
+        let b = NodeIdentity::generate_es256();
+        let signature = b.sign(b"message").await.unwrap();
+        let uncompressed = b.identity_key().public_key.clone();
+        let compressed = p256::PublicKey::from_sec1_bytes(&uncompressed)
+            .unwrap()
+            .to_sec1_point(true)
+            .as_bytes()
+            .to_vec();
+        let mut compact = vec![0x05];
+        compact.extend_from_slice(&uncompressed[1..33]);
+        assert!(a
+            .verify(b.identity_key(), b"message", &signature)
+            .await
+            .unwrap());
+        for encoding in [compressed, compact] {
+            let key = IdentityKey {
+                alg: IdentityKey::ALG_ES256,
+                public_key: encoding,
+            };
+            assert!(a.verify(&key, b"message", &signature).await.is_err());
+            assert!(a.derive_shared_secret(&key).is_err());
+        }
     }
 
     #[tokio::test]

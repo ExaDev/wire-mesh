@@ -96,9 +96,28 @@ describe("ed25519KeyFault", () => {
     expect(ed25519KeyFault(new Uint8Array())).toBe("wrong_size");
   });
 
-  it("accepts an ordinary point and a generated key", async () => {
+  it("refuses a key with a torsion component, whether or not it is small order", () => {
+    // y = 3 is a curve point of mixed order, and so is [a]B plus a point of order 8.
+    expect(ed25519KeyFault(fromHex(`03${"00".repeat(KEY_BYTES - 1)}`))).toBe(
+      "mixed_order",
+    );
     expect(
-      ed25519KeyFault(fromHex(`03${"00".repeat(KEY_BYTES - 1)}`)),
+      ed25519KeyFault(
+        fromHex(
+          "3deb8ca9e3d031548d729bed3aa7f3840e256888362f1ea239c189f03b281f24",
+        ),
+      ),
+    ).toBe("mixed_order");
+  });
+
+  it("accepts an ordinary point and a generated key", async () => {
+    // The base point: y = 4/5.
+    expect(
+      ed25519KeyFault(
+        fromHex(
+          "5866666666666666666666666666666666666666666666666666666666666666",
+        ),
+      ),
     ).toBeUndefined();
     expect(ed25519KeyFault((await generatedKey()).publicKey)).toBeUndefined();
   });

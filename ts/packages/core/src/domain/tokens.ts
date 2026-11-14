@@ -13,7 +13,7 @@ import {
   type TokenClaims,
 } from "../generated/protocol.js";
 import type { Clock } from "../ports/clock.js";
-import type { IdentityPort } from "../ports/identity.js";
+import { verifiesOrRefuses, type IdentityPort } from "../ports/identity.js";
 import {
   conditionsListSchema,
   evaluateConditions,
@@ -235,7 +235,8 @@ async function verifyTokenChain(
   }
   const claims = claimsResult.data;
 
-  const signatureOk = await options.identity.verify(
+  const signatureOk = await verifiesOrRefuses(
+    options.identity,
     claims["issuer-key"],
     sig1ToBeSigned(protectedHeader, payload),
     signature,
@@ -459,7 +460,8 @@ export async function verifyRevocationEntry(
   }
   const claims = claimsResult.data;
 
-  const signatureOk = await options.identity.verify(
+  const signatureOk = await verifiesOrRefuses(
+    options.identity,
     claims["issuer-key"],
     sig1ToBeSigned(protectedHeader, payload),
     signature,
