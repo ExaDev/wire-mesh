@@ -52,7 +52,7 @@ export default defineConfig(
     },
   },
   {
-    /* Runtime-specific API in browser source. A timer handle's `unref()`, `process`, `Buffer`, `node:` modules and the like exist only in Node: `setTimeout` returns a number in a browser or a Worker, so `timer.unref()` throws there, and a throw inside a consumer loop's failure handling ends the loop. Source that can run outside Node asks the runtime-neutral helper (src/domain/timers.ts in wire-mesh-core) or does not use them. */
+    /* Runtime-specific API in browser source. A timer handle's `unref()`, `process`, `Buffer`, `node:` modules and the like exist only in Node: `setTimeout` returns a number in a browser or a Worker, so `timer.unref()` throws there, and a throw inside a consumer loop's failure handling ends the loop. Source that can run outside Node does not use them; wire-mesh-core's timer helper is internal to that package. */
     files: ["src/**/*.ts", "src/**/*.tsx"],
     rules: {
       "no-restricted-syntax": [
@@ -61,7 +61,7 @@ export default defineConfig(
           selector:
             "CallExpression[callee.property.name=/^(unref|ref|hasRef)$/]",
           message:
-            "A timer handle's unref(), ref() and hasRef() exist only in Node; use unrefIfSupported from wire-mesh-core's timers module.",
+            "A timer handle's unref(), ref() and hasRef() exist only in Node, and this package's source can run in a browser or a Worker: do not call them here.",
         },
       ],
       "no-restricted-globals": [
