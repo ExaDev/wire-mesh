@@ -41,6 +41,7 @@ import {
   type Hello,
   type Identity,
 } from "./secure-channel-crypto.ts";
+import { identityKeyVerdicts } from "./secure-channel-identity-keys.ts";
 import {
   assertReferencesResolve,
   jsonArray,
@@ -516,14 +517,14 @@ function sequencesFor(
   return sequences;
 }
 
-type HelloExpectation =
+export type HelloExpectation =
   | "ok"
   | "wrong_recipient"
   | "unsupported_identity_alg"
   | "invalid_identity_key"
   | "bad_signature";
 
-interface HelloVerdict {
+export interface HelloVerdict {
   name: string;
   receiver: string;
   message: JsonWire;
@@ -652,7 +653,7 @@ function helloVerdicts(handshake: Handshake): HelloVerdict[] {
     },
   ];
   if (sideA.identity.alg === EDDSA) {
-    // 32 bytes that are not the encoding of an Ed25519 point. An implementation may refuse the key when it imports it (invalid_identity_key), or import it without checking and find the signature does not verify (bad_signature): the spec allows either.
+    // 32 bytes that are not the encoding of an Ed25519 point.
     verdicts.push({
       name: "identity_key_not_a_point",
       receiver,
@@ -663,9 +664,9 @@ function helloVerdicts(handshake: Handshake): HelloVerdict[] {
         },
       }),
       expected: "invalid_identity_key",
-      alsoAcceptable: ["bad_signature"],
     });
   }
+  verdicts.push(...identityKeyVerdicts(handshake, receiver));
   if (sideA.identity.alg === ES256) {
     // The spec's ES256 signature is the fixed-length raw r||s, and a verifier does not require the low-s form.
     verdicts.push(
