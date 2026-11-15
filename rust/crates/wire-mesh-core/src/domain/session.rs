@@ -13,9 +13,10 @@
 //! perform the handshake exchange, dispatch incoming manage-requests to
 //! handlers registered per capability verb, emit connection lifecycle
 //! events, and support sending a manage-request (awaiting its correlated
-//! response, with an optional timeout) and sending a data frame. Gossip
-//! directory, relay pairing, and revocation-announcement handling are
-//! deliberately out of scope -- #171's threshold coordinator/participant
+//! response, with an optional timeout) and sending a data frame. A
+//! session over a connection to a relay hub also reaches devices through
+//! relay pairings (`Session::accept_relayed`). Gossip directory and
+//! revocation-announcement handling are deliberately out of scope -- #171's threshold coordinator/participant
 //! handlers, this issue's own stated consumer, need none of them.
 
 use core::future::poll_fn;
@@ -36,7 +37,12 @@ use wire_mesh_wire::tokens::{CapabilityScope, CoseSign1};
 use wire_mesh_wire::value::{CanonicalMap, CborValue};
 use wire_mesh_wire::Frame;
 
+use wire_mesh_wire::identity::DeviceId;
+
 use crate::domain::handshake::{negotiate, SUPPORTED_PROTOCOL_VERSION};
+use crate::domain::mint::MAX_EXACT_INTEGER;
+use crate::domain::relay_channels::SealPurpose;
+use crate::domain::relay_client::{HubLink, RelayClient, RelayEvent};
 use crate::ports::{Connection, CoreError};
 
 /// A connection shared between the dispatch loop (which reads frames)
@@ -56,7 +62,13 @@ type SharedConnection = Arc<AsyncMutex<Box<dyn Connection>>>;
 /// `Ok(ManageOutcome::Error { code: "timeout", .. })`), mirroring
 /// `mesh-session.ts`'s own reject-on-disconnect/resolve-on-timeout split.
 type PendingReply = Result<ManageOutcome, String>;
-type PendingMap = Arc<StdMutex<HashMap<u64, oneshot::Sender<PendingReply>>>>;
+/// A request waiting for its answer, with the device the answer must come from: `None` for a request sent directly over the connection, and the target for one sent through a relay pairing, so a peer cannot answer a request meant for another (as the TypeScript `applyManageResponse` checks).
+struct PendingEntry {
+    reply: oneshot::Sender<PendingReply>,
+    via: Option<DeviceId>,
+}
+
+type PendingMap = Arc<StdMutex<HashMap<u64, PendingEntry>>>;
 
 /// One manage-request this session received from its peer, handed to
 /// whichever [`ManageRequestHandler`] is registered for its command's
@@ -182,6 +194,12 @@ pub enum SessionEvent {
     /// this implementation cannot support, or an invalid domain on
     /// either side).
     HandshakeRejected { reason: String },
+    /// A `core/data` frame that arrived through a relay pairing and opened under the secure channel of `from`, the device that channel authenticated. `to_device` is the device the `relay-data` was explicitly addressed to, for a caller fronting several local devices behind one hub connection. A data frame that arrives directly over the connection is not delivered here.
+    RelayedData {
+        from: DeviceId,
+        to_device: Option<DeviceId>,
+        frame: DataFrame,
+    },
     /// The connection ended, whether the peer closed it, the underlying
     /// transport failed, or `Session::close` was called locally.
     Disconnected { reason: String },
@@ -196,12 +214,81 @@ async fn send_frame(connection: &SharedConnection, frame: Frame) -> Result<(), C
 }
 
 fn reject_all_pending(pending: &PendingMap, reason: &str) {
-    let mut senders: Vec<oneshot::Sender<PendingReply>> = {
+    let mut entries: Vec<PendingEntry> = {
         let mut map = pending.lock().unwrap_or_else(|e| e.into_inner());
-        map.drain().map(|(_, sender)| sender).collect()
+        map.drain().map(|(_, entry)| entry).collect()
     };
-    for sender in senders.drain(..) {
-        let _ = sender.send(Err(reason.to_owned()));
+    for entry in entries.drain(..) {
+        let _ = entry.reply.send(Err(reason.to_owned()));
+    }
+}
+
+/// Resolves the request `request_id` with `outcome`, if it is waiting for an answer from where this one came: `from` is `None` for a response that arrived directly and the device the secure channel authenticated for one that arrived through a relay pairing. A response from anywhere else leaves the request waiting.
+fn resolve_pending(
+    pending: &PendingMap,
+    request_id: u64,
+    from: Option<DeviceId>,
+    outcome: ManageOutcome,
+) {
+    let entry = {
+        let mut map = pending.lock().unwrap_or_else(|e| e.into_inner());
+        match map.get(&request_id) {
+            Some(held) if held.via == from => map.remove(&request_id),
+            _ => None,
+        }
+    };
+    if let Some(entry) = entry {
+        let _ = entry.reply.send(Ok(outcome));
+    }
+}
+
+/// Removes a request's entry from the pending map when the call that made it ends, however it ends: an answer, a timeout, an error, or the caller dropping the future. Without it a cancelled call leaves its entry behind for the life of the session.
+struct PendingGuard {
+    pending: PendingMap,
+    request_id: u64,
+}
+
+impl Drop for PendingGuard {
+    fn drop(&mut self) {
+        let mut map = self.pending.lock().unwrap_or_else(|e| e.into_inner());
+        map.remove(&self.request_id);
+    }
+}
+
+/// The connection of a session as the relay's link to the hub.
+struct ConnectionLink(SharedConnection);
+
+#[async_trait::async_trait]
+impl HubLink for ConnectionLink {
+    async fn send(&self, frame: Frame) -> Result<(), CoreError> {
+        send_frame(&self.0, frame).await
+    }
+}
+
+/// Answers one incoming manage-request with the handler registered for its verb, or `unknown-verb`.
+async fn answer(
+    registry: &HandlerRegistry,
+    request_id: u64,
+    command: ManageCommand,
+    scope: CapabilityScope,
+    token: Option<CoseSign1>,
+) -> ManageOutcome {
+    let verb = command.verb.0.clone();
+    match registry.get(&verb) {
+        Some(handler) => {
+            handler
+                .handle(IncomingManageRequest {
+                    request_id,
+                    command,
+                    scope,
+                    token,
+                })
+                .await
+        }
+        None => ManageOutcome::Error(ManageError {
+            code: "unknown-verb".to_owned(),
+            message: Some(verb),
+        }),
     }
 }
 
@@ -224,6 +311,7 @@ async fn run_dispatch_loop(
     events_tx: mpsc::UnboundedSender<SessionEvent>,
     local_handshake: HandshakeFrame,
     closed: Arc<AtomicBool>,
+    relay: Option<Arc<RelayClient>>,
 ) {
     let mut handshake_settled = false;
     while let Some(frame) = next_frame(&mut inbound).await {
@@ -250,15 +338,7 @@ async fn run_dispatch_loop(
             Frame::ManageResponse(ManageResponseFrame {
                 request_id,
                 outcome,
-            }) => {
-                let sender = {
-                    let mut map = pending.lock().unwrap_or_else(|e| e.into_inner());
-                    map.remove(&request_id)
-                };
-                if let Some(sender) = sender {
-                    let _ = sender.send(Ok(outcome));
-                }
-            }
+            }) => resolve_pending(&pending, request_id, None, outcome),
             Frame::ManageRequest(request) => {
                 let ManageRequestFrame {
                     request_id,
@@ -269,24 +349,7 @@ async fn run_dispatch_loop(
                 let registry = Arc::clone(&registry);
                 let connection = Arc::clone(&connection);
                 tokio::spawn(async move {
-                    let verb = command.verb.0.clone();
-                    let handler = registry.get(&verb);
-                    let outcome = match handler {
-                        Some(handler) => {
-                            handler
-                                .handle(IncomingManageRequest {
-                                    request_id,
-                                    command,
-                                    scope,
-                                    token,
-                                })
-                                .await
-                        }
-                        None => ManageOutcome::Error(ManageError {
-                            code: "unknown-verb".to_owned(),
-                            message: Some(verb),
-                        }),
-                    };
+                    let outcome = answer(&registry, request_id, command, scope, token).await;
                     let response = Frame::ManageResponse(ManageResponseFrame {
                         request_id,
                         outcome,
@@ -294,14 +357,77 @@ async fn run_dispatch_loop(
                     let _ = send_frame(&connection, response).await;
                 });
             }
-            // Out of scope for this runtime (gossip directory, relay
-            // pairing, revocation announcements, ping/close housekeeping)
+            Frame::RelayInbound(_) | Frame::RelayData(_) => {
+                let Some(relay) = relay.as_ref() else {
+                    continue;
+                };
+                for RelayEvent::Frame {
+                    from,
+                    to_device,
+                    frame,
+                } in relay.on_frame(&frame).await
+                {
+                    match frame {
+                        Frame::ManageResponse(ManageResponseFrame {
+                            request_id,
+                            outcome,
+                        }) => resolve_pending(&pending, request_id, Some(from), outcome),
+                        Frame::ManageRequest(request) => {
+                            let ManageRequestFrame {
+                                request_id,
+                                command,
+                                scope,
+                                token,
+                            } = *request;
+                            let registry = Arc::clone(&registry);
+                            let relay = Arc::clone(relay);
+                            tokio::spawn(async move {
+                                let outcome =
+                                    answer(&registry, request_id, command, scope, token).await;
+                                let response = Frame::ManageResponse(ManageResponseFrame {
+                                    request_id,
+                                    outcome,
+                                });
+                                // A reply answers a frame the peer sent, so it never makes the peer chosen.
+                                let _ = relay.send_to(from, &response, SealPurpose::Reply).await;
+                            });
+                        }
+                        Frame::DataHave(f) => {
+                            let _ = events_tx.send(SessionEvent::RelayedData {
+                                from,
+                                to_device,
+                                frame: DataFrame::Have(f),
+                            });
+                        }
+                        Frame::DataRequest(f) => {
+                            let _ = events_tx.send(SessionEvent::RelayedData {
+                                from,
+                                to_device,
+                                frame: DataFrame::Request(f),
+                            });
+                        }
+                        Frame::DataEntries(f) => {
+                            let _ = events_tx.send(SessionEvent::RelayedData {
+                                from,
+                                to_device,
+                                frame: DataFrame::Entries(f),
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            // Out of scope for this runtime (gossip directory, revocation
+            // announcements, ping/close housekeeping)
             // -- observed so the stream keeps advancing, never acted on.
             _ => {}
         }
     }
     closed.store(true, Ordering::SeqCst);
     reject_all_pending(&pending, "connection closed before a response arrived");
+    if let Some(relay) = &relay {
+        relay.reset("the connection ended");
+    }
     let _ = events_tx.send(SessionEvent::Disconnected {
         reason: "the peer's connection ended".to_owned(),
     });
@@ -320,6 +446,7 @@ pub struct Session {
     dispatch_abort: AbortHandle,
     events_tx: mpsc::UnboundedSender<SessionEvent>,
     closed: Arc<AtomicBool>,
+    relay: Option<Arc<RelayClient>>,
 }
 
 impl Session {
@@ -334,9 +461,39 @@ impl Session {
         local_domains: impl IntoIterator<Item = String>,
         registry: HandlerRegistry,
     ) -> Result<(Session, mpsc::UnboundedReceiver<SessionEvent>), CoreError> {
+        Self::accept_with(
+            connection,
+            local_domains,
+            registry,
+            None::<fn(Arc<dyn HubLink>) -> Arc<RelayClient>>,
+        )
+        .await
+    }
+
+    /// [`Session::accept`] for a connection to a relay hub: `relay` is given the link the session sends through (build the secure channels' hello sender from it with [`RelayClient::hello_sender`]) and returns the relay client the session then drives. Frames that arrive as `relay-inbound` or `relay-data` go to it, and [`Session::send_manage_request_via`] and [`Session::send_data_frame_via`] send through it.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::accept`].
+    pub async fn accept_relayed(
+        connection: Box<dyn Connection>,
+        local_domains: impl IntoIterator<Item = String>,
+        registry: HandlerRegistry,
+        relay: impl FnOnce(Arc<dyn HubLink>) -> Arc<RelayClient>,
+    ) -> Result<(Session, mpsc::UnboundedReceiver<SessionEvent>), CoreError> {
+        Self::accept_with(connection, local_domains, registry, Some(relay)).await
+    }
+
+    async fn accept_with(
+        connection: Box<dyn Connection>,
+        local_domains: impl IntoIterator<Item = String>,
+        registry: HandlerRegistry,
+        relay: Option<impl FnOnce(Arc<dyn HubLink>) -> Arc<RelayClient>>,
+    ) -> Result<(Session, mpsc::UnboundedReceiver<SessionEvent>), CoreError> {
         let mut connection = connection;
         let inbound = connection.receive()?;
         let shared: SharedConnection = Arc::new(AsyncMutex::new(connection));
+        let relay = relay.map(|make| make(Arc::new(ConnectionLink(Arc::clone(&shared)))));
 
         let local_handshake = HandshakeFrame {
             version: ProtocolVersion(SUPPORTED_PROTOCOL_VERSION),
@@ -357,6 +514,7 @@ impl Session {
             events_tx.clone(),
             local_handshake,
             Arc::clone(&closed),
+            relay.clone(),
         ));
 
         Ok((
@@ -367,6 +525,7 @@ impl Session {
                 dispatch_abort: task.abort_handle(),
                 events_tx,
                 closed,
+                relay,
             },
             events_rx,
         ))
@@ -388,40 +547,112 @@ impl Session {
         token: Option<CoseSign1>,
         timeout: Option<Duration>,
     ) -> Result<ManageOutcome, CoreError> {
+        self.request(None, command, scope, token, timeout).await
+    }
+
+    /// [`Session::send_manage_request`] to `target`, a device reached through a relay pairing: the request is sealed on `target`'s secure channel and sent as `relay-data`, and only an answer that arrives through that same channel resolves it, so a peer cannot answer a request meant for another. A timeout also forgets the pairing and the channel, since the hub gives no notice when a pairing is lost and a request that timed out is the only sign this side has. Dropping the returned future cancels the request: its entry is removed, and an answer that arrives later is ignored.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::send_manage_request`], and a [`CoreError::Transport`] when the session was accepted without a relay or the request could not be sealed or sent.
+    pub async fn send_manage_request_via(
+        &self,
+        target: DeviceId,
+        command: ManageCommand,
+        scope: CapabilityScope,
+        token: Option<CoseSign1>,
+        timeout: Option<Duration>,
+    ) -> Result<ManageOutcome, CoreError> {
+        self.request(Some(target), command, scope, token, timeout)
+            .await
+    }
+
+    async fn request(
+        &self,
+        target: Option<DeviceId>,
+        command: ManageCommand,
+        scope: CapabilityScope,
+        token: Option<CoseSign1>,
+        timeout: Option<Duration>,
+    ) -> Result<ManageOutcome, CoreError> {
         if self.closed.load(Ordering::SeqCst) {
             return Err(CoreError::Transport("session is closed".to_owned()));
         }
+        let relay = match target {
+            Some(_) => Some(
+                self.relay
+                    .as_ref()
+                    .ok_or_else(|| CoreError::Transport("this session has no relay".to_owned()))?,
+            ),
+            None => None,
+        };
         let request_id = self.next_request_id.fetch_add(1, Ordering::Relaxed);
+        // A request-id above 2^53 - 1 is not one a TypeScript peer can hold exactly, so none is minted.
+        if request_id > MAX_EXACT_INTEGER {
+            return Err(CoreError::Transport(
+                "the session has used every request-id a peer can hold".to_owned(),
+            ));
+        }
         let (tx, rx) = oneshot::channel::<PendingReply>();
         {
             let mut map = self.pending.lock().unwrap_or_else(|e| e.into_inner());
-            map.insert(request_id, tx);
+            map.insert(
+                request_id,
+                PendingEntry {
+                    reply: tx,
+                    via: target,
+                },
+            );
         }
+        let _guard = PendingGuard {
+            pending: Arc::clone(&self.pending),
+            request_id,
+        };
         let frame = Frame::ManageRequest(Box::new(ManageRequestFrame {
             request_id,
             command,
             scope,
             token,
         }));
-        if let Err(error) = send_frame(&self.connection, frame).await {
-            let mut map = self.pending.lock().unwrap_or_else(|e| e.into_inner());
-            map.remove(&request_id);
-            return Err(error);
-        }
-
+        // Sending can itself wait (a relayed request waits for its secure channel), so the timeout covers the send and the wait for the answer together, as the TypeScript `Promise.race` does.
+        let exchange = async {
+            let sent = match (target, relay) {
+                (Some(target), Some(relay)) => relay
+                    .send_to(target, &frame, SealPurpose::Request)
+                    .await
+                    .map_err(|error| CoreError::Transport(error.to_string())),
+                _ => send_frame(&self.connection, frame).await,
+            };
+            match sent {
+                Ok(()) => Ok(rx.await),
+                Err(error) => Err(error),
+            }
+        };
         let outcome = match timeout {
-            None => rx.await,
-            Some(duration) => match tokio::time::timeout(duration, rx).await {
+            None => exchange.await,
+            Some(duration) => match tokio::time::timeout(duration, exchange).await {
                 Ok(result) => result,
                 Err(_elapsed) => {
                     let mut map = self.pending.lock().unwrap_or_else(|e| e.into_inner());
                     map.remove(&request_id);
+                    drop(map);
+                    if let (Some(target), Some(relay)) = (target, relay) {
+                        relay.forget(&target);
+                    }
                     return Ok(ManageOutcome::Error(ManageError {
                         code: "timeout".to_owned(),
                         message: None,
                     }));
                 }
             },
+        };
+        let outcome = match outcome {
+            Ok(received) => received,
+            Err(error) => {
+                let mut map = self.pending.lock().unwrap_or_else(|e| e.into_inner());
+                map.remove(&request_id);
+                return Err(error);
+            }
         };
 
         match outcome {
@@ -435,6 +666,50 @@ impl Session {
                 "connection closed before a response arrived".to_owned(),
             )),
         }
+    }
+
+    /// Announces this node to the hub the connection reaches: sends a `gossip` frame carrying `advert`, which the caller built for its own device and signed with `sign_peer_advert`. A hub ignores a `relay-connect` and a `relay-data` from a connection that has not announced itself, so a node that dials or is dialled through a hub announces first.
+    ///
+    /// # Errors
+    ///
+    /// A [`CoreError::Transport`] when the session is closed or the frame could not be sent.
+    pub async fn announce(
+        &self,
+        advert: wire_mesh_wire::transport::PeerAdvert,
+    ) -> Result<(), CoreError> {
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(CoreError::Transport("session is closed".to_owned()));
+        }
+        send_frame(
+            &self.connection,
+            Frame::Gossip(wire_mesh_wire::transport::GossipFrame {
+                peers: vec![advert],
+            }),
+        )
+        .await
+    }
+
+    /// Sends one `core/data` frame to `target`, a device reached through a relay pairing, sealed on its secure channel. The call waits for the channel to exist, as the TypeScript `sendDataFrame` does, and has no timeout of its own: a caller that must not wait without limit wraps it in one.
+    ///
+    /// # Errors
+    ///
+    /// A [`CoreError::Transport`] when the session is closed, was accepted without a relay, or the frame could not be sealed or sent.
+    pub async fn send_data_frame_via(
+        &self,
+        target: DeviceId,
+        frame: DataFrame,
+    ) -> Result<(), CoreError> {
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(CoreError::Transport("session is closed".to_owned()));
+        }
+        let relay = self
+            .relay
+            .as_ref()
+            .ok_or_else(|| CoreError::Transport("this session has no relay".to_owned()))?;
+        relay
+            .send_to(target, &frame.into_frame(), SealPurpose::Request)
+            .await
+            .map_err(|error| CoreError::Transport(error.to_string()))
     }
 
     /// Sends one `core/data` frame directly over this session's own
@@ -456,6 +731,9 @@ impl Session {
         }
         self.dispatch_abort.abort();
         reject_all_pending(&self.pending, "connection closed before a response arrived");
+        if let Some(relay) = &self.relay {
+            relay.reset("the session closed before the channel was ready");
+        }
         let _ = self.events_tx.send(SessionEvent::Disconnected {
             reason: "closed locally".to_owned(),
         });
@@ -764,3 +1042,7 @@ mod tests {
         session_a.close().await.expect("close a");
     }
 }
+
+#[cfg(test)]
+#[path = "session_relay_tests.rs"]
+mod relay_tests;

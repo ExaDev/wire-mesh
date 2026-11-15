@@ -40,6 +40,11 @@ minicbor = { workspace = true }
 getrandom-0-2 = { package = "getrandom", version = "0.2", default-features = false, features = ["js"] }
 getrandom-0-4 = { package = "getrandom", version = "0.4", default-features = false, features = ["wasm_js"] }
 
+# The relay peer needs the session and the TCP transport, which are behind "net".
+[[example]]
+name = "relay_peer"
+required-features = ["net"]
+
 [dev-dependencies]
 tokio-stream = { version = "0.1", default-features = false }
 
