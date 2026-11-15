@@ -1,3 +1,17 @@
+## [4.2.11](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.10...wire-mesh-core%404.2.11) (2026-11-15)
+
+### Bug Fixes
+
+* **core:** never report a negative round trip from tracePath ([765c274](https://github.com/ExaDev/wire-mesh/commit/765c27439d3a3fb19fb76c229cf3b1f6be73506d))
+
+### Code Refactoring
+
+* **core:** take the narrow session shape in the topology helpers ([2a1f8bf](https://github.com/ExaDev/wire-mesh/commit/2a1f8bf24f186eb4695a0c4799907253dc534fd4))
+
+### Tests
+
+* **conformance:** pin path trace and topology introspection in introspection.v1.json ([da4c0bb](https://github.com/ExaDev/wire-mesh/commit/da4c0bb1857b1c1a0ebae46b62b488db730f7b7c))
+
 ## [4.2.10](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.9...wire-mesh-core%404.2.10) (2026-11-15)
 
 ### Tests
