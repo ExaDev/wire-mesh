@@ -1,0 +1,614 @@
+{
+  "protocol_version": 1,
+  "description": "File-backed key-value storage vectors for protocol version 1: the layout both implementations' file storage shares. There are no wire vectors. The `file_storage` section holds `key_layout`, which gives for each key the path of the file that holds it or the reason the layout refuses it (an empty key, a NUL, a backslash, a leading slash, an empty, `.` or `..` segment), and `scenarios`, which start from a directory (every file under it as a `/`-joined path with its content in hex), run operations on a storage over a copy of it, and record what each returns and the whole directory after it. A value is the whole content of its file, nothing added. The outcomes are written by hand from the layout, never produced by an implementation.",
+  "vectors": [],
+  "file_storage": {
+    "layout_version": 1,
+    "key_layout": [
+      {
+        "name": "a_single_segment",
+        "key": "a",
+        "expected": {
+          "path": "a"
+        }
+      },
+      {
+        "name": "a_nested_key_is_a_nested_path",
+        "key": "data/deadbeef/entry/1",
+        "expected": {
+          "path": "data/deadbeef/entry/1"
+        }
+      },
+      {
+        "name": "a_dotfile_is_an_ordinary_name",
+        "key": ".DS_Store",
+        "expected": {
+          "path": ".DS_Store"
+        }
+      },
+      {
+        "name": "three_dots_are_an_ordinary_name",
+        "key": "a/.../b",
+        "expected": {
+          "path": "a/.../b"
+        }
+      },
+      {
+        "name": "a_dot_inside_a_name_is_ordinary",
+        "key": "a./.b/c..",
+        "expected": {
+          "path": "a./.b/c.."
+        }
+      },
+      {
+        "name": "spaces_and_non_ascii_are_ordinary",
+        "key": "a b/café/😀",
+        "expected": {
+          "path": "a b/café/😀"
+        }
+      },
+      {
+        "name": "the_empty_key",
+        "key": "",
+        "expected": {
+          "refusal": "empty"
+        }
+      },
+      {
+        "name": "a_nul",
+        "key": "a\u0000b",
+        "expected": {
+          "refusal": "nul"
+        }
+      },
+      {
+        "name": "a_backslash",
+        "key": "a\\b",
+        "expected": {
+          "refusal": "backslash"
+        }
+      },
+      {
+        "name": "a_leading_slash",
+        "key": "/a",
+        "expected": {
+          "refusal": "absolute"
+        }
+      },
+      {
+        "name": "the_root",
+        "key": "/",
+        "expected": {
+          "refusal": "absolute"
+        }
+      },
+      {
+        "name": "a_doubled_slash",
+        "key": "a//b",
+        "expected": {
+          "refusal": "empty_segment"
+        }
+      },
+      {
+        "name": "a_trailing_slash",
+        "key": "a/",
+        "expected": {
+          "refusal": "empty_segment"
+        }
+      },
+      {
+        "name": "a_dot_segment",
+        "key": "a/./b",
+        "expected": {
+          "refusal": "dot_segment"
+        }
+      },
+      {
+        "name": "only_a_dot",
+        "key": ".",
+        "expected": {
+          "refusal": "dot_segment"
+        }
+      },
+      {
+        "name": "a_parent_segment",
+        "key": "a/../b",
+        "expected": {
+          "refusal": "parent_segment"
+        }
+      },
+      {
+        "name": "only_a_parent",
+        "key": "..",
+        "expected": {
+          "refusal": "parent_segment"
+        }
+      },
+      {
+        "name": "a_parent_segment_that_leaves_the_directory",
+        "key": "../outside",
+        "expected": {
+          "refusal": "parent_segment"
+        }
+      },
+      {
+        "name": "a_nul_is_named_before_a_backslash",
+        "key": "a\u0000\\",
+        "expected": {
+          "refusal": "nul"
+        }
+      },
+      {
+        "name": "a_backslash_is_named_before_a_leading_slash",
+        "key": "/a\\",
+        "expected": {
+          "refusal": "backslash"
+        }
+      },
+      {
+        "name": "a_leading_slash_is_named_before_a_parent_segment",
+        "key": "/..",
+        "expected": {
+          "refusal": "absolute"
+        }
+      },
+      {
+        "name": "segments_are_read_from_the_left",
+        "key": "./..",
+        "expected": {
+          "refusal": "dot_segment"
+        }
+      },
+      {
+        "name": "an_empty_segment_is_named_before_a_later_parent",
+        "key": "a//..",
+        "expected": {
+          "refusal": "empty_segment"
+        }
+      }
+    ],
+    "scenarios": [
+      {
+        "name": "a_missing_directory_holds_nothing",
+        "start": {},
+        "steps": [
+          {
+            "op": "get",
+            "key": "a",
+            "returns": null,
+            "directory": {}
+          },
+          {
+            "op": "keys",
+            "prefix": "",
+            "returns": [],
+            "directory": {}
+          },
+          {
+            "op": "delete",
+            "key": "a",
+            "returns": "ok",
+            "directory": {}
+          }
+        ]
+      },
+      {
+        "name": "a_directory_written_elsewhere_is_read",
+        "start": {
+          "a/1": "6131",
+          "a/10": "613130",
+          "a/2": "6132",
+          "b/2": "6232",
+          "c": "63"
+        },
+        "steps": [
+          {
+            "op": "get",
+            "key": "a/10",
+            "returns": "613130",
+            "directory": {
+              "a/1": "6131",
+              "a/10": "613130",
+              "a/2": "6132",
+              "b/2": "6232",
+              "c": "63"
+            }
+          },
+          {
+            "op": "get",
+            "key": "c",
+            "returns": "63",
+            "directory": {
+              "a/1": "6131",
+              "a/10": "613130",
+              "a/2": "6132",
+              "b/2": "6232",
+              "c": "63"
+            }
+          },
+          {
+            "op": "get",
+            "key": "a/3",
+            "returns": null,
+            "directory": {
+              "a/1": "6131",
+              "a/10": "613130",
+              "a/2": "6132",
+              "b/2": "6232",
+              "c": "63"
+            }
+          },
+          {
+            "op": "keys",
+            "prefix": "",
+            "returns": [
+              "a/1",
+              "a/10",
+              "a/2",
+              "b/2",
+              "c"
+            ],
+            "directory": {
+              "a/1": "6131",
+              "a/10": "613130",
+              "a/2": "6132",
+              "b/2": "6232",
+              "c": "63"
+            }
+          },
+          {
+            "op": "keys",
+            "prefix": "a/",
+            "returns": [
+              "a/1",
+              "a/10",
+              "a/2"
+            ],
+            "directory": {
+              "a/1": "6131",
+              "a/10": "613130",
+              "a/2": "6132",
+              "b/2": "6232",
+              "c": "63"
+            }
+          },
+          {
+            "op": "keys",
+            "prefix": "a/1",
+            "returns": [
+              "a/1",
+              "a/10"
+            ],
+            "directory": {
+              "a/1": "6131",
+              "a/10": "613130",
+              "a/2": "6132",
+              "b/2": "6232",
+              "c": "63"
+            }
+          },
+          {
+            "op": "keys",
+            "prefix": "x",
+            "returns": [],
+            "directory": {
+              "a/1": "6131",
+              "a/10": "613130",
+              "a/2": "6132",
+              "b/2": "6232",
+              "c": "63"
+            }
+          }
+        ]
+      },
+      {
+        "name": "a_value_is_the_whole_file",
+        "start": {},
+        "steps": [
+          {
+            "op": "set",
+            "key": "k",
+            "value_hex": "",
+            "returns": "ok",
+            "directory": {
+              "k": ""
+            }
+          },
+          {
+            "op": "get",
+            "key": "k",
+            "returns": "",
+            "directory": {
+              "k": ""
+            }
+          },
+          {
+            "op": "set",
+            "key": "k",
+            "value_hex": "00ff0a0d00",
+            "returns": "ok",
+            "directory": {
+              "k": "00ff0a0d00"
+            }
+          },
+          {
+            "op": "get",
+            "key": "k",
+            "returns": "00ff0a0d00",
+            "directory": {
+              "k": "00ff0a0d00"
+            }
+          }
+        ]
+      },
+      {
+        "name": "a_set_creates_nested_directories_and_replaces_in_place",
+        "start": {},
+        "steps": [
+          {
+            "op": "set",
+            "key": "data/ab/entry/1",
+            "value_hex": "0a0b0c",
+            "returns": "ok",
+            "directory": {
+              "data/ab/entry/1": "0a0b0c"
+            }
+          },
+          {
+            "op": "set",
+            "key": "data/ab/entry/1",
+            "value_hex": "01",
+            "returns": "ok",
+            "directory": {
+              "data/ab/entry/1": "01"
+            }
+          },
+          {
+            "op": "set",
+            "key": "data/ab/head",
+            "value_hex": "31",
+            "returns": "ok",
+            "directory": {
+              "data/ab/entry/1": "01",
+              "data/ab/head": "31"
+            }
+          }
+        ]
+      },
+      {
+        "name": "a_delete_removes_the_file_and_tolerates_absence",
+        "start": {
+          "a": "6f6e65"
+        },
+        "steps": [
+          {
+            "op": "delete",
+            "key": "a",
+            "returns": "ok",
+            "directory": {}
+          },
+          {
+            "op": "delete",
+            "key": "a",
+            "returns": "ok",
+            "directory": {}
+          },
+          {
+            "op": "get",
+            "key": "a",
+            "returns": null,
+            "directory": {}
+          }
+        ]
+      },
+      {
+        "name": "a_delete_leaves_the_other_files",
+        "start": {
+          "a/1": "6131",
+          "a/10": "613130",
+          "a/2": "6132",
+          "b/2": "6232",
+          "c": "63"
+        },
+        "steps": [
+          {
+            "op": "delete",
+            "key": "a/10",
+            "returns": "ok",
+            "directory": {
+              "a/1": "6131",
+              "a/2": "6132",
+              "b/2": "6232",
+              "c": "63"
+            }
+          },
+          {
+            "op": "keys",
+            "prefix": "a/",
+            "returns": [
+              "a/1",
+              "a/2"
+            ],
+            "directory": {
+              "a/1": "6131",
+              "a/2": "6132",
+              "b/2": "6232",
+              "c": "63"
+            }
+          }
+        ]
+      },
+      {
+        "name": "a_key_the_layout_refuses_is_refused_by_every_operation_and_writes_nothing",
+        "start": {
+          "a": "6f6e65"
+        },
+        "steps": [
+          {
+            "op": "get",
+            "key": "",
+            "returns": "refused",
+            "directory": {
+              "a": "6f6e65"
+            }
+          },
+          {
+            "op": "set",
+            "key": "",
+            "value_hex": "01",
+            "returns": "refused",
+            "directory": {
+              "a": "6f6e65"
+            }
+          },
+          {
+            "op": "delete",
+            "key": "",
+            "returns": "refused",
+            "directory": {
+              "a": "6f6e65"
+            }
+          },
+          {
+            "op": "get",
+            "key": "../a",
+            "returns": "refused",
+            "directory": {
+              "a": "6f6e65"
+            }
+          },
+          {
+            "op": "set",
+            "key": "../a",
+            "value_hex": "01",
+            "returns": "refused",
+            "directory": {
+              "a": "6f6e65"
+            }
+          },
+          {
+            "op": "delete",
+            "key": "../a",
+            "returns": "refused",
+            "directory": {
+              "a": "6f6e65"
+            }
+          },
+          {
+            "op": "set",
+            "key": "x//y",
+            "value_hex": "01",
+            "returns": "refused",
+            "directory": {
+              "a": "6f6e65"
+            }
+          },
+          {
+            "op": "set",
+            "key": "x/./y",
+            "value_hex": "01",
+            "returns": "refused",
+            "directory": {
+              "a": "6f6e65"
+            }
+          },
+          {
+            "op": "set",
+            "key": "/x",
+            "value_hex": "01",
+            "returns": "refused",
+            "directory": {
+              "a": "6f6e65"
+            }
+          },
+          {
+            "op": "set",
+            "key": "x/",
+            "value_hex": "01",
+            "returns": "refused",
+            "directory": {
+              "a": "6f6e65"
+            }
+          },
+          {
+            "op": "set",
+            "key": "x\\y",
+            "value_hex": "01",
+            "returns": "refused",
+            "directory": {
+              "a": "6f6e65"
+            }
+          },
+          {
+            "op": "get",
+            "key": "a",
+            "returns": "6f6e65",
+            "directory": {
+              "a": "6f6e65"
+            }
+          }
+        ]
+      },
+      {
+        "name": "a_key_under_a_file_or_naming_a_directory_is_an_error_not_absence",
+        "start": {
+          "a": "6f6e65",
+          "d/e": "6e6573746564"
+        },
+        "steps": [
+          {
+            "op": "get",
+            "key": "a/b",
+            "returns": "error",
+            "directory": {
+              "a": "6f6e65",
+              "d/e": "6e6573746564"
+            }
+          },
+          {
+            "op": "get",
+            "key": "d",
+            "returns": "error",
+            "directory": {
+              "a": "6f6e65",
+              "d/e": "6e6573746564"
+            }
+          },
+          {
+            "op": "set",
+            "key": "a/b",
+            "value_hex": "01",
+            "returns": "error",
+            "directory": {
+              "a": "6f6e65",
+              "d/e": "6e6573746564"
+            }
+          },
+          {
+            "op": "set",
+            "key": "d",
+            "value_hex": "01",
+            "returns": "error",
+            "directory": {
+              "a": "6f6e65",
+              "d/e": "6e6573746564"
+            }
+          },
+          {
+            "op": "delete",
+            "key": "a/b",
+            "returns": "error",
+            "directory": {
+              "a": "6f6e65",
+              "d/e": "6e6573746564"
+            }
+          }
+        ]
+      }
+    ],
+    "counts": {
+      "key_layout": 23,
+      "scenarios": 8
+    }
+  }
+}
