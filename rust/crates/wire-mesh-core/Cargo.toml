@@ -11,8 +11,10 @@ readme = "../README.md"
 
 [features]
 # "net" gates tcp_transport.rs's own tokio::net/mio dependency behind an opt-out feature, default-on so every existing native consumer is unaffected. A consumer that never needs TCP transport -- most concretely, wire-mesh-threshold-wasm, whose entire wasm32-unknown-unknown build target has no mio support at all -- depends on this crate with `default-features = false` to skip it, rather than pulling in a networking stack a WASM crypto binding has no use for.
-default = ["net"]
+default = ["net", "fs"]
 net = ["tokio/net", "tokio/io-util", "tokio/rt-multi-thread", "tokio/time"]
+# "fs" gates the filesystem storage adapter's tokio::fs dependency, default-on like "net": a wasm32 consumer has no filesystem and depends on this crate with `default-features = false`. The layout it implements (`domain::fs_layout`) is pure and always present.
+fs = ["tokio/fs"]
 # Exposes `domain::secure_channel::begin_handshake_with`, which starts a handshake from a caller-chosen ephemeral key and nonce so conformance vectors can reproduce a handshake byte for byte. A fixed ephemeral key is a key-reuse hazard, so only the conformance binary enables this; the crate's own tests have it through `cfg(test)`.
 conformance = []
 
