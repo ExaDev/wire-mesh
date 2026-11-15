@@ -275,11 +275,11 @@ fn check_authorisation(
         }
     }
     if let Some(conditions) = &authoriser.conditions {
-        // A list this implementation cannot decode, or holds a node it has no support for, is malformed here. The TypeScript gives the same reason to a list that fails trilean's schema; a schema-valid node outside this implementation's subset is refused here where the TypeScript could evaluate it, which is fail-closed.
+        // A list that does not decode, or holds a node trilean's schema rejects, is malformed, as in the TypeScript. A node the schema accepts and this implementation cannot evaluate is indeterminate, so the conditions are not satisfied, again as in the TypeScript. The one gap is a schema-valid node the decoder cannot represent at all (a non-integer number, which the wire value type has no variant for): the whole list fails to decode and reads as malformed here.
         let Ok(nodes) = decode_conditions(conditions) else {
             return Some(MintRefusal::AuthorisationMalformed);
         };
-        if nodes.iter().any(|node| node.contains_unsupported()) {
+        if nodes.iter().any(|node| node.contains_malformed()) {
             return Some(MintRefusal::AuthorisationMalformed);
         }
         let subject = GrantSubject {
