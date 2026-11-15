@@ -86,7 +86,7 @@ export function assembleTopologyGraph(
  * Sends topology.get and resolves with the peer's own live TopologyPeers, parsed back out of the manage-ok response's own open `* tstr => any` tail -- the on-demand, cache-bust counterpart to reading a possibly-stale `topology/peers` gossip extension off the directory. targetDevice/timeoutMs forward directly to MeshSession.sendManageRequest's own identically-named parameters (relay routing and a requester-side give-up bound respectively), exactly as requestCapability already does for capability-request.
  */
 export async function sendTopologyGet(
-  session: Readonly<MeshSession>,
+  session: Readonly<Pick<MeshSession, "sendManageRequest">>,
   targetDevice?: DeviceId,
   timeoutMs?: number,
 ): Promise<TopologyPeers> {
@@ -112,7 +112,7 @@ export async function sendTopologyGet(
  * Answers an incoming topology.get manage-request directly off the given session's own live MeshSession.getTopologyPeers() -- deliberately ungated, per management.cddl's own `topology-get` comment: no token/scope check at all, matching room.join/room.invite's identical "no gate" treatment in room-client.ts. Assumes the caller's own incomingManageRequests dispatch has already routed here for a request whose command.params.verb is "topology.get" (the same assumption createCapabilityRequestHandler already makes for capability-request) -- anything that doesn't parse as topology-get is answered `{result:"error", code:"malformed"}` rather than silently ignored, since reaching this handler at all means the caller believed it was one.
  */
 export function createTopologyGetHandler(
-  session: Readonly<MeshSession>,
+  session: Readonly<Pick<MeshSession, "getTopologyPeers">>,
 ): (incoming: Readonly<IncomingManageRequest>) => Promise<void> {
   return async function handleTopologyGet(
     incoming: Readonly<IncomingManageRequest>,
