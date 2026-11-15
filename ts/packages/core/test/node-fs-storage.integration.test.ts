@@ -118,6 +118,11 @@ describe("createNodeFsStorage", () => {
     ["./a", "dot_segment"],
     ["a/../b", "parent_segment"],
     ["../a", "parent_segment"],
+    ["C:/x", "drive_prefix"],
+    ["a/C:/x", "drive_prefix"],
+    ["C:foo", "drive_prefix"],
+    ["c:", "drive_prefix"],
+    ["a:b", "drive_prefix"],
   ];
 
   describe.each(refusedKeys)("the key %j", (key, refusal) => {
@@ -173,9 +178,13 @@ describe("createNodeFsStorage", () => {
     const value = bytesFromHex("0a");
 
     await storage.set("a.b/..c/d..", value);
+    await storage.set("a/bc:d", value);
+    await storage.set("1:a", value);
 
     expect(await storage.get("a.b/..c/d..")).toEqual(value);
-    expect(await storage.keys("")).toEqual(["a.b/..c/d.."]);
+    expect((await storage.keys("")).sort()).toEqual(
+      ["1:a", "a.b/..c/d..", "a/bc:d"].sort(),
+    );
   });
 
   it.skipIf(path.sep === "\\")(
