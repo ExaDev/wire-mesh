@@ -1,3 +1,9 @@
+## [4.2.1](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.0...wire-mesh-core%404.2.1) (2026-11-15)
+
+### Bug Fixes
+
+* **core:** confirm a candidate channel before it replaces the current one ([36cdd7b](https://github.com/ExaDev/wire-mesh/commit/36cdd7b7648762ff10c2c1c2aa6b1b8251cf66e9))
+
 ## [4.2.0](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.1.5...wire-mesh-core%404.2.0) (2026-11-14)
 
 ### Features
