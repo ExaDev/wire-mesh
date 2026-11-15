@@ -1,3 +1,9 @@
+## [4.2.3](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.2...wire-mesh-core%404.2.3) (2026-11-15)
+
+### Tests
+
+* **conformance:** pin created room notices byte for byte in mint.v1.json ([94f9f6c](https://github.com/ExaDev/wire-mesh/commit/94f9f6c55835cf37c99ff14a726e7f22576180e0))
+
 ## [4.2.2](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.1...wire-mesh-core%404.2.2) (2026-11-15)
 
 ### Tests
