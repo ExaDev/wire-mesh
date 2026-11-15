@@ -55,7 +55,7 @@ export async function headSeqFor(
 }
 
 /**
- * Appends one entry to this identity's own oplog and returns both the new sequence and the data-have frame announcing it. Only manages the local append and head-seq bookkeeping -- the caller decides when and to which peers to actually send the returned frame (proactively on every append, batched, on a timer, or not at all), the same "primitive vs. policy" split sendDirectManageRequest already draws for the manage-request path.
+ * Appends one entry to this identity's own oplog and returns both the new sequence and the data-have frame announcing it. Throws a RangeError, writing nothing, when the next sequence is not a safe integer: a peer reading the announcing frame holds it as a number and could not hold it exactly. Only manages the local append and head-seq bookkeeping -- the caller decides when and to which peers to actually send the returned frame (proactively on every append, batched, on a timer, or not at all), the same "primitive vs. policy" split sendDirectManageRequest already draws for the manage-request path.
  */
 export async function appendOwnEntry(
   options: Readonly<DataSyncOptions>,
@@ -66,6 +66,11 @@ export async function appendOwnEntry(
     options.identity.deviceId,
   );
   const seq = currentHead + 1;
+  if (!Number.isSafeInteger(seq)) {
+    throw new RangeError(
+      `the log of this device holds ${String(currentHead)} entries, so its next sequence is not an integer a peer can hold exactly`,
+    );
+  }
   await options.storage.set(entryKey(options.identity.deviceId, seq), entry);
   await writeHeadSeq(options.storage, options.identity.deviceId, seq);
 
