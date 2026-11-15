@@ -196,6 +196,17 @@ const scenarios: readonly Scenario[] = [
     ],
   },
   {
+    name: "a_received_claim_with_the_largest_exact_capacity_hint_is_accepted",
+    own: "mid",
+    steps: [
+      {
+        evaluate: { term: 5, device: "low", hint: MAX_EXACT_INTEGER },
+        accepts: { term: 5, device: "low", hint: MAX_EXACT_INTEGER },
+        then: { term: 5, device: "low", hint: MAX_EXACT_INTEGER },
+      },
+    ],
+  },
+  {
     name: "a_claim_with_the_largest_exact_capacity_hint",
     own: "mid",
     steps: [
