@@ -7,10 +7,12 @@
 
 use std::cmp::Ordering;
 
-use wire_mesh_wire::room::RoomNoticeClaims;
+use wire_mesh_wire::room::{MessageRef, RoomNoticeClaims};
 use wire_mesh_wire::tokens::CoseSign1;
+use wire_mesh_wire::value::CanonicalMap;
 
-use crate::domain::cose::sig_structure;
+use crate::domain::cose::{sig_structure, sign_cose_sign1};
+use crate::domain::mint::{MintError, MintRefusal, MAX_EXACT_INTEGER};
 use crate::domain::revocation::RevocationCheck;
 use crate::domain::room_token_verification::{verify_room_token, RoomTokenRejection};
 use crate::ports::{Clock, Identity};
@@ -155,6 +157,63 @@ pub async fn verify_room_notice(
     RoomNoticeVerdict::Valid {
         claims: Box::new(claims),
     }
+}
+
+/// What a poster supplies to [`create_room_notice`]. `posted-at` is not here: it is always read from the clock.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewRoomNotice {
+    /// The room the notice is posted to.
+    pub room: String,
+    /// The poster's own `room:member` token, embedded in full: a reader checks its bearer against the notice's signed `poster`.
+    pub token: CoseSign1,
+    /// Unique enough for [`compare_room_notices`]'s cross-author tiebreak. How it is generated is the caller's choice.
+    pub notice_id: Vec<u8>,
+    pub content_type: String,
+    /// Opaque bytes. For an encrypted content type the caller has already encrypted them: this function never encrypts.
+    pub content: Vec<u8>,
+    /// Forward and reply references to other notices.
+    pub refs: Option<Vec<MessageRef>>,
+    /// Unix milliseconds after which the notice's content is no longer valid.
+    pub valid_until: Option<u64>,
+    /// The `room.rekey` epoch the content is encrypted under: present exactly when `content_type` names an encrypted content type, which [`verify_room_notice`] enforces and this function does not.
+    pub key_epoch: Option<u64>,
+}
+
+/// Creates one self-certifying room-notice as `identity`, the counterpart of [`verify_room_notice`]: `poster` and `poster-key` are the identity's own, and `posted-at` is the clock's current time, never a caller's value, so a poster's own log stays non-decreasing.
+///
+/// The notice is otherwise not checked here: a notice whose pairing of content type and key epoch, or whose embedded token, a reader would refuse is still created, exactly as the TypeScript `createRoomNotice` does. The one exception is an integer the TypeScript cannot hold exactly: `valid-until`, `key-epoch` and the clock's reading are bounded at [`MAX_EXACT_INTEGER`], as every other minter of this crate is, because a notice carrying a larger one is unreadable there.
+///
+/// # Errors
+///
+/// [`MintError::Refused`] with [`MintRefusal::ValueNotRepresentable`] when `valid-until`, `key-epoch` or the clock's reading is above [`MAX_EXACT_INTEGER`] (nothing is signed), and [`MintError::Port`] when `identity.sign` fails.
+pub async fn create_room_notice(
+    identity: &dyn Identity,
+    clock: &dyn Clock,
+    notice: NewRoomNotice,
+) -> Result<CoseSign1, MintError> {
+    let posted_at = clock.now_unix_ms();
+    if [Some(posted_at), notice.valid_until, notice.key_epoch]
+        .into_iter()
+        .flatten()
+        .any(|value| value > MAX_EXACT_INTEGER)
+    {
+        return Err(MintRefusal::ValueNotRepresentable.into());
+    }
+    let claims = RoomNoticeClaims {
+        room: notice.room,
+        poster: *identity.device_id(),
+        poster_key: identity.identity_key().clone(),
+        token: notice.token,
+        notice_id: notice.notice_id,
+        posted_at,
+        content_type: notice.content_type,
+        content: notice.content,
+        refs: notice.refs,
+        valid_until: notice.valid_until,
+        key_epoch: notice.key_epoch,
+        extra: CanonicalMap::new(),
+    };
+    Ok(sign_cose_sign1(identity, &claims.encode_to_vec()).await?)
 }
 
 /// Deterministic display ordering for room-notice entries from possibly
@@ -1148,5 +1207,185 @@ mod tests {
         assert_eq!(compare_room_notices(&a, &b), Ordering::Less);
         assert_eq!(compare_room_notices(&b, &a), Ordering::Greater);
         assert_eq!(compare_room_notices(&a, &a), Ordering::Equal);
+    }
+    async fn create_in_named_room(
+        owner: &NodeIdentity,
+        poster: &NodeIdentity,
+        clock_ms: u64,
+        change: impl FnOnce(&mut NewRoomNotice),
+    ) -> CoseSign1 {
+        let room_path = owner_named_room_path(
+            &crate::domain::room_path::device_id_to_hex(owner.device_id()),
+            "general",
+        );
+        let token = mint_room_member_token(owner, poster, &room_path, NOW + HOUR_MS).await;
+        let mut notice = NewRoomNotice {
+            room: room_path,
+            token,
+            notice_id: vec![0xa1; 16],
+            content_type: "text/plain".to_owned(),
+            content: b"hello".to_vec(),
+            refs: None,
+            valid_until: None,
+            key_epoch: None,
+        };
+        change(&mut notice);
+        create_room_notice(poster, &FixedClock(clock_ms), notice)
+            .await
+            .expect("create")
+    }
+
+    async fn verify_created(owner: &NodeIdentity, notice: &CoseSign1) -> RoomNoticeVerdict {
+        verify_room_notice(
+            owner,
+            &FixedClock(NOW),
+            &RevocationView::new(),
+            notice,
+            None,
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn a_created_notice_is_signed_by_the_poster_and_stamped_from_the_clock() {
+        let owner = NodeIdentity::generate_ed25519();
+        let poster = NodeIdentity::generate_ed25519();
+        let notice = create_in_named_room(&owner, &poster, NOW, |_| {}).await;
+
+        let RoomNoticeVerdict::Valid { claims } = verify_created(&owner, &notice).await else {
+            panic!("a created notice verifies");
+        };
+        assert_eq!(claims.poster, *poster.device_id());
+        assert_eq!(&claims.poster_key, poster.identity_key());
+        assert_eq!(claims.posted_at, NOW);
+        assert_eq!(claims.notice_id, vec![0xa1; 16]);
+        assert_eq!(claims.content_type, "text/plain");
+        assert_eq!(claims.content, b"hello");
+        assert_eq!(claims.refs, None);
+        assert_eq!(claims.valid_until, None);
+        assert_eq!(claims.key_epoch, None);
+    }
+
+    #[tokio::test]
+    async fn a_created_notice_takes_posted_at_from_the_clock_at_creation() {
+        let owner = NodeIdentity::generate_ed25519();
+        let poster = NodeIdentity::generate_ed25519();
+        let notice = create_in_named_room(&owner, &poster, NOW - 5, |_| {}).await;
+
+        let RoomNoticeVerdict::Valid { claims } = verify_created(&owner, &notice).await else {
+            panic!("a created notice verifies");
+        };
+        assert_eq!(claims.posted_at, NOW - 5);
+    }
+
+    #[tokio::test]
+    async fn a_created_notice_carries_forward_refs_and_an_expiry() {
+        let owner = NodeIdentity::generate_ed25519();
+        let poster = NodeIdentity::generate_ed25519();
+        let refs = vec![MessageRef {
+            id: vec![0xa2; 16],
+            relation: "forward".to_owned(),
+        }];
+        let expected = refs.clone();
+        let notice = create_in_named_room(&owner, &poster, NOW, |n| {
+            n.refs = Some(refs);
+            n.valid_until = Some(NOW + HOUR_MS);
+        })
+        .await;
+
+        let RoomNoticeVerdict::Valid { claims } = verify_created(&owner, &notice).await else {
+            panic!("a created notice verifies");
+        };
+        assert_eq!(claims.refs, Some(expected));
+        assert_eq!(claims.valid_until, Some(NOW + HOUR_MS));
+    }
+
+    #[tokio::test]
+    async fn a_created_encrypted_notice_carries_its_epoch_and_verifies() {
+        let owner = NodeIdentity::generate_ed25519();
+        let poster = NodeIdentity::generate_ed25519();
+        let notice = create_in_named_room(&owner, &poster, NOW, |n| {
+            n.content_type = "text/plain+aes256gcm".to_owned();
+            n.key_epoch = Some(3);
+        })
+        .await;
+
+        let RoomNoticeVerdict::Valid { claims } = verify_created(&owner, &notice).await else {
+            panic!("a created notice verifies");
+        };
+        assert_eq!(claims.key_epoch, Some(3));
+        assert_eq!(claims.content_type, "text/plain+aes256gcm");
+    }
+
+    #[tokio::test]
+    async fn an_integer_the_typescript_cannot_hold_exactly_is_refused_before_signing() {
+        let owner = NodeIdentity::generate_ed25519();
+        let poster = NodeIdentity::generate_ed25519();
+        let beyond = MAX_EXACT_INTEGER + 1;
+        let room_path = owner_named_room_path(
+            &crate::domain::room_path::device_id_to_hex(owner.device_id()),
+            "general",
+        );
+        let token = mint_room_member_token(&owner, &poster, &room_path, NOW + HOUR_MS).await;
+        let base = NewRoomNotice {
+            room: room_path,
+            token,
+            notice_id: vec![0xa1; 16],
+            content_type: "text/plain".to_owned(),
+            content: b"hello".to_vec(),
+            refs: None,
+            valid_until: None,
+            key_epoch: None,
+        };
+        let refused = Err(MintError::Refused(MintRefusal::ValueNotRepresentable));
+        let mut valid_until = base.clone();
+        valid_until.valid_until = Some(beyond);
+        assert_eq!(
+            create_room_notice(&poster, &FixedClock(NOW), valid_until).await,
+            refused
+        );
+        let mut key_epoch = base.clone();
+        key_epoch.key_epoch = Some(beyond);
+        assert_eq!(
+            create_room_notice(&poster, &FixedClock(NOW), key_epoch).await,
+            refused
+        );
+        assert_eq!(
+            create_room_notice(&poster, &FixedClock(beyond), base.clone()).await,
+            refused
+        );
+        let mut at_the_limit = base;
+        at_the_limit.valid_until = Some(MAX_EXACT_INTEGER);
+        at_the_limit.key_epoch = Some(MAX_EXACT_INTEGER);
+        assert!(create_room_notice(&poster, &FixedClock(NOW), at_the_limit)
+            .await
+            .is_ok());
+    }
+
+    #[tokio::test]
+    async fn creation_does_not_check_the_pairing_of_content_type_and_key_epoch() {
+        let owner = NodeIdentity::generate_ed25519();
+        let poster = NodeIdentity::generate_ed25519();
+        let notice = create_in_named_room(&owner, &poster, NOW, |n| {
+            n.content_type = "text/plain+aes256gcm".to_owned();
+        })
+        .await;
+
+        assert_eq!(
+            verify_created(&owner, &notice).await,
+            RoomNoticeVerdict::Invalid(RoomNoticeRejection::KeyEpochMismatch)
+        );
+    }
+
+    #[tokio::test]
+    async fn a_created_notice_signs_the_canonical_protected_header() {
+        let owner = NodeIdentity::generate_ed25519();
+        let poster = NodeIdentity::generate_ed25519();
+        let notice = create_in_named_room(&owner, &poster, NOW, |_| {}).await;
+
+        assert_eq!(
+            notice.protected,
+            crate::domain::cose::protected_header(poster.identity_key().alg, poster.device_id())
+        );
     }
 }
