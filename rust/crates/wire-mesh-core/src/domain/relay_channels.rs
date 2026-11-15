@@ -553,7 +553,8 @@ impl RelayChannels {
         }
     }
 
-    fn report_fault(&self, error: &CoreError, peer: Option<DeviceId>) {
+    /// Reports a failure local to this side through the fault reporter: at most one report per peer per interval, with the number withheld. Only the relay client of this crate calls it, for the local faults it has of its own, so that every fault of a session reaches one reporter and one callback.
+    pub(crate) fn report_fault(&self, error: &CoreError, peer: Option<DeviceId>) {
         let reports = {
             let mut inner = self.lock();
             let now = inner.time(&*self.clock);
