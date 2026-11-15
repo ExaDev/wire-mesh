@@ -1,5 +1,5 @@
 /**
- * core/data sync protocol (spec/data-domain.cddl): the raw have/request/entries primitive over a KeyValueStorage-backed oplog. Deliberately scoped to this primitive alone, mirroring how mesh-session.ts's frame handling stays separate from an application's own dispatch policy -- when to proactively broadcast a data-have, which peers' logs to track at all, and how to fan a catch-up request out across several candidate holders are all application-level decisions this module has no opinion on. It only guarantees: appending to one's own log is correct and monotonic, and syncing another log via have/request/entries never accepts a gap.
+ * core/data sync protocol (spec/data-domain.cddl): the raw have/request/entries primitive over a KeyValueStorage-backed oplog. Deliberately scoped to this primitive alone, mirroring how mesh-session.ts's frame handling stays separate from an application's own dispatch policy: when to proactively broadcast a data-have, which peers' logs to track at all, and how to fan a catch-up request out across several candidate holders are all application-level decisions this module has no opinion on. It checks no authority: a data-entries frame is applied to whichever log it names, and the frame carries no proof of its author, so the caller must refuse a frame naming its own device (a peer could otherwise append bytes to this device's single-writer log) and one for a peer whose log it does not track, and must serialise the applications of frames for one peer (handleDataEntries reads the head and writes it back with no exclusion, so two concurrent applications of the same from-seq both pass the check and the later write wins). It only guarantees: appending to one's own log is correct and monotonic, and syncing another log via have/request/entries never accepts a gap.
  */
 
 import type {
@@ -21,14 +21,34 @@ function entryKey(peer: DeviceId, seq: number): string {
   return `data/${deviceIdToHex(peer)}/entry/${String(seq)}`;
 }
 
+/** Thrown when the head a store holds for a log is not a decimal integer of at most 2^53 - 1: an empty text, a hexadecimal, an exponent, a sign, a fraction, leading zeros or anything else that is not the plain digits a head is written as, or an integer above the safe range. Nothing is written when it is thrown, so a corrupt store neither reads as an empty log nor is overwritten as one. */
+export class InvalidLogHeadError extends Error {
+  readonly text: string;
+
+  constructor(peer: DeviceId, text: string) {
+    super(
+      `the head of the log of ${deviceIdToHex(peer)} is not a decimal integer of at most 2^53 - 1: ${JSON.stringify(text)}`,
+    );
+    this.name = "InvalidLogHeadError";
+    this.text = text;
+  }
+}
+
+const DECIMAL_HEAD = /^(?:0|[1-9][0-9]*)$/;
+
 async function readHeadSeq(
   storage: Readonly<KeyValueStorage>,
   peer: DeviceId,
 ): Promise<number> {
   const raw = await storage.get(headKey(peer));
   if (raw === undefined) return 0;
+  const text = new TextDecoder().decode(raw);
+  const head = Number(text);
+  if (!DECIMAL_HEAD.test(text) || !Number.isSafeInteger(head)) {
+    throw new InvalidLogHeadError(peer, text);
+  }
 
-  return Number(new TextDecoder().decode(raw));
+  return head;
 }
 
 async function writeHeadSeq(
@@ -45,7 +65,7 @@ export interface DataSyncOptions {
 }
 
 /**
- * The current head-seq this store holds for `peer`'s log -- own log if peer is this device's own identity, a replicated peer's log otherwise (any store may hold and answer for a peer's log, per data-domain.cddl's own fan-out rule; nothing here distinguishes "my own log" from "a replica I'm holding"). 0 means nothing is held yet.
+ * The current head-seq this store holds for `peer`'s log, own log if peer is this device's own identity, a replicated peer's log otherwise (any store may hold and answer for a peer's log, per data-domain.cddl's own fan-out rule; nothing here distinguishes "my own log" from "a replica I'm holding"). 0 means nothing is held yet. Throws InvalidLogHeadError for a stored head that is not a decimal integer of at most 2^53 - 1.
  */
 export async function headSeqFor(
   storage: Readonly<KeyValueStorage>,
@@ -55,7 +75,7 @@ export async function headSeqFor(
 }
 
 /**
- * Appends one entry to this identity's own oplog and returns both the new sequence and the data-have frame announcing it. Throws a RangeError, writing nothing, when the next sequence is not a safe integer: a peer reading the announcing frame holds it as a number and could not hold it exactly. Only manages the local append and head-seq bookkeeping -- the caller decides when and to which peers to actually send the returned frame (proactively on every append, batched, on a timer, or not at all), the same "primitive vs. policy" split sendDirectManageRequest already draws for the manage-request path.
+ * Appends one entry to this identity's own oplog and returns both the new sequence and the data-have frame announcing it. Throws a RangeError, writing nothing, when the next sequence is not a safe integer: a peer reading the announcing frame holds it as a number and could not hold it exactly. Throws InvalidLogHeadError, writing nothing, when the stored head is not a decimal integer. Only manages the local append and head-seq bookkeeping; the caller decides when and to which peers to actually send the returned frame (proactively on every append, batched, on a timer, or not at all), the same "primitive vs. policy" split sendDirectManageRequest already draws for the manage-request path.
  */
 export async function appendOwnEntry(
   options: Readonly<DataSyncOptions>,
@@ -150,7 +170,7 @@ export type HandleDataEntriesResult =
   { ok: true } | { ok: false; reason: "gap" };
 
 /**
- * Handles an incoming data-entries: persists the given entries starting right after from-seq, but ONLY when from-seq exactly matches this store's own current head for `frame.peer` -- data-domain.cddl's own gap-rejection obligation. A mismatch covers both directions: from-seq ahead of our head is a real gap (we're missing something in between); from-seq behind our head is a stale or replayed response we've already applied. Either way the caller's own retry path is the same -- re-issue a data-request from this store's own current headSeqFor(peer), which handleDataHave already computes correctly on the next data-have it sees.
+ * Handles an incoming data-entries. The caller must refuse a frame naming its own device and serialise applications per peer (see the module doc). Persists the given entries starting right after from-seq, but ONLY when from-seq exactly matches this store's own current head for `frame.peer`, data-domain.cddl's own gap-rejection obligation. A mismatch covers both directions: from-seq ahead of our head is a real gap (we're missing something in between); from-seq behind our head is a stale or replayed response we've already applied. Either way the caller's own retry path is the same, re-issue a data-request from this store's own current headSeqFor(peer), which handleDataHave already computes correctly on the next data-have it sees.
  */
 export async function handleDataEntries(
   storage: Readonly<KeyValueStorage>,
