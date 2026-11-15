@@ -86,6 +86,14 @@ impl Obj {
         }
     }
 
+    /// An object field that is `null` when it does not apply.
+    pub(crate) fn optional_object(&mut self, key: &str) -> Result<Option<Obj>, String> {
+        match self.take(key)? {
+            Value::Null => Ok(None),
+            value => Obj::new(&value, format!("{}.{key}", self.path)).map(Some),
+        }
+    }
+
     /// A string field that is `null` when it does not apply.
     pub(crate) fn optional_string(&mut self, key: &str) -> Result<Option<String>, String> {
         match self.take(key)? {
