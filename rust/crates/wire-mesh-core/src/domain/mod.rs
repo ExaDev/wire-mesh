@@ -14,6 +14,7 @@ pub mod path_trace;
 pub mod peer_advert;
 pub mod predicates;
 pub mod relay_channels;
+pub mod relay_client;
 pub mod revocation;
 pub mod room;
 pub mod room_path;
