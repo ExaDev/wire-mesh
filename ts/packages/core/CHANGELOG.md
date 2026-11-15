@@ -1,3 +1,10 @@
+## [4.2.2](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.1...wire-mesh-core%404.2.2) (2026-11-15)
+
+### Tests
+
+* **conformance:** cover every condition and every adjacent order pair in the mint vectors ([7871ef9](https://github.com/ExaDev/wire-mesh/commit/7871ef9716f0249e06f7d1ba15df86db20936887))
+* **conformance:** pin token and revocation-entry minting in mint.v1.json ([c3fa759](https://github.com/ExaDev/wire-mesh/commit/c3fa75924384dd10e90ba805903f0c4e18a4b725))
+
 ## [4.2.1](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.0...wire-mesh-core%404.2.1) (2026-11-15)
 
 ### Bug Fixes
