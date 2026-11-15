@@ -12,6 +12,9 @@ const SHARED_KEYS = ["protocol_version", "description", "vectors"];
 const SIDECAR_SECTIONS: Readonly<
   Record<string, Readonly<Record<string, string>>>
 > = {
+  "file-storage.v1.json": {
+    file_storage: "ts/packages/core/test/conformance-file-storage.unit.test.ts",
+  },
   "data-sync.v1.json": {
     data_sync: "ts/packages/core/test/conformance-data-sync.unit.test.ts",
   },
@@ -77,6 +80,11 @@ for (const filename of files) {
   );
   if (!isVectorFile(raw)) {
     throw new Error(`${filename} is not a valid vector file`);
+  }
+
+  // A file that pins a layout on disk rather than wire bytes has no vectors to round-trip: its sections are checked by the implementations, and a suite with no test would fail.
+  if (raw.vectors.length === 0) {
+    continue;
   }
 
   describe(filename, () => {
