@@ -12,6 +12,10 @@ const SHARED_KEYS = ["protocol_version", "description", "vectors"];
 const SIDECAR_SECTIONS: Readonly<
   Record<string, Readonly<Record<string, string>>>
 > = {
+  "coordinator-election.v1.json": {
+    coordinator_election:
+      "ts/packages/core/test/conformance-coordinator-election.unit.test.ts",
+  },
   "mint.v1.json": {
     mint: "ts/packages/core/test/conformance-mint.unit.test.ts",
   },
