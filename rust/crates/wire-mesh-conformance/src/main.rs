@@ -46,13 +46,14 @@ use wire_mesh_wire::value::{CanonicalMap, CborValue};
 use wire_mesh_wire::{decode_frame, encode_frame, minicbor, DecodeError};
 
 mod coordinator_election;
+mod data_sync;
 mod mint;
 mod mint_notice;
 mod obj;
 mod secure_channel;
 
 /// The vector files this binary checks, each with the top-level keys it reads.
-const CONSUMED: [&str; 8] = [
+const CONSUMED: [&str; 9] = [
     "frames.v1.json",
     "handshake.v1.json",
     "tokens.v1.json",
@@ -61,6 +62,7 @@ const CONSUMED: [&str; 8] = [
     SECURE_CHANNEL_FILE,
     MINT_FILE,
     ELECTION_FILE,
+    DATA_SYNC_FILE,
 ];
 
 /// The vector file whose `secure_channel` section [`secure_channel`] checks.
@@ -72,14 +74,18 @@ const MINT_FILE: &str = "mint.v1.json";
 /// The vector file whose `coordinator_election` section [`coordinator_election`] checks.
 const ELECTION_FILE: &str = "coordinator-election.v1.json";
 
+/// The vector file whose `data_sync` section [`data_sync`] checks.
+const DATA_SYNC_FILE: &str = "data-sync.v1.json";
+
 /// The top-level keys every consumed file may carry: the ones `validate_vector_file` reads.
 const CONSUMED_KEYS: [&str; 3] = ["protocol_version", "description", "vectors"];
 
 /// The top-level section a file carries besides the shared keys, with the file that carries it.
-const SECTIONS: [(&str, &str); 3] = [
+const SECTIONS: [(&str, &str); 4] = [
     (SECURE_CHANNEL_FILE, "secure_channel"),
     (MINT_FILE, "mint"),
     (ELECTION_FILE, "coordinator_election"),
+    (DATA_SYNC_FILE, "data_sync"),
 ];
 
 /// Vector files this binary does not check yet, each with the issue that tracks checking it. The run reports them as not consumed and fails if a file is missing from here and from [`CONSUMED`].
@@ -218,6 +224,7 @@ async fn main() {
             let outcomes = match file {
                 MINT_FILE => mint::check_section(section, &wires).await,
                 ELECTION_FILE => coordinator_election::check_section(section, &wires),
+                DATA_SYNC_FILE => data_sync::check_section(section, &wires).await,
                 _ => secure_channel::check_section(section, &wires).await,
             };
             for (name, outcome) in outcomes {
@@ -349,7 +356,7 @@ async fn check_vector(file: &str, vector: Vector, verifier: &NodeIdentity) -> Re
     let expected = decode_hex(&vector.wire_hex)?;
     // Primary loop: typed decode -> validate -> re-encode -> byte-exact.
     match file {
-        "frames.v1.json" | "handshake.v1.json" | ELECTION_FILE => {
+        "frames.v1.json" | "handshake.v1.json" | ELECTION_FILE | DATA_SYNC_FILE => {
             let frame = decode_frame(&expected).map_err(|e| format!("typed decode failed: {e}"))?;
             frame
                 .validate()

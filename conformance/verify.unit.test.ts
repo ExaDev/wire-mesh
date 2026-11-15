@@ -12,6 +12,9 @@ const SHARED_KEYS = ["protocol_version", "description", "vectors"];
 const SIDECAR_SECTIONS: Readonly<
   Record<string, Readonly<Record<string, string>>>
 > = {
+  "data-sync.v1.json": {
+    data_sync: "ts/packages/core/test/conformance-data-sync.unit.test.ts",
+  },
   "coordinator-election.v1.json": {
     coordinator_election:
       "ts/packages/core/test/conformance-coordinator-election.unit.test.ts",
