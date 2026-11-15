@@ -97,6 +97,20 @@ impl Obj {
         }
     }
 
+    /// An array of unsigned integers field.
+    pub(crate) fn unsigneds(&mut self, key: &str) -> Result<Vec<u64>, String> {
+        match self.take(key)? {
+            Value::Array(items) => items
+                .into_iter()
+                .map(|item| {
+                    item.as_u64()
+                        .ok_or_else(|| format!("{}.{key} holds a non-unsigned", self.path))
+                })
+                .collect(),
+            _ => Err(format!("{}.{key} is not an array", self.path)),
+        }
+    }
+
     /// An array of strings field.
     pub(crate) fn strings(&mut self, key: &str) -> Result<Vec<String>, String> {
         match self.take(key)? {

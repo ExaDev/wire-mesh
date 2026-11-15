@@ -8,10 +8,8 @@ use wire_mesh_core::domain::room_path::{
     slug_room_name, ParsedRoomPath, RoomPathError,
 };
 use wire_mesh_wire::management::{ManageOutcome, ManageParams};
-use wire_mesh_wire::room_params::{
-    CapabilityGrantOk, Extra, RoomJoinOk, RoomMember, RoomMembersOk,
-};
-use wire_mesh_wire::{decode_frame, minicbor, Frame};
+use wire_mesh_wire::room_params::{CapabilityGrantOk, RoomJoinOk, RoomMember, RoomMembersOk};
+use wire_mesh_wire::{decode_frame, minicbor, Extra, Frame};
 
 use super::obj::{Check, Obj};
 

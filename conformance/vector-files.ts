@@ -2,6 +2,7 @@
 
 import { writeFileSync } from "node:fs";
 import type { JsonWire, Vector } from "@exadev/wire-mesh-conformance";
+import { introspectionFile } from "./introspection-vectors.ts";
 import { roomParamsFile } from "./room-params-vectors.ts";
 import { fileStorageFile } from "./file-storage-vectors.ts";
 import { dataSyncFile } from "./data-sync-vectors.ts";
@@ -33,6 +34,8 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
     "File-backed key-value storage vectors for protocol version 1: the layout both implementations' file storage shares. There are no wire vectors. The `file_storage` section holds `key_layout`, which gives for each key the path of the file that holds it or the reason the layout refuses it (an empty key, a NUL, a backslash, a leading slash, an empty, `.` or `..` segment), and `scenarios`, which start from a directory (every file under it as a `/`-joined path with its content in hex), run operations on a storage over a copy of it, and record what each returns and the whole directory after it. A value is the whole content of its file, nothing added. The outcomes are written by hand from the layout, never produced by an implementation.",
   "room-params.v1.json":
     "Typed core/room and capability vectors for protocol version 1 (spec/room.cddl, spec/management.cddl). The top-level vectors are manage-request and manage-response frames carrying room.send, room.read, room.leave, room.invite and capability.request params and room-join-ok, room-members-ok and capability-grant-ok outcomes, round-tripped like any other file. The `room_params` section gives, for each frame, the shape a typed decoder must read it as and the value of every field and the keys of its open tail; a list of frames each breaking one rule of a shape, which a typed decoder must refuse, each naming the valid vector it varies; and the cases of the room-path and hex helpers. Every outcome is written by hand from the spec, never produced by an implementation. Device-ids and tokens are structural bytes.",
+  "introspection.v1.json":
+    "core/management introspection vectors for protocol version 1 (spec/management.cddl): path:trace and topology.get. The top-level vectors are the manage-request and manage-response frames the cases use and gossip frames each holding one peer-advert, round-tripped like any other file. The `introspection` section gives, for each frame, the shape a typed decoder must read it as and every field; frames each breaking one rule of a shape, which a typed decoder must refuse; the answer built for a path.trace; traces run against a scripted peer and clock; the topology read from an advert's `topology/peers` extension; the graph assembled from a directory; and topology.get run against a scripted peer. Every outcome is written by hand from the spec, never produced by an implementation. Device-ids, keys and signatures are structural bytes and the adverts are not verified.",
   "frames.v1.json":
     "Frame conformance vectors for protocol version 1, covering every $frame-variant in spec/frame.cddl except handshake-frame (see handshake.v1.json). manage-response-frame gets two vectors, one per branch of its manage-ok / manage-error outcome union. The four core/webrtc vectors (offer, answer, ice-candidate, end-of-candidates) exercise manage-request-frame's params socket with new content, not a new frame kind; the offer vector is also the first in this file to exercise manage-request-frame's optional token field. The core/room vectors (send with sent-at/content-type/a reply ref, batched read, leave, members, invite carrying its own pushed grant) carry the room:member token from tokens.v1.json's own root grant; the join vector is the first in this file to exercise an ungated manage-request (no token field at all). room-join-ok and room-members-ok are this domain's own named manage-ok variants (a minted grant plus membership, and a plain membership refresh, respectively), not the generic `* tstr => any` tail alone.",
 };
@@ -85,4 +88,6 @@ export function writeVectorFiles(
   write("file-storage.v1.json", fileStorage.vectors, fileStorage.extra);
   const roomParams = roomParamsFile();
   write("room-params.v1.json", roomParams.vectors, roomParams.extra);
+  const introspection = introspectionFile();
+  write("introspection.v1.json", introspection.vectors, introspection.extra);
 }

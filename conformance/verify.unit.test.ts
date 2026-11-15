@@ -12,6 +12,10 @@ const SHARED_KEYS = ["protocol_version", "description", "vectors"];
 const SIDECAR_SECTIONS: Readonly<
   Record<string, Readonly<Record<string, string>>>
 > = {
+  "introspection.v1.json": {
+    introspection:
+      "ts/packages/core/test/conformance-introspection.unit.test.ts",
+  },
   "room-params.v1.json": {
     room_params: "ts/packages/core/test/conformance-room-params.unit.test.ts",
   },
