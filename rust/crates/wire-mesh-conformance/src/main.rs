@@ -48,6 +48,7 @@ use wire_mesh_wire::{decode_frame, encode_frame, minicbor, DecodeError};
 mod coordinator_election;
 mod data_sync;
 mod file_storage;
+mod introspection;
 mod mint;
 mod mint_notice;
 mod obj;
@@ -55,7 +56,7 @@ mod room_params;
 mod secure_channel;
 
 /// The vector files this binary checks, each with the top-level keys it reads.
-const CONSUMED: [&str; 11] = [
+const CONSUMED: [&str; 12] = [
     "frames.v1.json",
     "handshake.v1.json",
     "tokens.v1.json",
@@ -67,6 +68,7 @@ const CONSUMED: [&str; 11] = [
     DATA_SYNC_FILE,
     FILE_STORAGE_FILE,
     ROOM_PARAMS_FILE,
+    INTROSPECTION_FILE,
 ];
 
 /// The vector file whose `secure_channel` section [`secure_channel`] checks.
@@ -87,17 +89,21 @@ const FILE_STORAGE_FILE: &str = "file-storage.v1.json";
 /// The vector file whose `room_params` section [`room_params`] checks.
 const ROOM_PARAMS_FILE: &str = "room-params.v1.json";
 
+/// The vector file whose `introspection` section [`introspection`] checks.
+const INTROSPECTION_FILE: &str = "introspection.v1.json";
+
 /// The top-level keys every consumed file may carry: the ones `validate_vector_file` reads.
 const CONSUMED_KEYS: [&str; 3] = ["protocol_version", "description", "vectors"];
 
 /// The top-level section a file carries besides the shared keys, with the file that carries it.
-const SECTIONS: [(&str, &str); 6] = [
+const SECTIONS: [(&str, &str); 7] = [
     (SECURE_CHANNEL_FILE, "secure_channel"),
     (MINT_FILE, "mint"),
     (ELECTION_FILE, "coordinator_election"),
     (DATA_SYNC_FILE, "data_sync"),
     (FILE_STORAGE_FILE, "file_storage"),
     (ROOM_PARAMS_FILE, "room_params"),
+    (INTROSPECTION_FILE, "introspection"),
 ];
 
 /// Vector files this binary does not check yet, each with the issue that tracks checking it. The run reports them as not consumed and fails if a file is missing from here and from [`CONSUMED`].
@@ -239,6 +245,7 @@ async fn main() {
                 DATA_SYNC_FILE => data_sync::check_section(section, &wires).await,
                 FILE_STORAGE_FILE => file_storage::check_section(section).await,
                 ROOM_PARAMS_FILE => room_params::check_section(section, &wires),
+                INTROSPECTION_FILE => introspection::check_section(section, &wires).await,
                 _ => secure_channel::check_section(section, &wires).await,
             };
             for (name, outcome) in outcomes {
@@ -371,7 +378,7 @@ async fn check_vector(file: &str, vector: Vector, verifier: &NodeIdentity) -> Re
     // Primary loop: typed decode -> validate -> re-encode -> byte-exact.
     match file {
         "frames.v1.json" | "handshake.v1.json" | ELECTION_FILE | DATA_SYNC_FILE
-        | FILE_STORAGE_FILE | ROOM_PARAMS_FILE => {
+        | FILE_STORAGE_FILE | ROOM_PARAMS_FILE | INTROSPECTION_FILE => {
             let frame = decode_frame(&expected).map_err(|e| format!("typed decode failed: {e}"))?;
             frame
                 .validate()
