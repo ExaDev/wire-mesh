@@ -1,3 +1,14 @@
+## [4.2.5](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.4...wire-mesh-core%404.2.5) (2026-11-15)
+
+### Bug Fixes
+
+* **core:** refuse a stored log head that is not a decimal integer ([04f1cb1](https://github.com/ExaDev/wire-mesh/commit/04f1cb1aba1210a098578602db4766b5a23302c8))
+* **core:** refuse an append whose sequence a peer could not hold exactly ([8a13521](https://github.com/ExaDev/wire-mesh/commit/8a1352115ebcb2eef299c1e42c7520676d613edd))
+
+### Tests
+
+* **conformance:** pin the core/data log sync in data-sync.v1.json ([4a7a0c5](https://github.com/ExaDev/wire-mesh/commit/4a7a0c591dbf391bced05383951e4139824d973d))
+
 ## [4.2.4](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.3...wire-mesh-core%404.2.4) (2026-11-15)
 
 ### Bug Fixes
