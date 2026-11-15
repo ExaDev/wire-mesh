@@ -38,6 +38,10 @@
       "import": "./dist/adapters/memory-storage.mjs",
       "require": "./dist/adapters/memory-storage.cjs"
     },
+    "./adapters/node-fs-layout": {
+      "import": "./dist/adapters/node-fs-layout.mjs",
+      "require": "./dist/adapters/node-fs-layout.cjs"
+    },
     "./adapters/node-fs-storage": {
       "import": "./dist/adapters/node-fs-storage.mjs",
       "require": "./dist/adapters/node-fs-storage.cjs"

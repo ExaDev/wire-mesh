@@ -1,8 +1,9 @@
-/** A Node filesystem-backed KeyValueStorage -- the durable Node-side counterpart to indexeddb-storage.ts's browser one, and memory-storage.ts's in-process one, satisfying the identical contract. Every key is treated directly as a relative path under the given directory (creating nested directories as needed), which every key this codebase constructs is already suited to: internally generated, ASCII, path-shaped by design (e.g. "data/<peer-hex>/entry/<seq>") rather than arbitrary untrusted input, matching the same assumption indexeddb-storage.ts's own comment already states for its key range bounds. */
+/** A Node filesystem-backed KeyValueStorage -- the durable Node-side counterpart to indexeddb-storage.ts's browser one, and memory-storage.ts's in-process one, satisfying the identical contract. Every key is a relative path under the given directory (creating nested directories as needed), in the layout node-fs-layout.ts defines and the Rust core shares, so a directory written by either is read by the other. A key the layout refuses (empty, `.` and `..` segments, a leading, doubled or trailing separator, a backslash, a NUL) throws InvalidStorageKeyError, since a key that left the directory or that `path.join` rewrites would be stored under a name other than its own. */
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { KeyValueStorage } from "../ports/storage.js";
+import { segmentsOfKey } from "./node-fs-layout.js";
 
 export interface NodeFsStorageOptions {
   /** Directory to store entries under. Created on first write if it doesn't already exist. */
@@ -17,7 +18,7 @@ function isEnoent(error: unknown): boolean {
 }
 
 function keyToFilePath(baseDir: string, key: string): string {
-  return path.join(baseDir, key);
+  return path.join(baseDir, ...segmentsOfKey(key));
 }
 
 /** Every regular file under baseDir, as a relative path using "/" separators regardless of the host OS -- so a caller's own "/"-joined key strings compare correctly against what this returns, the same key shape set()/get() already use. */
