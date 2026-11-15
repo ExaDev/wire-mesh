@@ -2,6 +2,10 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  InvalidStorageKeyError,
+  type KeyRefusal,
+} from "../src/adapters/node-fs-layout.js";
 import { createNodeFsStorage } from "../src/adapters/node-fs-storage.js";
 import { bytesFromHex } from "./hex.js";
 
@@ -101,5 +105,112 @@ describe("createNodeFsStorage", () => {
 
     const instanceB = createNodeFsStorage({ dir });
     expect(await instanceB.get("shared")).toEqual(value);
+  });
+
+  const refusedKeys: readonly (readonly [string, KeyRefusal])[] = [
+    ["", "empty"],
+    ["a\0b", "nul"],
+    ["a\\b", "backslash"],
+    ["/a", "absolute"],
+    ["a//b", "empty_segment"],
+    ["a/", "empty_segment"],
+    ["a/./b", "dot_segment"],
+    ["./a", "dot_segment"],
+    ["a/../b", "parent_segment"],
+    ["../a", "parent_segment"],
+  ];
+
+  describe.each(refusedKeys)("the key %j", (key, refusal) => {
+    it(`is refused as ${refusal} by get, set and delete, and nothing is written`, async () => {
+      const dir = await freshDir();
+      const parent = path.dirname(dir);
+      const before = await fs.readdir(parent);
+      const storage = createNodeFsStorage({ dir });
+      const value = bytesFromHex("01");
+
+      const refusals = await Promise.all(
+        [
+          async () => storage.get(key),
+          async () => storage.set(key, value),
+          async () => storage.delete(key),
+        ].map(async (operation) =>
+          operation().then(
+            () => undefined,
+            (error: unknown) => error,
+          ),
+        ),
+      );
+      for (const refused of refusals) {
+        expect(refused).toBeInstanceOf(InvalidStorageKeyError);
+        expect(refused).toMatchObject({ refusal });
+      }
+
+      expect(await storage.keys("")).toEqual([]);
+      expect(await fs.readdir(parent)).toEqual(before);
+    });
+  });
+
+  it("refuses a key that would leave the directory without touching the file it names", async () => {
+    const dir = await freshDir();
+    const sibling = `${dir}-outside`;
+    await fs.writeFile(sibling, "kept");
+    tmpDirs.push(sibling);
+    const storage = createNodeFsStorage({ dir });
+
+    await expect(
+      storage.set(`../${path.basename(sibling)}`, bytesFromHex("ff")),
+    ).rejects.toBeInstanceOf(InvalidStorageKeyError);
+    await expect(
+      storage.delete(`../${path.basename(sibling)}`),
+    ).rejects.toBeInstanceOf(InvalidStorageKeyError);
+
+    expect(await fs.readFile(sibling, "utf8")).toBe("kept");
+  });
+
+  it("accepts a key whose segments merely contain dots", async () => {
+    const dir = await freshDir();
+    const storage = createNodeFsStorage({ dir });
+    const value = bytesFromHex("0a");
+
+    await storage.set("a.b/..c/d..", value);
+
+    expect(await storage.get("a.b/..c/d..")).toEqual(value);
+    expect(await storage.keys("")).toEqual(["a.b/..c/d.."]);
+  });
+
+  it.skipIf(path.sep === "\\")(
+    "keys() skips a file already on disk under a name the layout refuses, so every listed key can be read",
+    async () => {
+      const dir = await freshDir();
+      const storage = createNodeFsStorage({ dir });
+      await storage.set("kept/a", bytesFromHex("01"));
+      await fs.writeFile(path.join(dir, "a\\b"), "older");
+
+      const listed = await storage.keys("");
+
+      expect(listed).toEqual(["kept/a"]);
+      await expect(storage.get("a\\b")).rejects.toBeInstanceOf(
+        InvalidStorageKeyError,
+      );
+      const read = await Promise.all(
+        listed.map(async (key) => storage.get(key)),
+      );
+      expect(read).toEqual([bytesFromHex("01")]);
+    },
+  );
+
+  it("reads data stored under a rewritten spelling by its plain key and refuses the old spelling", async () => {
+    const dir = await freshDir();
+    await fs.mkdir(path.join(dir, "a"));
+    await fs.writeFile(path.join(dir, "a", "b"), "older");
+    const storage = createNodeFsStorage({ dir });
+
+    expect(await storage.get("a/b")).toEqual(
+      new Uint8Array(Buffer.from("older")),
+    );
+    await expect(storage.get("a//b")).rejects.toBeInstanceOf(
+      InvalidStorageKeyError,
+    );
+    expect(await storage.keys("")).toEqual(["a/b"]);
   });
 });
