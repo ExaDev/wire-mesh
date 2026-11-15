@@ -1,3 +1,9 @@
+## [4.2.12](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.11...wire-mesh-core%404.2.12) (2026-11-15)
+
+### Tests
+
+* **conformance:** pin the relay handshake scenarios in secure-channel.v1.json ([cecf874](https://github.com/ExaDev/wire-mesh/commit/cecf8745bfbdfff6e1589544572ebdd3373049d7))
+
 ## [4.2.11](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.10...wire-mesh-core%404.2.11) (2026-11-15)
 
 ### Bug Fixes
