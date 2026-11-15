@@ -52,6 +52,7 @@ mod introspection;
 mod mint;
 mod mint_notice;
 mod obj;
+mod relay_scenarios;
 mod room_params;
 mod secure_channel;
 
@@ -73,6 +74,9 @@ const CONSUMED: [&str; 12] = [
 
 /// The vector file whose `secure_channel` section [`secure_channel`] checks.
 const SECURE_CHANNEL_FILE: &str = "secure-channel.v1.json";
+
+/// The section of [`SECURE_CHANNEL_FILE`] that [`relay_scenarios`] checks.
+const RELAY_SCENARIOS_SECTION: &str = "handshake_scenarios";
 
 /// The vector file whose `mint` section [`mint`] checks.
 const MINT_FILE: &str = "mint.v1.json";
@@ -96,8 +100,9 @@ const INTROSPECTION_FILE: &str = "introspection.v1.json";
 const CONSUMED_KEYS: [&str; 3] = ["protocol_version", "description", "vectors"];
 
 /// The top-level section a file carries besides the shared keys, with the file that carries it.
-const SECTIONS: [(&str, &str); 7] = [
+const SECTIONS: [(&str, &str); 8] = [
     (SECURE_CHANNEL_FILE, "secure_channel"),
+    (SECURE_CHANNEL_FILE, "handshake_scenarios"),
     (MINT_FILE, "mint"),
     (ELECTION_FILE, "coordinator_election"),
     (DATA_SYNC_FILE, "data_sync"),
@@ -232,20 +237,23 @@ async fn main() {
                 }
             }
         }
-        if let Some((_, section_key)) = SECTIONS
+        for (_, section_key) in SECTIONS
             .iter()
-            .find(|(section_file, _)| *section_file == file)
+            .filter(|(section_file, _)| *section_file == file)
         {
             let section = parsed
                 .get(*section_key)
                 .unwrap_or_else(|| panic!("{file} has no {section_key} section"));
-            let outcomes = match file {
-                MINT_FILE => mint::check_section(section, &wires).await,
-                ELECTION_FILE => coordinator_election::check_section(section, &wires),
-                DATA_SYNC_FILE => data_sync::check_section(section, &wires).await,
-                FILE_STORAGE_FILE => file_storage::check_section(section).await,
-                ROOM_PARAMS_FILE => room_params::check_section(section, &wires),
-                INTROSPECTION_FILE => introspection::check_section(section, &wires).await,
+            let outcomes = match (file, *section_key) {
+                (MINT_FILE, _) => mint::check_section(section, &wires).await,
+                (ELECTION_FILE, _) => coordinator_election::check_section(section, &wires),
+                (DATA_SYNC_FILE, _) => data_sync::check_section(section, &wires).await,
+                (FILE_STORAGE_FILE, _) => file_storage::check_section(section).await,
+                (ROOM_PARAMS_FILE, _) => room_params::check_section(section, &wires),
+                (INTROSPECTION_FILE, _) => introspection::check_section(section, &wires).await,
+                (_, RELAY_SCENARIOS_SECTION) => {
+                    relay_scenarios::check_section(section, &wires).await
+                }
                 _ => secure_channel::check_section(section, &wires).await,
             };
             for (name, outcome) in outcomes {

@@ -35,6 +35,8 @@ const SIDECAR_SECTIONS: Readonly<
   "secure-channel.v1.json": {
     secure_channel:
       "ts/packages/core/test/conformance-secure-channel.unit.test.ts",
+    handshake_scenarios:
+      "ts/packages/core/test/conformance-relay-channels.unit.test.ts",
   },
 };
 
