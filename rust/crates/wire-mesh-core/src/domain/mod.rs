@@ -1,5 +1,6 @@
 //! Domain logic: depends only on the port traits and the wire types, never on an adapter or a global/platform API, so runtime and storage stay swappable composition concerns at the edges.
 
+pub mod coordinator_election;
 pub mod cose;
 pub mod erasure_coding;
 pub mod group_key;
@@ -18,6 +19,10 @@ pub mod session;
 pub mod shard_manifest;
 pub mod tokens;
 
+pub use coordinator_election::{
+    is_supersedable_term, CoordinatorClaim, CoordinatorElection, EvaluationOutcome,
+    NoSupersedableTerm,
+};
 pub use handshake::{negotiate, NegotiationResult, SUPPORTED_PROTOCOL_VERSION};
 pub use peer_advert::{
     sign_peer_advert, verify_peer_advert, PeerAdvertRejection, PeerAdvertVerdict,
