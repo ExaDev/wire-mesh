@@ -3,6 +3,7 @@
 #[cfg(feature = "fs")]
 pub mod fs_storage;
 pub mod memory_storage;
+pub mod monotonic_clock;
 pub mod node_identity;
 pub mod system_clock;
 #[cfg(feature = "net")]
@@ -11,6 +12,7 @@ pub mod tcp_transport;
 #[cfg(feature = "fs")]
 pub use fs_storage::FsStorage;
 pub use memory_storage::MemoryStorage;
+pub use monotonic_clock::MonotonicClock;
 pub use node_identity::NodeIdentity;
 pub use system_clock::SystemClock;
 #[cfg(feature = "net")]
