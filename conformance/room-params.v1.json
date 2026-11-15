@@ -1,0 +1,1372 @@
+{
+  "protocol_version": 1,
+  "description": "Typed core/room and capability vectors for protocol version 1 (spec/room.cddl, spec/management.cddl). The top-level vectors are manage-request and manage-response frames carrying room.send, room.read, room.leave, room.invite and capability.request params and room-join-ok, room-members-ok and capability-grant-ok outcomes, round-tripped like any other file. The `room_params` section gives, for each frame, the shape a typed decoder must read it as and the value of every field and the keys of its open tail; a list of frames each breaking one rule of a shape, which a typed decoder must refuse, each naming the valid vector it varies; and the cases of the room-path and hex helpers. Every outcome is written by hand from the spec, never produced by an implementation. Device-ids and tokens are structural bytes.",
+  "vectors": [
+    {
+      "name": "room_send_minimal",
+      "message": {
+        "type": "manage-request",
+        "request-id": 1,
+        "command": {
+          "verb": "room:member",
+          "params": {
+            "verb": "room.send",
+            "message-id": {
+              "hex": "aa01"
+            },
+            "sent-at": 1893456000000,
+            "text": "hello"
+          }
+        },
+        "scope": {
+          "kind": "room",
+          "path": "1111111111111111111111111111111111111111111111111111111111111111/general"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a464746578746568656c6c6f647665726269726f6f6d2e73656e646773656e742d61741b000001b8dac5b4006a6d6573736167652d696442aa016a726571756573742d696401"
+    },
+    {
+      "name": "room_send_with_content_type_and_refs",
+      "message": {
+        "type": "manage-request",
+        "request-id": 2,
+        "command": {
+          "verb": "room:member",
+          "params": {
+            "verb": "room.send",
+            "message-id": {
+              "hex": "aa02"
+            },
+            "sent-at": 1893456000000,
+            "text": "sounds good",
+            "content-type": "text/plain",
+            "refs": [
+              {
+                "id": {
+                  "hex": "aa00"
+                },
+                "relation": "reply"
+              },
+              {
+                "id": {
+                  "hex": "aa01"
+                },
+                "relation": "forward"
+              }
+            ]
+          }
+        },
+        "scope": {
+          "kind": "room",
+          "path": "1111111111111111111111111111111111111111111111111111111111111111/general"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a6647265667382a262696442aa006872656c6174696f6e657265706c79a262696442aa016872656c6174696f6e67666f727761726464746578746b736f756e647320676f6f64647665726269726f6f6d2e73656e646773656e742d61741b000001b8dac5b4006a6d6573736167652d696442aa026c636f6e74656e742d747970656a746578742f706c61696e6a726571756573742d696402"
+    },
+    {
+      "name": "room_send_with_an_empty_refs_array",
+      "message": {
+        "type": "manage-request",
+        "request-id": 3,
+        "command": {
+          "verb": "room:member",
+          "params": {
+            "verb": "room.send",
+            "message-id": {
+              "hex": "aa03"
+            },
+            "sent_at_hint": 1,
+            "sent-at": 1893456000000,
+            "text": "",
+            "refs": []
+          }
+        },
+        "scope": {
+          "kind": "room",
+          "path": "1111111111111111111111111111111111111111111111111111111111111111/general"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a6647265667380647465787460647665726269726f6f6d2e73656e646773656e742d61741b000001b8dac5b4006a6d6573736167652d696442aa036c73656e745f61745f68696e74016a726571756573742d696403"
+    },
+    {
+      "name": "room_send_with_extension_keys_either_side_of_the_named_ones",
+      "message": {
+        "type": "manage-request",
+        "request-id": 4,
+        "command": {
+          "verb": "room:member",
+          "params": {
+            "verb": "room.send",
+            "message-id": {
+              "hex": "aa04"
+            },
+            "sent-at": 1893456000000,
+            "text": "urgent",
+            "ab": 1,
+            "delivery-hint": {
+              "priority": "high",
+              "tags": [
+                "a",
+                "b"
+              ]
+            }
+          }
+        },
+        "scope": {
+          "kind": "room",
+          "path": "1111111111111111111111111111111111111111111111111111111111111111/general"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a662616201647465787466757267656e74647665726269726f6f6d2e73656e646773656e742d61741b000001b8dac5b4006a6d6573736167652d696442aa046d64656c69766572792d68696e74a264746167738261616162687072696f7269747964686967686a726571756573742d696404"
+    },
+    {
+      "name": "room_send_with_the_largest_exact_sent_at",
+      "message": {
+        "type": "manage-request",
+        "request-id": 5,
+        "command": {
+          "verb": "room:member",
+          "params": {
+            "verb": "room.send",
+            "message-id": {
+              "hex": "aa01"
+            },
+            "sent-at": 9007199254740991,
+            "text": "hello"
+          }
+        },
+        "scope": {
+          "kind": "room",
+          "path": "1111111111111111111111111111111111111111111111111111111111111111/general"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a464746578746568656c6c6f647665726269726f6f6d2e73656e646773656e742d61741b001fffffffffffff6a6d6573736167652d696442aa016a726571756573742d696405"
+    },
+    {
+      "name": "room_read_with_the_largest_exact_at",
+      "message": {
+        "type": "manage-request",
+        "request-id": 6,
+        "command": {
+          "verb": "room:member",
+          "params": {
+            "verb": "room.read",
+            "messages": [],
+            "at": 9007199254740991
+          }
+        },
+        "scope": {
+          "kind": "room",
+          "path": "1111111111111111111111111111111111111111111111111111111111111111/general"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a36261741b001fffffffffffff647665726269726f6f6d2e72656164686d65737361676573806a726571756573742d696406"
+    },
+    {
+      "name": "capability_request_with_the_largest_exact_deadline",
+      "message": {
+        "type": "manage-request",
+        "request-id": 7,
+        "command": {
+          "verb": "fs:read",
+          "params": {
+            "verb": "capability.request",
+            "capability": "fs:read",
+            "valid-until": 9007199254740991
+          }
+        },
+        "scope": {
+          "kind": "folder",
+          "path": "/work"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a264766572626766733a7265616466706172616d73a36476657262726361706162696c6974792e726571756573746a6361706162696c6974796766733a726561646b76616c69642d756e74696c1b001fffffffffffff6a726571756573742d696407"
+    },
+    {
+      "name": "room_read_two_messages",
+      "message": {
+        "type": "manage-request",
+        "request-id": 8,
+        "command": {
+          "verb": "room:member",
+          "params": {
+            "verb": "room.read",
+            "messages": [
+              {
+                "hex": "aa01"
+              },
+              {
+                "hex": "aa02"
+              }
+            ],
+            "at": 1893456005000
+          }
+        },
+        "scope": {
+          "kind": "room",
+          "path": "1111111111111111111111111111111111111111111111111111111111111111/general"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a36261741b000001b8dac5c788647665726269726f6f6d2e72656164686d657373616765738242aa0142aa026a726571756573742d696408"
+    },
+    {
+      "name": "room_read_with_no_messages_and_an_extension",
+      "message": {
+        "type": "manage-request",
+        "request-id": 9,
+        "command": {
+          "verb": "room:member",
+          "params": {
+            "verb": "room.read",
+            "messages": [],
+            "at": 1893456005000,
+            "via": "batch"
+          }
+        },
+        "scope": {
+          "kind": "room",
+          "path": "1111111111111111111111111111111111111111111111111111111111111111/general"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a46261741b000001b8dac5c78863766961656261746368647665726269726f6f6d2e72656164686d65737361676573806a726571756573742d696409"
+    },
+    {
+      "name": "room_leave_bare",
+      "message": {
+        "type": "manage-request",
+        "request-id": 10,
+        "command": {
+          "verb": "room:member",
+          "params": {
+            "verb": "room.leave"
+          }
+        },
+        "scope": {
+          "kind": "room",
+          "path": "1111111111111111111111111111111111111111111111111111111111111111/general"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a164766572626a726f6f6d2e6c656176656a726571756573742d69640a"
+    },
+    {
+      "name": "room_leave_with_extensions",
+      "message": {
+        "type": "manage-request",
+        "request-id": 11,
+        "command": {
+          "verb": "room:member",
+          "params": {
+            "verb": "room.leave",
+            "reason": "done",
+            "x": null
+          }
+        },
+        "scope": {
+          "kind": "room",
+          "path": "1111111111111111111111111111111111111111111111111111111111111111/general"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a36178f664766572626a726f6f6d2e6c6561766566726561736f6e64646f6e656a726571756573742d69640b"
+    },
+    {
+      "name": "room_invite",
+      "message": {
+        "type": "manage-request",
+        "request-id": 12,
+        "command": {
+          "verb": "room:member",
+          "params": {
+            "verb": "room.invite",
+            "invitee": {
+              "hex": "3333333333333333333333333333333333333333333333333333333333333333"
+            },
+            "token": [
+              {
+                "hex": "a0"
+              },
+              {},
+              {
+                "hex": "a1626964a0"
+              },
+              {
+                "hex": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+              }
+            ]
+          }
+        },
+        "scope": {
+          "kind": "room",
+          "path": "1111111111111111111111111111111111111111111111111111111111111111/general"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a364766572626b726f6f6d2e696e7669746565746f6b656e8441a0a045a1626964a05840cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc67696e7669746565582033333333333333333333333333333333333333333333333333333333333333336a726571756573742d69640c"
+    },
+    {
+      "name": "room_invite_with_an_extension",
+      "message": {
+        "type": "manage-request",
+        "request-id": 13,
+        "command": {
+          "verb": "room:member",
+          "params": {
+            "verb": "room.invite",
+            "invitee": {
+              "hex": "3333333333333333333333333333333333333333333333333333333333333333"
+            },
+            "token": [
+              {
+                "hex": "a0"
+              },
+              {},
+              {
+                "hex": "a1626964a0"
+              },
+              {
+                "hex": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+              }
+            ],
+            "note": "welcome"
+          }
+        },
+        "scope": {
+          "kind": "room",
+          "path": "1111111111111111111111111111111111111111111111111111111111111111/general"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a4646e6f74656777656c636f6d6564766572626b726f6f6d2e696e7669746565746f6b656e8441a0a045a1626964a05840cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc67696e7669746565582033333333333333333333333333333333333333333333333333333333333333336a726571756573742d69640d"
+    },
+    {
+      "name": "capability_request",
+      "message": {
+        "type": "manage-request",
+        "request-id": 14,
+        "command": {
+          "verb": "fs:read",
+          "params": {
+            "verb": "capability.request",
+            "capability": "fs:read"
+          }
+        },
+        "scope": {
+          "kind": "folder",
+          "path": "/work"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a264766572626766733a7265616466706172616d73a26476657262726361706162696c6974792e726571756573746a6361706162696c6974796766733a726561646a726571756573742d69640e"
+    },
+    {
+      "name": "capability_request_with_a_deadline",
+      "message": {
+        "type": "manage-request",
+        "request-id": 15,
+        "command": {
+          "verb": "fs:read",
+          "params": {
+            "verb": "capability.request",
+            "capability": "fs:read",
+            "valid-until": 1893459600000
+          }
+        },
+        "scope": {
+          "kind": "folder",
+          "path": "/work"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a264766572626766733a7265616466706172616d73a36476657262726361706162696c6974792e726571756573746a6361706162696c6974796766733a726561646b76616c69642d756e74696c1b000001b8dafca2806a726571756573742d69640f"
+    },
+    {
+      "name": "capability_request_with_an_extension",
+      "message": {
+        "type": "manage-request",
+        "request-id": 16,
+        "command": {
+          "verb": "fs:read",
+          "params": {
+            "verb": "capability.request",
+            "capability": "fs:read",
+            "why": "to read the report"
+          }
+        },
+        "scope": {
+          "kind": "folder",
+          "path": "/work"
+        }
+      },
+      "wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a264766572626766733a7265616466706172616d73a36377687972746f207265616420746865207265706f72746476657262726361706162696c6974792e726571756573746a6361706162696c6974796766733a726561646a726571756573742d696410"
+    },
+    {
+      "name": "room_join_ok",
+      "message": {
+        "type": "manage-response",
+        "request-id": 17,
+        "outcome": {
+          "result": "ok",
+          "granted-token": [
+            {
+              "hex": "a0"
+            },
+            {},
+            {
+              "hex": "a1626964a0"
+            },
+            {
+              "hex": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            }
+          ],
+          "members": [
+            {
+              "device": {
+                "hex": "2222222222222222222222222222222222222222222222222222222222222222"
+              }
+            },
+            {
+              "device": {
+                "hex": "3333333333333333333333333333333333333333333333333333333333333333"
+              },
+              "name": "carol"
+            }
+          ]
+        }
+      },
+      "wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a366726573756c74626f6b676d656d6265727382a16664657669636558202222222222222222222222222222222222222222222222222222222222222222a2646e616d65656361726f6c66646576696365582033333333333333333333333333333333333333333333333333333333333333336d6772616e7465642d746f6b656e8441a0a045a1626964a05840cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc6a726571756573742d696411"
+    },
+    {
+      "name": "room_join_ok_with_an_extension_and_no_members",
+      "message": {
+        "type": "manage-response",
+        "request-id": 18,
+        "outcome": {
+          "result": "ok",
+          "granted-token": [
+            {
+              "hex": "a0"
+            },
+            {},
+            {
+              "hex": "a1626964a0"
+            },
+            {
+              "hex": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            }
+          ],
+          "members": [],
+          "welcome": "hi"
+        }
+      },
+      "wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a466726573756c74626f6b676d656d62657273806777656c636f6d656268696d6772616e7465642d746f6b656e8441a0a045a1626964a05840cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc6a726571756573742d696412"
+    },
+    {
+      "name": "room_members_ok",
+      "message": {
+        "type": "manage-response",
+        "request-id": 19,
+        "outcome": {
+          "result": "ok",
+          "members": [
+            {
+              "device": {
+                "hex": "2222222222222222222222222222222222222222222222222222222222222222"
+              }
+            },
+            {
+              "device": {
+                "hex": "3333333333333333333333333333333333333333333333333333333333333333"
+              },
+              "name": "carol"
+            }
+          ]
+        }
+      },
+      "wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a266726573756c74626f6b676d656d6265727382a16664657669636558202222222222222222222222222222222222222222222222222222222222222222a2646e616d65656361726f6c66646576696365582033333333333333333333333333333333333333333333333333333333333333336a726571756573742d696413"
+    },
+    {
+      "name": "room_members_ok_empty_with_an_extension",
+      "message": {
+        "type": "manage-response",
+        "request-id": 20,
+        "outcome": {
+          "result": "ok",
+          "members": [],
+          "as_of": 1893456005000
+        }
+      },
+      "wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a36561735f6f661b000001b8dac5c78866726573756c74626f6b676d656d62657273806a726571756573742d696414"
+    },
+    {
+      "name": "capability_grant_ok",
+      "message": {
+        "type": "manage-response",
+        "request-id": 21,
+        "outcome": {
+          "result": "ok",
+          "granted-token": [
+            {
+              "hex": "a0"
+            },
+            {},
+            {
+              "hex": "a1626964a0"
+            },
+            {
+              "hex": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            }
+          ]
+        }
+      },
+      "wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a266726573756c74626f6b6d6772616e7465642d746f6b656e8441a0a045a1626964a05840cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc6a726571756573742d696415"
+    },
+    {
+      "name": "capability_grant_ok_with_an_extension",
+      "message": {
+        "type": "manage-response",
+        "request-id": 22,
+        "outcome": {
+          "result": "ok",
+          "granted-token": [
+            {
+              "hex": "a0"
+            },
+            {},
+            {
+              "hex": "a1626964a0"
+            },
+            {
+              "hex": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            }
+          ],
+          "expires_hint": 1893459600000
+        }
+      },
+      "wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a366726573756c74626f6b6c657870697265735f68696e741b000001b8dafca2806d6772616e7465642d746f6b656e8441a0a045a1626964a05840cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc6a726571756573742d696416"
+    }
+  ],
+  "room_params": {
+    "layout_version": 1,
+    "typed": [
+      {
+        "vector": "room_send_minimal",
+        "shape": "room.send",
+        "fields": {
+          "message_id_hex": "aa01",
+          "sent_at": 1893456000000,
+          "text": "hello",
+          "content_type": null,
+          "refs": null,
+          "extra_keys": []
+        }
+      },
+      {
+        "vector": "room_send_with_content_type_and_refs",
+        "shape": "room.send",
+        "fields": {
+          "message_id_hex": "aa02",
+          "sent_at": 1893456000000,
+          "text": "sounds good",
+          "content_type": "text/plain",
+          "refs": [
+            {
+              "id_hex": "aa00",
+              "relation": "reply"
+            },
+            {
+              "id_hex": "aa01",
+              "relation": "forward"
+            }
+          ],
+          "extra_keys": []
+        }
+      },
+      {
+        "vector": "room_send_with_an_empty_refs_array",
+        "shape": "room.send",
+        "fields": {
+          "message_id_hex": "aa03",
+          "sent_at": 1893456000000,
+          "text": "",
+          "content_type": null,
+          "refs": [],
+          "extra_keys": [
+            "sent_at_hint"
+          ]
+        }
+      },
+      {
+        "vector": "room_send_with_extension_keys_either_side_of_the_named_ones",
+        "shape": "room.send",
+        "fields": {
+          "message_id_hex": "aa04",
+          "sent_at": 1893456000000,
+          "text": "urgent",
+          "content_type": null,
+          "refs": null,
+          "extra_keys": [
+            "ab",
+            "delivery-hint"
+          ]
+        }
+      },
+      {
+        "vector": "room_send_with_the_largest_exact_sent_at",
+        "shape": "room.send",
+        "fields": {
+          "message_id_hex": "aa01",
+          "sent_at": 9007199254740991,
+          "text": "hello",
+          "content_type": null,
+          "refs": null,
+          "extra_keys": []
+        }
+      },
+      {
+        "vector": "room_read_with_the_largest_exact_at",
+        "shape": "room.read",
+        "fields": {
+          "messages_hex": [],
+          "at": 9007199254740991,
+          "extra_keys": []
+        }
+      },
+      {
+        "vector": "capability_request_with_the_largest_exact_deadline",
+        "shape": "capability.request",
+        "fields": {
+          "capability": "fs:read",
+          "valid_until": 9007199254740991,
+          "extra_keys": []
+        }
+      },
+      {
+        "vector": "room_read_two_messages",
+        "shape": "room.read",
+        "fields": {
+          "messages_hex": [
+            "aa01",
+            "aa02"
+          ],
+          "at": 1893456005000,
+          "extra_keys": []
+        }
+      },
+      {
+        "vector": "room_read_with_no_messages_and_an_extension",
+        "shape": "room.read",
+        "fields": {
+          "messages_hex": [],
+          "at": 1893456005000,
+          "extra_keys": [
+            "via"
+          ]
+        }
+      },
+      {
+        "vector": "room_leave_bare",
+        "shape": "room.leave",
+        "fields": {
+          "extra_keys": []
+        }
+      },
+      {
+        "vector": "room_leave_with_extensions",
+        "shape": "room.leave",
+        "fields": {
+          "extra_keys": [
+            "reason",
+            "x"
+          ]
+        }
+      },
+      {
+        "vector": "room_invite",
+        "shape": "room.invite",
+        "fields": {
+          "invitee_hex": "3333333333333333333333333333333333333333333333333333333333333333",
+          "token_wire_hex": "8441a0a045a1626964a05840cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "extra_keys": []
+        }
+      },
+      {
+        "vector": "room_invite_with_an_extension",
+        "shape": "room.invite",
+        "fields": {
+          "invitee_hex": "3333333333333333333333333333333333333333333333333333333333333333",
+          "token_wire_hex": "8441a0a045a1626964a05840cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "extra_keys": [
+            "note"
+          ]
+        }
+      },
+      {
+        "vector": "capability_request",
+        "shape": "capability.request",
+        "fields": {
+          "capability": "fs:read",
+          "valid_until": null,
+          "extra_keys": []
+        }
+      },
+      {
+        "vector": "capability_request_with_a_deadline",
+        "shape": "capability.request",
+        "fields": {
+          "capability": "fs:read",
+          "valid_until": 1893459600000,
+          "extra_keys": []
+        }
+      },
+      {
+        "vector": "capability_request_with_an_extension",
+        "shape": "capability.request",
+        "fields": {
+          "capability": "fs:read",
+          "valid_until": null,
+          "extra_keys": [
+            "why"
+          ]
+        }
+      },
+      {
+        "vector": "room_join_ok",
+        "shape": "room-join-ok",
+        "fields": {
+          "granted_token_wire_hex": "8441a0a045a1626964a05840cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "members": [
+            {
+              "device_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+              "extra_keys": []
+            },
+            {
+              "device_hex": "3333333333333333333333333333333333333333333333333333333333333333",
+              "extra_keys": [
+                "name"
+              ]
+            }
+          ],
+          "extra_keys": []
+        }
+      },
+      {
+        "vector": "room_join_ok_with_an_extension_and_no_members",
+        "shape": "room-join-ok",
+        "fields": {
+          "granted_token_wire_hex": "8441a0a045a1626964a05840cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "members": [],
+          "extra_keys": [
+            "welcome"
+          ]
+        }
+      },
+      {
+        "vector": "room_members_ok",
+        "shape": "room-members-ok",
+        "fields": {
+          "members": [
+            {
+              "device_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+              "extra_keys": []
+            },
+            {
+              "device_hex": "3333333333333333333333333333333333333333333333333333333333333333",
+              "extra_keys": [
+                "name"
+              ]
+            }
+          ],
+          "extra_keys": []
+        }
+      },
+      {
+        "vector": "room_members_ok_empty_with_an_extension",
+        "shape": "room-members-ok",
+        "fields": {
+          "members": [],
+          "extra_keys": [
+            "as_of"
+          ]
+        }
+      },
+      {
+        "vector": "capability_grant_ok",
+        "shape": "capability-grant-ok",
+        "fields": {
+          "granted_token_wire_hex": "8441a0a045a1626964a05840cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "extra_keys": []
+        }
+      },
+      {
+        "vector": "capability_grant_ok_with_an_extension",
+        "shape": "capability-grant-ok",
+        "fields": {
+          "granted_token_wire_hex": "8441a0a045a1626964a05840cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "extra_keys": [
+            "expires_hint"
+          ]
+        }
+      }
+    ],
+    "refused": [
+      {
+        "name": "room_send_without_text",
+        "shape": "room.send",
+        "control": "room_send_minimal",
+        "rust_only": false,
+        "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a3647665726269726f6f6d2e73656e646773656e742d61741b000001b8dac5b4006a6d6573736167652d696442aa016a726571756573742d696401"
+      },
+      {
+        "name": "room_send_with_text_as_an_integer",
+        "shape": "room.send",
+        "control": "room_send_minimal",
+        "rust_only": false,
+        "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a4647465787401647665726269726f6f6d2e73656e646773656e742d61741b000001b8dac5b4006a6d6573736167652d696442aa016a726571756573742d696401"
+      },
+      {
+        "name": "room_send_with_a_message_id_as_text",
+        "shape": "room.send",
+        "control": "room_send_minimal",
+        "rust_only": false,
+        "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a464746578746568656c6c6f647665726269726f6f6d2e73656e646773656e742d61741b000001b8dac5b4006a6d6573736167652d696464616130316a726571756573742d696401"
+      },
+      {
+        "name": "room_send_with_a_sent_at_beyond_the_exact_range",
+        "shape": "room.send",
+        "control": "room_send_with_the_largest_exact_sent_at",
+        "rust_only": false,
+        "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a464746578746568656c6c6f647665726269726f6f6d2e73656e646773656e742d61741b00200000000000006a6d6573736167652d696442aa016a726571756573742d696401"
+      },
+      {
+        "name": "room_read_with_an_at_beyond_the_exact_range",
+        "shape": "room.read",
+        "control": "room_read_with_the_largest_exact_at",
+        "rust_only": false,
+        "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a36261741b0020000000000000647665726269726f6f6d2e72656164686d65737361676573806a726571756573742d696401"
+      },
+      {
+        "name": "capability_request_with_a_deadline_beyond_the_exact_range",
+        "shape": "capability.request",
+        "control": "capability_request_with_the_largest_exact_deadline",
+        "rust_only": false,
+        "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a264766572626766733a7265616466706172616d73a36476657262726361706162696c6974792e726571756573746a6361706162696c6974796766733a726561646b76616c69642d756e74696c1b00200000000000006a726571756573742d696401"
+      },
+      {
+        "name": "room_send_with_a_negative_sent_at",
+        "shape": "room.send",
+        "control": "room_send_minimal",
+        "rust_only": false,
+        "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a464746578746568656c6c6f647665726269726f6f6d2e73656e646773656e742d6174206a6d6573736167652d696442aa016a726571756573742d696401"
+      },
+      {
+        "name": "room_send_with_refs_that_is_not_an_array",
+        "shape": "room.send",
+        "control": "room_send_with_content_type_and_refs",
+        "rust_only": false,
+        "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a56472656673a262696442aa006872656c6174696f6e657265706c7964746578746568656c6c6f647665726269726f6f6d2e73656e646773656e742d61741b000001b8dac5b4006a6d6573736167652d696442aa016a726571756573742d696401"
+      },
+      {
+        "name": "room_send_with_a_ref_that_carries_a_key_the_rule_does_not_name",
+        "shape": "room.send",
+        "control": "room_send_with_content_type_and_refs",
+        "rust_only": true,
+        "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a5647265667381a362696442aa006376696167666f72776172646872656c6174696f6e657265706c7964746578746568656c6c6f647665726269726f6f6d2e73656e646773656e742d61741b000001b8dac5b4006a6d6573736167652d696442aa016a726571756573742d696401"
+      },
+      {
+        "name": "room_send_with_a_ref_without_a_relation",
+        "shape": "room.send",
+        "control": "room_send_with_content_type_and_refs",
+        "rust_only": false,
+        "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a5647265667381a162696442aa0064746578746568656c6c6f647665726269726f6f6d2e73656e646773656e742d61741b000001b8dac5b4006a6d6573736167652d696442aa016a726571756573742d696401"
+      },
+      {
+        "name": "room_send_with_a_content_type_that_is_not_text",
+        "shape": "room.send",
+        "control": "room_send_with_content_type_and_refs",
+        "rust_only": false,
+        "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a564746578746568656c6c6f647665726269726f6f6d2e73656e646773656e742d61741b000001b8dac5b4006a6d6573736167652d696442aa016c636f6e74656e742d7479706541aa6a726571756573742d696401"
+      },
+      {
+        "name": "room_read_with_a_message_as_text",
+        "shape": "room.read",
+        "control": "room_read_two_messages",
+        "rust_only": false,
+        "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a36261741b000001b8dac5c788647665726269726f6f6d2e72656164686d657373616765738164616130316a726571756573742d696401"
+      },
+      {
+        "name": "room_read_without_at",
+        "shape": "room.read",
+        "control": "room_read_two_messages",
+        "rust_only": false,
+        "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a2647665726269726f6f6d2e72656164686d657373616765738142aa016a726571756573742d696401"
+      },
+      {
+        "name": "room_read_with_messages_that_is_not_an_array",
+        "shape": "room.read",
+        "control": "room_read_two_messages",
+        "rust_only": false,
+        "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a36261741b000001b8dac5c788647665726269726f6f6d2e72656164686d6573736167657342aa016a726571756573742d696401"
+      },
+      {
+        "name": "room_invite_with_an_invitee_of_the_wrong_length",
+        "shape": "room.invite",
+        "control": "room_invite",
+        "rust_only": false,
+        "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a364766572626b726f6f6d2e696e7669746565746f6b656e8441a0a045a1626964a05840cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc67696e7669746565581f222222222222222222222222222222222222222222222222222222222222226a726571756573742d696401"
+      },
+      {
+        "name": "room_invite_without_a_token",
+        "shape": "room.invite",
+        "control": "room_invite",
+        "rust_only": false,
+        "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a264766572626b726f6f6d2e696e7669746567696e7669746565582033333333333333333333333333333333333333333333333333333333333333336a726571756573742d696401"
+      },
+      {
+        "name": "room_invite_with_a_token_that_is_not_a_cose_sign1",
+        "shape": "room.invite",
+        "control": "room_invite",
+        "rust_only": false,
+        "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6464726f6f6d64706174687848313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f67656e6572616c67636f6d6d616e64a264766572626b726f6f6d3a6d656d62657266706172616d73a364766572626b726f6f6d2e696e7669746565746f6b656e45a1626964a067696e7669746565582033333333333333333333333333333333333333333333333333333333333333336a726571756573742d696401"
+      },
+      {
+        "name": "capability_request_without_a_capability",
+        "shape": "capability.request",
+        "control": "capability_request",
+        "rust_only": false,
+        "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a264766572626766733a7265616466706172616d73a16476657262726361706162696c6974792e726571756573746a726571756573742d696401"
+      },
+      {
+        "name": "capability_request_with_a_capability_that_is_not_text",
+        "shape": "capability.request",
+        "control": "capability_request",
+        "rust_only": false,
+        "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a264766572626766733a7265616466706172616d73a26476657262726361706162696c6974792e726571756573746a6361706162696c697479076a726571756573742d696401"
+      },
+      {
+        "name": "capability_request_with_a_negative_deadline",
+        "shape": "capability.request",
+        "control": "capability_request_with_a_deadline",
+        "rust_only": false,
+        "frame_wire_hex": "a464747970656e6d616e6167652d726571756573746573636f7065a2646b696e6466666f6c6465726470617468652f776f726b67636f6d6d616e64a264766572626766733a7265616466706172616d73a36476657262726361706162696c6974792e726571756573746a6361706162696c6974796766733a726561646b76616c69642d756e74696c206a726571756573742d696401"
+      },
+      {
+        "name": "room_join_ok_without_members",
+        "shape": "room-join-ok",
+        "control": "room_join_ok",
+        "rust_only": false,
+        "frame_wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a266726573756c74626f6b6d6772616e7465642d746f6b656e8441a0a045a1626964a05840cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc6a726571756573742d696401"
+      },
+      {
+        "name": "room_join_ok_without_a_token",
+        "shape": "room-join-ok",
+        "control": "room_join_ok",
+        "rust_only": false,
+        "frame_wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a266726573756c74626f6b676d656d6265727381a166646576696365582022222222222222222222222222222222222222222222222222222222222222226a726571756573742d696401"
+      },
+      {
+        "name": "room_join_ok_with_a_member_without_a_device",
+        "shape": "room-join-ok",
+        "control": "room_join_ok",
+        "rust_only": false,
+        "frame_wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a366726573756c74626f6b676d656d6265727381a1646e616d65666e6f626f64796d6772616e7465642d746f6b656e8441a0a045a1626964a05840cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc6a726571756573742d696401"
+      },
+      {
+        "name": "room_members_ok_with_members_that_is_not_an_array",
+        "shape": "room-members-ok",
+        "control": "room_members_ok",
+        "rust_only": false,
+        "frame_wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a266726573756c74626f6b676d656d62657273a166646576696365582022222222222222222222222222222222222222222222222222222222222222226a726571756573742d696401"
+      },
+      {
+        "name": "room_members_ok_with_a_device_of_the_wrong_length",
+        "shape": "room-members-ok",
+        "control": "room_members_ok",
+        "rust_only": false,
+        "frame_wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a266726573756c74626f6b676d656d6265727381a166646576696365581f222222222222222222222222222222222222222222222222222222222222226a726571756573742d696401"
+      },
+      {
+        "name": "capability_grant_ok_without_a_token",
+        "shape": "capability-grant-ok",
+        "control": "capability_grant_ok",
+        "rust_only": false,
+        "frame_wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a166726573756c74626f6b6a726571756573742d696401"
+      },
+      {
+        "name": "capability_grant_ok_with_a_token_that_is_not_a_cose_sign1",
+        "shape": "capability-grant-ok",
+        "control": "capability_grant_ok",
+        "rust_only": false,
+        "frame_wire_hex": "a364747970656f6d616e6167652d726573706f6e7365676f7574636f6d65a266726573756c74626f6b6d6772616e7465642d746f6b656e45a1626964a06a726571756573742d696401"
+      }
+    ],
+    "room_path": {
+      "bytes": [
+        {
+          "name": "no_bytes",
+          "bytes_hex": ""
+        },
+        {
+          "name": "one_byte",
+          "bytes_hex": "0a"
+        },
+        {
+          "name": "every_digit",
+          "bytes_hex": "0123456789abcdef"
+        },
+        {
+          "name": "a_device_id",
+          "bytes_hex": "abababababababababababababababababababababababababababababababab"
+        }
+      ],
+      "bytes_refused": [
+        {
+          "name": "an_odd_length",
+          "text": "abc"
+        },
+        {
+          "name": "an_uppercase_digit",
+          "text": "AB"
+        },
+        {
+          "name": "a_character_that_is_not_hex",
+          "text": "zz"
+        },
+        {
+          "name": "a_space",
+          "text": "ab "
+        },
+        {
+          "name": "a_trailing_newline",
+          "text": "ab\n"
+        },
+        {
+          "name": "a_non_ascii_digit",
+          "text": "١٢"
+        }
+      ],
+      "owner_named": [
+        {
+          "name": "a_plain_name",
+          "owner": "1111111111111111111111111111111111111111111111111111111111111111",
+          "local_name": "general",
+          "expected": {
+            "path": "1111111111111111111111111111111111111111111111111111111111111111/general"
+          }
+        },
+        {
+          "name": "every_allowed_character",
+          "owner": "1111111111111111111111111111111111111111111111111111111111111111",
+          "local_name": "aZ09_-",
+          "expected": {
+            "path": "1111111111111111111111111111111111111111111111111111111111111111/aZ09_-"
+          }
+        },
+        {
+          "name": "an_uppercase_owner",
+          "owner": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "local_name": "general",
+          "expected": {
+            "error": "not_device_id_hex"
+          }
+        },
+        {
+          "name": "an_owner_of_the_wrong_length",
+          "owner": "11111111111111111111111111111111111111111111111111111111111111",
+          "local_name": "general",
+          "expected": {
+            "error": "not_device_id_hex"
+          }
+        },
+        {
+          "name": "an_empty_name",
+          "owner": "1111111111111111111111111111111111111111111111111111111111111111",
+          "local_name": "",
+          "expected": {
+            "error": "not_local_name"
+          }
+        },
+        {
+          "name": "a_name_with_a_slash",
+          "owner": "1111111111111111111111111111111111111111111111111111111111111111",
+          "local_name": "a/b",
+          "expected": {
+            "error": "not_local_name"
+          }
+        },
+        {
+          "name": "a_name_with_a_space",
+          "owner": "1111111111111111111111111111111111111111111111111111111111111111",
+          "local_name": "a b",
+          "expected": {
+            "error": "not_local_name"
+          }
+        },
+        {
+          "name": "a_name_with_a_trailing_newline",
+          "owner": "1111111111111111111111111111111111111111111111111111111111111111",
+          "local_name": "general\n",
+          "expected": {
+            "error": "not_local_name"
+          }
+        },
+        {
+          "name": "a_name_with_a_non_ascii_letter",
+          "owner": "1111111111111111111111111111111111111111111111111111111111111111",
+          "local_name": "café",
+          "expected": {
+            "error": "not_local_name"
+          }
+        },
+        {
+          "name": "a_bad_owner_is_named_before_a_bad_name",
+          "owner": "xyz",
+          "local_name": "",
+          "expected": {
+            "error": "not_device_id_hex"
+          }
+        }
+      ],
+      "dm": [
+        {
+          "name": "already_in_order",
+          "a": "1111111111111111111111111111111111111111111111111111111111111111",
+          "b": "2222222222222222222222222222222222222222222222222222222222222222",
+          "expected": {
+            "path": "1111111111111111111111111111111111111111111111111111111111111111+2222222222222222222222222222222222222222222222222222222222222222"
+          }
+        },
+        {
+          "name": "sorted_whichever_way_they_are_given",
+          "a": "2222222222222222222222222222222222222222222222222222222222222222",
+          "b": "1111111111111111111111111111111111111111111111111111111111111111",
+          "expected": {
+            "path": "1111111111111111111111111111111111111111111111111111111111111111+2222222222222222222222222222222222222222222222222222222222222222"
+          }
+        },
+        {
+          "name": "ordered_by_the_first_differing_digit",
+          "a": "00000000000000000000000000000000000000000000000000000000000000ff",
+          "b": "000000000000000000000000000000000000000000000000000000000000000f",
+          "expected": {
+            "path": "000000000000000000000000000000000000000000000000000000000000000f+00000000000000000000000000000000000000000000000000000000000000ff"
+          }
+        },
+        {
+          "name": "the_same_device_twice",
+          "a": "1111111111111111111111111111111111111111111111111111111111111111",
+          "b": "1111111111111111111111111111111111111111111111111111111111111111",
+          "expected": {
+            "error": "same_device"
+          }
+        },
+        {
+          "name": "a_first_device_that_is_not_hex",
+          "a": "nope",
+          "b": "1111111111111111111111111111111111111111111111111111111111111111",
+          "expected": {
+            "error": "not_device_id_hex"
+          }
+        },
+        {
+          "name": "a_second_device_of_the_wrong_length",
+          "a": "1111111111111111111111111111111111111111111111111111111111111111",
+          "b": "222222222222222222222222222222222222222222222222222222222222222222",
+          "expected": {
+            "error": "not_device_id_hex"
+          }
+        },
+        {
+          "name": "a_bad_device_is_named_before_the_same_device",
+          "a": "nope",
+          "b": "nope",
+          "expected": {
+            "error": "not_device_id_hex"
+          }
+        }
+      ],
+      "parse": [
+        {
+          "name": "an_owner_named_path",
+          "path": "1111111111111111111111111111111111111111111111111111111111111111/general",
+          "expected": {
+            "kind": "owner_named",
+            "owner": "1111111111111111111111111111111111111111111111111111111111111111",
+            "local_name": "general"
+          }
+        },
+        {
+          "name": "a_dm_path",
+          "path": "1111111111111111111111111111111111111111111111111111111111111111+2222222222222222222222222222222222222222222222222222222222222222",
+          "expected": {
+            "kind": "dm",
+            "first": "1111111111111111111111111111111111111111111111111111111111111111",
+            "second": "2222222222222222222222222222222222222222222222222222222222222222"
+          }
+        },
+        {
+          "name": "a_dm_path_out_of_order_is_read_as_given",
+          "path": "2222222222222222222222222222222222222222222222222222222222222222+1111111111111111111111111111111111111111111111111111111111111111",
+          "expected": {
+            "kind": "dm",
+            "first": "2222222222222222222222222222222222222222222222222222222222222222",
+            "second": "1111111111111111111111111111111111111111111111111111111111111111"
+          }
+        },
+        {
+          "name": "the_empty_string",
+          "path": "",
+          "expected": {
+            "error": "not_a_room_path"
+          }
+        },
+        {
+          "name": "a_leading_space",
+          "path": " 1111111111111111111111111111111111111111111111111111111111111111/general",
+          "expected": {
+            "error": "not_a_room_path"
+          }
+        },
+        {
+          "name": "a_trailing_newline",
+          "path": "1111111111111111111111111111111111111111111111111111111111111111/general\n",
+          "expected": {
+            "error": "not_a_room_path"
+          }
+        },
+        {
+          "name": "a_second_slash",
+          "path": "1111111111111111111111111111111111111111111111111111111111111111/general/more",
+          "expected": {
+            "error": "not_a_room_path"
+          }
+        },
+        {
+          "name": "no_name",
+          "path": "1111111111111111111111111111111111111111111111111111111111111111/",
+          "expected": {
+            "error": "not_a_room_path"
+          }
+        },
+        {
+          "name": "an_uppercase_owner",
+          "path": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/general",
+          "expected": {
+            "error": "not_a_room_path"
+          }
+        },
+        {
+          "name": "a_dm_of_the_same_device",
+          "path": "1111111111111111111111111111111111111111111111111111111111111111+1111111111111111111111111111111111111111111111111111111111111111",
+          "expected": {
+            "error": "not_a_room_path"
+          }
+        },
+        {
+          "name": "a_dm_with_a_third_device",
+          "path": "1111111111111111111111111111111111111111111111111111111111111111+2222222222222222222222222222222222222222222222222222222222222222+3333333333333333333333333333333333333333333333333333333333333333",
+          "expected": {
+            "error": "not_a_room_path"
+          }
+        },
+        {
+          "name": "a_dm_with_a_trailing_newline",
+          "path": "1111111111111111111111111111111111111111111111111111111111111111+2222222222222222222222222222222222222222222222222222222222222222\n",
+          "expected": {
+            "error": "not_a_room_path"
+          }
+        },
+        {
+          "name": "neither_shape",
+          "path": "not-a-room-path",
+          "expected": {
+            "error": "not_a_room_path"
+          }
+        }
+      ],
+      "slug": [
+        {
+          "name": "an_already_valid_name",
+          "input": "my-room_1",
+          "expected": {
+            "slug": "my-room_1"
+          }
+        },
+        {
+          "name": "a_space_becomes_a_hyphen",
+          "input": "my room",
+          "expected": {
+            "slug": "my-room"
+          }
+        },
+        {
+          "name": "a_run_becomes_one_hyphen",
+          "input": "my  /  room",
+          "expected": {
+            "slug": "my-room"
+          }
+        },
+        {
+          "name": "hyphens_at_either_end_are_trimmed",
+          "input": "--my room--",
+          "expected": {
+            "slug": "my-room"
+          }
+        },
+        {
+          "name": "invalid_characters_at_either_end_are_trimmed",
+          "input": "  my room  ",
+          "expected": {
+            "slug": "my-room"
+          }
+        },
+        {
+          "name": "a_non_ascii_letter_is_replaced",
+          "input": "café au lait",
+          "expected": {
+            "slug": "caf-au-lait"
+          }
+        },
+        {
+          "name": "a_character_outside_the_basic_plane_is_one_run",
+          "input": "a😀b",
+          "expected": {
+            "slug": "a-b"
+          }
+        },
+        {
+          "name": "underscores_are_kept",
+          "input": "_a_",
+          "expected": {
+            "slug": "_a_"
+          }
+        },
+        {
+          "name": "an_empty_name",
+          "input": "",
+          "expected": {
+            "error": "nothing_to_slug"
+          }
+        },
+        {
+          "name": "only_hyphens",
+          "input": "---",
+          "expected": {
+            "error": "nothing_to_slug"
+          }
+        },
+        {
+          "name": "only_invalid_characters",
+          "input": "éè !",
+          "expected": {
+            "error": "nothing_to_slug"
+          }
+        }
+      ]
+    },
+    "counts": {
+      "typed": 22,
+      "refused": 27,
+      "bytes": 4,
+      "bytes_refused": 6,
+      "owner_named": 10,
+      "dm": 7,
+      "parse": 13,
+      "slug": 11
+    }
+  }
+}
