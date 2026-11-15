@@ -1,3 +1,9 @@
+## [4.2.10](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.9...wire-mesh-core%404.2.10) (2026-11-15)
+
+### Tests
+
+* **core:** compare the store's own directory in the node-fs refusal tests ([06f44c5](https://github.com/ExaDev/wire-mesh/commit/06f44c5533e44b303c2ab2c74a9c9860bb9f282a))
+
 ## [4.2.9](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.8...wire-mesh-core%404.2.9) (2026-11-15)
 
 ### Tests
