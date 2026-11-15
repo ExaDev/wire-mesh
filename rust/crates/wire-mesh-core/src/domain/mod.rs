@@ -2,6 +2,7 @@
 
 pub mod coordinator_election;
 pub mod cose;
+pub mod data_sync;
 pub mod erasure_coding;
 pub mod group_key;
 pub mod handshake;
