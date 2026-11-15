@@ -45,13 +45,14 @@ use wire_mesh_wire::transport::{peer_advert_signing_input, PeerAdvert};
 use wire_mesh_wire::value::{CanonicalMap, CborValue};
 use wire_mesh_wire::{decode_frame, encode_frame, minicbor, DecodeError};
 
+mod coordinator_election;
 mod mint;
 mod mint_notice;
 mod obj;
 mod secure_channel;
 
 /// The vector files this binary checks, each with the top-level keys it reads.
-const CONSUMED: [&str; 7] = [
+const CONSUMED: [&str; 8] = [
     "frames.v1.json",
     "handshake.v1.json",
     "tokens.v1.json",
@@ -59,6 +60,7 @@ const CONSUMED: [&str; 7] = [
     "invalid-frames.v1.json",
     SECURE_CHANNEL_FILE,
     MINT_FILE,
+    ELECTION_FILE,
 ];
 
 /// The vector file whose `secure_channel` section [`secure_channel`] checks.
@@ -67,11 +69,18 @@ const SECURE_CHANNEL_FILE: &str = "secure-channel.v1.json";
 /// The vector file whose `mint` section [`mint`] checks.
 const MINT_FILE: &str = "mint.v1.json";
 
+/// The vector file whose `coordinator_election` section [`coordinator_election`] checks.
+const ELECTION_FILE: &str = "coordinator-election.v1.json";
+
 /// The top-level keys every consumed file may carry: the ones `validate_vector_file` reads.
 const CONSUMED_KEYS: [&str; 3] = ["protocol_version", "description", "vectors"];
 
 /// The top-level section a file carries besides the shared keys, with the file that carries it.
-const SECTIONS: [(&str, &str); 2] = [(SECURE_CHANNEL_FILE, "secure_channel"), (MINT_FILE, "mint")];
+const SECTIONS: [(&str, &str); 3] = [
+    (SECURE_CHANNEL_FILE, "secure_channel"),
+    (MINT_FILE, "mint"),
+    (ELECTION_FILE, "coordinator_election"),
+];
 
 /// Vector files this binary does not check yet, each with the issue that tracks checking it. The run reports them as not consumed and fails if a file is missing from here and from [`CONSUMED`].
 const NOT_YET_CONSUMED: [(&str, &str); 0] = [];
@@ -206,10 +215,10 @@ async fn main() {
             let section = parsed
                 .get(*section_key)
                 .unwrap_or_else(|| panic!("{file} has no {section_key} section"));
-            let outcomes = if file == MINT_FILE {
-                mint::check_section(section, &wires).await
-            } else {
-                secure_channel::check_section(section, &wires).await
+            let outcomes = match file {
+                MINT_FILE => mint::check_section(section, &wires).await,
+                ELECTION_FILE => coordinator_election::check_section(section, &wires),
+                _ => secure_channel::check_section(section, &wires).await,
             };
             for (name, outcome) in outcomes {
                 total += 1;
@@ -340,7 +349,7 @@ async fn check_vector(file: &str, vector: Vector, verifier: &NodeIdentity) -> Re
     let expected = decode_hex(&vector.wire_hex)?;
     // Primary loop: typed decode -> validate -> re-encode -> byte-exact.
     match file {
-        "frames.v1.json" | "handshake.v1.json" => {
+        "frames.v1.json" | "handshake.v1.json" | ELECTION_FILE => {
             let frame = decode_frame(&expected).map_err(|e| format!("typed decode failed: {e}"))?;
             frame
                 .validate()

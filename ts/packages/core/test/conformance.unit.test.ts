@@ -93,6 +93,8 @@ const CHECKED_HERE = [
   "invalid-frames.v1.json",
 ];
 const CHECKED_ELSEWHERE: Readonly<Record<string, string>> = {
+  "coordinator-election.v1.json":
+    "conformance-coordinator-election.unit.test.ts",
   "mint.v1.json": "conformance-mint.unit.test.ts",
   "secure-channel.v1.json": "conformance-secure-channel.unit.test.ts",
 };

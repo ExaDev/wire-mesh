@@ -1,0 +1,857 @@
+{
+  "protocol_version": 1,
+  "description": "Coordinator-election vectors for protocol version 1 (coordinator-frame in spec/transport.cddl). The top-level vectors are the claims gossiped, round-tripped like any other file. The `coordinator_election` section holds scenarios, each a side that has made and heard no claim followed by steps (evaluating a frame heard, making a claim, re-announcing the incumbent) with what each returns and the state after it, and the pure rules on their own: which terms a later claim can supersede and the order of device-ids. A strictly higher term wins, an equal term goes to the lowest device-id, a lower term loses, and a term of 2^53 - 1 or over is dropped unevaluated. Device-ids are structural bytes, not hashes of keys. The outcomes are written by hand from the spec, never produced by an implementation.",
+  "vectors": [
+    {
+      "name": "coordinator_t0_mid",
+      "message": {
+        "type": "coordinator",
+        "term": 0,
+        "coordinator": {
+          "hex": "0202020202020202020202020202020202020202020202020202020202020202"
+        }
+      },
+      "wire_hex": "a3647465726d0064747970656b636f6f7264696e61746f726b636f6f7264696e61746f7258200202020202020202020202020202020202020202020202020202020202020202"
+    },
+    {
+      "name": "coordinator_t1_mid_hint64",
+      "message": {
+        "type": "coordinator",
+        "term": 1,
+        "coordinator": {
+          "hex": "0202020202020202020202020202020202020202020202020202020202020202"
+        },
+        "capacity-hint": 64
+      },
+      "wire_hex": "a4647465726d0164747970656b636f6f7264696e61746f726b636f6f7264696e61746f72582002020202020202020202020202020202020202020202020202020202020202026d63617061636974792d68696e741840"
+    },
+    {
+      "name": "coordinator_t0_mid_hint9",
+      "message": {
+        "type": "coordinator",
+        "term": 0,
+        "coordinator": {
+          "hex": "0202020202020202020202020202020202020202020202020202020202020202"
+        },
+        "capacity-hint": 9
+      },
+      "wire_hex": "a4647465726d0064747970656b636f6f7264696e61746f726b636f6f7264696e61746f72582002020202020202020202020202020202020202020202020202020202020202026d63617061636974792d68696e7409"
+    },
+    {
+      "name": "coordinator_t3_high",
+      "message": {
+        "type": "coordinator",
+        "term": 3,
+        "coordinator": {
+          "hex": "0303030303030303030303030303030303030303030303030303030303030303"
+        }
+      },
+      "wire_hex": "a3647465726d0364747970656b636f6f7264696e61746f726b636f6f7264696e61746f7258200303030303030303030303030303030303030303030303030303030303030303"
+    },
+    {
+      "name": "coordinator_t4_low",
+      "message": {
+        "type": "coordinator",
+        "term": 4,
+        "coordinator": {
+          "hex": "0101010101010101010101010101010101010101010101010101010101010101"
+        }
+      },
+      "wire_hex": "a3647465726d0464747970656b636f6f7264696e61746f726b636f6f7264696e61746f7258200101010101010101010101010101010101010101010101010101010101010101"
+    },
+    {
+      "name": "coordinator_t5_high",
+      "message": {
+        "type": "coordinator",
+        "term": 5,
+        "coordinator": {
+          "hex": "0303030303030303030303030303030303030303030303030303030303030303"
+        }
+      },
+      "wire_hex": "a3647465726d0564747970656b636f6f7264696e61746f726b636f6f7264696e61746f7258200303030303030303030303030303030303030303030303030303030303030303"
+    },
+    {
+      "name": "coordinator_t2_high",
+      "message": {
+        "type": "coordinator",
+        "term": 2,
+        "coordinator": {
+          "hex": "0303030303030303030303030303030303030303030303030303030303030303"
+        }
+      },
+      "wire_hex": "a3647465726d0264747970656b636f6f7264696e61746f726b636f6f7264696e61746f7258200303030303030303030303030303030303030303030303030303030303030303"
+    },
+    {
+      "name": "coordinator_t2_low",
+      "message": {
+        "type": "coordinator",
+        "term": 2,
+        "coordinator": {
+          "hex": "0101010101010101010101010101010101010101010101010101010101010101"
+        }
+      },
+      "wire_hex": "a3647465726d0264747970656b636f6f7264696e61746f726b636f6f7264696e61746f7258200101010101010101010101010101010101010101010101010101010101010101"
+    },
+    {
+      "name": "coordinator_t2_mid",
+      "message": {
+        "type": "coordinator",
+        "term": 2,
+        "coordinator": {
+          "hex": "0202020202020202020202020202020202020202020202020202020202020202"
+        }
+      },
+      "wire_hex": "a3647465726d0264747970656b636f6f7264696e61746f726b636f6f7264696e61746f7258200202020202020202020202020202020202020202020202020202020202020202"
+    },
+    {
+      "name": "coordinator_t1_low",
+      "message": {
+        "type": "coordinator",
+        "term": 1,
+        "coordinator": {
+          "hex": "0101010101010101010101010101010101010101010101010101010101010101"
+        }
+      },
+      "wire_hex": "a3647465726d0164747970656b636f6f7264696e61746f726b636f6f7264696e61746f7258200101010101010101010101010101010101010101010101010101010101010101"
+    },
+    {
+      "name": "coordinator_t1_low_hint9",
+      "message": {
+        "type": "coordinator",
+        "term": 1,
+        "coordinator": {
+          "hex": "0101010101010101010101010101010101010101010101010101010101010101"
+        },
+        "capacity-hint": 9
+      },
+      "wire_hex": "a4647465726d0164747970656b636f6f7264696e61746f726b636f6f7264696e61746f72582001010101010101010101010101010101010101010101010101010101010101016d63617061636974792d68696e7409"
+    },
+    {
+      "name": "coordinator_t1_high_hint9",
+      "message": {
+        "type": "coordinator",
+        "term": 1,
+        "coordinator": {
+          "hex": "0303030303030303030303030303030303030303030303030303030303030303"
+        },
+        "capacity-hint": 9
+      },
+      "wire_hex": "a4647465726d0164747970656b636f6f7264696e61746f726b636f6f7264696e61746f72582003030303030303030303030303030303030303030303030303030303030303036d63617061636974792d68696e7409"
+    },
+    {
+      "name": "coordinator_t0_mid_hint9007199254740991",
+      "message": {
+        "type": "coordinator",
+        "term": 0,
+        "coordinator": {
+          "hex": "0202020202020202020202020202020202020202020202020202020202020202"
+        },
+        "capacity-hint": 9007199254740991
+      },
+      "wire_hex": "a4647465726d0064747970656b636f6f7264696e61746f726b636f6f7264696e61746f72582002020202020202020202020202020202020202020202020202020202020202026d63617061636974792d68696e741b001fffffffffffff"
+    },
+    {
+      "name": "coordinator_t7_low",
+      "message": {
+        "type": "coordinator",
+        "term": 7,
+        "coordinator": {
+          "hex": "0101010101010101010101010101010101010101010101010101010101010101"
+        }
+      },
+      "wire_hex": "a3647465726d0764747970656b636f6f7264696e61746f726b636f6f7264696e61746f7258200101010101010101010101010101010101010101010101010101010101010101"
+    },
+    {
+      "name": "coordinator_t8_mid",
+      "message": {
+        "type": "coordinator",
+        "term": 8,
+        "coordinator": {
+          "hex": "0202020202020202020202020202020202020202020202020202020202020202"
+        }
+      },
+      "wire_hex": "a3647465726d0864747970656b636f6f7264696e61746f726b636f6f7264696e61746f7258200202020202020202020202020202020202020202020202020202020202020202"
+    },
+    {
+      "name": "coordinator_t1_mid",
+      "message": {
+        "type": "coordinator",
+        "term": 1,
+        "coordinator": {
+          "hex": "0202020202020202020202020202020202020202020202020202020202020202"
+        }
+      },
+      "wire_hex": "a3647465726d0164747970656b636f6f7264696e61746f726b636f6f7264696e61746f7258200202020202020202020202020202020202020202020202020202020202020202"
+    },
+    {
+      "name": "coordinator_t9007199254740991_low",
+      "message": {
+        "type": "coordinator",
+        "term": 9007199254740991,
+        "coordinator": {
+          "hex": "0101010101010101010101010101010101010101010101010101010101010101"
+        }
+      },
+      "wire_hex": "a3647465726d1b001fffffffffffff64747970656b636f6f7264696e61746f726b636f6f7264696e61746f7258200101010101010101010101010101010101010101010101010101010101010101"
+    },
+    {
+      "name": "coordinator_t9007199254740990_low",
+      "message": {
+        "type": "coordinator",
+        "term": 9007199254740990,
+        "coordinator": {
+          "hex": "0101010101010101010101010101010101010101010101010101010101010101"
+        }
+      },
+      "wire_hex": "a3647465726d1b001ffffffffffffe64747970656b636f6f7264696e61746f726b636f6f7264696e61746f7258200101010101010101010101010101010101010101010101010101010101010101"
+    },
+    {
+      "name": "coordinator_t9007199254740991_high",
+      "message": {
+        "type": "coordinator",
+        "term": 9007199254740991,
+        "coordinator": {
+          "hex": "0303030303030303030303030303030303030303030303030303030303030303"
+        }
+      },
+      "wire_hex": "a3647465726d1b001fffffffffffff64747970656b636f6f7264696e61746f726b636f6f7264696e61746f7258200303030303030303030303030303030303030303030303030303030303030303"
+    }
+  ],
+  "coordinator_election": {
+    "layout_version": 1,
+    "scenarios": [
+      {
+        "name": "a_first_claim_is_term_zero",
+        "own_device_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+        "steps": [
+          {
+            "op": "claim",
+            "capacity_hint": null,
+            "expected": {
+              "frame": "coordinator_t0_mid",
+              "refused": false
+            },
+            "state": {
+              "current": {
+                "term": 0,
+                "coordinator_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+                "capacity_hint": null
+              },
+              "is_self": true
+            }
+          }
+        ]
+      },
+      {
+        "name": "a_second_claim_raises_the_term",
+        "own_device_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+        "steps": [
+          {
+            "op": "claim",
+            "capacity_hint": null,
+            "expected": {
+              "frame": "coordinator_t0_mid",
+              "refused": false
+            },
+            "state": {
+              "current": {
+                "term": 0,
+                "coordinator_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+                "capacity_hint": null
+              },
+              "is_self": true
+            }
+          },
+          {
+            "op": "claim",
+            "capacity_hint": 64,
+            "expected": {
+              "frame": "coordinator_t1_mid_hint64",
+              "refused": false
+            },
+            "state": {
+              "current": {
+                "term": 1,
+                "coordinator_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+                "capacity_hint": 64
+              },
+              "is_self": true
+            }
+          }
+        ]
+      },
+      {
+        "name": "announcing_the_incumbent_keeps_its_term",
+        "own_device_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+        "steps": [
+          {
+            "op": "announce_current",
+            "expected": {
+              "frame": null
+            },
+            "state": {
+              "current": null,
+              "is_self": false
+            }
+          },
+          {
+            "op": "claim",
+            "capacity_hint": 9,
+            "expected": {
+              "frame": "coordinator_t0_mid_hint9",
+              "refused": false
+            },
+            "state": {
+              "current": {
+                "term": 0,
+                "coordinator_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+                "capacity_hint": 9
+              },
+              "is_self": true
+            }
+          },
+          {
+            "op": "announce_current",
+            "expected": {
+              "frame": "coordinator_t0_mid_hint9"
+            },
+            "state": {
+              "current": {
+                "term": 0,
+                "coordinator_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+                "capacity_hint": 9
+              },
+              "is_self": true
+            }
+          }
+        ]
+      },
+      {
+        "name": "a_higher_term_supersedes",
+        "own_device_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+        "steps": [
+          {
+            "op": "evaluate",
+            "frame": "coordinator_t3_high",
+            "expected": {
+              "outcome": "accepted",
+              "incumbent": {
+                "term": 3,
+                "coordinator_hex": "0303030303030303030303030303030303030303030303030303030303030303",
+                "capacity_hint": null
+              }
+            },
+            "state": {
+              "current": {
+                "term": 3,
+                "coordinator_hex": "0303030303030303030303030303030303030303030303030303030303030303",
+                "capacity_hint": null
+              },
+              "is_self": false
+            }
+          },
+          {
+            "op": "evaluate",
+            "frame": "coordinator_t4_low",
+            "expected": {
+              "outcome": "accepted",
+              "incumbent": {
+                "term": 4,
+                "coordinator_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+                "capacity_hint": null
+              }
+            },
+            "state": {
+              "current": {
+                "term": 4,
+                "coordinator_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+                "capacity_hint": null
+              },
+              "is_self": false
+            }
+          }
+        ]
+      },
+      {
+        "name": "a_lower_term_is_retained",
+        "own_device_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+        "steps": [
+          {
+            "op": "evaluate",
+            "frame": "coordinator_t5_high",
+            "expected": {
+              "outcome": "accepted",
+              "incumbent": {
+                "term": 5,
+                "coordinator_hex": "0303030303030303030303030303030303030303030303030303030303030303",
+                "capacity_hint": null
+              }
+            },
+            "state": {
+              "current": {
+                "term": 5,
+                "coordinator_hex": "0303030303030303030303030303030303030303030303030303030303030303",
+                "capacity_hint": null
+              },
+              "is_self": false
+            }
+          },
+          {
+            "op": "evaluate",
+            "frame": "coordinator_t4_low",
+            "expected": {
+              "outcome": "retained",
+              "incumbent": {
+                "term": 5,
+                "coordinator_hex": "0303030303030303030303030303030303030303030303030303030303030303",
+                "capacity_hint": null
+              }
+            },
+            "state": {
+              "current": {
+                "term": 5,
+                "coordinator_hex": "0303030303030303030303030303030303030303030303030303030303030303",
+                "capacity_hint": null
+              },
+              "is_self": false
+            }
+          },
+          {
+            "op": "announce_current",
+            "expected": {
+              "frame": "coordinator_t5_high"
+            },
+            "state": {
+              "current": {
+                "term": 5,
+                "coordinator_hex": "0303030303030303030303030303030303030303030303030303030303030303",
+                "capacity_hint": null
+              },
+              "is_self": false
+            }
+          }
+        ]
+      },
+      {
+        "name": "an_equal_term_goes_to_the_lowest_device_id",
+        "own_device_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+        "steps": [
+          {
+            "op": "evaluate",
+            "frame": "coordinator_t2_high",
+            "expected": {
+              "outcome": "accepted",
+              "incumbent": {
+                "term": 2,
+                "coordinator_hex": "0303030303030303030303030303030303030303030303030303030303030303",
+                "capacity_hint": null
+              }
+            },
+            "state": {
+              "current": {
+                "term": 2,
+                "coordinator_hex": "0303030303030303030303030303030303030303030303030303030303030303",
+                "capacity_hint": null
+              },
+              "is_self": false
+            }
+          },
+          {
+            "op": "evaluate",
+            "frame": "coordinator_t2_low",
+            "expected": {
+              "outcome": "accepted",
+              "incumbent": {
+                "term": 2,
+                "coordinator_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+                "capacity_hint": null
+              }
+            },
+            "state": {
+              "current": {
+                "term": 2,
+                "coordinator_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+                "capacity_hint": null
+              },
+              "is_self": false
+            }
+          },
+          {
+            "op": "evaluate",
+            "frame": "coordinator_t2_mid",
+            "expected": {
+              "outcome": "retained",
+              "incumbent": {
+                "term": 2,
+                "coordinator_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+                "capacity_hint": null
+              }
+            },
+            "state": {
+              "current": {
+                "term": 2,
+                "coordinator_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+                "capacity_hint": null
+              },
+              "is_self": false
+            }
+          },
+          {
+            "op": "evaluate",
+            "frame": "coordinator_t2_low",
+            "expected": {
+              "outcome": "retained",
+              "incumbent": {
+                "term": 2,
+                "coordinator_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+                "capacity_hint": null
+              }
+            },
+            "state": {
+              "current": {
+                "term": 2,
+                "coordinator_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+                "capacity_hint": null
+              },
+              "is_self": false
+            }
+          }
+        ]
+      },
+      {
+        "name": "a_repeated_claim_keeps_the_incumbent_as_it_was",
+        "own_device_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+        "steps": [
+          {
+            "op": "evaluate",
+            "frame": "coordinator_t1_low",
+            "expected": {
+              "outcome": "accepted",
+              "incumbent": {
+                "term": 1,
+                "coordinator_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+                "capacity_hint": null
+              }
+            },
+            "state": {
+              "current": {
+                "term": 1,
+                "coordinator_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+                "capacity_hint": null
+              },
+              "is_self": false
+            }
+          },
+          {
+            "op": "evaluate",
+            "frame": "coordinator_t1_low_hint9",
+            "expected": {
+              "outcome": "retained",
+              "incumbent": {
+                "term": 1,
+                "coordinator_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+                "capacity_hint": null
+              }
+            },
+            "state": {
+              "current": {
+                "term": 1,
+                "coordinator_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+                "capacity_hint": null
+              },
+              "is_self": false
+            }
+          }
+        ]
+      },
+      {
+        "name": "an_accepted_claim_replaces_the_capacity_hint",
+        "own_device_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+        "steps": [
+          {
+            "op": "evaluate",
+            "frame": "coordinator_t1_high_hint9",
+            "expected": {
+              "outcome": "accepted",
+              "incumbent": {
+                "term": 1,
+                "coordinator_hex": "0303030303030303030303030303030303030303030303030303030303030303",
+                "capacity_hint": 9
+              }
+            },
+            "state": {
+              "current": {
+                "term": 1,
+                "coordinator_hex": "0303030303030303030303030303030303030303030303030303030303030303",
+                "capacity_hint": 9
+              },
+              "is_self": false
+            }
+          },
+          {
+            "op": "evaluate",
+            "frame": "coordinator_t2_low",
+            "expected": {
+              "outcome": "accepted",
+              "incumbent": {
+                "term": 2,
+                "coordinator_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+                "capacity_hint": null
+              }
+            },
+            "state": {
+              "current": {
+                "term": 2,
+                "coordinator_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+                "capacity_hint": null
+              },
+              "is_self": false
+            }
+          }
+        ]
+      },
+      {
+        "name": "a_claim_with_the_largest_exact_capacity_hint",
+        "own_device_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+        "steps": [
+          {
+            "op": "claim",
+            "capacity_hint": 9007199254740991,
+            "expected": {
+              "frame": "coordinator_t0_mid_hint9007199254740991",
+              "refused": false
+            },
+            "state": {
+              "current": {
+                "term": 0,
+                "coordinator_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+                "capacity_hint": 9007199254740991
+              },
+              "is_self": true
+            }
+          }
+        ]
+      },
+      {
+        "name": "a_claim_after_a_higher_term_beats_it",
+        "own_device_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+        "steps": [
+          {
+            "op": "evaluate",
+            "frame": "coordinator_t7_low",
+            "expected": {
+              "outcome": "accepted",
+              "incumbent": {
+                "term": 7,
+                "coordinator_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+                "capacity_hint": null
+              }
+            },
+            "state": {
+              "current": {
+                "term": 7,
+                "coordinator_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+                "capacity_hint": null
+              },
+              "is_self": false
+            }
+          },
+          {
+            "op": "claim",
+            "capacity_hint": null,
+            "expected": {
+              "frame": "coordinator_t8_mid",
+              "refused": false
+            },
+            "state": {
+              "current": {
+                "term": 8,
+                "coordinator_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+                "capacity_hint": null
+              },
+              "is_self": true
+            }
+          }
+        ]
+      },
+      {
+        "name": "hearing_its_own_claim_makes_the_side_the_incumbent",
+        "own_device_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+        "steps": [
+          {
+            "op": "evaluate",
+            "frame": "coordinator_t1_mid",
+            "expected": {
+              "outcome": "accepted",
+              "incumbent": {
+                "term": 1,
+                "coordinator_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+                "capacity_hint": null
+              }
+            },
+            "state": {
+              "current": {
+                "term": 1,
+                "coordinator_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+                "capacity_hint": null
+              },
+              "is_self": true
+            }
+          }
+        ]
+      },
+      {
+        "name": "a_term_with_no_room_above_it_is_dropped_and_never_claimed_over",
+        "own_device_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+        "steps": [
+          {
+            "op": "evaluate",
+            "frame": "coordinator_t9007199254740991_low",
+            "expected": {
+              "outcome": "rejected",
+              "incumbent": null
+            },
+            "state": {
+              "current": null,
+              "is_self": false
+            }
+          },
+          {
+            "op": "evaluate",
+            "frame": "coordinator_t9007199254740990_low",
+            "expected": {
+              "outcome": "accepted",
+              "incumbent": {
+                "term": 9007199254740990,
+                "coordinator_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+                "capacity_hint": null
+              }
+            },
+            "state": {
+              "current": {
+                "term": 9007199254740990,
+                "coordinator_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+                "capacity_hint": null
+              },
+              "is_self": false
+            }
+          },
+          {
+            "op": "claim",
+            "capacity_hint": null,
+            "expected": {
+              "frame": null,
+              "refused": true
+            },
+            "state": {
+              "current": {
+                "term": 9007199254740990,
+                "coordinator_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+                "capacity_hint": null
+              },
+              "is_self": false
+            }
+          },
+          {
+            "op": "evaluate",
+            "frame": "coordinator_t9007199254740991_high",
+            "expected": {
+              "outcome": "rejected",
+              "incumbent": null
+            },
+            "state": {
+              "current": {
+                "term": 9007199254740990,
+                "coordinator_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+                "capacity_hint": null
+              },
+              "is_self": false
+            }
+          }
+        ]
+      }
+    ],
+    "refused_claims": [
+      {
+        "name": "a_capacity_hint_beyond_the_exact_integers",
+        "own_device_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+        "capacity_hint": 9007199254740992
+      }
+    ],
+    "rust_only_frames": [
+      {
+        "name": "a_frame_with_a_capacity_hint_one_above_the_exact_integers",
+        "own_device_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+        "frame_wire_hex": "a4647465726d0564747970656b636f6f7264696e61746f726b636f6f7264696e61746f72582001010101010101010101010101010101010101010101010101010101010101016d63617061636974792d68696e741b0020000000000000",
+        "expected": "rejected"
+      },
+      {
+        "name": "a_frame_with_the_largest_capacity_hint",
+        "own_device_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+        "frame_wire_hex": "a4647465726d0564747970656b636f6f7264696e61746f726b636f6f7264696e61746f72582001010101010101010101010101010101010101010101010101010101010101016d63617061636974792d68696e741bffffffffffffffff",
+        "expected": "rejected"
+      }
+    ],
+    "supersedable_terms": [
+      {
+        "term": 0,
+        "expected": true
+      },
+      {
+        "term": 1,
+        "expected": true
+      },
+      {
+        "term": 9007199254740989,
+        "expected": true
+      },
+      {
+        "term": 9007199254740990,
+        "expected": true
+      },
+      {
+        "term": 9007199254740991,
+        "expected": false
+      }
+    ],
+    "device_orders": [
+      {
+        "name": "a_lower_first_byte_is_lower",
+        "a_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+        "b_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+        "expected": -1
+      },
+      {
+        "name": "a_higher_first_byte_is_higher",
+        "a_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+        "b_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+        "expected": 1
+      },
+      {
+        "name": "the_same_id_is_equal",
+        "a_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+        "b_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+        "expected": 0
+      },
+      {
+        "name": "the_first_differing_byte_decides_even_when_a_later_byte_points_the_other_way",
+        "a_hex": "01ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "b_hex": "0200000000000000000000000000000000000000000000000000000000000000",
+        "expected": -1
+      },
+      {
+        "name": "a_difference_only_in_the_last_byte_decides",
+        "a_hex": "0000000000000000000000000000000000000000000000000000000000000001",
+        "b_hex": "0000000000000000000000000000000000000000000000000000000000000002",
+        "expected": -1
+      }
+    ],
+    "counts": {
+      "scenarios": 12,
+      "refused_claims": 1,
+      "rust_only_frames": 2,
+      "supersedable_terms": 5,
+      "device_orders": 5
+    }
+  }
+}
