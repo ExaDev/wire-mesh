@@ -46,6 +46,7 @@ use wire_mesh_wire::value::{CanonicalMap, CborValue};
 use wire_mesh_wire::{decode_frame, encode_frame, minicbor, DecodeError};
 
 mod mint;
+mod mint_notice;
 mod obj;
 mod secure_channel;
 

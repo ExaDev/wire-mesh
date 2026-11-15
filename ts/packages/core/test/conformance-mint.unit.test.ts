@@ -1,9 +1,10 @@
-/* Checks every case of conformance/mint.v1.json against the real mintCapabilityToken, mintRevocationEntry, canGrant and canGrantVia. The schemas are strict, so a key this test does not read fails it. In summary:
+/* Checks every case of conformance/mint.v1.json against the real mintCapabilityToken, mintRevocationEntry, createRoomNotice, canGrant and canGrantVia. The schemas are strict, so a key this test does not read fails it. In summary:
 
    - each identity's public key and device-id is derived from its seed;
    - each minting case is run: a token that must mint is compared byte for byte with the vector, and a refusal is compared with the reason the vector expects;
    - every token the vectors mint verifies with verifyCapabilityToken at the file's clock;
    - each revocation entry is minted byte for byte and is admitted by verifyRevocationEntry;
+   - each room notice is created byte for byte and gets the verdict the vector states from verifyRoomNotice;
    - each canGrant and canGrantVia query gives the verdict the vector states.
 
    Not compared, because they only name: every `name`, `synthetic` and the layout version (checked to be the one this test reads). */
@@ -24,10 +25,12 @@ import {
   verifyRevocationEntry,
 } from "../src/domain/tokens.js";
 import type { MintRefusalReason } from "../src/domain/tokens.js";
+import { createRoomNotice, verifyRoomNotice } from "../src/domain/room.js";
 import { conditionsListSchema } from "../src/domain/token-predicates.js";
 import {
   capabilityTokenSchema,
   type CapabilityToken,
+  type RoomNotice,
 } from "../src/generated/protocol.js";
 import type { IdentityPort } from "../src/ports/identity.js";
 import { bytesFromHex } from "./hex.js";
@@ -113,6 +116,28 @@ const file = z
           vector: z.string(),
         }),
       ),
+      notice_mints: z.array(
+        z.strictObject({
+          name: z.string(),
+          poster: z.string(),
+          token_vector: z.string(),
+          room: z.string(),
+          notice_id_hex: hexString,
+          content_type: z.string(),
+          content_hex: hexString,
+          refs: z
+            .array(z.strictObject({ id_hex: hexString, relation: z.string() }))
+            .nullable(),
+          valid_until: integer.nullable(),
+          key_epoch: integer.nullable(),
+          now_ms: integer,
+          rust_only: z.boolean(),
+          expected: z.union([
+            z.strictObject({ vector: z.string(), verdict: z.string() }),
+            z.strictObject({ refusal: z.literal("value_not_representable") }),
+          ]),
+        }),
+      ),
       can_grant: z.array(grantQuerySchema),
       can_grant_via: z.array(
         grantQuerySchema.extend({ candidate_bearer: z.string() }),
@@ -120,6 +145,7 @@ const file = z
       counts: z.strictObject({
         token_mints: z.number().int(),
         revocation_mints: z.number().int(),
+        notice_mints: z.number().int(),
         can_grant: z.number().int(),
         can_grant_via: z.number().int(),
       }),
@@ -154,6 +180,10 @@ function tokenFromWire(wireHex: string): CapabilityToken {
 
 function wireOfToken(token: CapabilityToken): string {
   return Buffer.from(encode(token, cdeEncodeOptions)).toString("hex");
+}
+
+function wireOfNotice(notice: RoomNotice): string {
+  return Buffer.from(encode(notice, cdeEncodeOptions)).toString("hex");
 }
 
 const ports = new Map<string, Promise<IdentityPort>>();
@@ -257,6 +287,7 @@ describe("the file's own accounting", () => {
     expect(section.revocation_mints).toHaveLength(
       section.counts.revocation_mints,
     );
+    expect(section.notice_mints).toHaveLength(section.counts.notice_mints);
     expect(section.can_grant).toHaveLength(section.counts.can_grant);
     expect(section.can_grant_via).toHaveLength(section.counts.can_grant_via);
   });
@@ -365,6 +396,71 @@ describe("mintRevocationEntry", () => {
       expect(
         (await verifyRevocationEntry(entry, { identity: issuer })).ok,
       ).toBe(true);
+    });
+  }
+});
+
+describe("createRoomNotice", () => {
+  it("has a case for each verdict a reader gives a created notice that the file pins", () => {
+    const verdicts = new Set(
+      section.notice_mints.flatMap((testCase) =>
+        "verdict" in testCase.expected ? [testCase.expected.verdict] : [],
+      ),
+    );
+    expect([...verdicts].sort()).toEqual([
+      "content_expired",
+      "key_epoch_mismatch",
+      "valid",
+    ]);
+  });
+
+  it("flags as Rust-only exactly the cases whose creation is refused", () => {
+    for (const testCase of section.notice_mints) {
+      expect(testCase.rust_only, testCase.name).toBe(
+        "refusal" in testCase.expected,
+      );
+    }
+  });
+
+  for (const testCase of section.notice_mints) {
+    it(testCase.name, async () => {
+      if (!("vector" in testCase.expected)) {
+        return;
+      }
+      const poster = await identityPort(testCase.poster);
+      const notice = await createRoomNotice({
+        identity: poster,
+        clock: fixedClock(testCase.now_ms),
+        room: testCase.room,
+        token: tokenFromWire(wireOfVector(testCase.token_vector)),
+        noticeId: bytesFromHex(testCase.notice_id_hex),
+        contentType: testCase.content_type,
+        content: bytesFromHex(testCase.content_hex),
+        ...(testCase.refs === null
+          ? {}
+          : {
+              refs: testCase.refs.map((ref) => ({
+                id: bytesFromHex(ref.id_hex),
+                relation: ref.relation,
+              })),
+            }),
+        ...(testCase.valid_until === null
+          ? {}
+          : { validUntil: testCase.valid_until }),
+        ...(testCase.key_epoch === null
+          ? {}
+          : { keyEpoch: testCase.key_epoch }),
+      });
+
+      expect(wireOfNotice(notice)).toBe(wireOfVector(testCase.expected.vector));
+      const verdict = await verifyRoomNotice(notice, {
+        identity: await identityPort("a"),
+        clock: fixedClock(testCase.now_ms),
+        revocation: neverRevoked,
+      });
+      expect(verdict.ok ? "valid" : verdict.reason).toBe(
+        testCase.expected.verdict,
+      );
     });
   }
 });
