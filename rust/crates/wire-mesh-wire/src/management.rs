@@ -14,6 +14,7 @@ use crate::exec::{
     ExecList, ProcKill, ProcSignal, ProcSpawn, PtyKill, PtyResize, PtySpawn, PtyWrite,
 };
 use crate::identity::{device_id_from, DeviceId, IdentityKey};
+use crate::room_params::{CapabilityRequest, RoomInvite, RoomLeave, RoomRead, RoomSend};
 use crate::strict;
 use crate::threshold::{
     ThresholdAbort, ThresholdCommit, ThresholdKeygenConfirm, ThresholdKeygenRound1,
@@ -71,9 +72,7 @@ pub(crate) fn manage_command_from(d: &mut Decoder<'_>) -> Result<ManageCommand, 
     })
 }
 
-/// The `$manage-command-params` socket. Typed arms cover core/exec's
-/// commands; `Json` is the open catch-all preserving any other domain's
-/// params map verbatim.
+/// The `$manage-command-params` socket. Typed arms cover core/exec's, core/webrtc's and core/threshold's commands and the core/room and capability verbs of [`crate::room_params`]; `Json` is the open catch-all preserving any other domain's params map verbatim.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ManageParams {
     PtySpawn(PtySpawn),
@@ -93,6 +92,11 @@ pub enum ManageParams {
     ThresholdKeygenRound1(ThresholdKeygenRound1),
     ThresholdKeygenRound2(ThresholdKeygenRound2),
     ThresholdKeygenConfirm(ThresholdKeygenConfirm),
+    RoomSend(RoomSend),
+    RoomRead(RoomRead),
+    RoomLeave(RoomLeave),
+    RoomInvite(RoomInvite),
+    CapabilityRequest(CapabilityRequest),
     /// An unrecognised command verb: the params map exactly as sent, `* tstr => any`.
     Json(CanonicalMap<String, CborValue>),
 }
@@ -118,6 +122,11 @@ impl ManageParams {
             ManageParams::ThresholdKeygenRound1(_) => ThresholdKeygenRound1::VERB,
             ManageParams::ThresholdKeygenRound2(_) => ThresholdKeygenRound2::VERB,
             ManageParams::ThresholdKeygenConfirm(_) => ThresholdKeygenConfirm::VERB,
+            ManageParams::RoomSend(_) => RoomSend::VERB,
+            ManageParams::RoomRead(_) => RoomRead::VERB,
+            ManageParams::RoomLeave(_) => RoomLeave::VERB,
+            ManageParams::RoomInvite(_) => RoomInvite::VERB,
+            ManageParams::CapabilityRequest(_) => CapabilityRequest::VERB,
             ManageParams::Json(map) => map
                 .get(&"verb".to_owned())
                 .and_then(|v| match v {
@@ -153,6 +162,11 @@ impl Encode<()> for ManageParams {
             ManageParams::ThresholdKeygenRound1(p) => p.encode(e, &mut ()),
             ManageParams::ThresholdKeygenRound2(p) => p.encode(e, &mut ()),
             ManageParams::ThresholdKeygenConfirm(p) => p.encode(e, &mut ()),
+            ManageParams::RoomSend(p) => p.encode(e, &mut ()),
+            ManageParams::RoomRead(p) => p.encode(e, &mut ()),
+            ManageParams::RoomLeave(p) => p.encode(e, &mut ()),
+            ManageParams::RoomInvite(p) => p.encode(e, &mut ()),
+            ManageParams::CapabilityRequest(p) => p.encode(e, &mut ()),
             ManageParams::Json(map) => {
                 e.map(map.len() as u64)?;
                 for (k, v) in map.iter() {
@@ -216,6 +230,13 @@ pub(crate) fn manage_params_from(d: &mut Decoder<'_>) -> Result<ManageParams, De
         )),
         ThresholdKeygenConfirm::VERB => Ok(ManageParams::ThresholdKeygenConfirm(
             ThresholdKeygenConfirm::from_map(d)?,
+        )),
+        RoomSend::VERB => Ok(ManageParams::RoomSend(RoomSend::from_map(d)?)),
+        RoomRead::VERB => Ok(ManageParams::RoomRead(RoomRead::from_map(d)?)),
+        RoomLeave::VERB => Ok(ManageParams::RoomLeave(RoomLeave::from_map(d)?)),
+        RoomInvite::VERB => Ok(ManageParams::RoomInvite(RoomInvite::from_map(d)?)),
+        CapabilityRequest::VERB => Ok(ManageParams::CapabilityRequest(
+            CapabilityRequest::from_map(d)?,
         )),
         _ => {
             let count = strict::definite_map(d)?;

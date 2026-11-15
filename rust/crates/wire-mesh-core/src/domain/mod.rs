@@ -33,7 +33,11 @@ pub use room::{
     compare_room_notices, create_room_notice, verify_room_notice, NewRoomNotice,
     RoomNoticeRejection, RoomNoticeVerdict,
 };
-pub use room_path::{device_id_from_hex, device_id_to_hex, parse_room_path, ParsedRoomPath};
+pub use room_path::{
+    bytes_from_hex, bytes_to_hex, device_id_from_hex, device_id_to_hex, dm_room_path,
+    owner_named_room_path, parse_room_path, slug_room_name, ParsedRoomPath, RoomPath,
+    RoomPathError,
+};
 pub use room_token_verification::{
     verify_room_token, RoomTokenRejection, RoomTokenVerdict, ROOM_MEMBER_CAPABILITY,
 };

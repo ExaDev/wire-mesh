@@ -36,6 +36,7 @@ pub mod handshake;
 pub mod identity;
 pub mod management;
 pub mod room;
+pub mod room_params;
 pub mod secure_channel;
 pub mod streaming;
 pub mod strict;
