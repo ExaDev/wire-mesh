@@ -10,9 +10,12 @@
 //! are legal in trilean's own schema but nothing here ever constructs one).
 //!
 //! Decoding is deliberately infallible below the outer `bstr` layer: a `PredicateNode`/
-//! `ExpressionNode` shape this module does not recognise -- a legitimate trilean kind with no
-//! Rust support yet, or genuinely malformed data -- decodes as `Unsupported` rather than a
-//! hard error, and evaluates to indeterminate. This matches the spec's own verifier-obligation
+//! `ExpressionNode` shape this module does not recognise (a legitimate trilean kind with no
+//! Rust support yet (`Unsupported`), or data trilean's schema rejects (`Malformed`)), decodes
+//! as a node rather than a hard error, and evaluates to indeterminate. The two are told apart
+//! because the TypeScript gives them different refusals: a mint through an authoriser whose
+//! conditions hold a malformed node is `authorisation_malformed`, and one that holds a node
+//! trilean accepts and this module cannot evaluate is `authorisation_conditions_not_satisfied`. This matches the spec's own verifier-obligation
 //! convention (an unrecognised value in an open `kind` discriminator must be refused, never
 //! acted on without understanding it) and keeps a newer TS-minted token that uses a node kind
 //! Rust doesn't yet support decoding cleanly into a token this verifier correctly refuses,
@@ -93,9 +96,14 @@ pub enum ExpressionNode {
     },
     /// A legal `ExpressionNode` kind this module has no support for (`reference`,
     /// `arithmetic`, `negate`, `call`, `lookup`, `conditional`, `fold`, `accumulator`,
-    /// `treeReference`, `textLiteral`, `durationLiteral`, `complexLiteral`), or a value that
-    /// does not match one of the shapes above. Always evaluates to indeterminate.
+    /// `treeReference`, `textLiteral`, `durationLiteral`, `complexLiteral`): trilean accepts it
+    /// and evaluates it, this module does not. Always evaluates to indeterminate.
     Unsupported,
+    /// A value trilean's schema rejects: not a map, no `kind`, an unknown kind, or a kind of
+    /// this module's subset whose fields do not match. Always evaluates to indeterminate, and
+    /// is told apart from [`ExpressionNode::Unsupported`] so that a caller can give the reason
+    /// the TypeScript gives for each.
+    Malformed,
 }
 
 /// The `PredicateNode` kinds reachable from a `conditions` entry. Only `compare` is
@@ -119,9 +127,13 @@ pub enum PredicateNode {
         left: Box<PredicateNode>,
         right: Box<PredicateNode>,
     },
-    /// A legal `PredicateNode` kind this module has no support for, or a value that does not
-    /// match the shapes above. Always evaluates to indeterminate.
+    /// A legal `PredicateNode` kind this module has no support for (`allOf`, `anyOf`,
+    /// `textCompare`, `memberOf`, `exists`, `some`, `every`, `treeReference`): trilean accepts it and evaluates it, this
+    /// module does not. Always evaluates to indeterminate.
     Unsupported,
+    /// A value trilean's schema rejects: not a map, no `kind`, an unknown kind, or a kind of
+    /// this module's subset whose fields do not match. Always evaluates to indeterminate.
+    Malformed,
 }
 
 /// The minted child a grant-capability's conditions are evaluated against (wire-mesh#323
@@ -174,100 +186,189 @@ fn cbor_unit(v: &CborValue) -> Option<Unit> {
     Some(unit)
 }
 
+/// The expression kinds trilean's schema accepts that this module does not evaluate, with the
+/// fields each requires. A node of one of these kinds that has every required field is
+/// [`ExpressionNode::Unsupported`]; one that lacks a field is [`ExpressionNode::Malformed`].
+/// Only the presence of a required field is checked, not its type or anything nested in it, so
+/// a node with the right fields of the wrong type is read as unsupported where the TypeScript
+/// rejects it.
+const UNSUPPORTED_EXPRESSION_KINDS: &[(&str, &[&str])] = &[
+    ("textLiteral", &["value"]),
+    ("durationLiteral", &["unit", "value"]),
+    ("reference", &["key"]),
+    ("arithmetic", &["left", "op", "right"]),
+    ("negate", &["operand"]),
+    ("call", &["args", "fn"]),
+    ("lookup", &["keys", "table"]),
+    ("conditional", &["cases", "fallback"]),
+    ("fold", &["collection", "combiner"]),
+    ("accumulator", &[]),
+    ("treeReference", &["key"]),
+];
+
+/// The predicate kinds trilean's schema accepts that this module does not evaluate, with the
+/// fields each requires, read as [`UNSUPPORTED_EXPRESSION_KINDS`] is.
+const UNSUPPORTED_PREDICATE_KINDS: &[(&str, &[&str])] = &[
+    ("allOf", &["operands"]),
+    ("anyOf", &["operands"]),
+    ("textCompare", &["left", "op", "right"]),
+    ("memberOf", &["candidates", "op", "operand"]),
+    ("exists", &["operand"]),
+    ("some", &["collection", "item"]),
+    ("every", &["collection", "item"]),
+    ("treeReference", &["key"]),
+];
+
+/// The comparison operators of trilean's schema.
+const COMPARISON_OPERATORS: &[&str] = &["gt", "gte", "lt", "lte", "eq", "neq"];
+
+/// Whether `map` holds `kind` and exactly the keys in `required`: the two complex-literal schemas are strict, so a key beyond them is a rejection. Every other node schema of trilean strips a key it does not name, and is read by [`has_fields`] alone.
+fn has_exactly(map: &CanonicalMap<CborValue, CborValue>, required: &[&str]) -> bool {
+    let mut keys = Vec::new();
+    for (key, _) in map.iter() {
+        let CborValue::Text(key) = key else {
+            return false;
+        };
+        keys.push(key.as_str());
+    }
+    required.iter().all(|key| keys.contains(key))
+        && keys
+            .iter()
+            .all(|key| *key == "kind" || required.contains(key))
+}
+
+/// Whether `map` has every field `required` names, as the shallow check of an unsupported kind.
+fn has_fields(map: &CanonicalMap<CborValue, CborValue>, required: &[&str]) -> bool {
+    required.iter().all(|name| field(map, name).is_some())
+}
+
 impl ExpressionNode {
     fn from_cbor(v: &CborValue) -> Self {
         let CborValue::Map(map) = v else {
-            return ExpressionNode::Unsupported;
+            return ExpressionNode::Malformed;
         };
-        match text_field(map, "kind") {
-            Some("numberLiteral") => {
+        let Some(kind) = text_field(map, "kind") else {
+            return ExpressionNode::Malformed;
+        };
+        match kind {
+            "numberLiteral" => {
+                if !has_fields(map, &["value"]) {
+                    return ExpressionNode::Malformed;
+                }
                 let Some(value) = field(map, "value").and_then(cbor_number) else {
-                    return ExpressionNode::Unsupported;
+                    return ExpressionNode::Malformed;
                 };
                 let unit = match field(map, "unit") {
                     Some(u) => match cbor_unit(u) {
                         Some(unit) => unit,
-                        None => return ExpressionNode::Unsupported,
+                        None => return ExpressionNode::Malformed,
                     },
                     None => Unit::new(),
                 };
                 ExpressionNode::NumberLiteral { value, unit }
             }
-            Some("booleanLiteral") => match field(map, "value") {
+            "booleanLiteral" => match field(map, "value") {
                 Some(CborValue::Bool(value)) => ExpressionNode::BooleanLiteral { value: *value },
-                _ => ExpressionNode::Unsupported,
+                _ => ExpressionNode::Malformed,
             },
-            Some("instantLiteral") => match field(map, "value") {
+            "instantLiteral" => match field(map, "value") {
                 Some(CborValue::Text(value)) => ExpressionNode::InstantLiteral {
                     value: value.clone(),
                 },
-                _ => ExpressionNode::Unsupported,
+                _ => ExpressionNode::Malformed,
             },
-            Some("delegate") => {
+            "delegate" => {
                 let (Some(system), Some(payload)) =
                     (text_field(map, "system"), field(map, "payload"))
                 else {
-                    return ExpressionNode::Unsupported;
+                    return ExpressionNode::Malformed;
                 };
                 ExpressionNode::Delegate {
                     system: system.to_owned(),
                     payload: payload.clone(),
                 }
             }
-            _ => ExpressionNode::Unsupported,
+            "complexLiteral" => {
+                if has_exactly(map, &["re", "im"]) || has_exactly(map, &["magnitude", "phase"]) {
+                    ExpressionNode::Unsupported
+                } else {
+                    ExpressionNode::Malformed
+                }
+            }
+            other => match UNSUPPORTED_EXPRESSION_KINDS
+                .iter()
+                .find(|(name, _)| *name == other)
+            {
+                Some((_, required)) if has_fields(map, required) => ExpressionNode::Unsupported,
+                _ => ExpressionNode::Malformed,
+            },
         }
     }
 }
 
 impl ExpressionNode {
-    /// Whether this expression, or one below it, is a shape this module has no support for.
-    fn is_unsupported(&self) -> bool {
-        matches!(self, ExpressionNode::Unsupported)
+    /// Whether this expression is one trilean's schema rejects.
+    fn is_malformed(&self) -> bool {
+        matches!(self, ExpressionNode::Malformed)
     }
 }
 
 impl PredicateNode {
-    /// Whether this node, or any below it, is a node or an expression this module does not support, which evaluates to indeterminate and so refuses whatever carries it. A caller that wants to tell a list it cannot read from one it read and found unmet asks this first.
-    pub fn contains_unsupported(&self) -> bool {
+    /// Whether this node, or any below it, is one trilean's schema rejects: a node the TypeScript calls malformed, as opposed to one it reads and finds unmet or cannot evaluate (a kind this module does not support is [`PredicateNode::Unsupported`], which evaluates to indeterminate). A caller that wants the TypeScript's reason for a list it cannot read asks this first.
+    pub fn contains_malformed(&self) -> bool {
         match self {
             PredicateNode::Compare { left, right, .. } => {
-                left.is_unsupported() || right.is_unsupported()
+                left.is_malformed() || right.is_malformed()
             }
-            PredicateNode::Not { operand } => operand.contains_unsupported(),
+            PredicateNode::Not { operand } => operand.contains_malformed(),
             PredicateNode::And { left, right } | PredicateNode::Or { left, right } => {
-                left.contains_unsupported() || right.contains_unsupported()
+                left.contains_malformed() || right.contains_malformed()
             }
-            PredicateNode::Unsupported => true,
+            PredicateNode::Malformed => true,
+            PredicateNode::Unsupported => false,
         }
     }
 
     fn from_cbor(v: &CborValue) -> Self {
         let CborValue::Map(map) = v else {
-            return PredicateNode::Unsupported;
+            return PredicateNode::Malformed;
         };
-        match text_field(map, "kind") {
-            Some("compare") => {
+        let Some(kind) = text_field(map, "kind") else {
+            return PredicateNode::Malformed;
+        };
+        match kind {
+            "compare" => {
+                if !has_fields(map, &["op", "left", "right"]) {
+                    return PredicateNode::Malformed;
+                }
                 let (Some(op), Some(left), Some(right)) = (
-                    text_field(map, "op").and_then(ComparisonOperator::from_wire),
+                    text_field(map, "op"),
                     field(map, "left").map(ExpressionNode::from_cbor),
                     field(map, "right").map(ExpressionNode::from_cbor),
                 ) else {
-                    return PredicateNode::Unsupported;
+                    return PredicateNode::Malformed;
                 };
-                PredicateNode::Compare { op, left, right }
+                if !COMPARISON_OPERATORS.contains(&op) {
+                    return PredicateNode::Malformed;
+                }
+                match ComparisonOperator::from_wire(op) {
+                    Some(op) => PredicateNode::Compare { op, left, right },
+                    // Every operator of the schema has a wire form, so this is the schema's own list drifting from the decoder's.
+                    None => PredicateNode::Malformed,
+                }
             }
-            Some("not") => match field(map, "operand").map(PredicateNode::from_cbor) {
+            "not" => match field(map, "operand").map(PredicateNode::from_cbor) {
                 Some(operand) => PredicateNode::Not {
                     operand: Box::new(operand),
                 },
-                None => PredicateNode::Unsupported,
+                _ => PredicateNode::Malformed,
             },
-            Some(kind @ ("and" | "or")) => {
+            "and" | "or" => {
                 let (Some(left), Some(right)) = (
                     field(map, "left").map(PredicateNode::from_cbor),
                     field(map, "right").map(PredicateNode::from_cbor),
                 ) else {
-                    return PredicateNode::Unsupported;
+                    return PredicateNode::Malformed;
                 };
                 let left = Box::new(left);
                 let right = Box::new(right);
@@ -277,7 +378,13 @@ impl PredicateNode {
                     PredicateNode::Or { left, right }
                 }
             }
-            _ => PredicateNode::Unsupported,
+            other => match UNSUPPORTED_PREDICATE_KINDS
+                .iter()
+                .find(|(name, _)| *name == other)
+            {
+                Some((_, required)) if has_fields(map, required) => PredicateNode::Unsupported,
+                _ => PredicateNode::Malformed,
+            },
         }
     }
 }
@@ -329,7 +436,7 @@ fn evaluate_expression(
             };
             Some(ComputedValue::Boolean(holds))
         }
-        ExpressionNode::Unsupported => None,
+        ExpressionNode::Unsupported | ExpressionNode::Malformed => None,
     }
 }
 
@@ -465,7 +572,7 @@ fn evaluate_predicate(node: &PredicateNode, subject: Option<&GrantSubject<'_>>) 
             evaluate_predicate(left, subject),
             evaluate_predicate(right, subject),
         ),
-        PredicateNode::Unsupported => None,
+        PredicateNode::Unsupported | PredicateNode::Malformed => None,
     }
 }
 
@@ -572,7 +679,7 @@ mod tests {
     }
 
     #[test]
-    fn decode_conditions_treats_an_unrecognised_kind_as_unsupported_not_a_decode_error() {
+    fn decode_conditions_treats_an_unrecognised_kind_as_malformed_not_a_decode_error() {
         let mut buf = Vec::new();
         {
             let mut e = minicbor::Encoder::new(&mut buf);
@@ -581,7 +688,7 @@ mod tests {
             e.str("kind").unwrap().str("frobnicate").unwrap();
         }
         let nodes = decode_conditions(&buf).expect("a well-formed array must still decode");
-        assert_eq!(nodes, vec![PredicateNode::Unsupported]);
+        assert_eq!(nodes, vec![PredicateNode::Malformed]);
         assert!(!evaluate_conditions(&nodes, None));
     }
 
@@ -638,7 +745,7 @@ mod tests {
             left: ExpressionNode::BooleanLiteral { value: false },
             right: ExpressionNode::BooleanLiteral { value: true },
         };
-        let indet = || PredicateNode::Unsupported;
+        let indet = || PredicateNode::Malformed;
         let eval = |node: &PredicateNode| evaluate_predicate(node, None);
         assert_eq!(eval(&t()), Some(true));
         assert_eq!(not(eval(&f())), Some(true));
