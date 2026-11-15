@@ -1,3 +1,9 @@
+## [4.2.6](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.5...wire-mesh-core%404.2.6) (2026-11-15)
+
+### Tests
+
+* **core:** pin a condition node with a key beyond its fields in the token verifiers ([8f7eddc](https://github.com/ExaDev/wire-mesh/commit/8f7eddcdf57e1ca90734711ec29d9308969811d6))
+
 ## [4.2.5](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.4...wire-mesh-core%404.2.5) (2026-11-15)
 
 ### Bug Fixes
