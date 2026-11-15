@@ -1,15 +1,4 @@
-//! `room.cddl` — core/room's noticeboard entries on core/data.
-//! `room-notice-claims` is the signed payload of a `room-notice`
-//! (`cose-sign1`, the identical self-certifying envelope `capability-token`
-//! and `handle-claims` already use). The manage-command verbs this domain
-//! also defines (`room.send`, `room.read`, `room.leave`, `room.members`,
-//! `room.join`, `room.invite`) need no typed Rust struct at all: they ride
-//! `manage-request-frame`'s existing `Json` params catch-all, exactly as
-//! confirmed when `core/room` was first added (zero Rust changes beyond
-//! the frame layer already handles). Noticeboard entries are different:
-//! the conformance harness typed-decodes every `tokens.v1.json` payload,
-//! so `room-notice-claims` needs a real decoder here the same way
-//! `TokenClaims`/`HandleClaims` do.
+//! `room.cddl`: core/room's noticeboard entries on core/data. `room-notice-claims` is the signed payload of a `room-notice` (`cose-sign1`, the identical self-certifying envelope `capability-token` and `handle-claims` already use). The manage-command verbs of this domain have typed forms in [`crate::room_params`]. Noticeboard entries need a real decoder here the same way `TokenClaims` and `HandleClaims` do, because the conformance harness typed-decodes every `tokens.v1.json` payload.
 
 use minicbor::{Decode, Decoder, Encode, Encoder};
 

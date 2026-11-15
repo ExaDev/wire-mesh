@@ -143,6 +143,20 @@ pub fn bytes_value(d: &mut Decoder<'_>) -> Result<Vec<u8>, DecodeError> {
     }
 }
 
+/// The largest integer a TypeScript peer holds exactly, 2^53 - 1.
+pub const MAX_EXACT_INTEGER: u64 = (1 << 53) - 1;
+
+/// An unsigned integer value in minimal-head form that a TypeScript peer can hold exactly: a value above [`MAX_EXACT_INTEGER`] is refused, as the TypeScript decoder refuses it, so both implementations give one verdict for the same bytes.
+pub fn exact_uint_value(d: &mut Decoder<'_>) -> Result<u64, DecodeError> {
+    let value = uint_value(d)?;
+    if value > MAX_EXACT_INTEGER {
+        return Err(DecodeError::Constraint(
+            "integer above 2^53 - 1, which a TypeScript peer cannot hold",
+        ));
+    }
+    Ok(value)
+}
+
 /// An unsigned integer value in minimal-head form.
 pub fn uint_value(d: &mut Decoder<'_>) -> Result<u64, DecodeError> {
     let before = d.position();

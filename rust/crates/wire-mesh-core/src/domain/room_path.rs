@@ -1,27 +1,39 @@
-//! Room paths -- the naming and parsing convention core/room's device-keyed
-//! membership uses, mirroring `room.cddl`'s own
-//! `owner-named-room-path`/`dm-room-path` grammar exactly: an owner-named
-//! room is `<owner-hex>/<local-name>`, trust rooted at the owner named in
-//! the path; a DM is the bytewise-ascending sorted pair
-//! `<lower-hex>+<higher-hex>`, trust rooted at the verifier itself rather
-//! than either named party. Ported from `room-path.ts` -- verification-side
-//! only (parsing and the hex codec it needs), since minting/slugifying a
-//! room path is not something `verify_room_token` itself needs.
+//! Room paths: the naming and parsing convention core/room's device-keyed membership uses, mirroring `room.cddl`'s `owner-named-room-path` and `dm-room-path` grammar exactly. An owner-named room is `<owner-hex>/<local-name>`, trust rooted at the owner named in the path. A DM is the bytewise-ascending sorted pair `<lower-hex>+<higher-hex>`, trust rooted at the verifier itself rather than either named party. Ported from `room-path.ts`, with the hex codec the paths are built from.
 
 use wire_mesh_wire::identity::DeviceId;
 
 const DEVICE_ID_BYTE_LENGTH: usize = 32;
 const DEVICE_ID_HEX_LENGTH: usize = DEVICE_ID_BYTE_LENGTH * 2;
 
-/// Lowercase, byte-exact hex -- the same encoding `room.cddl`'s
-/// `device-id-hex` regex and the conformance vectors' synthetic
-/// device-ids already use.
-pub fn device_id_to_hex(device: &DeviceId) -> String {
-    let mut out = String::with_capacity(DEVICE_ID_HEX_LENGTH);
-    for byte in device.0 {
+/// Lowercase, byte-exact hex of any byte string: two digits per byte, the text form every device-id, token-id and room-path component takes.
+#[must_use]
+pub fn bytes_to_hex(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
         out.push_str(&format!("{byte:02x}"));
     }
     out
+}
+
+/// The reverse of [`bytes_to_hex`]: `None` for an odd-length string, a character that is not a lowercase hex digit or an uppercase letter, rather than silently truncating or normalising a malformed input.
+#[must_use]
+pub fn bytes_from_hex(hex: &str) -> Option<Vec<u8>> {
+    if hex.len() % 2 == 1
+        || !hex
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return None;
+    }
+    (0..hex.len() / 2)
+        .map(|i| u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).ok())
+        .collect()
+}
+
+/// Lowercase, byte-exact hex: the same encoding `room.cddl`'s `device-id-hex` regex and the conformance vectors' synthetic device-ids already use.
+#[must_use]
+pub fn device_id_to_hex(device: &DeviceId) -> String {
+    bytes_to_hex(&device.0)
 }
 
 /// Parses a lowercase, 64-character device-id-hex string back into the
@@ -32,16 +44,7 @@ pub fn device_id_from_hex(hex: &str) -> Option<DeviceId> {
     if hex.len() != DEVICE_ID_HEX_LENGTH {
         return None;
     }
-    if !hex
-        .bytes()
-        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-    {
-        return None;
-    }
-    let mut bytes = [0u8; DEVICE_ID_BYTE_LENGTH];
-    for (i, byte) in bytes.iter_mut().enumerate() {
-        *byte = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).ok()?;
-    }
+    let bytes: [u8; DEVICE_ID_BYTE_LENGTH] = bytes_from_hex(hex)?.try_into().ok()?;
     Some(DeviceId(bytes))
 }
 
@@ -86,6 +89,147 @@ pub fn parse_room_path(path: &str) -> Option<ParsedRoomPath> {
         }
     }
     None
+}
+
+/// Why a string is not a room path, or a name or device-id is not usable in one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoomPathError {
+    /// A device-id given as hex is not 64 lowercase hex characters.
+    NotDeviceIdHex,
+    /// A local name is empty or has a character outside `[A-Za-z0-9_-]`.
+    NotLocalName,
+    /// A DM names the same device twice.
+    SameDevice,
+    /// The string matches neither the owner-named nor the DM shape.
+    NotARoomPath,
+    /// A name has no character of `[A-Za-z0-9_-]` to make a local name of.
+    NothingToSlug,
+}
+
+impl RoomPathError {
+    /// Every error, so a test can require that each has a case.
+    pub const ALL: [RoomPathError; 5] = [
+        RoomPathError::NotDeviceIdHex,
+        RoomPathError::NotLocalName,
+        RoomPathError::SameDevice,
+        RoomPathError::NotARoomPath,
+        RoomPathError::NothingToSlug,
+    ];
+
+    /// The name the conformance vectors use for this error.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RoomPathError::NotDeviceIdHex => "not_device_id_hex",
+            RoomPathError::NotLocalName => "not_local_name",
+            RoomPathError::SameDevice => "same_device",
+            RoomPathError::NotARoomPath => "not_a_room_path",
+            RoomPathError::NothingToSlug => "nothing_to_slug",
+        }
+    }
+}
+
+impl std::fmt::Display for RoomPathError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            RoomPathError::NotDeviceIdHex => "not a 64-character lowercase hex device-id",
+            RoomPathError::NotLocalName => "not a local name of [A-Za-z0-9_-]+",
+            RoomPathError::SameDevice => "a DM cannot name the same device twice",
+            RoomPathError::NotARoomPath => "not a valid room path",
+            RoomPathError::NothingToSlug => "no valid room-name characters to slug",
+        })
+    }
+}
+
+impl std::error::Error for RoomPathError {}
+
+/// A string known to be a valid room path: owner-named or DM. It can only be made by [`RoomPath::new`] (which parses), [`owner_named_room_path`] or [`dm_room_path`], so holding one is the proof.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RoomPath(String);
+
+impl RoomPath {
+    /// Checks `path` against the grammar.
+    ///
+    /// # Errors
+    ///
+    /// [`RoomPathError::NotARoomPath`] when it matches neither shape.
+    pub fn new(path: impl Into<String>) -> Result<Self, RoomPathError> {
+        let path = path.into();
+        parse_room_path(&path).ok_or(RoomPathError::NotARoomPath)?;
+        Ok(RoomPath(path))
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// The path taken apart.
+    #[must_use]
+    pub fn parsed(&self) -> ParsedRoomPath {
+        parse_room_path(&self.0).unwrap_or_else(|| unreachable!("a RoomPath is a valid path"))
+    }
+}
+
+impl std::fmt::Display for RoomPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// `<owner-hex>/<local-name>`. `local_name` must already satisfy `[A-Za-z0-9_-]+`: run an untrusted name through [`slug_room_name`] first.
+///
+/// # Errors
+///
+/// [`RoomPathError::NotDeviceIdHex`] when `owner` is not a device-id in hex (checked first), [`RoomPathError::NotLocalName`] when `local_name` is not a local name.
+pub fn owner_named_room_path(owner: &str, local_name: &str) -> Result<RoomPath, RoomPathError> {
+    if !is_device_id_hex(owner) {
+        return Err(RoomPathError::NotDeviceIdHex);
+    }
+    if !is_local_name(local_name) {
+        return Err(RoomPathError::NotLocalName);
+    }
+    Ok(RoomPath(format!("{owner}/{local_name}")))
+}
+
+/// `<lower-hex>+<higher-hex>`, the bytewise-ascending sorted pair. A path naming the same device twice is not a valid DM path at all, so `a == b` is refused: a self-DM is a purely local concept a consumer models its own way.
+///
+/// # Errors
+///
+/// [`RoomPathError::NotDeviceIdHex`] when `a` or `b` is not a device-id in hex (`a` first), [`RoomPathError::SameDevice`] when they are equal.
+pub fn dm_room_path(a: &str, b: &str) -> Result<RoomPath, RoomPathError> {
+    if !is_device_id_hex(a) || !is_device_id_hex(b) {
+        return Err(RoomPathError::NotDeviceIdHex);
+    }
+    match a.cmp(b) {
+        std::cmp::Ordering::Equal => Err(RoomPathError::SameDevice),
+        std::cmp::Ordering::Less => Ok(RoomPath(format!("{a}+{b}"))),
+        std::cmp::Ordering::Greater => Ok(RoomPath(format!("{b}+{a}"))),
+    }
+}
+
+/// Sanitises an arbitrary name (a directory name, say) into a valid local name: every run of characters outside `[A-Za-z0-9_-]` becomes one hyphen, and hyphens at either end are trimmed.
+///
+/// # Errors
+///
+/// [`RoomPathError::NothingToSlug`] when nothing valid remains.
+pub fn slug_room_name(name: &str) -> Result<String, RoomPathError> {
+    let mut slug = String::with_capacity(name.len());
+    let mut in_invalid_run = false;
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+            slug.push(ch);
+            in_invalid_run = false;
+        } else if !in_invalid_run {
+            slug.push('-');
+            in_invalid_run = true;
+        }
+    }
+    let slug = slug.trim_matches('-');
+    if slug.is_empty() {
+        return Err(RoomPathError::NothingToSlug);
+    }
+    Ok(slug.to_owned())
 }
 
 #[cfg(test)]
