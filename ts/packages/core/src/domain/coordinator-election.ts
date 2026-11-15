@@ -67,9 +67,17 @@ export class CoordinatorElection {
   }
 
   /**
-   * Claims the role for this side's own device at a term above every term seen so far (lastTerm + 1, so a first-ever claim is term 0), and returns the frame to gossip. Throws a RangeError when that term is not one peers accept (isSupersedableTerm), which only happens when the incumbent already sits at the highest term the election accepts. Claiming over a claim this side already holds is a deliberate takeover: it raises the term, which is exactly what a peer recovering the role after losing track of the mesh should do, and what a routine refresh should not (announceCurrent exists for that).
+   * Claims the role for this side's own device at a term above every term seen so far (lastTerm + 1, so a first-ever claim is term 0), and returns the frame to gossip. Throws a RangeError when that term is not one peers accept (isSupersedableTerm), which only happens when the incumbent already sits at the highest term the election accepts, and when capacityHint is not a non-negative safe integer: the wire carries it as an unsigned integer that a peer reading it as a number must hold exactly, so any other value would be dropped as malformed by every peer. Claiming over a claim this side already holds is a deliberate takeover: it raises the term, which is exactly what a peer recovering the role after losing track of the mesh should do, and what a routine refresh should not (announceCurrent exists for that).
    */
   claim(capacityHint?: number): CoordinatorFrame {
+    if (
+      capacityHint !== undefined &&
+      !(Number.isSafeInteger(capacityHint) && capacityHint >= 0)
+    ) {
+      throw new RangeError(
+        `the capacity hint ${String(capacityHint)} is not a non-negative safe integer`,
+      );
+    }
     const lastTerm = this.incumbent?.term ?? -1;
     const term = lastTerm + 1;
     if (!isSupersedableTerm(term)) {

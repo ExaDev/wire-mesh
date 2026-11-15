@@ -49,6 +49,26 @@ describe("CoordinatorElection.claim", () => {
     const election = new CoordinatorElection({ ownDevice: OWN });
     expect(election.claim(CAPACITY_HINT)["capacity-hint"]).toBe(CAPACITY_HINT);
   });
+
+  it.each([
+    ["negative", -1],
+    ["fractional", Math.PI],
+    ["not a number", Number.NaN],
+    ["infinite", Number.POSITIVE_INFINITY],
+    ["above the safe integers", Number.MAX_SAFE_INTEGER + 1],
+  ])("refuses a capacity hint that is %s and claims nothing", (_name, hint) => {
+    const election = new CoordinatorElection({ ownDevice: OWN });
+    expect(() => election.claim(hint)).toThrow(RangeError);
+    expect(election.current()).toBeUndefined();
+  });
+
+  it("accepts the largest safe integer and zero as a capacity hint", () => {
+    const election = new CoordinatorElection({ ownDevice: OWN });
+    expect(election.claim(0)["capacity-hint"]).toBe(0);
+    expect(election.claim(Number.MAX_SAFE_INTEGER)["capacity-hint"]).toBe(
+      Number.MAX_SAFE_INTEGER,
+    );
+  });
 });
 
 describe("CoordinatorElection.evaluate", () => {
