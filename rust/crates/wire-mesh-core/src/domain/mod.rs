@@ -23,7 +23,10 @@ pub use peer_advert::{
     sign_peer_advert, verify_peer_advert, PeerAdvertRejection, PeerAdvertVerdict,
 };
 pub use revocation::{RevocationCheck, RevocationError, RevocationUnavailable, RevocationView};
-pub use room::{compare_room_notices, verify_room_notice, RoomNoticeRejection, RoomNoticeVerdict};
+pub use room::{
+    compare_room_notices, create_room_notice, verify_room_notice, NewRoomNotice,
+    RoomNoticeRejection, RoomNoticeVerdict,
+};
 pub use room_path::{device_id_from_hex, device_id_to_hex, parse_room_path, ParsedRoomPath};
 pub use room_token_verification::{
     verify_room_token, RoomTokenRejection, RoomTokenVerdict, ROOM_MEMBER_CAPABILITY,
