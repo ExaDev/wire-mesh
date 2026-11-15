@@ -14,13 +14,14 @@ use wire_mesh_core::ports::{Clock, Identity};
 use wire_mesh_wire::identity::DeviceId;
 use wire_mesh_wire::tokens::{CapabilityScope, CapabilityVerb, CoseSign1};
 
+use super::mint_notice::{check_notice, notice_case_of, NoticeCase, NoticeExpected};
 use super::obj::{Check, Obj};
 use super::report_first_divergence;
 
 /// The layout of the `mint` section this binary reads.
 const LAYOUT_VERSION: i64 = 1;
 
-struct FixedClock(u64);
+pub(crate) struct FixedClock(pub(crate) u64);
 
 impl Clock for FixedClock {
     fn now_unix_ms(&self) -> u64 {
@@ -85,6 +86,7 @@ struct Section {
     identities: Vec<IdentityRecord>,
     mints: Vec<MintCase>,
     revocations: Vec<RevocationCase>,
+    notices: Vec<NoticeCase>,
     can_grant: Vec<Query>,
     can_grant_via: Vec<Query>,
     /// The number of cases of each list the header says the file holds.
@@ -94,6 +96,7 @@ struct Section {
 struct Counts {
     token_mints: u64,
     revocation_mints: u64,
+    notice_mints: u64,
     can_grant: u64,
     can_grant_via: u64,
 }
@@ -189,6 +192,7 @@ impl Section {
                 self.revocations.len(),
                 self.counts.revocation_mints,
             ),
+            ("notice_mints", self.notices.len(), self.counts.notice_mints),
             ("can_grant", self.can_grant.len(), self.counts.can_grant),
             (
                 "can_grant_via",
@@ -291,6 +295,11 @@ impl Section {
                     Ok(case)
                 })
                 .collect::<Result<_, String>>()?,
+            notices: root
+                .objects("notice_mints")?
+                .into_iter()
+                .map(notice_case_of)
+                .collect::<Result<_, _>>()?,
             can_grant: root
                 .objects("can_grant")?
                 .into_iter()
@@ -306,6 +315,7 @@ impl Section {
                 let parsed = Counts {
                     token_mints: counts.unsigned("token_mints")?,
                     revocation_mints: counts.unsigned("revocation_mints")?,
+                    notice_mints: counts.unsigned("notice_mints")?,
                     can_grant: counts.unsigned("can_grant")?,
                     can_grant_via: counts.unsigned("can_grant_via")?,
                 };
@@ -407,6 +417,23 @@ async fn check_mint(ctx: &Ctx<'_>, case: &MintCase) -> Check {
     }
 }
 
+async fn check_notice_case(ctx: &Ctx<'_>, case: &NoticeCase) -> Check {
+    let poster = ctx.identity(&case.poster)?;
+    // The token's root is the verifier, as a room's owner reading a notice posted to it.
+    let owner = ctx.identity("a")?;
+    check_notice(
+        case,
+        poster,
+        owner,
+        ctx.wire(&case.token_vector)?,
+        match &case.expected {
+            NoticeExpected::Created { vector, .. } => Some(ctx.wire(vector)?),
+            NoticeExpected::Refused(_) => None,
+        },
+    )
+    .await
+}
+
 async fn check_revocation(ctx: &Ctx<'_>, case: &RevocationCase) -> Check {
     let issuer = ctx.identity(&case.issuer)?;
     let entry = mint_revocation_entry(issuer, case.token_id.clone(), case.revoked_at)
@@ -489,6 +516,12 @@ pub async fn check_section(
         results.push((
             format!("mint:revocation:{}", case.name),
             check_revocation(&ctx, case).await,
+        ));
+    }
+    for case in &section.notices {
+        results.push((
+            format!("mint:notice:{}", case.name),
+            check_notice_case(&ctx, case).await,
         ));
     }
     for query in &section.can_grant {

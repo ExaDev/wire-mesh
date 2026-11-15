@@ -86,6 +86,17 @@ impl Obj {
         }
     }
 
+    /// An array of objects field that is `null` when it does not apply.
+    pub(crate) fn optional_objects(&mut self, key: &str) -> Result<Option<Vec<Obj>>, String> {
+        match self.map.get(key) {
+            Some(Value::Null) => {
+                self.take(key)?;
+                Ok(None)
+            }
+            _ => self.objects(key).map(Some),
+        }
+    }
+
     /// A string field that is `null` when it does not apply.
     pub(crate) fn optional_string(&mut self, key: &str) -> Result<Option<String>, String> {
         match self.take(key)? {
