@@ -1,3 +1,9 @@
+## [4.2.9](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.8...wire-mesh-core%404.2.9) (2026-11-15)
+
+### Tests
+
+* **conformance:** pin the typed room and capability verbs in room-params.v1.json ([9b386fd](https://github.com/ExaDev/wire-mesh/commit/9b386fdbf7f6e627db3df6ecd3c55e3ba5eb216b))
+
 ## [4.2.8](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.7...wire-mesh-core%404.2.8) (2026-11-15)
 
 ### Bug Fixes
