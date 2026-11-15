@@ -95,7 +95,8 @@ export async function tracePath(
     options.token,
     options.timeoutMs,
   );
-  const rttMs = options.clock.now() - startedAt;
+  // A clock that stepped backwards between the two readings would give a negative round trip, which no round trip can have.
+  const rttMs = Math.max(0, options.clock.now() - startedAt);
   const local: PathTraceLocal = {
     relayed: options.targetDevice !== undefined,
     ...(options.targetDevice !== undefined &&
