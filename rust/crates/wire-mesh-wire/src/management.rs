@@ -14,6 +14,7 @@ use crate::exec::{
     ExecList, ProcKill, ProcSignal, ProcSpawn, PtyKill, PtyResize, PtySpawn, PtyWrite,
 };
 use crate::identity::{device_id_from, DeviceId, IdentityKey};
+use crate::introspection::{PathTrace, TopologyGet};
 use crate::room_params::{CapabilityRequest, RoomInvite, RoomLeave, RoomRead, RoomSend};
 use crate::strict;
 use crate::threshold::{
@@ -97,6 +98,8 @@ pub enum ManageParams {
     RoomLeave(RoomLeave),
     RoomInvite(RoomInvite),
     CapabilityRequest(CapabilityRequest),
+    PathTrace(PathTrace),
+    TopologyGet(TopologyGet),
     /// An unrecognised command verb: the params map exactly as sent, `* tstr => any`.
     Json(CanonicalMap<String, CborValue>),
 }
@@ -127,6 +130,8 @@ impl ManageParams {
             ManageParams::RoomLeave(_) => RoomLeave::VERB,
             ManageParams::RoomInvite(_) => RoomInvite::VERB,
             ManageParams::CapabilityRequest(_) => CapabilityRequest::VERB,
+            ManageParams::PathTrace(_) => PathTrace::VERB,
+            ManageParams::TopologyGet(_) => TopologyGet::VERB,
             ManageParams::Json(map) => map
                 .get(&"verb".to_owned())
                 .and_then(|v| match v {
@@ -167,6 +172,8 @@ impl Encode<()> for ManageParams {
             ManageParams::RoomLeave(p) => p.encode(e, &mut ()),
             ManageParams::RoomInvite(p) => p.encode(e, &mut ()),
             ManageParams::CapabilityRequest(p) => p.encode(e, &mut ()),
+            ManageParams::PathTrace(p) => p.encode(e, &mut ()),
+            ManageParams::TopologyGet(p) => p.encode(e, &mut ()),
             ManageParams::Json(map) => {
                 e.map(map.len() as u64)?;
                 for (k, v) in map.iter() {
@@ -238,6 +245,8 @@ pub(crate) fn manage_params_from(d: &mut Decoder<'_>) -> Result<ManageParams, De
         CapabilityRequest::VERB => Ok(ManageParams::CapabilityRequest(
             CapabilityRequest::from_map(d)?,
         )),
+        PathTrace::VERB => Ok(ManageParams::PathTrace(PathTrace::from_map(d)?)),
+        TopologyGet::VERB => Ok(ManageParams::TopologyGet(TopologyGet::from_map(d)?)),
         _ => {
             let count = strict::definite_map(d)?;
             let mut map = CanonicalMap::new();

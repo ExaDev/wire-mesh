@@ -9,6 +9,7 @@ pub mod group_key;
 pub mod handshake;
 pub mod identity_key;
 pub mod mint;
+pub mod path_trace;
 pub mod peer_advert;
 pub mod predicates;
 pub mod revocation;
@@ -20,6 +21,7 @@ pub mod secure_channel;
 pub mod session;
 pub mod shard_manifest;
 pub mod tokens;
+pub mod topology;
 
 pub use coordinator_election::{
     is_supersedable_term, ClaimRefusal, CoordinatorClaim, CoordinatorElection, EvaluationOutcome,

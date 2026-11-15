@@ -34,7 +34,9 @@ pub mod exec;
 pub mod frame;
 pub mod handshake;
 pub mod identity;
+pub mod introspection;
 pub mod management;
+pub(crate) mod open_tail;
 pub mod room;
 pub mod room_params;
 pub mod secure_channel;
@@ -48,6 +50,7 @@ pub mod webrtc;
 
 pub use error::{DecodeError, EncodeError};
 pub use frame::{Frame, ValidationError};
+pub use open_tail::Extra;
 
 use minicbor::Decoder;
 
