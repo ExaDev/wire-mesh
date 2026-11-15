@@ -127,8 +127,9 @@ describe("createNodeFsStorage", () => {
 
   describe.each(refusedKeys)("the key %j", (key, refusal) => {
     it(`is refused as ${refusal} by get, set and delete, and nothing is written`, async () => {
-      const dir = await freshDir();
-      const parent = path.dirname(dir);
+      // The store sits in a directory of its own, so the comparison cannot see another test's temporary directories come and go.
+      const parent = await freshDir();
+      const dir = path.join(parent, "store");
       const before = await fs.readdir(parent);
       const storage = createNodeFsStorage({ dir });
       const value = bytesFromHex("01");
