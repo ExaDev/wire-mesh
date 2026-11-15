@@ -1,3 +1,9 @@
+## [4.2.7](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.6...wire-mesh-core%404.2.7) (2026-11-15)
+
+### Bug Fixes
+
+* **core:** refuse storage keys that createNodeFsStorage would rewrite or that leave its directory ([3e9682f](https://github.com/ExaDev/wire-mesh/commit/3e9682f243dfaa914fee1303f78669d85b14691f))
+
 ## [4.2.6](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.5...wire-mesh-core%404.2.6) (2026-11-15)
 
 ### Tests
