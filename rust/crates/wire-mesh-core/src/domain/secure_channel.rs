@@ -536,6 +536,48 @@ pub fn establish_channel(
     pending: PendingHandshake,
     verified: VerifiedHello,
 ) -> Result<SecureChannel, EstablishError> {
+    establish_with(&pending, verified, 0)
+}
+
+/// [`establish_channel`] that leaves `pending` usable, for a side that builds a second channel from the same hello of its own: the peer restarted while this side's hello was in flight, and its new hello answers the same one. Each channel derives its keys from the peer's own ephemeral key and nonce, so the two channels share nothing but this side's half.
+///
+/// # Errors
+///
+/// As [`establish_channel`].
+pub fn establish_channel_shared(
+    pending: &PendingHandshake,
+    verified: VerifiedHello,
+) -> Result<SecureChannel, EstablishError> {
+    establish_with(pending, verified, 0)
+}
+
+/// [`establish_channel_shared`] with the send counter starting at `first_send_counter`, so a test reaches the counter's bound without sealing 2^64 frames.
+///
+/// # Errors
+///
+/// As [`establish_channel`].
+#[cfg(any(test, feature = "conformance"))]
+pub fn establish_channel_at(
+    pending: &PendingHandshake,
+    verified: VerifiedHello,
+    first_send_counter: u64,
+) -> Result<SecureChannel, EstablishError> {
+    establish_with(pending, verified, first_send_counter)
+}
+
+/// Whether `key` is a SEC1 uncompressed P-256 point on the curve, which a channel can be built from. Cheap enough to run before any key of this side's own is generated.
+#[must_use]
+pub fn is_usable_ephemeral_key(key: &[u8]) -> bool {
+    key.len() == EPHEMERAL_KEY_SIZE
+        && key.first() == Some(&UNCOMPRESSED_POINT_TAG)
+        && PublicKey::from_sec1_bytes(key).is_ok()
+}
+
+fn establish_with(
+    pending: &PendingHandshake,
+    verified: VerifiedHello,
+    first_send_counter: u64,
+) -> Result<SecureChannel, EstablishError> {
     if verified.verified_by != pending.local || verified.peer.device_id != pending.peer {
         return Err(EstablishError::PeerMismatch);
     }
@@ -572,7 +614,7 @@ pub fn establish_channel(
         local: pending.local,
         send_key,
         receive_key,
-        next_send: Some(0),
+        next_send: Some(first_send_counter),
         highest_received: None,
     })
 }
