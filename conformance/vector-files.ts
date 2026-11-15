@@ -2,6 +2,7 @@
 
 import { writeFileSync } from "node:fs";
 import type { JsonWire, Vector } from "@exadev/wire-mesh-conformance";
+import { dataSyncFile } from "./data-sync-vectors.ts";
 import { coordinatorElectionFile } from "./coordinator-election-vectors.ts";
 import { invalidFrameVectors } from "./invalid-frame-vectors.ts";
 import { mintFile } from "./mint-vectors.ts";
@@ -24,6 +25,8 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
     "Values outside the grammar of the spec's `.regexp` patterns, for protocol version 1. The control matches the whole string, so a conformant decoder refuses every vector here, at decoding or at validation: a capability verb with two colons, a trailing space or newline or a leading hyphen, a domain with trailing text, a trailing newline or an embedded separator, and the three verb fields of token claims. Each vector is well-formed CBOR in the shape of a valid frame (kind frame) or token-claims map (kind token-claims) with one such value, carries refused: true and the CDDL rule it breaks, and carries valid_control_wire_hex, the same bytes with a value inside the grammar, which every consumer must accept so that a vector cannot be refused for another reason. message and wire_hex follow the shared round-trip contract. The room-path and device-id-hex patterns occur only in the room-notice claims, which the implementations' own schema and parser tests pin.",
   "coordinator-election.v1.json":
     "Coordinator-election vectors for protocol version 1 (coordinator-frame in spec/transport.cddl). The top-level vectors are the claims gossiped, round-tripped like any other file. The `coordinator_election` section holds scenarios, each a side that has made and heard no claim followed by steps (evaluating a frame heard, making a claim, re-announcing the incumbent) with what each returns and the state after it, and the pure rules on their own: which terms a later claim can supersede and the order of device-ids. A strictly higher term wins, an equal term goes to the lowest device-id, a lower term loses, and a term of 2^53 - 1 or over is dropped unevaluated. Device-ids are structural bytes, not hashes of keys. The outcomes are written by hand from the spec, never produced by an implementation.",
+  "data-sync.v1.json":
+    "core/data sync vectors for protocol version 1 (spec/data-domain.cddl). The top-level vectors are the have, request and entries frames the scenarios use, round-tripped like any other file. The `data_sync` section holds scenarios over a key-value store: each starts from a store (key and value in hex) and runs steps (head_seq_for, append_own_entry, handle_data_have, handle_data_request, handle_data_entries, read_entries), each recording what it returns and the whole store after it. The log layout is part of the contract: data/<device-id-hex>/head holds the head as decimal text and data/<device-id-hex>/entry/<seq> one entry, so a store written by one implementation is read by the other. The outcomes are written by hand from the spec, never produced by an implementation. Device-ids are structural bytes, not hashes of keys.",
   "frames.v1.json":
     "Frame conformance vectors for protocol version 1, covering every $frame-variant in spec/frame.cddl except handshake-frame (see handshake.v1.json). manage-response-frame gets two vectors, one per branch of its manage-ok / manage-error outcome union. The four core/webrtc vectors (offer, answer, ice-candidate, end-of-candidates) exercise manage-request-frame's params socket with new content, not a new frame kind; the offer vector is also the first in this file to exercise manage-request-frame's optional token field. The core/room vectors (send with sent-at/content-type/a reply ref, batched read, leave, members, invite carrying its own pushed grant) carry the room:member token from tokens.v1.json's own root grant; the join vector is the first in this file to exercise an ungated manage-request (no token field at all). room-join-ok and room-members-ok are this domain's own named manage-ok variants (a minted grant plus membership, and a plain membership refresh, respectively), not the generic `* tstr => any` tail alone.",
 };
@@ -70,4 +73,6 @@ export function writeVectorFiles(
   write("mint.v1.json", mint.vectors, mint.extra);
   const election = coordinatorElectionFile();
   write("coordinator-election.v1.json", election.vectors, election.extra);
+  const dataSync = dataSyncFile();
+  write("data-sync.v1.json", dataSync.vectors, dataSync.extra);
 }

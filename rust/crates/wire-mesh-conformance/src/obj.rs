@@ -97,6 +97,20 @@ impl Obj {
         }
     }
 
+    /// An array of strings field.
+    pub(crate) fn strings(&mut self, key: &str) -> Result<Vec<String>, String> {
+        match self.take(key)? {
+            Value::Array(items) => items
+                .into_iter()
+                .map(|item| match item {
+                    Value::String(text) => Ok(text),
+                    _ => Err(format!("{}.{key} holds a non-string", self.path)),
+                })
+                .collect(),
+            _ => Err(format!("{}.{key} is not an array", self.path)),
+        }
+    }
+
     /// An object field that is `null` when it does not apply.
     pub(crate) fn optional_object(&mut self, key: &str) -> Result<Option<Obj>, String> {
         match self.take(key)? {
