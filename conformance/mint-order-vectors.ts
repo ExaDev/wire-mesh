@@ -5,6 +5,7 @@
    - CONDITIONS names, for each condition that can produce a refusal reason (each disjunct of each rule), the case that breaks that condition and nothing else. The generator throws when a named case does not exist.
    - Each ordered chain of rules gives one case per neighbouring pair, which breaks both rules and expects the earlier one's reason. A pair whose two rules cannot both be broken in one token is listed in UNPAIRABLE with the reason, and the generator throws when a pair is neither generated nor listed. */
 
+import { cdeDecodeOptions, cdeEncodeOptions, decode, encode } from "cbor2";
 import type { CaseOptions, TokenSeed } from "./mint-vectors.ts";
 
 /** What the order cases need from the generator that holds the rest of the file. */
@@ -77,8 +78,16 @@ export const CONDITIONS: Readonly<Record<string, string>> = {
     "refused_authoriser_with_an_invalid_verb",
   "authorisation_malformed: conditions bytes that do not decode":
     "refused_authorisation_conditions_undecodable",
-  "authorisation_malformed: a condition node of an unsupported kind":
-    "refused_authorisation_conditions_unsupported_node",
+  "authorisation_malformed: a condition node the schema rejects":
+    "refused_authorisation_conditions_malformed_node",
+  "authorisation_malformed: an expression of a kind a verifier does not evaluate, missing a required field":
+    "refused_authorisation_conditions_malformed_expression",
+  "authorisation_malformed: a complex literal with a key beyond its fields (the one strict node)":
+    "refused_authorisation_conditions_strict_complex_literal",
+  "authorisation_conditions_not_satisfied: an expression the schema accepts and a verifier cannot evaluate":
+    "refused_authorisation_conditions_unevaluable_node",
+  "authorisation_conditions_not_satisfied: a predicate the schema accepts and a verifier cannot evaluate":
+    "refused_authorisation_conditions_unevaluable_predicate",
   authorisation_bearer_mismatch: "refused_authorisation_bearer_mismatch",
   "authorisation_capability_mismatch: the authoriser is not manage:grant":
     "refused_authoriser_is_not_manage_grant",
@@ -242,12 +251,127 @@ export function addOrderCases(
   const grantWithUndecodableConditions = ctx.fixture(
     grant("grant_with_undecodable_conditions", { conditionsHex: "ff" }),
   );
-  const unsupportedNode = Buffer.from(
-    "81a1646b696e6466657869737473",
-    "hex",
+  // `exists` without its operand: trilean's schema requires one, so the node is malformed.
+  const malformedNode = Buffer.from(
+    encode([{ kind: "exists" }], cdeEncodeOptions),
   ).toString("hex");
-  const grantWithAnUnsupportedNode = ctx.fixture(
-    grant("grant_with_an_unsupported_node", { conditionsHex: unsupportedNode }),
+  // trilean's node schemas strip a key they do not name (only the two complex literals are strict), so a node with an extra key is read as the node without it: the grant below is the usual bar with an extra key on every node, a mint through it succeeds, and the minted token verifies, which evaluates the grant's conditions with the verifier's decoder. (A token's own conditions cannot be a mint case: the TypeScript minter re-encodes them from the parsed nodes, so the extra key would not reach the bytes.)
+  const withExtraKeys = (node: unknown): unknown => {
+    if (Array.isArray(node)) {
+      return node.map(withExtraKeys);
+    }
+    if (typeof node === "object" && node !== null) {
+      return {
+        ...Object.fromEntries(
+          Object.entries(node).map(([key, value]) => [
+            key,
+            withExtraKeys(value),
+          ]),
+        ),
+        "extension-hint": 1,
+      };
+    }
+
+    return node;
+  };
+  const barWithExtraKeys = Buffer.from(
+    encode(
+      withExtraKeys(
+        decode(Buffer.from(ctx.conditionsFor("b"), "hex"), cdeDecodeOptions),
+      ),
+      cdeEncodeOptions,
+    ),
+  ).toString("hex");
+  const grantWithExtraKeysInItsNodes = ctx.fixture(
+    grant("grant_with_extra_keys_in_its_nodes", {
+      conditionsHex: barWithExtraKeys,
+    }),
+  );
+  ctx.mintCase(
+    authorised(
+      "authorised_by_a_grant_whose_nodes_carry_extra_keys",
+      grantWithExtraKeysInItsNodes,
+    ),
+  );
+  const grantWithAMalformedNode = ctx.fixture(
+    grant("grant_with_a_malformed_node", { conditionsHex: malformedNode }),
+  );
+  // A comparison against a `reference`: trilean's schema accepts it and evaluates it with nothing to resolve the key against, which is indeterminate, so the conditions are not satisfied. An implementation that does not evaluate `reference` must give the same reason, not call the node malformed.
+  const unevaluableNode = Buffer.from(
+    encode(
+      [
+        {
+          kind: "compare",
+          op: "eq",
+          left: { kind: "reference", key: "x" },
+          right: { kind: "booleanLiteral", value: true },
+        },
+      ],
+      cdeEncodeOptions,
+    ),
+  ).toString("hex");
+  const unevaluablePredicate = Buffer.from(
+    encode(
+      [
+        {
+          kind: "allOf",
+          operands: [
+            {
+              kind: "compare",
+              op: "eq",
+              left: { kind: "reference", key: "x" },
+              right: { kind: "booleanLiteral", value: true },
+            },
+          ],
+        },
+      ],
+      cdeEncodeOptions,
+    ),
+  ).toString("hex");
+  const malformedExpression = Buffer.from(
+    encode(
+      [
+        {
+          kind: "compare",
+          op: "eq",
+          left: { kind: "reference" },
+          right: { kind: "booleanLiteral", value: true },
+        },
+      ],
+      cdeEncodeOptions,
+    ),
+  ).toString("hex");
+  // The complex literals are the only strict node schemas: an extra key rejects the node, where every other node strips it.
+  const strictComplex = Buffer.from(
+    encode(
+      [
+        {
+          kind: "compare",
+          op: "eq",
+          left: { kind: "complexLiteral", re: 1, im: 2, "extension-hint": 1 },
+          right: { kind: "booleanLiteral", value: true },
+        },
+      ],
+      cdeEncodeOptions,
+    ),
+  ).toString("hex");
+  const grantWithAStrictComplex = ctx.fixture(
+    grant("grant_with_a_strict_complex_literal", {
+      conditionsHex: strictComplex,
+    }),
+  );
+  const grantWithAnUnevaluablePredicate = ctx.fixture(
+    grant("grant_with_an_unevaluable_predicate", {
+      conditionsHex: unevaluablePredicate,
+    }),
+  );
+  const grantWithAMalformedExpression = ctx.fixture(
+    grant("grant_with_a_malformed_expression", {
+      conditionsHex: malformedExpression,
+    }),
+  );
+  const grantWithAnUnevaluableNode = ctx.fixture(
+    grant("grant_with_an_unevaluable_node", { conditionsHex: unevaluableNode }),
   );
   const grantForAnyVerb = ctx.fixture(
     omit(grant("grant_for_any_verb", {}), "grantsCapability"),
@@ -330,10 +454,38 @@ export function addOrderCases(
   );
   refuse(
     authorised(
-      "refused_authorisation_conditions_unsupported_node",
-      grantWithAnUnsupportedNode,
+      "refused_authorisation_conditions_malformed_node",
+      grantWithAMalformedNode,
     ),
     "authorisation_malformed",
+  );
+  refuse(
+    authorised(
+      "refused_authorisation_conditions_malformed_expression",
+      grantWithAMalformedExpression,
+    ),
+    "authorisation_malformed",
+  );
+  refuse(
+    authorised(
+      "refused_authorisation_conditions_strict_complex_literal",
+      grantWithAStrictComplex,
+    ),
+    "authorisation_malformed",
+  );
+  refuse(
+    authorised(
+      "refused_authorisation_conditions_unevaluable_predicate",
+      grantWithAnUnevaluablePredicate,
+    ),
+    "authorisation_conditions_not_satisfied",
+  );
+  refuse(
+    authorised(
+      "refused_authorisation_conditions_unevaluable_node",
+      grantWithAnUnevaluableNode,
+    ),
+    "authorisation_conditions_not_satisfied",
   );
   refuse(
     authorised("refused_authoriser_is_not_manage_grant", execAuthoriser),
