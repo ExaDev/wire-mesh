@@ -1,3 +1,13 @@
+## [4.2.8](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.7...wire-mesh-core%404.2.8) (2026-11-15)
+
+### Bug Fixes
+
+* **core:** refuse storage keys with a segment that starts like a Windows drive ([94c4767](https://github.com/ExaDev/wire-mesh/commit/94c4767d38dda6ea71be713ad24ff190e9f05783))
+
+### Tests
+
+* **conformance:** pin the file storage layout in file-storage.v1.json ([45440c9](https://github.com/ExaDev/wire-mesh/commit/45440c9d3dc68f0760fb729f3a5a263d9a8435e4))
+
 ## [4.2.7](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.6...wire-mesh-core%404.2.7) (2026-11-15)
 
 ### Bug Fixes
