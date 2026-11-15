@@ -1,3 +1,13 @@
+## [4.2.4](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.3...wire-mesh-core%404.2.4) (2026-11-15)
+
+### Bug Fixes
+
+* **core:** refuse a capacity hint the wire cannot carry when claiming the coordinator role ([3f2f905](https://github.com/ExaDev/wire-mesh/commit/3f2f905882b0eed5999bb251a35f64e13c260331))
+
+### Tests
+
+* **conformance:** pin the coordinator election in coordinator-election.v1.json ([9bf02d4](https://github.com/ExaDev/wire-mesh/commit/9bf02d4b4745bf63a9ec2b35fca821b36b2e5093))
+
 ## [4.2.3](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.2...wire-mesh-core%404.2.3) (2026-11-15)
 
 ### Tests
