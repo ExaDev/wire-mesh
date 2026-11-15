@@ -334,4 +334,61 @@ describe("token-claims.conditions -- the generic predicate-list evaluator", () =
     });
     expect(verdict).toEqual({ ok: false, reason: "conditions_invalid" });
   });
+
+  it("reads a node with a key beyond its fields as the node without it, so a token whose conditions hold still verifies", async () => {
+    // trilean's node schemas strip a key they do not name, so every node below is the condition `true == true` plus an extension key: the token verifies exactly as it does without the key. The Rust verifier does the same (tokens.rs, `a_node_with_a_key_beyond_its_fields_is_read_as_the_node_without_it`).
+    const conditions = encode(
+      [
+        {
+          kind: "compare",
+          op: "eq",
+          left: { kind: "booleanLiteral", value: true, "extension-hint": 1 },
+          right: { kind: "booleanLiteral", value: true, "extension-hint": 1 },
+          "extension-hint": 1,
+        },
+      ],
+      cdeEncodeOptions,
+    );
+    const token = await signTokenWithRawConditions(issuer, conditions, {
+      tokenId: nextTokenId(),
+      scope: workScope,
+      expires: now + HOUR_MS,
+    });
+
+    const verdict = await verifyCapabilityToken(token, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+    expect(verdict.ok).toBe(true);
+  });
+
+  it("still refuses a token whose conditions do not hold when its nodes carry a key beyond their fields", async () => {
+    const conditions = encode(
+      [
+        {
+          kind: "compare",
+          op: "eq",
+          left: { kind: "booleanLiteral", value: true, "extension-hint": 1 },
+          right: { kind: "booleanLiteral", value: false, "extension-hint": 1 },
+        },
+      ],
+      cdeEncodeOptions,
+    );
+    const token = await signTokenWithRawConditions(issuer, conditions, {
+      tokenId: nextTokenId(),
+      scope: workScope,
+      expires: now + HOUR_MS,
+    });
+
+    const verdict = await verifyCapabilityToken(token, {
+      identity: issuer,
+      clock: fixedClock(now),
+      revocation: neverRevoked,
+    });
+    expect(verdict.ok).toBe(false);
+    if (!verdict.ok) {
+      expect(verdict.reason).toBe("conditions_not_satisfied");
+    }
+  });
 });

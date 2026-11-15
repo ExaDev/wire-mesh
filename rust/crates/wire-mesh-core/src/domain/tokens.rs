@@ -961,6 +961,55 @@ mod tests {
         assert!(verdict.is_valid());
     }
 
+    /// The same condition as [`boolean_eq_condition_bytes`] with a key beyond its fields on every node: trilean's node schemas strip such a key, so the TypeScript verifier reads it as the node without it, and so must this one. Keys are in core deterministic order (shortest first, then bytewise).
+    fn boolean_eq_condition_bytes_with_extra_keys(value1: bool, value2: bool) -> Vec<u8> {
+        let mut buf = Vec::new();
+        {
+            let mut e = minicbor::Encoder::new(&mut buf);
+            e.array(1).unwrap();
+            e.map(5).unwrap();
+            e.str("op").unwrap().str("eq").unwrap();
+            e.str("kind").unwrap().str("compare").unwrap();
+            e.str("left").unwrap();
+            e.map(3).unwrap();
+            e.str("kind").unwrap().str("booleanLiteral").unwrap();
+            e.str("value").unwrap().bool(value1).unwrap();
+            e.str("extension-hint").unwrap().u8(1).unwrap();
+            e.str("right").unwrap();
+            e.map(3).unwrap();
+            e.str("kind").unwrap().str("booleanLiteral").unwrap();
+            e.str("value").unwrap().bool(value2).unwrap();
+            e.str("extension-hint").unwrap().u8(1).unwrap();
+            e.str("extension-hint").unwrap().u8(1).unwrap();
+        }
+        buf
+    }
+
+    #[tokio::test]
+    async fn a_node_with_a_key_beyond_its_fields_is_read_as_the_node_without_it() {
+        let issuer = NodeIdentity::generate_ed25519();
+        let mut holds = claims_for(&issuer, DeviceId([0xAA; 32]));
+        holds.conditions = Some(boolean_eq_condition_bytes_with_extra_keys(true, true));
+        assert!(verify(
+            &issuer,
+            &RevocationView::new(),
+            &mint(&issuer, &holds).await
+        )
+        .await
+        .is_valid());
+        let mut fails = claims_for(&issuer, DeviceId([0xAA; 32]));
+        fails.conditions = Some(boolean_eq_condition_bytes_with_extra_keys(true, false));
+        assert!(matches!(
+            verify(
+                &issuer,
+                &RevocationView::new(),
+                &mint(&issuer, &fails).await
+            )
+            .await,
+            TokenVerdict::Invalid(TokenRejection::ConditionsNotSatisfied { .. })
+        ));
+    }
+
     #[tokio::test]
     async fn a_condition_that_does_not_hold_is_refused() {
         let issuer = NodeIdentity::generate_ed25519();
