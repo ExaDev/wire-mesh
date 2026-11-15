@@ -49,6 +49,7 @@ import {
   LAYOUT_VERSION,
 } from "./secure-channel-references.ts";
 import { SEALED_INVALID_FRAMES } from "./invalid-frame-vectors.ts";
+import { relayScenarios } from "./relay-scenario-vectors.ts";
 
 // An algorithm no verifier implements
 const UNKNOWN_ALG = -999;
@@ -869,9 +870,13 @@ export function secureChannelFile(frameVectors: readonly Vector[]): {
     ...establishVerdicts.map((v) => jsonField(v, "hello_vector")),
   ]);
 
+  const relay = relayScenarios();
+  vectors.push(...relay.vectors);
+
   return {
     vectors,
     extra: {
+      handshake_scenarios: relay.section,
       secure_channel: {
         layout_version: LAYOUT_VERSION,
         identities: identityJson,
