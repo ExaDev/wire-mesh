@@ -583,6 +583,12 @@ impl RelayChannels {
         next
     }
 
+    /// How many fault sources the reporter holds a window for.
+    #[cfg(test)]
+    pub(crate) fn tracked_fault_sources(&self) -> usize {
+        self.lock().reporter.tracked_sources()
+    }
+
     fn establish(
         &self,
         pending: &PendingHandshake,

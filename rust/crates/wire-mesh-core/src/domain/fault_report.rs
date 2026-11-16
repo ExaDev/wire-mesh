@@ -188,6 +188,12 @@ impl<T> FaultReporter<T> {
         out
     }
 
+    /// How many sources have a window held now.
+    #[must_use]
+    pub fn tracked_sources(&self) -> usize {
+        self.windows.len()
+    }
+
     /// When the earliest held report is due, as a time on the same clock as `report` and `due`, or `None` when nothing is held. A timer set to this time and answered with [`due`](FaultReporter::due) delivers every held report at the end of its interval.
     #[must_use]
     pub fn next_due(&self) -> Option<u64> {
