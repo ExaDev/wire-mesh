@@ -258,13 +258,14 @@ impl RelayClient {
         match frame {
             Frame::RelayInbound(inbound) => {
                 let dropped = self.pairings().add_inbound(inbound.source_device);
-                if let Some(oldest) = dropped {
+                if dropped.is_some() {
                     // A hub names more devices than this connection remembers: the oldest announced pairing is forgotten (a later request to it sends one more, idempotent, relay-connect) and the owner is told.
+                    // Reported with no peer, so every displacement shares one fault source: a flood of displacing frames then costs one report an interval and one tracked source, and cannot crowd the sources of real faults out of the reporter.
                     self.channels.report_fault(
                         &CoreError::Transport(format!(
                             "a relay-inbound displaced the oldest of the {MAX_INBOUND_PAIRINGS} pairings a hub announced"
                         )),
-                        Some(oldest),
+                        None,
                     );
                 }
                 Vec::new()
@@ -933,5 +934,67 @@ mod tests {
         // Announced pairings neither count against it nor are displaced by it.
         assert_eq!(table.add_inbound(device_number(1_000_000)), None);
         assert_eq!(table.own.len(), MAX_OWN_PAIRINGS);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_flood_of_displacing_announcements_is_one_fault_source_and_leaves_real_sources_alone()
+    {
+        let clock = Arc::new(ManualClock(AtomicU64::new(0)));
+        let identity = Arc::new(NodeIdentity::generate_ed25519());
+        let wire = Arc::new(Wire::default());
+        let link: Arc<dyn HubLink> = wire.clone();
+        type Told = Arc<Mutex<Vec<(Option<DeviceId>, u64)>>>;
+        let told: Told = Arc::default();
+        let sink = Arc::clone(&told);
+        let channels = Arc::new(RelayChannels::new(
+            identity,
+            RelayClient::hello_sender(link.clone()),
+            clock.clone(),
+            RelayOptions {
+                on_fault: Some(Arc::new(move |report| {
+                    sink.lock()
+                        .expect("lock")
+                        .push((report.fault.peer, report.suppressed));
+                })),
+                ..RelayOptions::default()
+            },
+        ));
+        let client = RelayClient::new(link, Arc::clone(&channels));
+        // A real source: one delivered fault and two held ones.
+        let real = device_number(7_000_000);
+        for _ in 0..3 {
+            channels.report_fault(&CoreError::Transport("a real fault".to_owned()), Some(real));
+        }
+        assert_eq!(channels.tracked_fault_sources(), 1);
+        // Fill the announced table, then flood it with frames that each displace one.
+        for n in 0..MAX_INBOUND_PAIRINGS {
+            client.on_frame(&inbound(device_number(n))).await;
+        }
+        for n in 0..10_000 {
+            client
+                .on_frame(&inbound(device_number(MAX_INBOUND_PAIRINGS + n)))
+                .await;
+        }
+        // The flood is one more source, not ten thousand, and the real one is still held.
+        assert_eq!(channels.tracked_fault_sources(), 2);
+        // Within the interval the flood reached the owner once.
+        assert_eq!(
+            told.lock()
+                .expect("lock")
+                .iter()
+                .filter(|(peer, _)| peer.is_none())
+                .count(),
+            1
+        );
+        // When the interval ends the real source's held faults are told with their count.
+        clock.0.fetch_add(
+            crate::domain::fault_report::FAULT_REPORT_INTERVAL_MS,
+            Ordering::SeqCst,
+        );
+        channels.deliver_due_faults();
+        let reports = told.lock().expect("lock").clone();
+        // Each report carries the last held fault and counts the others: two held for the real source, 9,999 for the flood.
+        assert!(reports.contains(&(Some(real), 1)), "{reports:?}");
+        assert!(reports.contains(&(None, 9_998)), "{reports:?}");
     }
 }
