@@ -1,3 +1,9 @@
+## [4.2.13](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.12...wire-mesh-core%404.2.13) (2026-11-16)
+
+### Tests
+
+* **core:** run the Rust relay client against the TypeScript hub ([82ce548](https://github.com/ExaDev/wire-mesh/commit/82ce548e2a378b01723ef493aa700fe18413d716))
+
 ## [4.2.12](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.11...wire-mesh-core%404.2.12) (2026-11-15)
 
 ### Tests

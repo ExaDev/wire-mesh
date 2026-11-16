@@ -1,3 +1,11 @@
+## [3.6.30](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.6.29...wire-mesh%403.6.30) (2026-11-16)
+
+
+### Dependencies
+
+- Updated wire-mesh-core to 4.2.13
+- Updated @exadev/wire-mesh-web-console to 2.18.19
+
 ## [3.6.29](https://github.com/ExaDev/wire-mesh/compare/wire-mesh%403.6.28...wire-mesh%403.6.29) (2026-11-15)
 
 
