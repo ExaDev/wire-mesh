@@ -2,6 +2,7 @@
 
 import { writeFileSync } from "node:fs";
 import type { JsonWire, Vector } from "@exadev/wire-mesh-conformance";
+import { gossipDirectoryFile } from "./gossip-directory-vectors.ts";
 import { introspectionFile } from "./introspection-vectors.ts";
 import { roomParamsFile } from "./room-params-vectors.ts";
 import { fileStorageFile } from "./file-storage-vectors.ts";
@@ -34,6 +35,8 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
     "File-backed key-value storage vectors for protocol version 1: the layout both implementations' file storage shares. There are no wire vectors. The `file_storage` section holds `key_layout`, which gives for each key the path of the file that holds it or the reason the layout refuses it (an empty key, a NUL, a backslash, a leading slash, an empty, `.` or `..` segment), and `scenarios`, which start from a directory (every file under it as a `/`-joined path with its content in hex), run operations on a storage over a copy of it, and record what each returns and the whole directory after it. A value is the whole content of its file, nothing added. The outcomes are written by hand from the layout, never produced by an implementation.",
   "room-params.v1.json":
     "Typed core/room and capability vectors for protocol version 1 (spec/room.cddl, spec/management.cddl). The top-level vectors are manage-request and manage-response frames carrying room.send, room.read, room.leave, room.invite and capability.request params and room-join-ok, room-members-ok and capability-grant-ok outcomes, round-tripped like any other file. The `room_params` section gives, for each frame, the shape a typed decoder must read it as and the value of every field and the keys of its open tail; a list of frames each breaking one rule of a shape, which a typed decoder must refuse, each naming the valid vector it varies; and the cases of the room-path and hex helpers. Every outcome is written by hand from the spec, never produced by an implementation. Device-ids and tokens are structural bytes.",
+  "gossip-directory.v1.json":
+    "Gossip directory vectors for protocol version 1 (gossip-frame in spec/transport.cddl, peer-advert in spec/transport.cddl). The top-level vectors are the gossip frames the scenarios deliver, round-tripped like any other file. The `gossip_directory` section holds `identities` (the fixed Ed25519 keys every advert is signed with), `extension_validation` (the key bags a gossip update may carry, each accepted or refused for one named reason), `directory_scenarios` (frames delivered in order, each step recording what became of every advert and the directory held afterwards, as devices and snapshot times in first-heard order; a scenario with `rust_only` pins a bound only the Rust session applies) and `self_adverts` (the advert a session sends: its device, time, extension keys and topology, whose signature a consumer verifies). Every list's size is in `counts`.",
   "introspection.v1.json":
     "core/management introspection vectors for protocol version 1 (spec/management.cddl): path:trace and topology.get. The top-level vectors are the manage-request and manage-response frames the cases use and gossip frames each holding one peer-advert, round-tripped like any other file. The `introspection` section gives, for each frame, the shape a typed decoder must read it as and every field; frames each breaking one rule of a shape, which a typed decoder must refuse; the answer built for a path.trace; traces run against a scripted peer and clock; the topology read from an advert's `topology/peers` extension; the graph assembled from a directory; and topology.get run against a scripted peer. Every outcome is written by hand from the spec, never produced by an implementation. Device-ids, keys and signatures are structural bytes and the adverts are not verified.",
   "frames.v1.json":
@@ -90,4 +93,10 @@ export function writeVectorFiles(
   write("room-params.v1.json", roomParams.vectors, roomParams.extra);
   const introspection = introspectionFile();
   write("introspection.v1.json", introspection.vectors, introspection.extra);
+  const gossipDirectory = gossipDirectoryFile();
+  write(
+    "gossip-directory.v1.json",
+    gossipDirectory.vectors,
+    gossipDirectory.extra,
+  );
 }

@@ -12,6 +12,10 @@ const SHARED_KEYS = ["protocol_version", "description", "vectors"];
 const SIDECAR_SECTIONS: Readonly<
   Record<string, Readonly<Record<string, string>>>
 > = {
+  "gossip-directory.v1.json": {
+    gossip_directory:
+      "ts/packages/core/test/conformance-gossip-directory.unit.test.ts",
+  },
   "introspection.v1.json": {
     introspection:
       "ts/packages/core/test/conformance-introspection.unit.test.ts",

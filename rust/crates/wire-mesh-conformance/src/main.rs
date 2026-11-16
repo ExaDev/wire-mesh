@@ -48,6 +48,7 @@ use wire_mesh_wire::{decode_frame, encode_frame, minicbor, DecodeError};
 mod coordinator_election;
 mod data_sync;
 mod file_storage;
+mod gossip_directory;
 mod introspection;
 mod mint;
 mod mint_notice;
@@ -57,7 +58,7 @@ mod room_params;
 mod secure_channel;
 
 /// The vector files this binary checks, each with the top-level keys it reads.
-const CONSUMED: [&str; 12] = [
+const CONSUMED: [&str; 13] = [
     "frames.v1.json",
     "handshake.v1.json",
     "tokens.v1.json",
@@ -70,6 +71,7 @@ const CONSUMED: [&str; 12] = [
     FILE_STORAGE_FILE,
     ROOM_PARAMS_FILE,
     INTROSPECTION_FILE,
+    GOSSIP_DIRECTORY_FILE,
 ];
 
 /// The vector file whose `secure_channel` section [`secure_channel`] checks.
@@ -93,6 +95,9 @@ const FILE_STORAGE_FILE: &str = "file-storage.v1.json";
 /// The vector file whose `room_params` section [`room_params`] checks.
 const ROOM_PARAMS_FILE: &str = "room-params.v1.json";
 
+/// The vector file whose `gossip_directory` section [`gossip_directory`] checks.
+const GOSSIP_DIRECTORY_FILE: &str = "gossip-directory.v1.json";
+
 /// The vector file whose `introspection` section [`introspection`] checks.
 const INTROSPECTION_FILE: &str = "introspection.v1.json";
 
@@ -100,7 +105,7 @@ const INTROSPECTION_FILE: &str = "introspection.v1.json";
 const CONSUMED_KEYS: [&str; 3] = ["protocol_version", "description", "vectors"];
 
 /// The top-level section a file carries besides the shared keys, with the file that carries it.
-const SECTIONS: [(&str, &str); 8] = [
+const SECTIONS: [(&str, &str); 9] = [
     (SECURE_CHANNEL_FILE, "secure_channel"),
     (SECURE_CHANNEL_FILE, "handshake_scenarios"),
     (MINT_FILE, "mint"),
@@ -108,6 +113,7 @@ const SECTIONS: [(&str, &str); 8] = [
     (DATA_SYNC_FILE, "data_sync"),
     (FILE_STORAGE_FILE, "file_storage"),
     (ROOM_PARAMS_FILE, "room_params"),
+    (GOSSIP_DIRECTORY_FILE, "gossip_directory"),
     (INTROSPECTION_FILE, "introspection"),
 ];
 
@@ -250,6 +256,9 @@ async fn main() {
                 (DATA_SYNC_FILE, _) => data_sync::check_section(section, &wires).await,
                 (FILE_STORAGE_FILE, _) => file_storage::check_section(section).await,
                 (ROOM_PARAMS_FILE, _) => room_params::check_section(section, &wires),
+                (GOSSIP_DIRECTORY_FILE, _) => {
+                    gossip_directory::check_section(section, &wires).await
+                }
                 (INTROSPECTION_FILE, _) => introspection::check_section(section, &wires).await,
                 (_, RELAY_SCENARIOS_SECTION) => {
                     relay_scenarios::check_section(section, &wires).await
@@ -385,8 +394,14 @@ async fn check_vector(file: &str, vector: Vector, verifier: &NodeIdentity) -> Re
     let expected = decode_hex(&vector.wire_hex)?;
     // Primary loop: typed decode -> validate -> re-encode -> byte-exact.
     match file {
-        "frames.v1.json" | "handshake.v1.json" | ELECTION_FILE | DATA_SYNC_FILE
-        | FILE_STORAGE_FILE | ROOM_PARAMS_FILE | INTROSPECTION_FILE => {
+        "frames.v1.json"
+        | "handshake.v1.json"
+        | ELECTION_FILE
+        | DATA_SYNC_FILE
+        | FILE_STORAGE_FILE
+        | ROOM_PARAMS_FILE
+        | INTROSPECTION_FILE
+        | GOSSIP_DIRECTORY_FILE => {
             let frame = decode_frame(&expected).map_err(|e| format!("typed decode failed: {e}"))?;
             frame
                 .validate()
