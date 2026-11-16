@@ -29,7 +29,7 @@ Anyone. The hub is deliberately open: any client can connect and read every devi
 
 ## What is real versus deferred
 
-Real and tested: the WebSocket connection adapter (hostile-input behaviour included), the Web Crypto identity adapter with cross-adapter signature interop, the relay pairing logic, and eviction survival, which `test/hibernation.integration.test.ts` exercises by building a second hub over the same sockets and attachments the runtime would preserve. The full entry path is verified against the real workerd runtime too, not just bundling: `pnpm dev` plus `node scripts/live-check.mjs` drives two genuine WebSocket clients through gossip → relay-connect → relay-inbound → bidirectional relay-data and asserts every hop, exiting non-zero and naming the failing step if the runtime ever regresses to the hang-cancellation behaviour. `node scripts/idle-relay-live-check.mjs` covers the case that one cannot, a pairing left quiet long enough to be evicted before it is used again; run it against a real deployment rather than `wrangler dev`, since local workerd does not evict on production's schedule. The announcer role is served from Durable Object storage within fixed limits (`src/mailbox-limits.ts`), the `/health` answer reports `relay` and `announcer`, and the `Deploy hub` workflow deploys the Worker with the console as its static assets on every push to main and then checks that it answers.
+Real and tested: the WebSocket connection adapter (hostile-input behaviour included), the Web Crypto identity adapter with cross-adapter signature interop, the relay pairing logic, and eviction survival, which `test/hibernation.integration.test.ts` exercises by building a second hub over the same sockets and attachments the runtime would preserve. The full entry path is verified against the real workerd runtime too, not just bundling: `pnpm dev` plus `node scripts/live-check.mjs` drives two genuine WebSocket clients through gossip → relay-connect → relay-inbound → bidirectional relay-data and asserts every hop, exiting non-zero and naming the failing step if the runtime ever regresses to the hang-cancellation behaviour. `node scripts/idle-relay-live-check.mjs` covers the case that one cannot, a pairing left quiet long enough to be evicted before it is used again; run it against a real deployment rather than `wrangler dev`, since local workerd does not evict on production's schedule. The announcer role is served from Durable Object storage within fixed limits (`src/mailbox-limits.ts`), the `/health` answer reports `relay` and `announcer`, and the `Deploy hub` workflow deploys the Worker with the console as its static assets on every push to main as a staged rollout (below) and then checks that it answers.
 
 Deferred deliberately:
 
@@ -39,3 +39,17 @@ Deferred deliberately:
 ## Type environment
 
 `src/` is pure Worker code and typechecks against `@cloudflare/workers-types` alone. The tests run in Node under vitest but import that src, so the test tsconfig loads both type packages — under which the `Buffer` global's overloads resolve as `any` for eslint, which is why the test helpers construct bytes from hex with a plain loop instead of `Buffer.from(hex, "hex")`.
+
+## Staged rollout
+
+The `Deploy hub` workflow runs `rollout/cli.ts`, whose decisions live in `rollout/rollout.ts` and are unit-tested in `test/rollout.unit.test.ts` against a simulated deployment. The previous version serves throughout:
+
+1. `wrangler versions upload` creates the new version with no traffic.
+2. `wrangler versions deploy` puts it in the deployment at 0% beside the previous version at 100%. `/health` is then requested with a `Cloudflare-Workers-Version-Overrides` header naming the new version, and must answer `ok` with that version's id (`/health` reports the id from the `version_metadata` binding, so an override that was ignored cannot pass as a healthy new version).
+3. The deployment becomes 90% previous, 10% new (`--canary-percentage`), checked again by override and by unpinned requests.
+4. The new version is deployed at 100% and checked until unpinned requests report it.
+5. A failed check at any point, or a failed `versions deploy`, deploys the previous version at 100% again and checks that it answers. A failed restore is reported as its own error.
+
+A run refuses to start over a deployment that is not a single version at 100%, which is what a cancelled run during the canary step leaves; put the intended version back with `wrangler rollback` first.
+
+Gradual deployments split by version, but a Durable Object runs one version at a time. The hub is one named Durable Object instance, so the canary share decides, once per deployment, whether that instance runs the new code at all: step 3 exercises the new Worker routing in front of a Durable Object that is on either version, and step 4 resets the instance onto the new code, which drops its WebSockets for clients to reconnect (the Worker's `/health` is answered without the Durable Object). A change to a Durable Object class's lifecycle (a `migrations` entry) cannot be uploaded as a version at all; run the workflow by hand with `mode: direct` for it. The first run after a hub that predates the `version_metadata` binding picks `direct` by itself.

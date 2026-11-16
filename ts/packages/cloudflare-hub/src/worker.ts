@@ -10,15 +10,25 @@ import { durableObjectStorage } from "./adapters/durable-object-storage.js";
 import { createHibernatingRelayHub } from "./hibernating-hub.js";
 import { mailboxLimits } from "./mailbox-limits.js";
 
-export function healthResponse(): Response {
+/** The health answer. `version` is the id of the Worker version that produced it, so a rollout can tell which version answered a request that a version override or a traffic split routed. */
+export function healthResponse(version: string): Response {
   return Response.json({
     ok: true,
     node: "wire-mesh-cloudflare-hub",
     roles: ["relay", "announcer"],
+    version,
   });
 }
 
-export class RelayHubDurableObject extends DurableObject<unknown> {
+interface Env {
+  HUB: DurableObjectNamespace<RelayHubDurableObject>;
+  // web-console's built output (wrangler.toml's [assets] binding, ExaDev/wire-mesh#183); see wrangler.toml for why run_worker_first is scoped to exactly the two paths below rather than every request.
+  ASSETS: Fetcher;
+  // The running Worker version's id and tag (wrangler.toml's [version_metadata] binding).
+  CF_VERSION_METADATA: WorkerVersionMetadata;
+}
+
+export class RelayHubDurableObject extends DurableObject<Env> {
   // The sockets are read through a callback rather than captured once: on a wake this instance is constructed before the runtime hands it the message that woke it, and getWebSockets() is what tells it which sockets it inherited.
   private readonly hub = createHibernatingRelayHub(
     () => this.ctx.getWebSockets(),
@@ -31,7 +41,7 @@ export class RelayHubDurableObject extends DurableObject<unknown> {
   fetch(request: Request): Response {
     if (request.headers.get("Upgrade") !== "websocket") {
       // The Worker router already answers non-WebSocket requests itself; this covers only a malformed upgrade routed here anyway.
-      return healthResponse();
+      return healthResponse(this.env.CF_VERSION_METADATA.id);
     }
     const pair = new WebSocketPair();
     // Hibernation accept: the runtime owns delivery (webSocketMessage below) and the socket survives eviction, unlike classic accept.
@@ -57,12 +67,6 @@ export class RelayHubDurableObject extends DurableObject<unknown> {
   }
 }
 
-interface Env {
-  HUB: DurableObjectNamespace<RelayHubDurableObject>;
-  // web-console's built output (wrangler.toml's [assets] binding, ExaDev/wire-mesh#183); see wrangler.toml for why run_worker_first is scoped to exactly the two paths below rather than every request.
-  ASSETS: Fetcher;
-}
-
 const HUB_INSTANCE_NAME = "relay-hub";
 
 export default {
@@ -74,7 +78,7 @@ export default {
     }
     const { pathname } = new URL(request.url);
     if (pathname === "/health") {
-      return healthResponse();
+      return healthResponse(env.CF_VERSION_METADATA.id);
     }
 
     return env.ASSETS.fetch(request);
