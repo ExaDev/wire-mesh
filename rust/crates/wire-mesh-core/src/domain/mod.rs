@@ -6,6 +6,8 @@ pub mod data_sync;
 pub mod erasure_coding;
 pub mod fault_report;
 pub mod fs_layout;
+pub mod gossip_directory;
+pub mod gossip_extensions;
 pub mod group_key;
 pub mod handshake;
 pub mod identity_key;
@@ -20,6 +22,7 @@ pub mod room;
 pub mod room_path;
 pub mod room_token_verification;
 pub mod secure_channel;
+pub mod self_advert;
 #[cfg(feature = "net")]
 pub mod session;
 pub mod shard_manifest;

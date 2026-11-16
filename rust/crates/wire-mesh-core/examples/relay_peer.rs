@@ -3,6 +3,7 @@
 //! ```text
 //! relay_peer <hub host:port> request <target device hex> <repeat> <timeout ms>
 //! relay_peer <hub host:port> serve
+//! relay_peer <hub host:port> gossip
 //! ```
 //!
 //! Lines: `DEVICE <hex>` (this node's device-id, first), `RESULT <outcome>` (one per request: `ok`, `timeout` or `error <code>`), `HANDLED <verb>` (a request reached a handler) and `DATA <from hex>` (a core/data frame arrived through a relay).
@@ -11,18 +12,33 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use wire_mesh_core::adapters::{MonotonicClock, NodeIdentity, TcpTransport};
+
 use wire_mesh_core::domain::peer_advert::sign_peer_advert;
 use wire_mesh_core::domain::relay_channels::{RelayChannels, RelayOptions};
 use wire_mesh_core::domain::relay_client::{HubLink, RelayClient};
 use wire_mesh_core::domain::session::{
-    HandlerRegistry, IncomingManageRequest, ManageRequestHandler, Session, SessionEvent,
+    GossipConfig, HandlerRegistry, IncomingManageRequest, ManageRequestHandler, Session,
+    SessionEvent, SessionOptions, HANDSHAKE_TIMEOUT,
 };
-use wire_mesh_core::ports::{Identity, Transport};
+use wire_mesh_core::ports::{Clock, Identity, Transport};
 use wire_mesh_wire::identity::DeviceId;
 use wire_mesh_wire::management::{ManageCommand, ManageOk, ManageOutcome, ManageParams};
 use wire_mesh_wire::tokens::{CapabilityScope, CapabilityVerb};
 use wire_mesh_wire::transport::PeerAdvert;
 use wire_mesh_wire::value::{CanonicalMap, CborValue};
+
+/// The wall clock, which a gossip advert's snapshot time is read from.
+struct SystemClock;
+
+impl Clock for SystemClock {
+    fn now_unix_ms(&self) -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| {
+                u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
+            })
+    }
+}
 
 struct Reporting;
 
@@ -88,31 +104,49 @@ async fn main() -> Result<(), String> {
         .map_err(|error| error.to_string())?;
     let registry = HandlerRegistry::new().register("relay:echo", Arc::new(Reporting));
     let signer = Arc::clone(&identity);
-    let (session, mut events) = Session::accept_relayed(
+    // The session announces itself in gossip mode, so the hub learns this node from the session's own advert; the other modes announce by hand.
+    let gossiping = mode == "gossip";
+    let mut options = SessionOptions::new().relayed(move |link: Arc<dyn HubLink>| {
+        let channels = Arc::new(RelayChannels::new(
+            signer,
+            RelayClient::hello_sender(Arc::clone(&link)),
+            Arc::new(MonotonicClock::new()),
+            RelayOptions::default(),
+        ));
+        Arc::new(RelayClient::new(link, channels))
+    });
+    if gossiping {
+        options = options.gossiping(GossipConfig {
+            identity: Arc::clone(&identity) as Arc<dyn Identity>,
+            clock: Arc::new(SystemClock),
+            addresses: Vec::new(),
+            accepted: false,
+            handshake_timeout: HANDSHAKE_TIMEOUT,
+        });
+    }
+    let (session, mut events) = Session::accept_with(
         connection,
         ["core/management".to_owned()],
         registry,
-        move |link: Arc<dyn HubLink>| {
-            let channels = Arc::new(RelayChannels::new(
-                signer,
-                RelayClient::hello_sender(Arc::clone(&link)),
-                Arc::new(MonotonicClock::new()),
-                RelayOptions::default(),
-            ));
-            Arc::new(RelayClient::new(link, channels))
-        },
+        options,
     )
     .await
     .map_err(|error| error.to_string())?;
-    session
-        .announce(advert(&identity).await?)
-        .await
-        .map_err(|error| error.to_string())?;
+    if !gossiping {
+        session
+            .announce(advert(&identity).await?)
+            .await
+            .map_err(|error| error.to_string())?;
+    }
     println!("ANNOUNCED");
     tokio::spawn(async move {
         while let Some(event) = events.recv().await {
-            if let SessionEvent::RelayedData { from, .. } = event {
-                println!("DATA {}", hex(&from.0));
+            match event {
+                SessionEvent::RelayedData { from, .. } => println!("DATA {}", hex(&from.0)),
+                SessionEvent::DirectoryChanged { device } => {
+                    println!("DIRECTORY {}", hex(&device.0));
+                }
+                _ => {}
             }
         }
     });
@@ -160,7 +194,7 @@ async fn main() -> Result<(), String> {
                 }
             }
         }
-        ("serve", []) => {}
+        ("serve" | "gossip", []) => {}
         _ => return Err("unknown mode or arguments".to_owned()),
     }
     // Ends when standard input closes, so the test decides how long this node stays on the hub.

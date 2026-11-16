@@ -19,7 +19,7 @@ import {
 import { createTcpTransport } from "../src/adapters/tcp-transport.js";
 import { deviceIdToHex } from "../src/domain/device-id.js";
 import { createMeshSession } from "../src/domain/mesh-session.js";
-import { signPeerAdvert } from "../src/domain/peer-advert.js";
+import { signPeerAdvert, verifyPeerAdvert } from "../src/domain/peer-advert.js";
 import { createRelayHub } from "../src/domain/relay-hub.js";
 import {
   beginHandshake,
@@ -39,6 +39,10 @@ import { generateEd25519Identity } from "./tokens-fixtures.js";
 
 const RUST_DIR = fileURLToPath(new URL("../../../../rust", import.meta.url));
 const BUILD_TIMEOUT_MS = 900_000;
+const BYTES_PER_KIB = 1024;
+const BUILD_OUTPUT_LIMIT_MIB = 64;
+const BUILD_OUTPUT_LIMIT_BYTES =
+  BUILD_OUTPUT_LIMIT_MIB * BYTES_PER_KIB * BYTES_PER_KIB;
 const CASE_TIMEOUT_MS = 60_000;
 const POLL_MS = 20;
 const SETTLE_MS = 400;
@@ -111,6 +115,9 @@ async function startHub(options: HubOptions = {}): Promise<{
 /** Where the built example is, set once by the build before any case runs: the cases start this binary directly, so stopping a case stops the example itself and a case does not pay for cargo. */
 let exampleBinary = "";
 
+/** The most recently started hub address and Rust node, for the one test that checks a failed start-up leaves nothing behind. */
+let lastStarted: { pid: number | undefined; address: string } | undefined;
+
 /** The Rust example, started and read line by line. */
 class RustPeer {
   private readonly child: ChildProcess;
@@ -121,6 +128,7 @@ class RustPeer {
     this.child = spawn(exampleBinary, [...args], {
       stdio: ["pipe", "pipe", "inherit"],
     });
+    lastStarted = { pid: this.child.pid, address: args[0] ?? "" };
     if (this.child.stdout === null) {
       throw new Error("the Rust peer has no standard output");
     }
@@ -151,6 +159,10 @@ class RustPeer {
 
   async device(): Promise<DeviceId> {
     return bytesFromHex(await this.line("DEVICE "));
+  }
+
+  get pid(): number | undefined {
+    return this.child.pid;
   }
 
   stop(): void {
@@ -372,7 +384,13 @@ describeRust("the Rust relay client against the TypeScript hub", () => {
         "relay_peer",
         "--message-format=json-render-diagnostics",
       ],
-      { cwd: RUST_DIR, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] },
+      {
+        cwd: RUST_DIR,
+        encoding: "utf8",
+        // The build prints one JSON line per artefact; the default limit (1 MiB) is easily passed by a workspace this size, and the call fails when it is.
+        maxBuffer: BUILD_OUTPUT_LIMIT_BYTES,
+        stdio: ["ignore", "pipe", "inherit"],
+      },
     );
     if (built.status !== 0) {
       throw new Error("the relay_peer example did not build");
@@ -437,6 +455,42 @@ describeRust("the Rust relay client against the TypeScript hub", () => {
             "relay:echo",
           );
         }
+      } finally {
+        rust.stop();
+        await far.close();
+        await hub.close();
+      }
+    },
+    CASE_TIMEOUT_MS,
+  );
+
+  it(
+    "learns a TypeScript peer from the hub's gossip and is learnt in turn, its advert verifying and naming its version",
+    async () => {
+      const hub = await startHub();
+      const far = await answeringSession(hub);
+      const rust = new RustPeer([hub.address, "gossip"]);
+      try {
+        expect(await rust.line("DIRECTORY ")).toBe(deviceIdToHex(far.device));
+        const rustDevice = deviceIdToHex(await rust.device());
+        const sent = await vi.waitFor(
+          () => {
+            const advert = hub.observed.frames
+              .flatMap((entry) =>
+                entry.frame.type === "gossip" ? entry.frame.peers : [],
+              )
+              .find((peer) => deviceIdToHex(peer.device) === rustDevice);
+            if (advert === undefined) {
+              throw new Error("the hub has not seen the Rust node's advert");
+            }
+
+            return advert;
+          },
+          { interval: POLL_MS, timeout: CASE_TIMEOUT_MS },
+        );
+        const verifier = await generateEd25519Identity();
+        expect(await verifyPeerAdvert(verifier, sent)).toBe(true);
+        expect(typeof sent["wire-mesh/version"]).toBe("string");
       } finally {
         rust.stop();
         await far.close();
@@ -540,7 +594,10 @@ describeRust("the Rust relay client against the TypeScript hub", () => {
   );
 
   describe("a Rust node serving requests", () => {
-    async function serving(): Promise<{
+    /** Starts the hub, the Rust node serving and a raw peer. A failure at any step stops what was started and closes the hub before it is rethrown, so a case that fails to start leaves no process behind. `afterRust` runs once the Rust node has announced, so a test can force a failure there. */
+    async function serving(
+      afterRust: () => Promise<void> = async () => Promise.resolve(),
+    ): Promise<{
       hub: Awaited<ReturnType<typeof startHub>>;
       rust: RustPeer;
       peer: RawPeer;
@@ -548,14 +605,60 @@ describeRust("the Rust relay client against the TypeScript hub", () => {
     }> {
       const hub = await startHub();
       const rust = new RustPeer([hub.address, "serve"]);
-      const rustDevice = await rust.device();
-      await rust.line("ANNOUNCED");
-      await announcedAt(hub, 1);
-      const peer = await RawPeer.join(hub.address);
-      await announcedAt(hub, 2);
+      let peer: RawPeer | undefined;
+      try {
+        const rustDevice = await rust.device();
+        await rust.line("ANNOUNCED");
+        await announcedAt(hub, 1);
+        await afterRust();
+        peer = await RawPeer.join(hub.address);
+        await announcedAt(hub, 2);
 
-      return { hub, rust, peer, rustDevice };
+        return { hub, rust, peer, rustDevice };
+      } catch (error) {
+        rust.stop();
+        await peer?.close();
+        await hub.close();
+        throw error;
+      }
     }
+
+    it(
+      "leaves no process and no listener behind when a case fails to start",
+      async () => {
+        let started: { pid: number | undefined; address: string } | undefined;
+        await expect(
+          serving(async () => {
+            // The hub and the Rust node are up by now: this is the failure.
+            started = {
+              pid: lastStarted?.pid,
+              address: lastStarted?.address ?? "",
+            };
+
+            return Promise.reject(new Error("the start-up failed"));
+          }),
+        ).rejects.toThrow("the start-up failed");
+        const info = started;
+        expect(info?.pid).toBeDefined();
+        await vi.waitFor(
+          () => {
+            const pid = info?.pid;
+            if (pid === undefined) throw new Error("no pid was recorded");
+            try {
+              process.kill(pid, 0);
+            } catch {
+              return;
+            }
+            throw new Error("the Rust node is still running");
+          },
+          { interval: POLL_MS, timeout: CASE_TIMEOUT_MS },
+        );
+        await expect(
+          createTcpTransport().connect(info?.address ?? ""),
+        ).rejects.toBeDefined();
+      },
+      CASE_TIMEOUT_MS,
+    );
 
     it(
       "drops a manage-request sent in the clear inside relay-data, and answers the same request sealed",
