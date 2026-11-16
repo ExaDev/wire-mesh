@@ -141,7 +141,10 @@ mod tests {
         }
         assert_eq!(
             refusal(&["topology/peers"]),
-            Some(("topology/peers".to_owned(), ExtensionRefusal::SessionManaged))
+            Some((
+                "topology/peers".to_owned(),
+                ExtensionRefusal::SessionManaged
+            ))
         );
         assert_eq!(
             refusal(&["wire-mesh/version"]),
@@ -150,7 +153,17 @@ mod tests {
                 ExtensionRefusal::ReservedVersion
             ))
         );
-        for key in ["status", "Presence/status", "presence/Status", "a/b/c", "/x", "x/", "1a/b", "a_b/c", ""] {
+        for key in [
+            "status",
+            "Presence/status",
+            "presence/Status",
+            "a/b/c",
+            "/x",
+            "x/",
+            "1a/b",
+            "a_b/c",
+            "",
+        ] {
             assert_eq!(
                 refusal(&[key]),
                 Some((key.to_owned(), ExtensionRefusal::NotDomainQualified)),

@@ -6,6 +6,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::mpsc as tokio_mpsc;
+use wire_mesh_wire::identity::DeviceId;
+use wire_mesh_wire::introspection::TopologyPeers;
 use wire_mesh_wire::management::{ManageCommand, ManageOutcome, ManageParams};
 use wire_mesh_wire::tokens::{CapabilityScope, CapabilityVerb};
 use wire_mesh_wire::transport::GossipFrame;
@@ -336,4 +338,191 @@ async fn a_session_that_does_not_gossip_ignores_gossip_and_cannot_send_it() {
         assert!(!matches!(event, SessionEvent::DirectoryChanged { .. }));
     }
     assert!(a.send_gossip_update(Vec::new()).await.is_err());
+}
+
+/// The topology of the advert last sent over `session`, read back by the peer that received it.
+async fn topology_heard_from(
+    sender: &Session,
+    receiver: &Session,
+    receiver_events: &mut mpsc::UnboundedReceiver<SessionEvent>,
+    sender_device: DeviceId,
+) -> TopologyPeers {
+    sender
+        .send_gossip_update(vec![(
+            "presence/status".to_owned(),
+            CborValue::Text("marker".to_owned()),
+        )])
+        .await
+        .expect("sent");
+    loop {
+        next_matching(receiver_events, |event| match event {
+            SessionEvent::DirectoryChanged { device } => Some(device),
+            _ => None,
+        })
+        .await;
+        let entry = receiver
+            .directory()
+            .await
+            .into_iter()
+            .find(|entry| entry.device == sender_device)
+            .expect("the sender is in the directory");
+        if entry
+            .advert
+            .extra
+            .get(&"presence/status".to_owned())
+            .is_some()
+        {
+            return crate::domain::topology::read_topology_peers(&entry.advert)
+                .expect("a topology");
+        }
+    }
+}
+
+#[tokio::test]
+async fn the_first_advertised_peer_is_the_direct_peer_only_on_an_accepted_connection() {
+    let (dialled, accepted) = tcp_pair().await;
+    let (d_id, a_id) = (
+        Arc::new(NodeIdentity::generate_ed25519()),
+        Arc::new(NodeIdentity::generate_ed25519()),
+    );
+    let (dial_side, mut dial_events) = gossiping(dialled, &d_id, 100, false).await;
+    let (accept_side, mut accept_events) = gossiping(accepted, &a_id, 100, true).await;
+    // Each has heard the other's first advert before it sends an update.
+    next_matching(&mut dial_events, |event| match event {
+        SessionEvent::DirectoryChanged { .. } => Some(()),
+        _ => None,
+    })
+    .await;
+    next_matching(&mut accept_events, |event| match event {
+        SessionEvent::DirectoryChanged { .. } => Some(()),
+        _ => None,
+    })
+    .await;
+    // The accepted side names the dialler directly; the dialling side, which cannot know whether the first advert came from the far end or was forwarded, names nobody.
+    let from_accepted = topology_heard_from(
+        &accept_side,
+        &dial_side,
+        &mut dial_events,
+        *a_id.device_id(),
+    )
+    .await;
+    assert_eq!(from_accepted.direct, vec![*d_id.device_id()]);
+    let from_dialler = topology_heard_from(
+        &dial_side,
+        &accept_side,
+        &mut accept_events,
+        *d_id.device_id(),
+    )
+    .await;
+    assert!(from_dialler.direct.is_empty());
+}
+
+#[tokio::test]
+async fn the_first_advertised_peer_stays_the_direct_peer_when_a_later_device_is_heard() {
+    let (a_conn, mut raw) = tcp_pair().await;
+    let mut raw_frames = raw.receive().expect("receive");
+    let a_id = Arc::new(NodeIdentity::generate_ed25519());
+    let (a, mut a_events) = gossiping(a_conn, &a_id, 100, true).await;
+    let (first, second) = (
+        NodeIdentity::generate_ed25519(),
+        NodeIdentity::generate_ed25519(),
+    );
+    let topology = compute_topology_peers(&TopologyInputs::default());
+    for identity in [&first, &second] {
+        let advert = build_self_advert(identity, &[], 50, &[], &topology)
+            .await
+            .expect("advert");
+        raw.send(Frame::Gossip(GossipFrame {
+            peers: vec![advert],
+        }))
+        .await
+        .expect("sent");
+        next_matching(&mut a_events, |event| match event {
+            SessionEvent::DirectoryChanged { device } if device == *identity.device_id() => {
+                Some(())
+            }
+            _ => None,
+        })
+        .await;
+    }
+    a.send_gossip_update(Vec::new()).await.expect("sent");
+    // The update is the second gossip frame this session sent, after its own advert on connect.
+    let mut gossips = 0;
+    let sent = loop {
+        let frame = tokio::time::timeout(Duration::from_secs(10), next_frame(&mut raw_frames))
+            .await
+            .expect("a frame")
+            .expect("open");
+        if let Frame::Gossip(gossip) = frame {
+            gossips += 1;
+            if gossips == 2 {
+                break gossip.peers.into_iter().next().expect("an advert");
+            }
+        }
+    };
+    let topology = crate::domain::topology::read_topology_peers(&sent).expect("a topology");
+    assert_eq!(topology.direct, vec![*first.device_id()]);
+}
+
+#[tokio::test]
+async fn a_self_advert_names_every_device_the_connection_is_paired_with() {
+    use crate::domain::relay_channels::{RelayChannels, RelayOptions};
+    use crate::domain::relay_client::{HubLink, RelayClient};
+    use wire_mesh_wire::transport::RelayInboundFrame;
+
+    let (a_conn, mut raw) = tcp_pair().await;
+    let mut raw_frames = raw.receive().expect("receive");
+    let a_id = Arc::new(NodeIdentity::generate_ed25519());
+    let signer = Arc::clone(&a_id);
+    let (a, _events) = Session::accept_with(
+        a_conn,
+        ["core/management".to_owned()],
+        HandlerRegistry::new(),
+        SessionOptions::new()
+            .relayed(move |link: Arc<dyn HubLink>| {
+                let channels = Arc::new(RelayChannels::new(
+                    signer,
+                    RelayClient::hello_sender(Arc::clone(&link)),
+                    Arc::new(crate::adapters::MonotonicClock::new()),
+                    RelayOptions::default(),
+                ));
+                Arc::new(RelayClient::new(link, channels))
+            })
+            .gossiping(config(&a_id, 100, false)),
+    )
+    .await
+    .expect("accept");
+    let far = NodeIdentity::generate_ed25519();
+    raw.send(Frame::RelayInbound(RelayInboundFrame {
+        source_device: *far.device_id(),
+        target_device: None,
+    }))
+    .await
+    .expect("sent");
+    // The pairing is recorded when the dispatch loop reads the frame; a gossip update sent after it is built from the pairings then held.
+    let sent = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            a.send_gossip_update(Vec::new()).await.expect("sent");
+            // Drain what has arrived; the last advert is the newest.
+            let mut newest = None;
+            while let Ok(Some(frame)) =
+                tokio::time::timeout(Duration::from_millis(100), next_frame(&mut raw_frames)).await
+            {
+                if let Frame::Gossip(gossip) = frame {
+                    newest = gossip.peers.into_iter().next();
+                }
+            }
+            if let Some(advert) = newest {
+                let topology =
+                    crate::domain::topology::read_topology_peers(&advert).expect("topology");
+                if !topology.relayed.is_empty() {
+                    return topology;
+                }
+            }
+        }
+    })
+    .await
+    .expect("the pairing reached an advert");
+    assert_eq!(sent.relayed.len(), 1);
+    assert_eq!(sent.relayed[0].device, *far.device_id());
 }
