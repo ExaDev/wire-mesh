@@ -1,3 +1,9 @@
+## [2.4.0](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%402.3.19...%40exadev%2Fwire-mesh-cloudflare-hub%402.4.0) (2026-11-16)
+
+### Features
+
+* **cloudflare-hub:** roll the hub Worker out as a gated gradual deployment ([f19d749](https://github.com/ExaDev/wire-mesh/commit/f19d749c679a8beb68f163189864d5e9c0f7d0ce))
+
 ## [2.3.19](https://github.com/ExaDev/wire-mesh/compare/%40exadev%2Fwire-mesh-cloudflare-hub%402.3.18...%40exadev%2Fwire-mesh-cloudflare-hub%402.3.19) (2026-11-16)
 
 
