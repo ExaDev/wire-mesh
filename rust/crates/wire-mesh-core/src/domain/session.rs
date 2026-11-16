@@ -31,7 +31,8 @@ use tokio::sync::{mpsc, oneshot, Mutex as AsyncMutex};
 use tokio::task::AbortHandle;
 use wire_mesh_wire::handshake::{DomainId, HandshakeFrame, ProtocolVersion};
 use wire_mesh_wire::management::{
-    ManageCommand, ManageError, ManageOk, ManageOutcome, ManageRequestFrame, ManageResponseFrame,
+    ManageCommand, ManageError, ManageOk, ManageOutcome, ManageParams, ManageRequestFrame,
+    ManageResponseFrame,
 };
 use wire_mesh_wire::tokens::{CapabilityScope, CoseSign1};
 use wire_mesh_wire::value::{CanonicalMap, CborValue};
@@ -39,11 +40,16 @@ use wire_mesh_wire::Frame;
 
 use wire_mesh_wire::identity::DeviceId;
 
+use crate::domain::gossip_directory::{AdvertOutcome, GossipDirectory};
 use crate::domain::handshake::{negotiate, SUPPORTED_PROTOCOL_VERSION};
 use crate::domain::mint::MAX_EXACT_INTEGER;
 use crate::domain::relay_channels::SealPurpose;
 use crate::domain::relay_client::{HubLink, RelayClient, RelayEvent};
-use crate::ports::{Connection, CoreError};
+use crate::domain::self_advert::{
+    build_self_advert, compute_topology_peers, SelfAdvertError, TopologyInputs, OWN_VERSION,
+};
+use crate::domain::topology::DirectoryEntry;
+use crate::ports::{Clock, Connection, CoreError, Identity};
 
 /// A connection shared between the dispatch loop (which reads frames)
 /// and every caller of `send_manage_request`/`send_data_frame` (which
@@ -127,24 +133,9 @@ impl HandlerRegistry {
     }
 }
 
-/// The core/version domain's own version-get verb (issue #179), answered with
-/// this crate's actual, currently-compiled version -- `CARGO_PKG_VERSION` is
-/// resolved from `Cargo.toml`'s own `version.workspace = true` at compile
-/// time, so unlike the TypeScript core's own equivalent (which has to read
-/// its `package.json` at runtime, since semantic-release/npm rewrites that
-/// file only in the tarball it publishes, after the package has already
-/// been built) there is no build-vs-publish staleness risk here: this crate's
-/// `Cargo.toml` version IS the version `cargo publish` ships.
+/// The core/version domain's version-get verb (issue #179), answered with this crate's actual, currently-compiled version: `CARGO_PKG_VERSION` is resolved from `Cargo.toml`'s own `version.workspace = true` at compile time, so there is no build-versus-publish staleness risk, unlike the TypeScript core, which has to read its `package.json` at run time.
 ///
-/// Deliberately NOT auto-answered the way `mesh-session.ts`'s own
-/// `applyManageRequest` bypasses `incomingManageRequests` for this same verb:
-/// this runtime dispatches every manage-request through `HandlerRegistry`
-/// with no built-in behaviour for any verb, gossip included (see this
-/// module's own doc comment), so a universal, bypass-the-registry special
-/// case here would be the one inconsistent exception to that design rather
-/// than a parity fix. A consumer that wants version.get support registers
-/// this handler explicitly, the same way it registers any other:
-/// `HandlerRegistry::new().register("core:version", Arc::new(VersionHandler))`.
+/// Every session answers a manage-request whose params carry the verb `version.get` itself, bypassing the registry, as the TypeScript `applyManageRequest` does. This handler is for a consumer that registers the version under a capability verb of its own (`HandlerRegistry::new().register("core:version", Arc::new(VersionHandler))`); it answers every request it is given with the same version.
 pub struct VersionHandler;
 
 #[async_trait::async_trait]
@@ -200,9 +191,105 @@ pub enum SessionEvent {
         to_device: Option<DeviceId>,
         frame: DataFrame,
     },
+    /// A gossiped advert entered the peer directory (as a new device, or in place of an older advert).
+    DirectoryChanged { device: DeviceId },
+    /// A gossiped advert was refused: it did not verify, its time or size is out of range, or the directory is full. One refused advert says nothing about the others of its frame.
+    AdvertRefused {
+        device: DeviceId,
+        reason: &'static str,
+    },
+    /// The peer sent no handshake within the handshake timeout. A relay-only hub never sends one, which is a state to report and not an error: the session carries on.
+    HandshakeUnanswered,
     /// The connection ended, whether the peer closed it, the underlying
     /// transport failed, or `Session::close` was called locally.
     Disconnected { reason: String },
+}
+
+/// How long a session waits for the peer's handshake before it reports [`SessionEvent::HandshakeUnanswered`]: the same 3 s the TypeScript session waits.
+pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// What a session needs to take part in gossip: to sign its own advert, read the time, say where it can be reached and whether the connection was accepted. Without it a session ignores gossip frames, as the runtime did before.
+pub struct GossipConfig {
+    /// Signs this node's own advert and verifies the adverts it receives.
+    pub identity: Arc<dyn Identity>,
+    /// The time the advert's `snapshot-seconds` is read from (Unix milliseconds, as the port gives it).
+    pub clock: Arc<dyn Clock>,
+    /// The `host:port` addresses this node can be reached on directly; none for a node that cannot accept connections.
+    pub addresses: Vec<String>,
+    /// Whether this connection was accepted and not dialled, which decides whether the first advertised peer may be taken as the direct peer.
+    pub accepted: bool,
+    /// How long to wait for the peer's handshake. [`HANDSHAKE_TIMEOUT`] unless a test needs another.
+    pub handshake_timeout: Duration,
+}
+
+/// Builds the relay client of a session from the link the session sends through.
+type RelayBuilder = Box<dyn FnOnce(Arc<dyn HubLink>) -> Arc<RelayClient> + Send>;
+
+/// What a session is built from besides its connection, domains and handlers.
+#[derive(Default)]
+pub struct SessionOptions {
+    relay: Option<RelayBuilder>,
+    gossip: Option<GossipConfig>,
+}
+
+impl SessionOptions {
+    /// Options for a plain session.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// A session over a connection to a relay hub: `relay` is given the link the session sends through and returns the relay client the session then drives.
+    #[must_use]
+    pub fn relayed(
+        mut self,
+        relay: impl FnOnce(Arc<dyn HubLink>) -> Arc<RelayClient> + Send + 'static,
+    ) -> Self {
+        self.relay = Some(Box::new(relay));
+        self
+    }
+
+    /// A session that takes part in gossip.
+    #[must_use]
+    pub fn gossiping(mut self, gossip: GossipConfig) -> Self {
+        self.gossip = Some(gossip);
+        self
+    }
+}
+
+/// The gossip state of a session: its configuration, the directory it builds, and the first peer an advert named.
+struct GossipState {
+    config: GossipConfig,
+    directory: AsyncMutex<GossipDirectory>,
+    first_advertised: StdMutex<Option<DeviceId>>,
+}
+
+impl GossipState {
+    async fn self_advert(
+        &self,
+        relay: Option<&Arc<RelayClient>>,
+        extensions: &[(String, CborValue)],
+    ) -> Result<wire_mesh_wire::transport::PeerAdvert, SelfAdvertError> {
+        let first = *self
+            .first_advertised
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let topology = compute_topology_peers(&TopologyInputs {
+            authenticated_peer: None,
+            first_advertised_peer: first,
+            accepted: self.config.accepted,
+            relayed: relay.map(|relay| relay.paired()).unwrap_or_default(),
+        });
+        let seconds = self.config.clock.now_unix_ms() / 1_000;
+        build_self_advert(
+            &*self.config.identity,
+            &self.config.addresses,
+            seconds,
+            extensions,
+            &topology,
+        )
+        .await
+    }
 }
 
 async fn next_frame(stream: &mut Pin<Box<dyn Stream<Item = Frame> + Send>>) -> Option<Frame> {
@@ -265,6 +352,9 @@ impl HubLink for ConnectionLink {
     }
 }
 
+/// The params verb of the core/version domain's version-get command.
+const VERSION_GET_VERB: &str = "version.get";
+
 /// Answers one incoming manage-request with the handler registered for its verb, or `unknown-verb`.
 async fn answer(
     registry: &HandlerRegistry,
@@ -273,6 +363,17 @@ async fn answer(
     scope: CapabilityScope,
     token: Option<CoseSign1>,
 ) -> ManageOutcome {
+    // The core/version domain's version-get is answered by every session and bypasses the registry, as in the TypeScript: it is deliberately unauthenticated and carries nothing but this crate's own version.
+    if let ManageParams::Json(params) = &command.params {
+        if params.get(&"verb".to_owned()) == Some(&CborValue::Text(VERSION_GET_VERB.to_owned())) {
+            let mut extra = CanonicalMap::new();
+            let _ = extra.insert(
+                "version".to_owned(),
+                CborValue::Text(OWN_VERSION.to_owned()),
+            );
+            return ManageOutcome::Ok(ManageOk { extra });
+        }
+    }
     let verb = command.verb.0.clone();
     match registry.get(&verb) {
         Some(handler) => {
@@ -312,6 +413,8 @@ async fn run_dispatch_loop(
     local_handshake: HandshakeFrame,
     closed: Arc<AtomicBool>,
     relay: Option<Arc<RelayClient>>,
+    gossip: Option<Arc<GossipState>>,
+    handshake_settled_flag: Arc<AtomicBool>,
 ) {
     let mut handshake_settled = false;
     while let Some(frame) = next_frame(&mut inbound).await {
@@ -321,6 +424,7 @@ async fn run_dispatch_loop(
                     continue;
                 }
                 handshake_settled = true;
+                handshake_settled_flag.store(true, Ordering::SeqCst);
                 match negotiate(&local_handshake, &remote) {
                     Ok(result) => {
                         let _ = events_tx.send(SessionEvent::HandshakeNegotiated {
@@ -356,6 +460,37 @@ async fn run_dispatch_loop(
                     });
                     let _ = send_frame(&connection, response).await;
                 });
+            }
+            Frame::Gossip(gossiped) => {
+                let Some(gossip) = gossip.as_ref() else {
+                    continue;
+                };
+                // Verified here, never taken on the sender's word: an advert reaching this session was very often forwarded by a hub or a gateway.
+                let outcomes = gossip
+                    .directory
+                    .lock()
+                    .await
+                    .apply(&*gossip.config.identity, &gossiped)
+                    .await;
+                for outcome in outcomes {
+                    match outcome {
+                        AdvertOutcome::Admitted(device) => {
+                            gossip
+                                .first_advertised
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .get_or_insert(device);
+                            let _ = events_tx.send(SessionEvent::DirectoryChanged { device });
+                        }
+                        AdvertOutcome::Older(_) => {}
+                        AdvertOutcome::Refused(device, why) => {
+                            let _ = events_tx.send(SessionEvent::AdvertRefused {
+                                device,
+                                reason: why.as_str(),
+                            });
+                        }
+                    }
+                }
             }
             Frame::RelayInbound(_) | Frame::RelayData(_) => {
                 let Some(relay) = relay.as_ref() else {
@@ -447,6 +582,7 @@ pub struct Session {
     events_tx: mpsc::UnboundedSender<SessionEvent>,
     closed: Arc<AtomicBool>,
     relay: Option<Arc<RelayClient>>,
+    gossip: Option<Arc<GossipState>>,
 }
 
 impl Session {
@@ -461,13 +597,7 @@ impl Session {
         local_domains: impl IntoIterator<Item = String>,
         registry: HandlerRegistry,
     ) -> Result<(Session, mpsc::UnboundedReceiver<SessionEvent>), CoreError> {
-        Self::accept_with(
-            connection,
-            local_domains,
-            registry,
-            None::<fn(Arc<dyn HubLink>) -> Arc<RelayClient>>,
-        )
-        .await
+        Self::accept_with(connection, local_domains, registry, SessionOptions::new()).await
     }
 
     /// [`Session::accept`] for a connection to a relay hub: `relay` is given the link the session sends through (build the secure channels' hello sender from it with [`RelayClient::hello_sender`]) and returns the relay client the session then drives. Frames that arrive as `relay-inbound` or `relay-data` go to it, and [`Session::send_manage_request_via`] and [`Session::send_data_frame_via`] send through it.
@@ -479,17 +609,29 @@ impl Session {
         connection: Box<dyn Connection>,
         local_domains: impl IntoIterator<Item = String>,
         registry: HandlerRegistry,
-        relay: impl FnOnce(Arc<dyn HubLink>) -> Arc<RelayClient>,
+        relay: impl FnOnce(Arc<dyn HubLink>) -> Arc<RelayClient> + Send + 'static,
     ) -> Result<(Session, mpsc::UnboundedReceiver<SessionEvent>), CoreError> {
-        Self::accept_with(connection, local_domains, registry, Some(relay)).await
+        Self::accept_with(
+            connection,
+            local_domains,
+            registry,
+            SessionOptions::new().relayed(relay),
+        )
+        .await
     }
 
-    async fn accept_with(
+    /// [`Session::accept`] with every option: a relay client, gossip, or both. A session that gossips sends its own signed advert right after its handshake, verifies and keeps the adverts it receives in a directory ([`Session::directory`]), and sends a fresh advert with caller extensions on [`Session::send_gossip_update`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::accept`], and a [`CoreError::Crypto`] when the first advert could not be built or signed.
+    pub async fn accept_with(
         connection: Box<dyn Connection>,
         local_domains: impl IntoIterator<Item = String>,
         registry: HandlerRegistry,
-        relay: Option<impl FnOnce(Arc<dyn HubLink>) -> Arc<RelayClient>>,
+        options: SessionOptions,
     ) -> Result<(Session, mpsc::UnboundedReceiver<SessionEvent>), CoreError> {
+        let SessionOptions { relay, gossip } = options;
         let mut connection = connection;
         let inbound = connection.receive()?;
         let shared: SharedConnection = Arc::new(AsyncMutex::new(connection));
@@ -502,9 +644,46 @@ impl Session {
         };
         send_frame(&shared, Frame::Handshake(local_handshake.clone())).await?;
 
+        let gossip = gossip.map(|config| {
+            Arc::new(GossipState {
+                config,
+                directory: AsyncMutex::new(GossipDirectory::new()),
+                first_advertised: StdMutex::new(None),
+            })
+        });
+        if let Some(gossip) = &gossip {
+            // The node's own advert follows its handshake, as in the TypeScript, so a hub can route to it.
+            let advert = gossip
+                .self_advert(relay.as_ref(), &[])
+                .await
+                .map_err(|error| CoreError::Crypto(error.to_string()))?;
+            send_frame(
+                &shared,
+                Frame::Gossip(wire_mesh_wire::transport::GossipFrame {
+                    peers: vec![advert],
+                }),
+            )
+            .await?;
+        }
+
         let pending: PendingMap = Arc::new(StdMutex::new(HashMap::new()));
         let (events_tx, events_rx) = mpsc::unbounded_channel();
         let closed = Arc::new(AtomicBool::new(false));
+        let handshake_settled = Arc::new(AtomicBool::new(false));
+
+        if let Some(gossip) = &gossip {
+            // A relay-only hub never sends a handshake: that is a state to report, not an error.
+            let waiting = Arc::clone(&handshake_settled);
+            let ended = Arc::clone(&closed);
+            let events = events_tx.clone();
+            let timeout = gossip.config.handshake_timeout;
+            tokio::spawn(async move {
+                tokio::time::sleep(timeout).await;
+                if !waiting.load(Ordering::SeqCst) && !ended.load(Ordering::SeqCst) {
+                    let _ = events.send(SessionEvent::HandshakeUnanswered);
+                }
+            });
+        }
 
         let task = tokio::spawn(run_dispatch_loop(
             inbound,
@@ -515,6 +694,8 @@ impl Session {
             local_handshake,
             Arc::clone(&closed),
             relay.clone(),
+            gossip.clone(),
+            handshake_settled,
         ));
 
         Ok((
@@ -526,9 +707,50 @@ impl Session {
                 events_tx,
                 closed,
                 relay,
+                gossip,
             },
             events_rx,
         ))
+    }
+
+    /// The peer directory built from the gossip received so far: the latest verified advert per device, in the order devices were first heard. Empty for a session that does not gossip.
+    pub async fn directory(&self) -> Vec<DirectoryEntry> {
+        match &self.gossip {
+            Some(gossip) => gossip.directory.lock().await.entries().to_vec(),
+            None => Vec::new(),
+        }
+    }
+
+    /// Sends a fresh signed advert of this node with `extensions` merged in, the way a gossiped fact (a presence status, a policy) is kept live over a connection's lifetime. Every key is validated first ([`crate::domain::gossip_extensions`]): none may shadow a mandatory field, the topology or the version.
+    ///
+    /// # Errors
+    ///
+    /// A [`CoreError::Crypto`] naming a refused extension key or an advert that could not be built, a [`CoreError::Transport`] when the session is closed, has no gossip, or the frame could not be sent.
+    pub async fn send_gossip_update(
+        &self,
+        extensions: Vec<(String, CborValue)>,
+    ) -> Result<(), CoreError> {
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(CoreError::Transport("session is closed".to_owned()));
+        }
+        let gossip = self
+            .gossip
+            .as_ref()
+            .ok_or_else(|| CoreError::Transport("this session does not gossip".to_owned()))?;
+        let advert = gossip
+            .self_advert(self.relay.as_ref(), &extensions)
+            .await
+            .map_err(|error| match error {
+                SelfAdvertError::Extension(refused) => CoreError::Crypto(refused.to_string()),
+                other => CoreError::Crypto(other.to_string()),
+            })?;
+        send_frame(
+            &self.connection,
+            Frame::Gossip(wire_mesh_wire::transport::GossipFrame {
+                peers: vec![advert],
+            }),
+        )
+        .await
     }
 
     /// Sends a manage-request and resolves with the matching
@@ -1046,3 +1268,7 @@ mod tests {
 #[cfg(test)]
 #[path = "session_relay_tests.rs"]
 mod relay_tests;
+
+#[cfg(test)]
+#[path = "session_gossip_tests.rs"]
+mod gossip_tests;
