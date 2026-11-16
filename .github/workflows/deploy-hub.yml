@@ -14,10 +14,17 @@ on:
       - "ts/packages/web-console/**"
       - ".github/workflows/deploy-hub.yml"
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "gradual stages the new version beside the serving one, health-gates it and rolls back on failure; direct is a plain wrangler deploy, needed for a change to a Durable Object class (a migration), which cannot be uploaded as a version"
+        type: choice
+        options: [gradual, direct]
+        default: gradual
 
+# A rollout is never cancelled part way: a cancelled run could leave traffic split between two versions with nothing watching it, so a newer push waits its turn instead.
 concurrency:
   group: deploy-hub
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -40,12 +47,33 @@ jobs:
       - name: Build cloudflare-hub (and its wire-mesh-core / web-console dependencies)
         run: pnpm turbo run _build --filter=@exadev/wire-mesh-cloudflare-hub --force
         working-directory: ts
-      - name: Deploy
-        # The secrets context is not allowed in an if condition; routing it
-        # through env first is the canonical workaround.
+      # A hub whose /health does not yet report a Worker version (it predates the version_metadata binding) cannot be told apart from the version staged beside it, so the one deploy that introduces the binding is a plain deploy. Every later run finds the version and rolls out gradually.
+      - name: Choose the deploy mode
+        id: mode
+        env:
+          REQUESTED: ${{ inputs.mode }}
+        run: |
+          if [ "$REQUESTED" = direct ] || ! curl -fsS https://mesh.exadev.io/health | grep -q '"version"'; then
+            echo "mode=direct" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=gradual" >> "$GITHUB_OUTPUT"
+          fi
+      # Uploads the build as a version serving no traffic, health-checks it by version override, shifts a share of traffic to it, health-checks again, promotes it to 100% and checks once more. Any failed check puts the previous version back at 100%, and the previous version serves throughout. rollout/rollout.ts holds the decisions and is unit-tested.
+      - name: Deploy gradually
         env:
           HAS_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
-        if: env.HAS_API_TOKEN == 'true'
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          MODE: ${{ steps.mode.outputs.mode }}
+          COMMIT: ${{ github.sha }}
+        if: env.HAS_API_TOKEN == 'true' && env.MODE == 'gradual'
+        working-directory: ts/packages/cloudflare-hub
+        run: node --experimental-strip-types rollout/cli.ts --name wire-mesh-hub --url https://mesh.exadev.io --message "deploy-hub $COMMIT"
+      - name: Deploy directly
+        env:
+          HAS_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+          MODE: ${{ steps.mode.outputs.mode }}
+        if: env.HAS_API_TOKEN == 'true' && env.MODE == 'direct'
         uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
