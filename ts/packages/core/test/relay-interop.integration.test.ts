@@ -19,7 +19,7 @@ import {
 import { createTcpTransport } from "../src/adapters/tcp-transport.js";
 import { deviceIdToHex } from "../src/domain/device-id.js";
 import { createMeshSession } from "../src/domain/mesh-session.js";
-import { signPeerAdvert } from "../src/domain/peer-advert.js";
+import { signPeerAdvert, verifyPeerAdvert } from "../src/domain/peer-advert.js";
 import { createRelayHub } from "../src/domain/relay-hub.js";
 import {
   beginHandshake,
@@ -455,6 +455,42 @@ describeRust("the Rust relay client against the TypeScript hub", () => {
             "relay:echo",
           );
         }
+      } finally {
+        rust.stop();
+        await far.close();
+        await hub.close();
+      }
+    },
+    CASE_TIMEOUT_MS,
+  );
+
+  it(
+    "learns a TypeScript peer from the hub's gossip and is learnt in turn, its advert verifying and naming its version",
+    async () => {
+      const hub = await startHub();
+      const far = await answeringSession(hub);
+      const rust = new RustPeer([hub.address, "gossip"]);
+      try {
+        expect(await rust.line("DIRECTORY ")).toBe(deviceIdToHex(far.device));
+        const rustDevice = deviceIdToHex(await rust.device());
+        const sent = await vi.waitFor(
+          () => {
+            const advert = hub.observed.frames
+              .flatMap((entry) =>
+                entry.frame.type === "gossip" ? entry.frame.peers : [],
+              )
+              .find((peer) => deviceIdToHex(peer.device) === rustDevice);
+            if (advert === undefined) {
+              throw new Error("the hub has not seen the Rust node's advert");
+            }
+
+            return advert;
+          },
+          { interval: POLL_MS, timeout: CASE_TIMEOUT_MS },
+        );
+        const verifier = await generateEd25519Identity();
+        expect(await verifyPeerAdvert(verifier, sent)).toBe(true);
+        expect(typeof sent["wire-mesh/version"]).toBe("string");
       } finally {
         rust.stop();
         await far.close();
