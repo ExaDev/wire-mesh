@@ -9,7 +9,7 @@
     "cbor2": "2.3.0",
     "reflect-metadata": "0.2.2",
     "wire-mesh-core": "4.2.14",
-    "ws": "8.21.3"
+    "ws": "8.22.0"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",

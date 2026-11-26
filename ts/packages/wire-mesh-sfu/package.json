@@ -9,7 +9,7 @@
     "sdp-transform": "3.0.0",
     "wire-mesh": "3.6.31",
     "wire-mesh-core": "4.2.14",
-    "ws": "8.21.3"
+    "ws": "8.22.0"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
