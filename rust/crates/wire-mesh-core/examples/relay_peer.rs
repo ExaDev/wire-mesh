@@ -11,7 +11,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use wire_mesh_core::adapters::{MonotonicClock, NodeIdentity, TcpTransport};
+use wire_mesh_core::adapters::{MonotonicClock, NodeIdentity, SystemClock, TcpTransport};
 
 use wire_mesh_core::domain::peer_advert::sign_peer_advert;
 use wire_mesh_core::domain::relay_channels::{RelayChannels, RelayOptions};
@@ -20,25 +20,12 @@ use wire_mesh_core::domain::session::{
     GossipConfig, HandlerRegistry, IncomingManageRequest, ManageRequestHandler, Session,
     SessionEvent, SessionOptions, HANDSHAKE_TIMEOUT,
 };
-use wire_mesh_core::ports::{Clock, Identity, Transport};
+use wire_mesh_core::ports::{Identity, Transport};
 use wire_mesh_wire::identity::DeviceId;
 use wire_mesh_wire::management::{ManageCommand, ManageOk, ManageOutcome, ManageParams};
 use wire_mesh_wire::tokens::{CapabilityScope, CapabilityVerb};
 use wire_mesh_wire::transport::PeerAdvert;
 use wire_mesh_wire::value::{CanonicalMap, CborValue};
-
-/// The wall clock, which a gossip advert's snapshot time is read from.
-struct SystemClock;
-
-impl Clock for SystemClock {
-    fn now_unix_ms(&self) -> u64 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |elapsed| {
-                u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
-            })
-    }
-}
 
 struct Reporting;
 

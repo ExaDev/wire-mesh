@@ -2,7 +2,7 @@
 //!
 //! An advert reaching a session was very often forwarded by a hub or a gateway rather than sent by the device it names, so it is verified here, never taken on the sender's word: the identity key it carries must hash to the device it names and its signature must verify under that key ([`verify_peer_advert`]). One refused advert says nothing about the others in its frame. The newest advert per device wins, by the device's own signed `snapshot-seconds` and never by arrival, so an older advert a hub replays cannot displace a newer one; a re-advert replaces in place, so the directory keeps the order devices were first heard in.
 //!
-//! The directory is bounded, which the TypeScript is not: adverts come from a hub that is not trusted to bound them. At most [`MAX_DIRECTORY_DEVICES`] devices are held and no advert whose encoding is longer than [`MAX_ADVERT_BYTES`] is admitted; beyond either the advert is refused and the refusal is reported, and nothing already held is evicted, because an advert is data this node cannot ask for again and may be what it is talking to a device by.
+//! The directory is bounded, which the TypeScript is not: adverts come from a hub that is not trusted to bound them. At most [`MAX_DIRECTORY_DEVICES`] devices are held and no advert whose encoding is longer than [`MAX_ADVERT_BYTES`] is admitted; beyond either the advert is refused and the refusal is reported, and nothing already held is evicted (a full directory therefore stays full until the session ends, so an owner that must keep learning devices rebuilds the session or applies a policy above it), because an advert is data this node cannot ask for again and may be what it is talking to a device by.
 
 use wire_mesh_wire::encode_frame;
 use wire_mesh_wire::identity::DeviceId;
@@ -90,11 +90,9 @@ impl GossipDirectory {
         outcomes
     }
 
+    /// Applies one advert. The decisions that need no signature come first (size, snapshot range, an older advert for a known device, a full directory for an unknown one), and only an advert that would change the directory is verified: a hub that replays old adverts, or fills the directory and keeps sending new device ids, costs this node no signature check per advert. The refusal reported for a forged advert in those cases is the cheap one, which is fine since nothing from it is trusted either way.
     async fn apply_one(&mut self, identity: &dyn Identity, advert: &PeerAdvert) -> AdvertOutcome {
         let device = advert.device;
-        if let PeerAdvertVerdict::Invalid(why) = verify_peer_advert(identity, advert).await {
-            return AdvertOutcome::Refused(device, AdvertRefusal::Unverified(why));
-        }
         if advert.snapshot_seconds.unsigned_abs() > MAX_EXACT_INTEGER {
             return AdvertOutcome::Refused(device, AdvertRefusal::SnapshotOutOfRange);
         }
@@ -106,25 +104,26 @@ impl GossipDirectory {
         {
             return AdvertOutcome::Refused(device, AdvertRefusal::TooLarge);
         }
-        match self.entries.iter().position(|entry| entry.device == device) {
-            Some(at) => {
-                if advert.snapshot_seconds < self.entries[at].advert.snapshot_seconds {
-                    return AdvertOutcome::Older(device);
-                }
-                self.entries[at] = DirectoryEntry {
-                    device,
-                    advert: advert.clone(),
-                };
+        let held = self.entries.iter().position(|entry| entry.device == device);
+        match held {
+            Some(at) if advert.snapshot_seconds < self.entries[at].advert.snapshot_seconds => {
+                return AdvertOutcome::Older(device);
             }
-            None => {
-                if self.entries.len() >= MAX_DIRECTORY_DEVICES {
-                    return AdvertOutcome::Refused(device, AdvertRefusal::DirectoryFull);
-                }
-                self.entries.push(DirectoryEntry {
-                    device,
-                    advert: advert.clone(),
-                });
+            None if self.entries.len() >= MAX_DIRECTORY_DEVICES => {
+                return AdvertOutcome::Refused(device, AdvertRefusal::DirectoryFull);
             }
+            _ => {}
+        }
+        if let PeerAdvertVerdict::Invalid(why) = verify_peer_advert(identity, advert).await {
+            return AdvertOutcome::Refused(device, AdvertRefusal::Unverified(why));
+        }
+        let entry = DirectoryEntry {
+            device,
+            advert: advert.clone(),
+        };
+        match held {
+            Some(at) => self.entries[at] = entry,
+            None => self.entries.push(entry),
         }
         AdvertOutcome::Admitted(device)
     }
@@ -136,6 +135,9 @@ mod tests {
     use crate::adapters::NodeIdentity;
     use crate::domain::self_advert::{build_self_advert, compute_topology_peers, TopologyInputs};
     use wire_mesh_wire::value::{CanonicalMap, CborValue};
+
+    /// A time well after the earliest a self-advert accepts; the tests count seconds from it.
+    const T0: u64 = 1_700_000_000;
 
     async fn advert_at(
         identity: &NodeIdentity,
@@ -153,7 +155,7 @@ mod tests {
         build_self_advert(
             identity,
             &[],
-            seconds,
+            T0 + seconds,
             &extensions,
             &compute_topology_peers(&TopologyInputs::default()),
         )
@@ -342,6 +344,82 @@ mod tests {
         assert_eq!(
             directory.apply(&me, &frame(vec![held.clone()])).await,
             vec![AdvertOutcome::Admitted(held.device)]
+        );
+    }
+
+    fn forged(mut advert: PeerAdvert) -> PeerAdvert {
+        advert.signature[0] ^= 0xff;
+        advert
+    }
+
+    #[tokio::test]
+    async fn the_decisions_that_need_no_signature_are_made_before_one_is_checked() {
+        let me = NodeIdentity::generate_ed25519();
+        let a = NodeIdentity::generate_ed25519();
+        let mut directory = GossipDirectory::new();
+        directory
+            .apply(&me, &frame(vec![advert_at(&a, 20, None).await]))
+            .await;
+        // A forged advert older than the one held is ignored as older, without being verified.
+        let older = forged(advert_at(&a, 15, None).await);
+        assert_eq!(
+            directory.apply(&me, &frame(vec![older])).await,
+            vec![AdvertOutcome::Older(*a.device_id())]
+        );
+        // One that would replace the entry is verified, and is refused for its signature.
+        let newer = forged(advert_at(&a, 30, None).await);
+        assert_eq!(
+            directory.apply(&me, &frame(vec![newer])).await,
+            vec![AdvertOutcome::Refused(
+                *a.device_id(),
+                AdvertRefusal::Unverified(PeerAdvertRejection::BadSignature)
+            )]
+        );
+        // A forged advert out of range or over the cap is refused for that, not for its signature.
+        let mut out_of_range = forged(advert_at(&a, 10, None).await);
+        out_of_range.snapshot_seconds = i64::try_from(MAX_EXACT_INTEGER).expect("fits") + 1;
+        assert_eq!(
+            directory.apply(&me, &frame(vec![out_of_range])).await,
+            vec![AdvertOutcome::Refused(
+                *a.device_id(),
+                AdvertRefusal::SnapshotOutOfRange
+            )]
+        );
+        let mut huge = advert_at(&a, 40, None).await;
+        huge.extra
+            .insert(
+                "pad/x".to_owned(),
+                CborValue::Text("x".repeat(MAX_ADVERT_BYTES)),
+            )
+            .expect("unique");
+        assert_eq!(
+            directory.apply(&me, &frame(vec![forged(huge)])).await,
+            vec![AdvertOutcome::Refused(
+                *a.device_id(),
+                AdvertRefusal::TooLarge
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_forged_advert_for_a_new_device_meets_the_full_directory_before_its_signature_is_checked(
+    ) {
+        let me = NodeIdentity::generate_ed25519();
+        let mut directory = GossipDirectory::new();
+        for _ in 0..MAX_DIRECTORY_DEVICES {
+            let identity = NodeIdentity::generate_ed25519();
+            directory
+                .apply(&me, &frame(vec![advert_at(&identity, 10, None).await]))
+                .await;
+        }
+        let stranger = NodeIdentity::generate_ed25519();
+        let forged_new = forged(advert_at(&stranger, 10, None).await);
+        assert_eq!(
+            directory.apply(&me, &frame(vec![forged_new.clone()])).await,
+            vec![AdvertOutcome::Refused(
+                forged_new.device,
+                AdvertRefusal::DirectoryFull
+            )]
         );
     }
 }

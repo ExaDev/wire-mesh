@@ -214,6 +214,81 @@
       "wire_hex": "a2647479706566676f7373697065706565727383a566646576696365582024b03a0e3818a49e05631efc80768d08e32a81a944748730f14f613af9e909a66961646472657373657380697369676e6174757265584081badd4634795b2d7be65295b2187fa3cff3be673d03a9015eb243a49b8c077291eeace4c3fe28894946a502be3d7e34c3e605b24b449159620d7631dac1560b6c6964656e746974792d6b6579a263616c67276a7075626c69632d6b6579582055154f42065ea5a1bea05463826be2684eb92df92c100027aabaae57ca55420770736e617073686f742d7365636f6e64730aa5666465766963655820730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a86961646472657373657380697369676e61747572655840d20da3290a6a6380b66cc2d6f8b85223a78664a271287a66440a375974c971b9192db2aba9eb38108cadbe71443691565c8fcbbb43f2f3a6d0bdc71796e7110c6c6964656e746974792d6b6579a263616c67276a7075626c69632d6b65795820bc7cbcb5636375fa1d82434d466724d92377f53b980695dd49d26d0ce12205a570736e617073686f742d7365636f6e64730aa566646576696365582024b03a0e3818a49e05631efc80768d08e32a81a944748730f14f613af9e909a66961646472657373657380697369676e6174757265584073562de1e98397a0ab11b664baf055f6f07fb8fb7e25483071d2519b4433ed004545c06d5c3e1810f54541f3d0f209ca8d327700fab94cec10e2175dc9ca800f6c6964656e746974792d6b6579a263616c67276a7075626c69632d6b65795820d404bc44565aedbb899150e5b0b3b32b9441bf0cb7884c33130da8dbc27dd2cf70736e617073686f742d7365636f6e64730a"
     },
     {
+      "name": "gossip_an_advert_older_than_the_one_held_is_ignored_whether_or_not_it_is_genuine_and_a_newer_forged_one_is_dropped_0",
+      "message": {
+        "type": "gossip",
+        "peers": [
+          {
+            "device": {
+              "hex": "730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8"
+            },
+            "addresses": [],
+            "snapshot-seconds": 20,
+            "identity-key": {
+              "alg": -8,
+              "public-key": {
+                "hex": "bc7cbcb5636375fa1d82434d466724d92377f53b980695dd49d26d0ce12205a5"
+              }
+            },
+            "signature": {
+              "hex": "bb9153645e1ee64d1df0d9c10f90139d1e39e143d3452cdb71a7d8c2e5768f3f0b46baf2c29dea0f9653d1e56e8df5d62e2ccc6159ce726e4c32f338c4e4860d"
+            }
+          }
+        ]
+      },
+      "wire_hex": "a2647479706566676f7373697065706565727381a5666465766963655820730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a86961646472657373657380697369676e61747572655840bb9153645e1ee64d1df0d9c10f90139d1e39e143d3452cdb71a7d8c2e5768f3f0b46baf2c29dea0f9653d1e56e8df5d62e2ccc6159ce726e4c32f338c4e4860d6c6964656e746974792d6b6579a263616c67276a7075626c69632d6b65795820bc7cbcb5636375fa1d82434d466724d92377f53b980695dd49d26d0ce12205a570736e617073686f742d7365636f6e647314"
+    },
+    {
+      "name": "gossip_an_advert_older_than_the_one_held_is_ignored_whether_or_not_it_is_genuine_and_a_newer_forged_one_is_dropped_1",
+      "message": {
+        "type": "gossip",
+        "peers": [
+          {
+            "device": {
+              "hex": "730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8"
+            },
+            "addresses": [],
+            "snapshot-seconds": 15,
+            "identity-key": {
+              "alg": -8,
+              "public-key": {
+                "hex": "bc7cbcb5636375fa1d82434d466724d92377f53b980695dd49d26d0ce12205a5"
+              }
+            },
+            "signature": {
+              "hex": "15cc95d88296ef6b0aeb595b8ef064f6d6fe64cc253a3603951f71c07b32fa8f6ab6634ec32b48119e23ac1c5c05adab27fd862983c4be7f5ff6a686793cf304"
+            }
+          }
+        ]
+      },
+      "wire_hex": "a2647479706566676f7373697065706565727381a5666465766963655820730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a86961646472657373657380697369676e6174757265584015cc95d88296ef6b0aeb595b8ef064f6d6fe64cc253a3603951f71c07b32fa8f6ab6634ec32b48119e23ac1c5c05adab27fd862983c4be7f5ff6a686793cf3046c6964656e746974792d6b6579a263616c67276a7075626c69632d6b65795820bc7cbcb5636375fa1d82434d466724d92377f53b980695dd49d26d0ce12205a570736e617073686f742d7365636f6e64730f"
+    },
+    {
+      "name": "gossip_an_advert_older_than_the_one_held_is_ignored_whether_or_not_it_is_genuine_and_a_newer_forged_one_is_dropped_2",
+      "message": {
+        "type": "gossip",
+        "peers": [
+          {
+            "device": {
+              "hex": "730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8"
+            },
+            "addresses": [],
+            "snapshot-seconds": 21,
+            "identity-key": {
+              "alg": -8,
+              "public-key": {
+                "hex": "bc7cbcb5636375fa1d82434d466724d92377f53b980695dd49d26d0ce12205a5"
+              }
+            },
+            "signature": {
+              "hex": "e640bd305ef42a1cad4090d7c61d002425ed8e6d196d6d569cbb998b2eca451b68fd7ab72758e7fff1cc81d5c78756735c9ec49eb3733c7d0c82a2aa80675c0a"
+            }
+          }
+        ]
+      },
+      "wire_hex": "a2647479706566676f7373697065706565727381a5666465766963655820730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a86961646472657373657380697369676e61747572655840e640bd305ef42a1cad4090d7c61d002425ed8e6d196d6d569cbb998b2eca451b68fd7ab72758e7fff1cc81d5c78756735c9ec49eb3733c7d0c82a2aa80675c0a6c6964656e746974792d6b6579a263616c67276a7075626c69632d6b65795820bc7cbcb5636375fa1d82434d466724d92377f53b980695dd49d26d0ce12205a570736e617073686f742d7365636f6e647315"
+    },
+    {
       "name": "gossip_an_advert_signed_by_another_key_than_its_own_is_dropped_0",
       "message": {
         "type": "gossip",
@@ -649,6 +724,48 @@
         ]
       },
       {
+        "name": "an_advert_older_than_the_one_held_is_ignored_whether_or_not_it_is_genuine_and_a_newer_forged_one_is_dropped",
+        "rust_only": false,
+        "steps": [
+          {
+            "vector": "gossip_an_advert_older_than_the_one_held_is_ignored_whether_or_not_it_is_genuine_and_a_newer_forged_one_is_dropped_0",
+            "outcomes": [
+              "admitted"
+            ],
+            "directory": [
+              {
+                "device": "730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8",
+                "snapshot_seconds": 20
+              }
+            ]
+          },
+          {
+            "vector": "gossip_an_advert_older_than_the_one_held_is_ignored_whether_or_not_it_is_genuine_and_a_newer_forged_one_is_dropped_1",
+            "outcomes": [
+              "older"
+            ],
+            "directory": [
+              {
+                "device": "730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8",
+                "snapshot_seconds": 20
+              }
+            ]
+          },
+          {
+            "vector": "gossip_an_advert_older_than_the_one_held_is_ignored_whether_or_not_it_is_genuine_and_a_newer_forged_one_is_dropped_2",
+            "outcomes": [
+              "bad_signature"
+            ],
+            "directory": [
+              {
+                "device": "730a5edc28c2f8daf2d9dce3a01d5f205e35e55582eed2ba26219fabdd4cc9a8",
+                "snapshot_seconds": 20
+              }
+            ]
+          }
+        ]
+      },
+      {
         "name": "an_advert_signed_by_another_key_than_its_own_is_dropped",
         "rust_only": false,
         "steps": [
@@ -756,7 +873,7 @@
     ],
     "counts": {
       "extension_validation": 20,
-      "directory_scenarios": 7,
+      "directory_scenarios": 8,
       "self_adverts": 2
     }
   }

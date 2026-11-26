@@ -90,6 +90,9 @@ async fn next_matching<T>(
     .expect("the event did not arrive in time")
 }
 
+/// A clock reading well after the earliest time a self-advert accepts.
+const NOW: u64 = 1_700_000_000;
+
 fn scope() -> CapabilityScope {
     CapabilityScope {
         kind: "folder".to_owned(),
@@ -104,8 +107,8 @@ async fn each_side_sends_its_own_advert_on_connect_and_learns_the_others() {
         Arc::new(NodeIdentity::generate_ed25519()),
         Arc::new(NodeIdentity::generate_ed25519()),
     );
-    let (a, mut a_events) = gossiping(a_conn, &a_id, 100, false).await;
-    let (b, mut b_events) = gossiping(b_conn, &b_id, 100, true).await;
+    let (a, mut a_events) = gossiping(a_conn, &a_id, NOW, false).await;
+    let (b, mut b_events) = gossiping(b_conn, &b_id, NOW, true).await;
     let seen_by_a = next_matching(&mut a_events, |event| match event {
         SessionEvent::DirectoryChanged { device } => Some(device),
         _ => None,
@@ -139,8 +142,8 @@ async fn a_gossip_update_carries_its_extensions_and_a_refused_key_is_an_error_an
         Arc::new(NodeIdentity::generate_ed25519()),
         Arc::new(NodeIdentity::generate_ed25519()),
     );
-    let (a, _a_events) = gossiping(a_conn, &a_id, 100, false).await;
-    let (b, mut b_events) = gossiping(b_conn, &b_id, 100, true).await;
+    let (a, _a_events) = gossiping(a_conn, &a_id, NOW, false).await;
+    let (b, mut b_events) = gossiping(b_conn, &b_id, NOW, true).await;
     next_matching(&mut b_events, |event| match event {
         SessionEvent::DirectoryChanged { .. } => Some(()),
         _ => None,
@@ -193,16 +196,16 @@ async fn a_gossip_update_carries_its_extensions_and_a_refused_key_is_an_error_an
 async fn an_advert_that_does_not_verify_is_refused_and_the_rest_of_its_frame_is_admitted() {
     let (a_conn, raw) = tcp_pair().await;
     let a_id = Arc::new(NodeIdentity::generate_ed25519());
-    let (a, mut a_events) = gossiping(a_conn, &a_id, 100, false).await;
+    let (a, mut a_events) = gossiping(a_conn, &a_id, NOW, false).await;
     let (good_id, bad_id) = (
         NodeIdentity::generate_ed25519(),
         NodeIdentity::generate_ed25519(),
     );
     let topology = compute_topology_peers(&TopologyInputs::default());
-    let good = build_self_advert(&good_id, &[], 50, &[], &topology)
+    let good = build_self_advert(&good_id, &[], NOW, &[], &topology)
         .await
         .expect("advert");
-    let mut bad = build_self_advert(&bad_id, &[], 50, &[], &topology)
+    let mut bad = build_self_advert(&bad_id, &[], NOW, &[], &topology)
         .await
         .expect("advert");
     bad.signature[0] ^= 0xff;
@@ -211,28 +214,70 @@ async fn an_advert_that_does_not_verify_is_refused_and_the_rest_of_its_frame_is_
     }))
     .await
     .expect("sent");
-    let refused = next_matching(&mut a_events, |event| match event {
-        SessionEvent::AdvertRefused { device, reason } => Some((device, reason)),
-        _ => None,
-    })
-    .await;
-    assert_eq!(refused, (*bad_id.device_id(), "bad_signature"));
     let admitted = next_matching(&mut a_events, |event| match event {
         SessionEvent::DirectoryChanged { device } => Some(device),
         _ => None,
     })
     .await;
     assert_eq!(admitted, *good_id.device_id());
+    let refused = next_matching(&mut a_events, |event| match event {
+        SessionEvent::AdvertsRefused {
+            first,
+            reason,
+            count,
+        } => Some((first, reason, count)),
+        _ => None,
+    })
+    .await;
+    assert_eq!(refused, (*bad_id.device_id(), "bad_signature", 1));
     let directory = a.directory().await;
     assert_eq!(directory.len(), 1);
     assert_eq!(directory[0].device, *good_id.device_id());
 }
 
 #[tokio::test]
+async fn a_frame_of_thousands_of_forged_adverts_gives_a_bounded_number_of_events() {
+    const FORGED: usize = 5_000;
+    let (a_conn, raw) = tcp_pair().await;
+    let a_id = Arc::new(NodeIdentity::generate_ed25519());
+    let (a, mut a_events) = gossiping(a_conn, &a_id, NOW, false).await;
+    let signer = NodeIdentity::generate_ed25519();
+    let topology = compute_topology_peers(&TopologyInputs::default());
+    let mut forged = build_self_advert(&signer, &[], NOW, &[], &topology)
+        .await
+        .expect("advert");
+    forged.signature[0] ^= 0xff;
+    let good_id = NodeIdentity::generate_ed25519();
+    let good = build_self_advert(&good_id, &[], NOW, &[], &topology)
+        .await
+        .expect("advert");
+    let mut peers = vec![forged; FORGED];
+    peers.push(good);
+    raw.send(Frame::Gossip(GossipFrame { peers }))
+        .await
+        .expect("sent");
+    next_matching(&mut a_events, |event| match event {
+        SessionEvent::DirectoryChanged { device } if device == *good_id.device_id() => Some(()),
+        _ => None,
+    })
+    .await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let mut refusals = Vec::new();
+    while let Ok(event) = a_events.try_recv() {
+        if let SessionEvent::AdvertsRefused { count, .. } = event {
+            refusals.push(count);
+        }
+    }
+    // The refusals arrived as one event for the frame, counting every forged advert, and the genuine advert of the same frame was applied.
+    assert_eq!(refusals, vec![FORGED]);
+    assert_eq!(a.directory().await.len(), 1);
+}
+
+#[tokio::test]
 async fn a_peer_that_never_sends_a_handshake_is_reported_once_and_the_session_carries_on() {
     let (a_conn, _silent) = tcp_pair().await;
     let a_id = Arc::new(NodeIdentity::generate_ed25519());
-    let (a, mut a_events) = gossiping(a_conn, &a_id, 100, false).await;
+    let (a, mut a_events) = gossiping(a_conn, &a_id, NOW, false).await;
     next_matching(&mut a_events, |event| match event {
         SessionEvent::HandshakeUnanswered => Some(()),
         _ => None,
@@ -248,8 +293,8 @@ async fn a_peer_that_answers_its_handshake_is_not_reported_unanswered() {
         Arc::new(NodeIdentity::generate_ed25519()),
         Arc::new(NodeIdentity::generate_ed25519()),
     );
-    let (_a, mut a_events) = gossiping(a_conn, &a_id, 100, false).await;
-    let (_b, _b_events) = gossiping(b_conn, &b_id, 100, true).await;
+    let (_a, mut a_events) = gossiping(a_conn, &a_id, NOW, false).await;
+    let (_b, _b_events) = gossiping(b_conn, &b_id, NOW, true).await;
     // Past the handshake timeout, no unanswered event has arrived among the ones that did.
     tokio::time::sleep(Duration::from_millis(600)).await;
     let mut kinds = Vec::new();
@@ -321,7 +366,7 @@ async fn a_session_that_does_not_gossip_ignores_gossip_and_cannot_send_it() {
     let advert = build_self_advert(
         &identity,
         &[],
-        50,
+        NOW,
         &[],
         &compute_topology_peers(&TopologyInputs::default()),
     )
@@ -385,8 +430,8 @@ async fn the_first_advertised_peer_is_the_direct_peer_only_on_an_accepted_connec
         Arc::new(NodeIdentity::generate_ed25519()),
         Arc::new(NodeIdentity::generate_ed25519()),
     );
-    let (dial_side, mut dial_events) = gossiping(dialled, &d_id, 100, false).await;
-    let (accept_side, mut accept_events) = gossiping(accepted, &a_id, 100, true).await;
+    let (dial_side, mut dial_events) = gossiping(dialled, &d_id, NOW, false).await;
+    let (accept_side, mut accept_events) = gossiping(accepted, &a_id, NOW, true).await;
     // Each has heard the other's first advert before it sends an update.
     next_matching(&mut dial_events, |event| match event {
         SessionEvent::DirectoryChanged { .. } => Some(()),
@@ -422,14 +467,14 @@ async fn the_first_advertised_peer_stays_the_direct_peer_when_a_later_device_is_
     let (a_conn, mut raw) = tcp_pair().await;
     let mut raw_frames = raw.receive().expect("receive");
     let a_id = Arc::new(NodeIdentity::generate_ed25519());
-    let (a, mut a_events) = gossiping(a_conn, &a_id, 100, true).await;
+    let (a, mut a_events) = gossiping(a_conn, &a_id, NOW, true).await;
     let (first, second) = (
         NodeIdentity::generate_ed25519(),
         NodeIdentity::generate_ed25519(),
     );
     let topology = compute_topology_peers(&TopologyInputs::default());
     for identity in [&first, &second] {
-        let advert = build_self_advert(identity, &[], 50, &[], &topology)
+        let advert = build_self_advert(identity, &[], NOW, &[], &topology)
             .await
             .expect("advert");
         raw.send(Frame::Gossip(GossipFrame {
@@ -488,7 +533,7 @@ async fn a_self_advert_names_every_device_the_connection_is_paired_with() {
                 ));
                 Arc::new(RelayClient::new(link, channels))
             })
-            .gossiping(config(&a_id, 100, false)),
+            .gossiping(config(&a_id, NOW, false)),
     )
     .await
     .expect("accept");
@@ -525,4 +570,21 @@ async fn a_self_advert_names_every_device_the_connection_is_paired_with() {
     .expect("the pairing reached an advert");
     assert_eq!(sent.relayed.len(), 1);
     assert_eq!(sent.relayed[0].device, *far.device_id());
+}
+
+#[tokio::test]
+async fn a_session_whose_clock_is_not_a_wall_clock_is_refused_at_accept() {
+    let (a_conn, _peer) = tcp_pair().await;
+    let a_id = Arc::new(NodeIdentity::generate_ed25519());
+    let mut gossip = config(&a_id, NOW, false);
+    // A monotonic clock reads the seconds since the process started.
+    gossip.clock = Arc::new(Fixed(AtomicU64::new(3_000)));
+    let result = Session::accept_with(
+        a_conn,
+        ["core/management".to_owned()],
+        HandlerRegistry::new(),
+        SessionOptions::new().gossiping(gossip),
+    )
+    .await;
+    assert!(result.is_err());
 }

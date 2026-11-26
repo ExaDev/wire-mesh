@@ -217,6 +217,27 @@ const SCENARIOS: readonly Scenario[] = [
     ],
   },
   {
+    name: "an_advert_older_than_the_one_held_is_ignored_whether_or_not_it_is_genuine_and_a_newer_forged_one_is_dropped",
+    rustOnly: false,
+    steps: [
+      {
+        frame: gossip(advert(A, LATER, {})),
+        outcomes: ["admitted"],
+        directory: [entry(A, LATER)],
+      },
+      {
+        frame: gossip(forged(A, BETWEEN, {}, { flipSignature: true })),
+        outcomes: ["older"],
+        directory: [entry(A, LATER)],
+      },
+      {
+        frame: gossip(forged(A, LATER + 1, {}, { flipSignature: true })),
+        outcomes: ["bad_signature"],
+        directory: [entry(A, LATER)],
+      },
+    ],
+  },
+  {
     name: "an_advert_signed_by_another_key_than_its_own_is_dropped",
     rustOnly: false,
     steps: [
