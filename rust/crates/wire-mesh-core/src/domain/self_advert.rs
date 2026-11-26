@@ -18,12 +18,15 @@ use crate::ports::{CoreError, Identity};
 /// This crate's own version, as every self-advert and the `version.get` answer report it. It is read when this crate is compiled, so it is the version `cargo publish` ships, with none of the staleness the TypeScript has to avoid by reading its manifest at run time.
 pub const OWN_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// The earliest time, in Unix seconds (the start of 2001), a self-advert's clock may read. A clock that reads earlier is not a wall clock (a monotonic clock counts from the process start and gives a few seconds), and an advert stamped with it would look older than every advert a hub holds and be ignored without a sign.
+pub const EARLIEST_PLAUSIBLE_SECONDS: u64 = 978_307_200;
+
 /// What a self-advert's topology is computed from.
 #[derive(Debug, Clone, Default)]
 pub struct TopologyInputs {
-    /// The transport-authenticated direct peer, when the transport gives one. It takes priority over `first_advertised_peer`.
+    /// The transport-authenticated direct peer, when the transport gives one. It takes priority over `first_advertised_peer`. The connection port has no peer-identity accessor and the only adapter, plain TCP, authenticates nobody, so a session passes `None`.
     pub authenticated_peer: Option<DeviceId>,
-    /// The device named by the first advert this session applied to its directory. Trusted only when `accepted`: a dial-side session may end up naming a merely relayed third device.
+    /// The device named by the first advert this session applied to its directory. Trusted only when `accepted`: a dial-side session may end up naming a merely relayed third device. It is a first-heard assumption and no proof: on an accepted connection a peer that first sends a genuine, correctly signed advert of another device (one it has seen) makes this node's self-adverts name that device as the direct peer, an edge that does not exist. The topology is not secret and names only devices whose adverts the peer holds, so this misstates the graph and grants nothing; an authenticating transport removes it by supplying `authenticated_peer`.
     pub first_advertised_peer: Option<DeviceId>,
     /// Whether this connection was accepted (not dialled), where `first_advertised_peer` is structurally sound.
     pub accepted: bool,
@@ -59,6 +62,8 @@ pub enum SelfAdvertError {
     Extension(RefusedExtension),
     /// The clock reads a time a TypeScript peer cannot hold exactly as `snapshot-seconds`.
     ClockOutOfRange,
+    /// The clock reads a time before [`EARLIEST_PLAUSIBLE_SECONDS`]: it is not a wall clock.
+    ClockImplausible,
     /// The advert could not be signed.
     Signing(CoreError),
 }
@@ -69,6 +74,9 @@ impl std::fmt::Display for SelfAdvertError {
             SelfAdvertError::Extension(refused) => write!(f, "{refused}"),
             SelfAdvertError::ClockOutOfRange => {
                 f.write_str("the clock reads a time beyond what a peer can hold exactly")
+            }
+            SelfAdvertError::ClockImplausible => {
+                f.write_str("the clock reads a time before 2001, so it is not a wall clock")
             }
             SelfAdvertError::Signing(error) => write!(f, "the advert could not be signed: {error}"),
         }
@@ -89,7 +97,7 @@ fn topology_value(topology: &TopologyPeers) -> CborValue {
 ///
 /// # Errors
 ///
-/// [`SelfAdvertError::Extension`] for a refused extension key, [`SelfAdvertError::ClockOutOfRange`] when `now_seconds` is above 2^53 - 1, and [`SelfAdvertError::Signing`] when the identity cannot sign.
+/// [`SelfAdvertError::Extension`] for a refused extension key, [`SelfAdvertError::ClockOutOfRange`] when `now_seconds` is above 2^53 - 1, [`SelfAdvertError::ClockImplausible`] when it is before [`EARLIEST_PLAUSIBLE_SECONDS`], and [`SelfAdvertError::Signing`] when the identity cannot sign.
 pub async fn build_self_advert(
     identity: &dyn Identity,
     addresses: &[String],
@@ -101,6 +109,9 @@ pub async fn build_self_advert(
         .map_err(SelfAdvertError::Extension)?;
     if now_seconds > MAX_EXACT_INTEGER {
         return Err(SelfAdvertError::ClockOutOfRange);
+    }
+    if now_seconds < EARLIEST_PLAUSIBLE_SECONDS {
+        return Err(SelfAdvertError::ClockImplausible);
     }
     let mut extra = CanonicalMap::new();
     for (key, value) in extensions {
@@ -268,5 +279,25 @@ mod tests {
                 .err(),
             Some(SelfAdvertError::ClockOutOfRange)
         );
+    }
+
+    #[tokio::test]
+    async fn a_clock_that_is_not_a_wall_clock_builds_no_advert() {
+        let identity = NodeIdentity::generate_ed25519();
+        let topology = TopologyPeers::default();
+        assert!(
+            build_self_advert(&identity, &[], EARLIEST_PLAUSIBLE_SECONDS, &[], &topology)
+                .await
+                .is_ok()
+        );
+        for seconds in [0, 3, EARLIEST_PLAUSIBLE_SECONDS - 1] {
+            assert_eq!(
+                build_self_advert(&identity, &[], seconds, &[], &topology)
+                    .await
+                    .err(),
+                Some(SelfAdvertError::ClockImplausible),
+                "{seconds}"
+            );
+        }
     }
 }

@@ -193,10 +193,11 @@ pub enum SessionEvent {
     },
     /// A gossiped advert entered the peer directory (as a new device, or in place of an older advert).
     DirectoryChanged { device: DeviceId },
-    /// A gossiped advert was refused: it did not verify, its time or size is out of range, or the directory is full. One refused advert says nothing about the others of its frame.
-    AdvertRefused {
-        device: DeviceId,
+    /// Adverts of one gossip frame were refused: one did not verify, its time or size is out of range, or the directory is full. One refused advert says nothing about the others of its frame, which are applied. A frame produces one event whatever its number of refusals (a hub can put thousands of forged adverts in a frame at no cost to itself, and an event per advert would grow this session's unbounded queue with them): `first` and `reason` are those of the first refusal and `count` is how many the frame had.
+    AdvertsRefused {
+        first: DeviceId,
         reason: &'static str,
+        count: usize,
     },
     /// The peer sent no handshake within the handshake timeout. A relay-only hub never sends one, which is a state to report and not an error: the session carries on.
     HandshakeUnanswered,
@@ -212,7 +213,7 @@ pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(3);
 pub struct GossipConfig {
     /// Signs this node's own advert and verifies the adverts it receives.
     pub identity: Arc<dyn Identity>,
-    /// The time the advert's `snapshot-seconds` is read from (Unix milliseconds, as the port gives it).
+    /// The time the advert's `snapshot-seconds` is read from: a wall clock (Unix milliseconds). A clock that reads before 2001, such as a monotonic one, fails the session's first advert with an error instead of producing adverts every hub ignores.
     pub clock: Arc<dyn Clock>,
     /// The `host:port` addresses this node can be reached on directly; none for a node that cannot accept connections.
     pub addresses: Vec<String>,
@@ -275,6 +276,7 @@ impl GossipState {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         let topology = compute_topology_peers(&TopologyInputs {
+            // The connection port names no authenticated peer (the only adapter, plain TCP, authenticates nobody), so the first-heard rule in `TopologyInputs` applies.
             authenticated_peer: None,
             first_advertised_peer: first,
             accepted: self.config.accepted,
@@ -472,6 +474,9 @@ async fn run_dispatch_loop(
                     .await
                     .apply(&*gossip.config.identity, &gossiped)
                     .await;
+                // One event per distinct device changed and one for all the refusals, so a frame's size does not set the number of events.
+                let mut changed: Vec<DeviceId> = Vec::new();
+                let mut refused: Option<(DeviceId, &'static str, usize)> = None;
                 for outcome in outcomes {
                     match outcome {
                         AdvertOutcome::Admitted(device) => {
@@ -480,16 +485,28 @@ async fn run_dispatch_loop(
                                 .lock()
                                 .unwrap_or_else(|e| e.into_inner())
                                 .get_or_insert(device);
-                            let _ = events_tx.send(SessionEvent::DirectoryChanged { device });
+                            if !changed.contains(&device) {
+                                changed.push(device);
+                            }
                         }
                         AdvertOutcome::Older(_) => {}
                         AdvertOutcome::Refused(device, why) => {
-                            let _ = events_tx.send(SessionEvent::AdvertRefused {
-                                device,
-                                reason: why.as_str(),
+                            refused = Some(match refused {
+                                None => (device, why.as_str(), 1),
+                                Some((first, reason, count)) => (first, reason, count + 1),
                             });
                         }
                     }
+                }
+                for device in changed {
+                    let _ = events_tx.send(SessionEvent::DirectoryChanged { device });
+                }
+                if let Some((first, reason, count)) = refused {
+                    let _ = events_tx.send(SessionEvent::AdvertsRefused {
+                        first,
+                        reason,
+                        count,
+                    });
                 }
             }
             Frame::RelayInbound(_) | Frame::RelayData(_) => {
