@@ -1,9 +1,9 @@
 {
   "name": "@exadev/wire-mesh-cloudflare-hub",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "dependencies": {
     "cbor2": "2.3.0",
-    "wire-mesh-core": "4.2.13",
+    "wire-mesh-core": "4.2.14",
     "zod": "4.6.6"
   },
   "devDependencies": {

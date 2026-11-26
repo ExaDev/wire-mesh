@@ -1,3 +1,10 @@
+## [4.2.14](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.13...wire-mesh-core%404.2.14) (2026-11-26)
+
+### Tests
+
+* **conformance:** share the gossip directory rules between both implementations ([2decac9](https://github.com/ExaDev/wire-mesh/commit/2decac9458bfc23aec085f0c35c7c1b63a01c19b))
+* **core:** stop the relay peer and close the hub when an interop case fails to start ([339cda7](https://github.com/ExaDev/wire-mesh/commit/339cda7f830150cd9cf274a30e76134a0aa0e562))
+
 ## [4.2.13](https://github.com/ExaDev/wire-mesh/compare/wire-mesh-core%404.2.12...wire-mesh-core%404.2.13) (2026-11-16)
 
 ### Tests
